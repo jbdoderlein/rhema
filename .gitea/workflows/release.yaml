@@ -203,8 +203,10 @@ jobs:
           aws s3 cp dist/manifest.json "s3://get/manifest.json" --endpoint-url "$endpoint"
 
   publish-crates-io:
-    # The rhema-code library closure to crates.io, in dependency order —
-    # cargo walks the closure so every crate uploads after its deps.
+    # The library closure to crates.io, in the order
+    # scripts/publish-crates.sh holds. CI checks that list against the
+    # dependency graph on every push, so a crate that joins the closure
+    # fails there rather than partway through a tag release.
     # rhema-code itself stays excluded until its two crossterm patches
     # land upstream: a published crate cannot carry [patch.crates-io]
     # (cargo ignores patches from dependencies), and stock 0.29 does
@@ -236,36 +238,9 @@ jobs:
           fi
 
       - name: Publish
-        # Idempotent and rate-limit aware. crates.io caps NEW crates per
-        # rolling window, and a first release publishes twelve at once —
-        # the 0.1.0 bootstrap was cut off at the sixth (429). So: skip
-        # any crate whose exact version is already on the registry,
-        # tolerate the version landing between check and publish, and
-        # let a rate-limited crate fail the job without blocking later
-        # ones — re-running this job resumes where it stopped. The list
-        # is topological: dependencies publish before dependents.
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          ok=yes
-          for crate in rhema-core rhema-config rhema-provider rhema-agent-tools rhema-transcript rhema-coding-agent rhema-provider-anthropic rhema-provider-openai-compatible rhema-provider-opencode rhema-provider-copilot rhema-provider-google rhema-provider-llama-cpp rhema-provider-openrouter rhema-acp; do
-            if curl -fsSL -A "rhema-release (git.vhaudiquet.fr/vhaudiquet/rhema)" "https://crates.io/api/v1/crates/$crate/$version" >/dev/null 2>&1; then
-              echo "$crate v$version is already on crates.io — skipping"
-              continue
-            fi
-            echo "publishing $crate v$version ..."
-            if out=$(cargo publish -p "$crate" 2>&1); then
-              echo "$out"
-            elif echo "$out" | grep -qi "already exists\|already uploaded"; then
-              echo "$crate v$version landed between check and publish — counting as done"
-            else
-              printf '%s\n' "$out" >&2
-              ok=no
-            fi
-            sleep 5
-          done
-          [ "$ok" = yes ] || {
-            echo "some crates did not publish — re-run this job to resume" >&2
-            exit 1
-          }
+        # The list, the ordering, the already-published check and the
+        # rate-limit behaviour all live in the script, so the same rules
+        # run here and in the CI check.
+        run: scripts/publish-crates.sh "${GITHUB_REF_NAME#v}"
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
