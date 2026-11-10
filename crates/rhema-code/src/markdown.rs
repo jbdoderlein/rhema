@@ -67,6 +67,11 @@ struct MarkdownRenderer<'a> {
     /// for unordered ones. A stack, because a nested list must not
     /// clobber its parent's counter; its length is the nesting depth.
     counters: Vec<Option<u64>>,
+    /// The content column of each open item — its marker's own width
+    /// included. A paragraph that follows a blank row inside an item
+    /// starts here, so it stays visually inside the bullet instead of
+    /// drifting back to the margin.
+    item_indents: Vec<usize>,
     /// Inside a fenced code block: rows carry the block background.
     in_code_block: bool,
     /// Inside a block quote: every line carries the rail.
@@ -91,6 +96,7 @@ impl<'a> MarkdownRenderer<'a> {
             spans: Vec::new(),
             style: InlineStyle::default(),
             counters: Vec::new(),
+            item_indents: Vec::new(),
             in_code_block: false,
             in_block_quote: false,
             in_table: false,
@@ -131,9 +137,13 @@ impl<'a> MarkdownRenderer<'a> {
                 self.flush_line();
                 // A top-level list steps away from the text before it; a
                 // sublist hugs its parent item — the blank row is what
-                // made nesting read as same-level items.
+                // made nesting read as same-level items. The paragraph
+                // that introduces the sublist already asked for a blank
+                // row at its own end, so the hug means taking it back.
                 if self.counters.is_empty() {
                     self.separate();
+                } else if self.lines.last().is_some_and(|line| line.spans.is_empty()) {
+                    self.lines.pop();
                 }
                 self.counters.push(start);
             }
@@ -164,7 +174,12 @@ impl<'a> MarkdownRenderer<'a> {
                     .to_owned(),
                     None => "• ".to_owned(),
                 };
+                self.item_indents.push(indent.width() + marker.width());
                 self.spans.push(Span::raw(format!("{indent}{marker}")));
+            }
+            Event::End(TagEnd::Item) => {
+                self.flush_line();
+                self.item_indents.pop();
             }
             Event::Start(Tag::BlockQuote(_)) => {
                 self.flush_line();
@@ -254,6 +269,7 @@ impl<'a> MarkdownRenderer<'a> {
                         }
                     }
                 } else {
+                    self.indent_line();
                     self.spans
                         .push(self.style.apply(text.to_string(), self.theme));
                 }
@@ -295,6 +311,18 @@ impl<'a> MarkdownRenderer<'a> {
                     .push(Span::raw(html.to_string()).fg(Color::DarkGray));
             }
             _ => {}
+        }
+    }
+
+    /// Pads the line being started to the innermost open item's content
+    /// column. A line the renderer already began — an item's marker, a
+    /// quote's rail, a soft break's join — keeps its own shape; only a
+    /// fresh row inside an item is padded.
+    fn indent_line(&mut self) {
+        if self.spans.is_empty()
+            && let Some(columns) = self.item_indents.last().copied().filter(|cols| *cols > 0)
+        {
+            self.spans.push(Span::raw(" ".repeat(columns)));
         }
     }
 
@@ -646,6 +674,58 @@ mod tests {
         let lines = render_markdown_d(source);
         let rendered = plain(&lines);
         assert_eq!(rendered, ["1. one", "  ◦ sub", "2. two"]);
+    }
+
+    /// A paragraph after a blank row inside an item belongs to the
+    /// item: it starts at the item's content column, marker width
+    /// included, instead of drifting back to the margin. The subagent
+    /// tool's description relies on this for its catalog lines.
+    #[test]
+    fn a_paragraph_inside_an_item_keeps_the_item_indent() {
+        let source = "- subagent | the schema\n  Run it.\n\n  Subagents, by name:\n  - one: does things.\n\n  Where it runs: here.";
+        assert_eq!(
+            plain(&render_markdown_d(source)),
+            [
+                "• subagent | the schema Run it.",
+                "",
+                "  Subagents, by name:",
+                "  ◦ one: does things.",
+                "  Where it runs: here.",
+            ]
+        );
+    }
+
+    /// The paragraph that introduces a sublist and the sublist itself
+    /// stay one block: the paragraph's trailing blank row is taken back
+    /// when the list belongs to the same item.
+    #[test]
+    fn a_paragraph_introducing_a_sublist_hugs_it() {
+        let source = "- item\n\n  lead-in:\n  - sub";
+        assert_eq!(
+            plain(&render_markdown_d(source)),
+            ["• item", "", "  lead-in:", "  ◦ sub"]
+        );
+    }
+
+    /// The indent is the marker's own width: an ordered item's
+    /// continuation lines align under the text after `1. `, not under
+    /// the bullet a two-space rule would assume.
+    #[test]
+    fn the_indent_tracks_the_markers_width() {
+        let source = "1. item\n\n   continued";
+        assert_eq!(
+            plain(&render_markdown_d(source)),
+            ["1. item", "", "   continued"]
+        );
+    }
+
+    #[test]
+    fn text_after_a_list_returns_to_the_margin() {
+        let source = "- one\n\n  in the item\n\nafter";
+        assert_eq!(
+            plain(&render_markdown_d(source)),
+            ["• one", "", "  in the item", "", "after"]
+        );
     }
 
     #[test]

@@ -24,6 +24,7 @@ what it is for. The arguments are the JSON schema a call must satisfy.
 
 {% for tool in tools %}
 - {{ tool.name }} | {{ tool.parameters | json }}
+
 {{ tool.description | indent(2, true) }}
 {% endfor %}
 {% endif %}

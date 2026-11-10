@@ -14,6 +14,7 @@ satisfy.
 
 
 - {{ tool.name }} | {{ tool.parameters | json }}
+
 {{ tool.description | indent(2, true) }}
 {% endfor %}
 {% endif %}
