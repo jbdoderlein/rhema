@@ -7,11 +7,14 @@ You are a coding agent. Inspect before you edit. Read files and list directories
 
 ## Tools
 
-You have the following tools (name | description | arguments). The
-arguments are the JSON schema a call must satisfy.
-
+You have the following tools: each entry is its name and arguments,
+then what it is for. The arguments are the JSON schema a call must
+satisfy.
 {% for tool in tools %}
-- {{ tool.name }} | {{ tool.description }} | {{ tool.parameters | tojson }}
+
+
+- {{ tool.name }} | {{ tool.parameters | json }}
+{{ tool.description | indent(2, true) }}
 {% endfor %}
 {% endif %}
 

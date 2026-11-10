@@ -103,9 +103,31 @@ mod tests {
         assert!(out.contains("my-tool"), "{out}");
         assert!(out.contains("its purpose"), "{out}");
         assert!(
-            out.contains(r#""required": ["command"]"#),
+            out.contains(r#""required":["command"]"#),
             "the JSON schema rendered: {out}"
         );
+    }
+
+    /// A tool row is `name | arguments` with the description indented
+    /// underneath: a multi-line description stays inside its bullet, so
+    /// the schema can never end up grouped with the last catalog line.
+    #[test]
+    fn a_multi_line_description_stays_inside_its_bullet() {
+        let out = render_system(
+            DEFAULT_SYSTEM_MD,
+            Path::new("/ws"),
+            &[],
+            &[tool(
+                "my-tool",
+                "its purpose.\n\nSubagents, by name:\n- one: does a thing",
+            )],
+        )
+        .unwrap();
+        assert!(out.contains("- my-tool | {"), "{out}");
+        assert!(out.contains("\n  its purpose."), "{out}");
+        assert!(out.contains("\n  Subagents, by name:"), "{out}");
+        assert!(out.contains("\n  - one: does a thing"), "{out}");
+        assert!(!out.contains("\nSubagents, by name:"), "{out}");
     }
 
     #[test]

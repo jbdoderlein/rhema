@@ -1218,7 +1218,7 @@ mod tests {
             );
         }
         assert!(
-            prompt.contains(r#""required": ["command"]"#),
+            prompt.contains(r#""required":["command"]"#),
             "bash's schema renders: {prompt}"
         );
         assert!(prompt.contains("final message"), "{prompt}");

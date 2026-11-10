@@ -42,9 +42,10 @@ pub struct McpServerLine {
 /// workspace path, `skills` holds the discovered skills as `name`,
 /// `description`, and `path` fields, and `tools` holds the advertised
 /// tool specs as `name`, `description`, and `parameters` (the JSON
-/// schema, renderable with `tojson`) — all there for
-/// `{% for %}`/`{% if %}`. Undefined variables render empty; syntax and
-/// filter errors return with template positions.
+/// schema, renderable with `json` for prompt text or `tojson` where the
+/// output feeds HTML) — all there for `{% for %}`/`{% if %}`. Undefined
+/// variables render empty; syntax and filter errors return with
+/// template positions.
 ///
 /// The optional sections ([`render_system_with_sections`]) are absent
 /// here: a template that references them renders those parts empty,
@@ -90,6 +91,17 @@ pub fn render_system_with_sections(
     render_template(template, &context)
 }
 
+/// The `json` filter: a value as compact JSON, no HTML-safe escaping.
+fn json(value: Value) -> Result<String, TemplateError> {
+    serde_json::to_string(&value).map_err(|err| {
+        TemplateError::new(
+            minijinja::ErrorKind::InvalidOperation,
+            "cannot serialize to JSON",
+        )
+        .with_source(err)
+    })
+}
+
 /// Renders `template` over `context` — the same engine and whitespace
 /// rules as [`render_system`], with the caller's own variables. A
 /// value's own text is inserted verbatim, never re-parsed, so a
@@ -107,6 +119,13 @@ pub fn render_template(
             .lstrip_blocks(true)
             .build()?,
     );
+    // `json` is `tojson` without the HTML-safe escaping: `tojson`
+    // escapes `<`, `>`, `&`, and `'` as `\u003c`-style sequences so the
+    // output can ride a script tag, and a prompt's schema column is not
+    // HTML — the escapes cost tokens and reach the model as
+    // `this session\u0027s`. The names are distinct so a user template
+    // that wants the HTML-safe spelling keeps it.
+    env.add_filter("json", json);
     env.add_template("system", template)?;
     Ok(env
         .get_template("system")?
@@ -183,6 +202,43 @@ mod tests {
             out,
             "- t: dt — {\"properties\": {\"command\": {\"type\": \"string\"}}, \"required\": [\"command\"], \"type\": \"object\"}\n"
         );
+    }
+
+    /// The `json` filter is `tojson` without the HTML-safe escapes: a
+    /// prompt's schema column carries `'` and `<` as themselves rather
+    /// than as `\u0027` and `\u003c`, and a template that embeds its
+    /// output in a page can still ask for the escaped spelling.
+    #[test]
+    fn the_json_filter_leaves_html_characters_alone() {
+        let spec = ToolSpec::new(
+            "t",
+            "the session's tool",
+            json!({
+                "type": "object",
+                "properties": {
+                    "model": { "type": "string", "description": "a session's <provider>/<model>" }
+                }
+            }),
+        );
+        let out = render_system(
+            "{{ tools[0].parameters | json }}",
+            Path::new("/ws"),
+            &[],
+            std::slice::from_ref(&spec),
+        )
+        .unwrap();
+        assert!(out.contains(r#""a session's <provider>/<model>""#), "{out}");
+        assert!(!out.contains("\\u0027"), "{out}");
+        assert!(!out.contains("\\u003c"), "{out}");
+
+        let escaped = render_system(
+            "{{ tools[0].parameters | tojson }}",
+            Path::new("/ws"),
+            &[],
+            &[spec],
+        )
+        .unwrap();
+        assert!(escaped.contains("\\u0027"), "{escaped}");
     }
 
     #[test]

@@ -518,9 +518,10 @@ mod tests {
             None,
         )
         .expect("renders");
-        assert!(prompt.contains("- my_tool | its purpose | "), "{prompt}");
+        assert!(prompt.contains("- my_tool | {"), "{prompt}");
+        assert!(prompt.contains("\n  its purpose"), "{prompt}");
         assert!(
-            prompt.contains(r#""required": ["kind"]"#),
+            prompt.contains(r#""required":["kind"]"#),
             "the JSON schema rendered: {prompt}"
         );
     }

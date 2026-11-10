@@ -19,11 +19,12 @@ it, is the reply the user sees.
 {% if tools %}
 ## Tools
 
-You act through these tools (name | description | arguments). The
-arguments are the JSON schema a call must satisfy.
+You act through these tools: each entry is its name and arguments, then
+what it is for. The arguments are the JSON schema a call must satisfy.
 
 {% for tool in tools %}
-- {{ tool.name }} | {{ tool.description }} | {{ tool.parameters | tojson }}
+- {{ tool.name }} | {{ tool.parameters | json }}
+{{ tool.description | indent(2, true) }}
 {% endfor %}
 {% endif %}
 
