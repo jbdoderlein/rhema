@@ -12,7 +12,7 @@ impl App {
     /// In-band decline for a slash input no table row matches.
     pub fn unknown_command(&mut self, name: &str) {
         self.transcript
-            .push_notice(&format!("unknown command {name}; /help lists commands"));
+            .push_notice(&format!("unknown command {name}; type / for commands"));
     }
 
     /// A notice into the transcript, styled by the transcript itself.

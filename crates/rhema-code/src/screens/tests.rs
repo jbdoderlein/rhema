@@ -1812,8 +1812,8 @@ fn arrows_navigate_the_palette_and_tab_completes() {
     chat.handle_key(key(KeyCode::Up), &[], &[], &[], &crate::icons::UNICODE);
     assert_eq!(chat.palette_index, 1);
     chat.handle_key(key(KeyCode::Tab), &[], &[], &[], &crate::icons::UNICODE);
-    assert_eq!(chat.input, "/model");
-    assert_eq!(chat.cursor, "/model".chars().count());
+    assert_eq!(chat.input, "/profile");
+    assert_eq!(chat.cursor, "/profile".chars().count());
 }
 
 #[test]

@@ -1738,9 +1738,6 @@ mod scroll_tests {
         let mut columns = Vec::new();
         for y in 0..buffer.area.height {
             let row = row_text(y);
-            if let Some(pos) = row.find("commands and keys") {
-                columns.push(("commands and keys", pos));
-            }
             if let Some(pos) = row.find("pick the model") {
                 columns.push(("pick the model", pos));
             }
@@ -1748,7 +1745,7 @@ mod scroll_tests {
                 columns.push(("reasoning effort", pos));
             }
         }
-        assert_eq!(columns.len(), 3, "all searched rows visible: {columns:?}");
+        assert_eq!(columns.len(), 2, "all searched rows visible: {columns:?}");
         assert!(
             columns.iter().all(|(_, pos)| *pos == columns[0].1),
             "descriptions misaligned: {columns:?}"
@@ -2454,14 +2451,13 @@ mod scroll_tests {
         let mut app = chat_app();
         app.chat.input = "/".to_owned();
         app.chat.cursor = 1;
-        // Sixteen commands, six visible rows: nine downs put the
-        // selection on /retry (the row /resume held before it joined
-        // the table), and the window must have followed it.
-        for _ in 0..9 {
+        // Sixteen commands, six visible rows: eight downs put the
+        // selection on /retry, and the window must have followed it.
+        for _ in 0..8 {
             app.chat
                 .handle_key(key(KeyCode::Down), &[], &[], &[], &crate::icons::UNICODE);
         }
-        assert_eq!(app.chat.palette_index, 9);
+        assert_eq!(app.chat.palette_index, 8);
         let backend = TestBackend::new(60, 24);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|frame| render(&mut app, frame)).unwrap();
@@ -2473,7 +2469,10 @@ mod scroll_tests {
             screen.contains("/retry"),
             "the selection is shown: {screen}"
         );
-        assert!(!screen.contains("/help"), "the head scrolled out: {screen}");
+        assert!(
+            !screen.contains("/model"),
+            "the head scrolled out: {screen}"
+        );
 
         // And back to the top restores it.
         app.chat.palette_index = 0;
@@ -2483,7 +2482,7 @@ mod scroll_tests {
         let screen: String = (0..buffer.area.height)
             .flat_map(|y| (0..buffer.area.width).map(move |x| buffer[(x, y)].symbol().to_owned()))
             .collect();
-        assert!(screen.contains("/help"), "{screen}");
+        assert!(screen.contains("/model"), "{screen}");
     }
 
     #[test]

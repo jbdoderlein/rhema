@@ -3,7 +3,7 @@
 //!
 //! ARCHITECTURE: every command is one row of [`COMMANDS`] — name,
 //! description, argument kind, and handler function, in one place. The
-//! palette, `/help`, the parser, and the dispatcher all read this table,
+//! palette, the parser, and the dispatcher all read this table,
 //! so a command cannot exist outside it: a handler without a row is dead
 //! code (fails the `-D warnings` build), and a row without a handler does
 //! not compile. Adding a command means adding exactly one row.
@@ -56,7 +56,7 @@ const THINKING_LEVELS: &[Choice] = &[
 pub struct CommandSpec {
     /// The name as typed, with the slash.
     pub name: &'static str,
-    /// What it does, shown in the palette and `/help`.
+    /// What it does, shown in the palette.
     pub description: &'static str,
     /// How the argument after the name is handled.
     pub argument: Argument,
@@ -67,12 +67,6 @@ pub struct CommandSpec {
 /// Every command, in palette order. Aliases are separate rows sharing a
 /// handler (`/exit`, `/quit`).
 pub const COMMANDS: &[CommandSpec] = &[
-    CommandSpec {
-        name: "/help",
-        description: "commands and keys",
-        argument: Argument::None,
-        handler: help,
-    },
     CommandSpec {
         name: "/model",
         description: "pick the model (type for suggestions)",
@@ -250,19 +244,6 @@ pub fn dispatch(app: &mut App, input: &str) -> Vec<Effect> {
 // --- Handlers ---
 // Private on purpose: an unregistered handler is dead code and fails the
 // `-D warnings` build, which is what keeps the table complete.
-
-fn help(app: &mut App, _argument: Option<&str>) -> Vec<Effect> {
-    let commands = COMMANDS
-        .iter()
-        .map(|spec| format!("{} ({})", spec.name, spec.description))
-        .collect::<Vec<_>>()
-        .join(" · ");
-    app.push_notice(&format!(
-        "{commands}; keys: ctrl-p model · pgup/pgdn or wheel history · \
-         shift+drag to copy text · ctrl-c or ctrl-d quit"
-    ));
-    Vec::new()
-}
 
 fn model(app: &mut App, argument: Option<&str>) -> Vec<Effect> {
     if app.turn.running {

@@ -2721,12 +2721,12 @@ fn a_submit_travels_embedded_and_lands_in_the_transcript() {
 fn a_submission_carrying_images_is_never_a_command() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     let image = rhema_core::Image::new(rhema_core::ImageMediaType::Png, "aGVsbG8=");
-    h.app.chat.input = format!("/help {}", ChatState::MARK);
+    h.app.chat.input = format!("/clear {}", ChatState::MARK);
     h.app.chat.chips = vec![crate::screens::Chip::Image(image.clone())];
     h.app.chat.cursor = h.app.chat.input.chars().count();
     match h.app.on_key(key(KeyCode::Enter)).as_slice() {
         [Effect::StartTurn { text, images }] => {
-            assert_eq!(text, "/help ");
+            assert_eq!(text, "/clear ");
             assert_eq!(images.first(), Some(&image));
         }
         other => panic!("an image-bearing submit is a turn, not a command: {other:?}"),
@@ -2734,7 +2734,7 @@ fn a_submission_carrying_images_is_never_a_command() {
     assert_eq!(
         h.app.transcript.lines().last(),
         Some(&Line::User {
-            text: "/help ".into(),
+            text: "/clear ".into(),
             images: vec![image],
         })
     );
@@ -5450,21 +5450,6 @@ fn slash_model_during_a_turn_declines_with_a_notice() {
     assert!(matches!(
         h.app.transcript.lines().last(),
         Some(Line::Notice(text)) if text.contains("waits for it to finish")
-    ));
-}
-
-#[test]
-fn slash_help_prints_commands_without_calling_the_model() {
-    let mut h = harness(Some("k"), Some("m-a"), Session::default());
-    h.app.on_key(key(KeyCode::Char('/')));
-    for c in "help".chars() {
-        h.app.on_key(key(KeyCode::Char(c)));
-    }
-    assert_eq!(h.app.on_key(key(KeyCode::Enter)), Vec::new());
-    assert!(!h.app.turn.running, "no turn starts");
-    assert!(matches!(
-        h.app.transcript.lines().last(),
-        Some(Line::Notice(text)) if text.contains("/clear")
     ));
 }
 

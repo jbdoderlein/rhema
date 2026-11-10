@@ -95,8 +95,7 @@ pub(crate) fn effort_letter(effort: rhema_core::request::ThinkingEffort) -> &'st
 pub(crate) fn render_footer(frame: &mut Frame, app: &App, area: Rect, theme: &Theme) {
     // The mark, then always the same facts: profile, where the session
     // sits, model, where bash runs, context footprint against the
-    // model's window, the session's accumulated cost. Key hints live
-    // in /help, not here.
+    // model's window, the session's accumulated cost.
     // Every segment owns its leading separator — a trailing one on the
     // previous segment doubles as soon as an optional segment (folder,
     // allowance) sits between two others.

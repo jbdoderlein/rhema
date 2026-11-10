@@ -40,7 +40,7 @@ pub(crate) fn render_input(frame: &mut Frame, app: &App, area: Rect, theme: &The
         // The placeholder keeps the box reading as an input.
         vec![Line::from(vec![
             Span::raw(prompt).fg(theme.text3),
-            Span::raw("ask anything · /help for commands").fg(theme.text3),
+            Span::raw("ask anything · / for commands").fg(theme.text3),
         ])]
     } else {
         layout[first..first + remaining.min(total - first)]
