@@ -24,8 +24,11 @@ the feature builds without it and the rest builds without it.
   workspace's `.rhema/subagents`, project shadowing global by folder name.
 - `SubagentTools` — a `ToolResolver` advertising one tool, `subagent`,
   whose spec description carries the catalog (each subagent's name and
-  trigger), so the model learns when to delegate without a renderer
-  change.
+  trigger) and whose `name` field repeats it as an `enum`, so the model
+  learns when to delegate without a renderer change and a provider that
+  validates enums refuses a typo before the call. The start and fetch
+  argument sets share one schema: the portable schema subset has no
+  `oneOf`, so the field prose states the exclusivity.
 - `wire` — the explicit frontend helper: discover, and when anything was
   found, attach a `SubagentTools` to a `CodingAgentConfig`.
 

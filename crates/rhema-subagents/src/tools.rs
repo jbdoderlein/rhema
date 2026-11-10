@@ -518,52 +518,75 @@ impl SubagentTools {
                 "Run a named subagent in the background: an independent \
                  agent with its own conversation, system prompt, and \
                  workspace tools, which works the task and produces a \
-                 final report. The subagent does not see this \
-                 conversation and its report is all you get back, so the \
-                 prompt must carry everything it needs.\n\
-                 \n\
-                 How it works: call with `name` and `prompt` to start a \
-                 subagent — the call returns a job id at once and the \
-                 subagent keeps working in the background. When a job \
-                 finishes you will receive a notification naming it; \
-                 fetch its report by calling this tool with only `id` \
-                 set to that job id (for example \"job-3\"). A fetch of \
-                 a job that is still running is an error: wait for the \
-                 notification. A finished job's report is cached — \
-                 fetching again returns the same report, never a re-run. \
-                 Jobs keep running across turns, and stopping this \
-                 session never stops one.",
+                 final report. The subagent does not see this conversation \
+                 and its report is all you get back, so the prompt must \
+                 carry everything it needs. Call with `name` and `prompt` \
+                 to start a subagent: the call returns a job id at once and \
+                 the subagent keeps working in the background. When a job \
+                 finishes you will receive a notification naming it; fetch \
+                 its report by calling this tool with only `id` set to that \
+                 job id (for example \"job-3\"). A fetch of a job that is \
+                 still running is an error: wait for the notification. A \
+                 finished job's report is cached: fetching again returns the \
+                 same report, never a re-run. Jobs keep running across \
+                 turns, and stopping this session never stops one.",
             )
         } else {
             String::from(
                 "Run a named subagent: an independent agent with its own \
                  conversation, system prompt, and workspace tools, which \
                  works the task and returns its final report as the tool \
-                 result. The subagent does not see this conversation and \
-                 its report is all you get back, so the prompt must \
-                 carry everything it needs.",
+                 result. The subagent does not see this conversation and its \
+                 report is all you get back, so the prompt must carry \
+                 everything it needs.",
             )
         };
-        for def in defs {
-            description.push_str(&format!("\n- {}: {}", def.name, def.description));
+        if !defs.is_empty() {
+            description.push_str("\n\nSubagents, by name:");
+            for def in defs {
+                description.push_str(&format!("\n- {}: {}", def.name, def.description));
+            }
         }
         // Where a run rides. The definition's frontmatter and the
         // session's model are the defaults; the argument is the
         // override. The provider list is the factory's wire-time
         // answers — an empty list still leaves the bare-id spelling
         // meaningful, on this session's own provider.
-        let providers = if provider_kinds.is_empty() {
-            "none besides this session's own".to_owned()
+        if provider_kinds.is_empty() {
+            description.push_str(
+                "\n\nWhere it runs: without `model`, the definition's own \
+                 model choice applies, then this session's model. No other \
+                 provider is available here, so a `<provider>/<model>` \
+                 spelling fails with the provider named, and `model` takes \
+                 a bare model id on this session's provider.",
+            );
         } else {
-            provider_kinds.join(", ")
-        };
-        description.push_str(&format!(
-            "\n\nWhere it runs: without `model`, the definition's own \
-             model choice applies, then this session's model. Pass \
-             `model` to move it: `<provider>/<model>` runs on another \
-             provider (available here: {providers}), and a bare model \
-             id runs on this session's provider."
-        ));
+            description.push_str(&format!(
+                "\n\nWhere it runs: without `model`, the definition's own \
+                 model choice applies, then this session's model. Pass \
+                 `model` to move it: `<provider>/<model>` runs on another \
+                 provider (available here: {}), and a bare model id runs on \
+                 this session's provider.",
+                provider_kinds.join(", ")
+            ));
+        }
+        // The catalog also rides `name` as an enum, so a provider that
+        // validates enums refuses a typo before the call. The two
+        // argument sets are mutually exclusive, which the portable
+        // schema subset cannot express as `oneOf`, so the field prose
+        // carries it.
+        let mut name_schema = json!({
+            "type": "string",
+            "description": "The subagent to run, from the catalog above. Required with `prompt`."
+        });
+        if !defs.is_empty() {
+            name_schema["enum"] =
+                json!(defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>());
+        }
+        let model_schema = json!({
+            "type": "string",
+            "description": "Optional. Moves the run: `<provider>/<model>` spends another provider's credentials where one is available here, a bare model id stays on this session's provider. Without it the definition's model applies, then this session's."
+        });
         if background {
             ToolSpec::new(
                 "subagent",
@@ -571,22 +594,16 @@ impl SubagentTools {
                 json!({
                     "type": "object",
                     "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "The subagent to start, from the catalog in this tool's description."
-                        },
+                        "name": name_schema,
                         "prompt": {
                             "type": "string",
-                            "description": "The full task for the subagent: what to do, and what to report back."
+                            "description": "The full task for the subagent: what to do, and what to report back. Required with `name`."
                         },
                         "id": {
                             "type": "string",
-                            "description": "A job id to fetch the report of, instead of starting a new subagent."
+                            "description": "Fetch instead of starting: a job id from a notification or an earlier start. Pass it alone, never beside `name` or `prompt`."
                         },
-                        "model": {
-                            "type": "string",
-                            "description": "Optional. `<provider>/<model>` runs the subagent on another provider named in this description; a bare model id runs on this session's provider. Without it the definition's model applies, then this session's."
-                        }
+                        "model": model_schema
                     }
                 }),
             )
@@ -597,18 +614,12 @@ impl SubagentTools {
                 json!({
                     "type": "object",
                     "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "The subagent to run, from the catalog in this tool's description."
-                        },
+                        "name": name_schema,
                         "prompt": {
                             "type": "string",
-                            "description": "The full task for the subagent: what to do, and what to report back."
+                            "description": "The full task for the subagent: what to do, and what to report back. Required with `name`."
                         },
-                        "model": {
-                            "type": "string",
-                            "description": "Optional. `<provider>/<model>` runs the subagent on another provider named in this description; a bare model id runs on this session's provider. Without it the definition's model applies, then this session's."
-                        }
+                        "model": model_schema
                     },
                     "required": ["name", "prompt"]
                 }),
@@ -1131,6 +1142,22 @@ mod tests {
         assert!(properties.contains_key("name"));
         assert!(properties.contains_key("prompt"));
         assert!(properties.contains_key("id"));
+        // The catalog also rides the schema as an enum, so a provider
+        // that validates enums refuses a typo before the call.
+        assert_eq!(
+            spec.parameters["properties"]["name"]["enum"],
+            json!(["reviewer", "scout"])
+        );
+        // The two shapes are exclusive; the schema subset cannot say
+        // `oneOf`, so the id field says it.
+        assert!(
+            spec.parameters["properties"]["id"]["description"]
+                .as_str()
+                .unwrap()
+                .contains("never beside"),
+            "{}",
+            spec.parameters["properties"]["id"]
+        );
     }
 
     /// The spec teaches where a run rides: the provider list rides the
@@ -1159,10 +1186,12 @@ mod tests {
         // only one, and the spec says so instead of staying silent.
         let spec = SubagentTools::spec(&defs, &[]);
         assert!(
-            spec.description.contains("none besides this session's own"),
+            spec.description
+                .contains("No other provider is available here"),
             "{}",
             spec.description
         );
+        assert!(!spec.description.contains("available here:"));
     }
 
     /// Where a run rides: call model over frontmatter over the
