@@ -41,6 +41,23 @@ minijinja = { version = "3", default-features = false, features = ["serde", "deb
 # field is additive on the wire, so clients without it ignore it.
 agent-client-protocol = { version = "3.3", features = ["unstable_end_turn_token_usage"] }
 
+# The tarball the installer serves is this profile's output. Release
+# builds already carry no debug info, but the linker still writes the
+# symbol and string tables: 9.8 MB of the 32 MB binary that nothing
+# reads at runtime. Stripping leaves 22.6 MB, with no change to the
+# generated code.
+#
+# `codegen-units = 1` compiles each crate as one LLVM module instead of
+# sixteen, so the optimizer sees every function in the crate at once.
+# That merges duplicate generic instantiations (mostly drop glue, serde
+# impls and iterator adapters, measured 4 MB of them) and inlines across
+# what used to be module boundaries: 22.6 MB -> 18.6 MB. Runtime is the
+# same or slightly better; the cost is release build time, since each
+# crate's codegen no longer splits across cores.
+[profile.release]
+strip = "symbols"
+codegen-units = 1
+
 # Vendored crossterm with the two key patches the TUI leans on (see
 # vendor/README.md for provenance and refresh; delete this section to
 # return to the crates.io release):
