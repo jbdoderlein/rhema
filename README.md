@@ -1,5 +1,3 @@
-# Rhema
-
 <div align="center">
 <b>ῥῆμα, "the spoken word": words that do things.</b>
 </div>
@@ -7,14 +5,16 @@
 <br>
 
 <div align="center">
-<a href="https://rhema.rs">
 <img src=".github/img/a1-breath-dark.png" width="100">
 
 <br>
 
-rhema.rs
-</a>
+<a href="https://rhema.rs">rhema.rs</a>
 </div>
+
+<br>
+
+<h1 align="center">Rhema</h1>
 
 <br>
 
