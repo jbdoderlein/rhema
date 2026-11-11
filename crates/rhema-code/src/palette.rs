@@ -44,8 +44,10 @@ pub enum ThemeKind {
 pub enum Background {
     /// The palette's fills paint every slot: the drawn design.
     Rhema,
-    /// The terminal's own background shows through: the fill slots read
-    /// as the terminal default, and only the ink keeps rhema's colors.
+    /// The terminal's own background shows through the page: the fill
+    /// slots read as the terminal default, and only the ink keeps
+    /// rhema's colors. The prompt bubble keeps a card of its own
+    /// ([`Theme::prompt_fill`]).
     #[default]
     Native,
 }
@@ -143,6 +145,52 @@ impl Theme {
         }
         self
     }
+
+    /// The prompt bubble's fill: the lifted card, carrying a share of
+    /// the accent so the reader's own words sit apart from the model's
+    /// output with a tone of the brand.
+    /// `Native` gives the lifted card back to the terminal, so there the
+    /// canvas (`ground`, the one slot no cell paints) stands in for it:
+    /// the bubble keeps a fill while the page stays the terminal's own.
+    pub fn prompt_fill(&self) -> Color {
+        let base = if self.is_native() {
+            self.ground
+        } else {
+            self.elevated
+        };
+        mix(base, self.accent, PROMPT_TINT)
+    }
+
+    /// The prompt fill as sRGB bytes, when it is one: the graphics
+    /// sprites bake the fill in as bytes, so a fill that is not an RGB
+    /// (a non-generated palette slot the mix could not read) cannot
+    /// ride one — the bubble keeps its drawn frame instead.
+    pub fn prompt_fill_rgb(&self) -> Option<(u8, u8, u8)> {
+        match self.prompt_fill() {
+            Color::Rgb(r, g, b) => Some((r, g, b)),
+            _ => None,
+        }
+    }
+}
+
+/// How much of the accent the prompt bubble's fill carries, in percent:
+/// enough to read as the reader's own card, not enough to compete with
+/// the accent's inks.
+const PROMPT_TINT: u32 = 10;
+
+/// Mixes `percent` of `tint` into `base`. Terminal colors that are not
+/// `Rgb` (a native fill left on the terminal) cannot be mixed and read
+/// back as `base`.
+fn mix(base: Color, tint: Color, percent: u32) -> Color {
+    let (Color::Rgb(br, bg, bb), Color::Rgb(tr, tg, tb)) = (base, tint) else {
+        return base;
+    };
+    let channel = |base: u8, tint: u8| {
+        let base = u32::from(base) * (100 - percent);
+        let tint = u32::from(tint) * percent;
+        ((base + tint) / 100) as u8
+    };
+    Color::Rgb(channel(br, tr), channel(bg, tg), channel(bb, tb))
 }
 
 /// WCAG relative luminance. Palette tokens are always `Rgb`; anything
@@ -928,6 +976,56 @@ mod tests {
         assert!(!DARK.is_native());
         // The default paints nothing over.
         assert_eq!(DARK.painted(Background::Rhema), DARK);
+    }
+
+    /// The prompt card reads as the reader's own: a fill of its own on
+    /// either background, apart from the transcript well, and still
+    /// legible under the body ink on every palette.
+    #[test]
+    fn the_prompt_fill_lifts_off_the_well_on_both_backgrounds() {
+        for background in [Background::Rhema, Background::Native] {
+            for palette in Palette::ALL {
+                for kind in [ThemeKind::Dark, ThemeKind::Light] {
+                    let theme = palette
+                        .theme(kind, PaletteInputs::default())
+                        .painted(background);
+                    let fill = theme.prompt_fill();
+                    assert!(
+                        matches!(fill, Color::Rgb(..)),
+                        "{palette:?} {kind:?} {background:?}: the card is painted"
+                    );
+                    assert_ne!(
+                        fill, theme.sunken,
+                        "{palette:?} {kind:?} {background:?}: the card lifts off the well"
+                    );
+                    // The tint costs a little contrast against the
+                    // body ink; 3:1 is the floor the status set reads
+                    // at, and Solarized already sits under 4.5 on its
+                    // own lifted surface.
+                    assert!(
+                        contrast(fill, theme.text) >= 3.0,
+                        "{palette:?} {kind:?} {background:?}: the body ink reads on the card"
+                    );
+                    let base = if background == Background::Native {
+                        theme.ground
+                    } else {
+                        theme.elevated
+                    };
+                    assert_ne!(
+                        fill, base,
+                        "{palette:?} {kind:?} {background:?}: the accent tints the card"
+                    );
+                }
+            }
+        }
+        // On the painted background the card leans on the elevated
+        // surface; the tint keeps it apart from the plain lift.
+        assert_ne!(DARK.prompt_fill(), DARK.elevated);
+        assert_ne!(LIGHT.prompt_fill(), LIGHT.elevated);
+        // Native hands the fills back, and the card keeps its paint.
+        let native = DARK.painted(Background::Native);
+        assert_eq!(native.elevated, Color::Reset);
+        assert_ne!(native.prompt_fill(), Color::Reset);
     }
 
     #[test]

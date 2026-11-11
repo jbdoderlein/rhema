@@ -213,3 +213,50 @@ mod system_tests {
         assert!(notice.contains("- Workspace: /ws"));
     }
 }
+
+/// A scroll renumbers slots: the piece that inherits a slot may be a
+/// different sprite, and the placement the old sprite held must go —
+/// a placement is the pair of the image id and the slot, so a slot
+/// match alone would strand the old pair on screen as a ghost corner
+/// of a bubble that scrolled away.
+#[test]
+fn a_slot_that_changes_sprite_deletes_the_old_pair() {
+    use crate::ui::BubblePiece;
+    let piece = |slot: u16, sprite: u32| BubblePiece {
+        sprite,
+        col: 0,
+        row: 0,
+        cols: 1,
+        rows: 1,
+        slot,
+    };
+    // Last frame held four corners under slots 1..=4.
+    let placed = vec![
+        piece(1, 1000),
+        piece(2, 1003),
+        piece(3, 1002),
+        piece(4, 1001),
+    ];
+    // Growth only — a bubble scrolled in — takes nothing away.
+    let grown = vec![
+        piece(1, 1000),
+        piece(2, 1003),
+        piece(3, 1002),
+        piece(4, 1001),
+        piece(5, crate::term_image::Edge::Fill.sprite_id()),
+    ];
+    assert!(super::stale_placements(&placed, &grown).is_empty());
+    // A scrolled-out bubble pulls the list in: slot 2 now holds a
+    // different sprite, and slots 3 and 4 are gone. All three old
+    // pairs must delete — slot 2's because the sprite changed, the
+    // other two because nothing holds them anymore.
+    let pulled_in = vec![piece(1, 1000), piece(2, 1001)];
+    let stale = super::stale_placements(&placed, &pulled_in);
+    assert_eq!(stale.len(), 3, "{stale:?}");
+    assert!(
+        stale.contains(&piece(2, 1003)),
+        "the flipped slot's old pair"
+    );
+    assert!(stale.contains(&piece(3, 1002)));
+    assert!(stale.contains(&piece(4, 1001)));
+}

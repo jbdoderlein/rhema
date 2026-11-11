@@ -25,6 +25,47 @@ fn model(id: &str) -> ModelCard {
     }
 }
 
+/// The bubble is the drawn frame on every terminal, and it carries no
+/// background: the cells stay on the page's ground, so nothing bleeds
+/// around it, `background: native` keeps the terminal's own ground
+/// inside it, and the protocol card — when the terminal takes one —
+/// backs the frame instead of replacing it. The geometry rides along
+/// for the runner's card.
+#[test]
+fn the_bubble_is_a_backgroundless_frame_with_its_geometry() {
+    let (rows, geometry) = super::pane::render_user("hi", &[], &DARK, 40);
+    let geometry = geometry.expect("the bubble reports its geometry");
+    assert_eq!(rows.len(), 3, "cap, body, foot: {rows:?}");
+    assert_eq!(geometry.rows, 3);
+    // "hi" plus one pad cell a side and the two `│` glyphs.
+    assert_eq!(geometry.width, 6);
+    assert_eq!(geometry.left, 34);
+    let text: String = rows
+        .iter()
+        .map(|line| {
+            line.spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(text.contains('╭'), "the drawn frame: {text}");
+    assert!(text.contains('│'), "the drawn frame: {text}");
+    assert!(text.contains("hi"), "{text}");
+    // No cell carries a background: the frame is ink on the page.
+    for row in &rows {
+        for span in &row.spans {
+            assert_eq!(
+                span.style.bg,
+                None,
+                "no background on {:?}",
+                span.content.as_ref()
+            );
+        }
+    }
+}
+
 /// The panel's frame reads on either ground, and the title never
 /// inherits the border's dim ink: on a native ground the frame lifts to
 /// the readable token because there is no panel fill behind it.
@@ -3146,17 +3187,64 @@ mod scroll_tests {
         // A long prompt stops at three quarters of the column.
         let bubble_width = end - start + 1;
         assert_eq!(bubble_width, 56 * 3 / 4, "capped at 3/4");
-        // The body sits on the lifted surface, not the transcript well.
+        // Nothing carries a fill of its own: the bubble is ink on the
+        // page, every cell — text, frame, pads — on the well.
         let body_row = top + 1;
+        for x in start as u16..57 {
+            assert_eq!(
+                buffer[(x, body_row as u16)].style().bg,
+                Some(DARK.sunken),
+                "cell {x} of the body sits on the well"
+            );
+        }
         assert_eq!(
-            buffer[(1 + start as u16 + 1, body_row as u16)].style().bg,
-            Some(DARK.elevated),
-            "the bubble carries its own fill"
-        );
-        assert_ne!(
-            buffer[(1 + start as u16 + 1, body_row as u16)].style().bg,
+            buffer[(start as u16, top as u16)].style().bg,
             Some(DARK.sunken),
-            "the fill lifts off the transcript"
+            "the ╭ sits on the well"
+        );
+    }
+
+    /// `background: native` hands the page fills to the terminal, and
+    /// the bubble keeps them handed: every cell stays on the
+    /// terminal's own ground, the reader's words framed but not
+    /// papered over — the card is a `background: rhema` device.
+    #[test]
+    fn a_prompt_bubble_keeps_the_ground_under_a_native_background() {
+        let mut app = chat_app();
+        app.options.background = crate::palette::Background::Native;
+        app.theme = app.options.resolved_theme();
+        app.transcript.push_user("hi", Vec::new());
+        assert!(app.theme.is_native());
+
+        let backend = TestBackend::new(60, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| render(&mut app, frame)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let row_text = |y: u16| {
+            (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+        };
+        let top = (0..buffer.area.height)
+            .find(|y| row_text(*y).contains('╭'))
+            .expect("the frame opens");
+        let start = row_text(top).chars().position(|c| c == '╭').unwrap() as u16;
+        // The body, the frame, and the page around them: all Reset.
+        let body = &buffer[(1 + start + 1, top + 1)];
+        assert_eq!(
+            body.style().bg,
+            Some(ratatui::style::Color::Reset),
+            "the bubble keeps the terminal's ground"
+        );
+        assert_eq!(
+            buffer[(start, top)].style().bg,
+            Some(ratatui::style::Color::Reset),
+            "the ╭ is not painted"
+        );
+        assert_eq!(
+            buffer[(1, top)].style().bg,
+            Some(ratatui::style::Color::Reset),
+            "the page stays the terminal's own"
         );
     }
 

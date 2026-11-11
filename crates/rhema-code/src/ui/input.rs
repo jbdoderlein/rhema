@@ -3,7 +3,10 @@
 
 use super::*;
 
-pub(crate) fn render_input(frame: &mut Frame, app: &App, area: Rect, theme: &Theme) {
+/// Renders the input box and returns the cell its cursor showed at:
+/// the graphics placements move the terminal cursor to their anchors,
+/// and the runner puts it back here.
+pub(crate) fn render_input(frame: &mut Frame, app: &App, area: Rect, theme: &Theme) -> Position {
     // The input is the one interactive element, so it earns the accent —
     // while a turn runs too, because the box stays live: typing steers
     // the running turn, and the border must not suggest otherwise.
@@ -55,10 +58,12 @@ pub(crate) fn render_input(frame: &mut Frame, app: &App, area: Rect, theme: &The
     // past a full row's last cell clamps onto it — there is no
     // column beyond the box.
     let marker = u16::from(layout[cursor_row].marker);
-    frame.set_cursor_position(Position {
+    let at = Position {
         x: (inner.x + marker * 2 + cursor_col as u16).min(inner.right().saturating_sub(1)),
         y: inner.y + cursor_row.saturating_sub(first) as u16,
-    });
+    };
+    frame.set_cursor_position(at);
+    at
 }
 
 /// Content rows the input box may grow to; past that, a window keeps the

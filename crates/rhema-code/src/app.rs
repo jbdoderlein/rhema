@@ -194,6 +194,25 @@ pub struct App {
     /// frame, and clears it when the rect goes away. `None` on every
     /// other screen.
     pub logo_rect: Option<ratatui::layout::Rect>,
+    /// The prompt card's pieces the frame recorded, in screen cells:
+    /// the runner diffs them against the graphics layer's placements
+    /// after the draw, exactly like [`Self::logo_rect`]. Empty unless
+    /// [`Self::card_graphics`] holds.
+    pub(crate) bubble_pieces: Vec<crate::ui::BubblePiece>,
+    /// The cell the input's cursor showed at, when the frame showed
+    /// one: the graphics placements move the terminal cursor to their
+    /// anchors, and the runner puts it back.
+    pub(crate) cursor_anchor: Option<ratatui::layout::Position>,
+    /// Whether the terminal draws the kitty graphics protocol. Fixed
+    /// at startup; rendering stays environment-blind and reads this.
+    pub graphics: bool,
+    /// Whether the terminal draws the prompt card through the graphics
+    /// protocol: the protocol is there, the palette has a card color,
+    /// and the terminal honors the text layer — kitty and Ghostty
+    /// place images under text, WezTerm draws them over it, so there
+    /// the card stays off and the frame keeps its see-through
+    /// interior. Fixed at startup with [`Self::graphics`].
+    pub(crate) card_graphics: bool,
 }
 
 /// How many steered nudges may sit queued between the turn's step
@@ -527,6 +546,10 @@ impl App {
             assembling: None,
             update: crate::screens::UpdatePage::default(),
             logo_rect: None,
+            bubble_pieces: Vec::new(),
+            cursor_anchor: None,
+            graphics: false,
+            card_graphics: false,
         })
     }
 

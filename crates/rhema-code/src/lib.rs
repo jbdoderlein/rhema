@@ -31,8 +31,9 @@
 //!   and the install script run behind the settings' Update page
 //! - [`ui`] — ratatui rendering, with `chrome` as its shared
 //!   panel/marker vocabulary of the menus
-//! - [`term_image`] — the onboarding logo through the kitty graphics
-//!   protocol (kitty and Ghostty)
+//! - [`term_image`] — the onboarding logo and the prompt bubbles'
+//!   corner arcs through the kitty graphics protocol (kitty, Ghostty,
+//!   WezTerm)
 //! - [`palette`] — color palettes: named token sets in two appearances;
 //!   the private `hct` and `m3` children carry the color math and the
 //!   scheme behind M3 You

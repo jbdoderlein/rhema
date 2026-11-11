@@ -333,7 +333,7 @@ pub struct SettingsScreen {
     /// Appearance: whether the icons are the Nerd Font set.
     pub icons_nerd: bool,
     /// Appearance: whether the terminal's own background is the one on
-    /// screen — no painted fills.
+    /// screen — no painted page fills.
     pub background_native: bool,
     // The Providers page — live.
     /// The profile this screen edits: the session's.

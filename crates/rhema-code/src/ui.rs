@@ -43,6 +43,30 @@ mod status;
 #[cfg(test)]
 mod tests;
 
+/// One piece of a prompt card: the sprite that draws there and the
+/// cell rect it covers. The transcript render re-states them every
+/// frame; the runner diffs them against the graphics layer's
+/// placements, the way it diffs the logo's rect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BubblePiece {
+    /// The sprite the piece draws: a corner arc or one of the
+    /// half-cell-padded edge strips ([`crate::term_image::Edge`]).
+    pub(crate) sprite: u32,
+    /// The piece's screen column (zero-based).
+    pub(crate) col: u16,
+    /// The piece's screen row (zero-based).
+    pub(crate) row: u16,
+    /// The piece's width in cells.
+    pub(crate) cols: u16,
+    /// The piece's height in cells.
+    pub(crate) rows: u16,
+    /// The placement's stable id: a piece keeps its slot across
+    /// frames, and the runner moves a placement by restating it —
+    /// the protocol replaces a placement that reuses the image and
+    /// placement ids, so a scrolled card never deletes anything.
+    pub(crate) slot: u16,
+}
+
 /// The transcript render's cache: the wrapped rows of whole blocks. A
 /// cached block still holds while its line range and first line are
 /// unchanged and no line inside mutated since it was drawn; the prefix
@@ -70,12 +94,14 @@ impl WrapCache {
 
 /// One cached block: its line range, its first line (the wholesale-
 /// rebuild check — a new transcript can repeat a shape but not a
-/// conversation), and its wrapped rows.
+/// conversation), its wrapped rows, and the graphical bubbles' geometry
+/// beside the rows they describe.
 #[derive(Debug)]
 struct CachedBlock {
     start: usize,
     end: usize,
     first: crate::transcript::Line,
+    bubbles: Vec<crate::ui::pane::BubbleGeom>,
     rows: Vec<Line<'static>>,
 }
 
@@ -96,6 +122,11 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     // every other screen clears it, and the runner diffs it against
     // what the terminal graphics layer holds.
     app.logo_rect = None;
+    // The bubble arcs and the input's cursor anchor re-state every
+    // frame the same way: a screen without either leaves nothing for
+    // the runner's graphics pass to hold.
+    app.bubble_pieces = Vec::new();
+    app.cursor_anchor = None;
     // The transcript's selection geometry is re-stated by its render
     // too: a screen without the transcript leaves no stale cells for a
     // mouse selection to map onto.
@@ -159,9 +190,32 @@ pub fn render(app: &mut App, frame: &mut Frame) {
                 Constraint::Length(1),
             ])
             .areas(frame.area());
-            render_transcript(frame, app, transcript_area, &theme);
+            // The popups paint over transcript cells, and the arc
+            // sprites composite above every cell — so the transcript
+            // render keeps its corners out of the popup rects, and a
+            // bubble under a modal runs square for the duration.
+            let mut occlusions: Vec<Rect> = Vec::new();
+            if app.turn.pending_approval.is_some() {
+                occlusions.push(centered(64, 12, frame.area()));
+            }
+            if app.confirm_quit {
+                occlusions.push(centered(34, 3, frame.area()));
+            }
+            let profiles = app.palette_profiles();
+            let sandboxes = app.palette_sandboxes();
+            let palette_rows = crate::screens::palette_rows_cached(
+                &mut app.chat,
+                &app.models,
+                &profiles,
+                &sandboxes,
+                app.icons,
+            );
+            if !palette_rows.is_empty() {
+                occlusions.push(overlay::palette_area(palette_rows.len(), input_area));
+            }
+            render_transcript(frame, app, transcript_area, &theme, &occlusions);
             render_status(frame, app, status_area, &theme);
-            render_input(frame, app, input_area, &theme);
+            app.cursor_anchor = Some(render_input(frame, app, input_area, &theme));
             render_command_palette(frame, app, input_area, &theme);
             render_footer(frame, app, footer_area, &theme);
             if let Some(call) = &app.turn.pending_approval {

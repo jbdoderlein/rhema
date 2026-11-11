@@ -33,6 +33,23 @@ pub(crate) struct TranscriptBlock {
     kind: Kind,
 }
 
+/// A graphical bubble's geometry inside its block's rendered rows:
+/// where its cap row sits, how tall the card runs, and where its left
+/// edge sits in cells. The transcript render turns these into the arc
+/// placements' screen coordinates; the wrap cache carries them beside
+/// the rows they describe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BubbleGeom {
+    /// The card's cap row, counted from its block's first rendered row.
+    pub(crate) first_row: usize,
+    /// The card's row count: cap, body, foot.
+    pub(crate) rows: usize,
+    /// The card's left edge, in cells from the row's own start.
+    pub(crate) left: usize,
+    /// The card's width in cells, corner to corner.
+    pub(crate) width: usize,
+}
+
 /// Partitions the transcript lines into blocks. A whitespace-only
 /// assistant line with no response behind it is noise — models emit
 /// empty text parts between tool calls — and belongs to no block.
@@ -87,7 +104,13 @@ pub(crate) fn partition(lines: &[transcript::Line]) -> Vec<TranscriptBlock> {
     blocks
 }
 
-pub(crate) fn render_transcript(frame: &mut Frame, app: &mut App, area: Rect, theme: &Theme) {
+pub(crate) fn render_transcript(
+    frame: &mut Frame,
+    app: &mut App,
+    area: Rect,
+    theme: &Theme,
+    occlusions: &[Rect],
+) {
     let inner = Rect {
         x: area.x + 1,
         width: area.width.saturating_sub(2),
@@ -99,6 +122,9 @@ pub(crate) fn render_transcript(frame: &mut Frame, app: &mut App, area: Rect, th
     let width = inner.width.saturating_sub(2) as usize;
     let lines = app.transcript.lines();
     let blocks = partition(lines);
+    // The cards draw whole only when the sprites can round them: the
+    // protocol, and a fill an RGB a sprite can bake in.
+    let graphics = app.graphics && theme.prompt_fill_rgb().is_some();
 
     // The cached prefix: blocks whose range, first line, and mutation
     // watermark all still agree. A width or theme change, or a rebuilt
@@ -151,6 +177,7 @@ pub(crate) fn render_transcript(frame: &mut Frame, app: &mut App, area: Rect, th
         .iter()
         .flat_map(|line| wrap_line(line, width))
         .collect();
+    let mut bubbles: Vec<(usize, BubbleGeom)> = Vec::new();
     for (index, block) in blocks.iter().enumerate() {
         if index > 0
             && matches!(
@@ -160,14 +187,20 @@ pub(crate) fn render_transcript(frame: &mut Frame, app: &mut App, area: Rect, th
         {
             rows.push(Line::from(""));
         }
+        let block_top = rows.len();
         if index < reusable {
-            rows.extend(app.transcript_cache.blocks[index].rows.iter().cloned());
+            let cached = &app.transcript_cache.blocks[index];
+            rows.extend(cached.rows.iter().cloned());
+            for geometry in &cached.bubbles {
+                bubbles.push((block_top + geometry.first_row, *geometry));
+            }
         } else {
-            let rendered = render_block(lines, block, theme, width, app.icons.robot);
+            let (rendered, geoms) = render_block(lines, block, theme, width, app.icons.robot);
             let cached = CachedBlock {
                 start: block.start,
                 end: block.end,
                 first: lines[block.start].clone(),
+                bubbles: geoms.clone(),
                 rows: rendered.clone(),
             };
             let cache = &mut app.transcript_cache;
@@ -175,6 +208,9 @@ pub(crate) fn render_transcript(frame: &mut Frame, app: &mut App, area: Rect, th
                 cache.blocks[index] = cached;
             } else {
                 cache.blocks.push(cached);
+            }
+            for geometry in &geoms {
+                bubbles.push((block_top + geometry.first_row, *geometry));
             }
             rows.extend(rendered);
         }
@@ -190,6 +226,136 @@ pub(crate) fn render_transcript(frame: &mut Frame, app: &mut App, area: Rect, th
     // instead of burning the surplus first.
     app.chat.scroll = app.chat.scroll.min(max_top);
     let top = max_top - app.chat.scroll;
+    // The prompt card: the screen cells its sprites cover, restated
+    // for the runner's graphics pass. The card is a nine-slice — four
+    // corner arcs at one cell each, the four edges and the interior as
+    // half-cell-padded strips the placements stretch — sliced against
+    // the viewport, so a
+    // bubble scrolled half out of the well records only the pieces
+    // that fit and no sprite crosses under the input. The popups clip
+    // it too: the card sits under the text layer, but a piece crossing
+    // a dialog would tint it.
+    app.bubble_pieces = Vec::new();
+    if graphics {
+        for (first_row, geometry) in &bubbles {
+            let foot_row = first_row + geometry.rows.saturating_sub(1);
+            // The card slices to the rows the viewport holds: a piece
+            // anchors on whole cells, and every cell it claims must be
+            // a well cell — the sprites are not the Paragraph, they
+            // clip nothing on their own.
+            let first = (*first_row).max(top);
+            let last = foot_row.min(top + visible.saturating_sub(1));
+            if first > last {
+                continue;
+            }
+            let width = geometry.width as u16;
+            let left = inner.x + geometry.left as u16;
+            let right = left + width - 1;
+            let screen_y = |row_index: usize| inner.y + (row_index - top) as u16;
+            let mut card: Vec<BubblePiece> = Vec::new();
+            let mut edge = |sprite: u32, col: u16, row_index: usize, cols: u16, rows: u16| {
+                card.push(BubblePiece {
+                    sprite,
+                    col,
+                    row: screen_y(row_index),
+                    cols,
+                    rows,
+                    slot: 0,
+                });
+            };
+            // The cap band: the two arcs and the rule between them.
+            if *first_row >= first && *first_row <= last {
+                edge(
+                    crate::term_image::Corner::TopLeft.sprite_id(),
+                    left,
+                    *first_row,
+                    1,
+                    1,
+                );
+                edge(
+                    crate::term_image::Edge::Top.sprite_id(),
+                    left + 1,
+                    *first_row,
+                    width - 2,
+                    1,
+                );
+                edge(
+                    crate::term_image::Corner::TopRight.sprite_id(),
+                    right,
+                    *first_row,
+                    1,
+                    1,
+                );
+            }
+            // The interior band: the fill and the two sides it runs
+            // between. `foot_row` tops the frame, so the band is empty
+            // on a single-row frame — saturating keeps it so.
+            let body_top = (*first_row + 1).max(first);
+            let body_foot = foot_row.saturating_sub(1).min(last);
+            if body_top <= body_foot {
+                let rows = (body_foot - body_top + 1) as u16;
+                edge(
+                    crate::term_image::Edge::Left.sprite_id(),
+                    left,
+                    body_top,
+                    1,
+                    rows,
+                );
+                edge(
+                    crate::term_image::Edge::Fill.sprite_id(),
+                    left + 1,
+                    body_top,
+                    width - 2,
+                    rows,
+                );
+                edge(
+                    crate::term_image::Edge::Right.sprite_id(),
+                    right,
+                    body_top,
+                    1,
+                    rows,
+                );
+            }
+            // The foot band: the rule and its two arcs.
+            if foot_row >= first && foot_row <= last {
+                edge(
+                    crate::term_image::Corner::BottomLeft.sprite_id(),
+                    left,
+                    foot_row,
+                    1,
+                    1,
+                );
+                edge(
+                    crate::term_image::Edge::Bottom.sprite_id(),
+                    left + 1,
+                    foot_row,
+                    width - 2,
+                    1,
+                );
+                edge(
+                    crate::term_image::Corner::BottomRight.sprite_id(),
+                    right,
+                    foot_row,
+                    1,
+                    1,
+                );
+            }
+            for piece in card {
+                let rect = Rect::new(piece.col, piece.row, piece.cols, piece.rows);
+                if occlusions.iter().any(|dialog| dialog.intersects(rect)) {
+                    continue;
+                }
+                app.bubble_pieces.push(piece);
+            }
+        }
+    }
+    // Slots ride the list's order: one per piece, stable across the
+    // frames that keep the same pieces, so the runner's placement ids
+    // stay put and a scroll moves placements instead of deleting and
+    // re-placing them.
+    for (index, piece) in app.bubble_pieces.iter_mut().enumerate() {
+        piece.slot = index as u16 + 1;
+    }
     // The rows the frame draws, as plain text: the cells a mouse
     // selection maps onto and copies from.
     let visible_rows: Vec<String> = rows
@@ -220,14 +386,17 @@ pub(crate) fn render_transcript(frame: &mut Frame, app: &mut App, area: Rect, th
 
 /// Renders one block's wrapped content rows at `width` — the separators
 /// between blocks live at assembly, so a block's rows are cacheable
-/// regardless of what comes after it.
+/// regardless of what comes after it. A graphical prompt block also
+/// reports its cards' geometry, in the same row coordinates the rows
+/// use.
 pub(crate) fn render_block(
     lines: &[transcript::Line],
     block: &TranscriptBlock,
     theme: &Theme,
     width: usize,
     robot: &'static str,
-) -> Vec<Line<'static>> {
+) -> (Vec<Line<'static>>, Vec<BubbleGeom>) {
+    let mut bubbles: Vec<BubbleGeom> = Vec::new();
     let range = &lines[block.start..block.end];
     let raw: Vec<Line<'static>> = match block.kind {
         Kind::Response => {
@@ -254,14 +423,23 @@ pub(crate) fn render_block(
                 })
                 .collect()
         }
-        Kind::User => range
-            .iter()
-            .filter_map(|line| match line {
+        Kind::User => {
+            let mut rows: Vec<Line<'static>> = Vec::new();
+            for (text, images) in range.iter().filter_map(|line| match line {
                 transcript::Line::User { text, images } => Some((text.as_str(), images)),
                 _ => None,
-            })
-            .flat_map(|(text, images)| render_user(text, images, theme, width))
-            .collect(),
+            }) {
+                let (mut bubble_rows, geometry) = render_user(text, images, theme, width);
+                if let Some(geometry) = geometry {
+                    bubbles.push(BubbleGeom {
+                        first_row: rows.len() + geometry.first_row,
+                        ..geometry
+                    });
+                }
+                rows.append(&mut bubble_rows);
+            }
+            rows
+        }
         // The run's absorbed empty text parts render as nothing.
         Kind::ToolRun => range
             .iter()
@@ -290,9 +468,12 @@ pub(crate) fn render_block(
         // A prompt arrives already wrapped to its bubble's width and
         // filled out to the row: re-wrapping would drop the right-side
         // padding that holds the bubble against the edge.
-        return raw;
+        return (raw, bubbles);
     }
-    raw.iter().flat_map(|line| wrap_line(line, width)).collect()
+    (
+        raw.iter().flat_map(|line| wrap_line(line, width)).collect(),
+        bubbles,
+    )
 }
 
 /// The share of the transcript width a prompt bubble may occupy: at
@@ -345,22 +526,30 @@ fn user_body(text: &str, images: &[Image], theme: &Theme) -> Vec<Vec<Span<'stati
 }
 
 /// A submitted prompt as a chat bubble: right-aligned, at most three
-/// quarters of the column wide, on a rounded elevated fill so it reads
-/// apart from the model's output. An embedded paste renders as its chip
-/// (id and size, the body hidden).
+/// quarters of the column wide, the palette's drawn rounded frame. The
+/// frame carries no background — every cell stays on the page's
+/// ground, so nothing bleeds around the bubble and `background:
+/// native` keeps the terminal's own ground inside it. Where the
+/// graphics protocol is available the runner lays the prompt card —
+/// the tint, rounded by the same four anti-aliased arcs — underneath
+/// the whole frame, under the text layer, so the drawn bubble gains
+/// its background back without a cell painting over the page. An
+/// embedded paste renders as its chip (id and size, the body hidden).
+/// The geometry rides along for the runner's card.
 pub(crate) fn render_user(
     text: &str,
     images: &[Image],
     theme: &Theme,
     width: usize,
-) -> Vec<Line<'static>> {
+) -> (Vec<Line<'static>>, Option<BubbleGeom>) {
     let body = user_body(text, images, theme);
     if width < BUBBLE_CHROME + 1 {
         // Too narrow for a frame: the text uses the cells it has.
-        return body
+        let rows = body
             .into_iter()
             .flat_map(|spans| wrap_line(&Line::from(spans), width))
             .collect();
+        return (rows, None);
     }
     let max_width = (width * BUBBLE_WIDTH_NUM / BUBBLE_WIDTH_DEN)
         .max(BUBBLE_CHROME + 1)
@@ -386,42 +575,49 @@ pub(crate) fn render_user(
             spans.push(Span::raw(" ".repeat(left)));
         }
         spans.push(Span::styled("│", bubble_edge_style(theme)));
-        spans.push(Span::styled(" ", bubble_fill(theme)));
+        spans.push(Span::styled(" ", bubble_pad(theme)));
         spans.extend(line.spans.into_iter().map(|span| on_bubble(span, theme)));
         // The right padding, one cell at least: content_width - used
         // plus the pad cell before the border.
         spans.push(Span::styled(
             " ".repeat(content_width - used + 1),
-            bubble_fill(theme),
+            bubble_pad(theme),
         ));
         spans.push(Span::styled("│", bubble_edge_style(theme)));
         rows.push(Line::from(spans));
     }
     rows.push(bubble_edge(left, '╰', '╯', bubble_width, theme));
-    rows
+    let geometry = BubbleGeom {
+        first_row: 0,
+        rows: rows.len(),
+        left,
+        width: bubble_width,
+    };
+    (rows, Some(geometry))
 }
 
-/// The bubble's fill: content ink on the lifted surface.
-fn bubble_fill(theme: &Theme) -> Style {
-    Style::default().bg(theme.elevated).fg(theme.text)
+/// The bubble's interior pad cells: the ink only. The background
+/// stays the page's — the protocol card (or nothing) sits behind it.
+fn bubble_pad(theme: &Theme) -> Style {
+    Style::default().fg(theme.text)
 }
 
-/// The bubble's frame ink.
+/// The bubble's frame ink: border glyphs on the page's own ground, no
+/// fill of their own. A cell is the smallest thing a terminal paints,
+/// so the card's tint stays inside the `│` cells and the frame reads as
+/// an outline instead of a ring of colored cells.
 fn bubble_edge_style(theme: &Theme) -> Style {
-    Style::default().bg(theme.elevated).fg(theme.border_strong)
+    Style::default().fg(theme.border_strong)
 }
 
-/// Puts a body span on the bubble's fill: plain text takes the bubble's
-/// ink and background, a chip keeps a card of its own. The light
-/// palettes give `surface` and `elevated` the same value, so a chip
-/// inset against the bubble uses the sunken fill to stay a box.
+/// Puts a body span inside the frame: plain text takes the bubble's
+/// ink, a chip keeps a card of its own. The light palettes give
+/// `surface` and `elevated` the same value, so a chip inset against
+/// the bubble uses the sunken fill to stay a box.
 fn on_bubble(mut span: Span<'static>, theme: &Theme) -> Span<'static> {
     if span.style.bg == Some(theme.surface) {
         span.style = span.style.bg(theme.sunken);
         return span;
-    }
-    if span.style.bg.is_none() {
-        span.style = span.style.bg(theme.elevated);
     }
     if span.style.fg.is_none() {
         span.style = span.style.fg(theme.text);

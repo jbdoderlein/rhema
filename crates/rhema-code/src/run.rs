@@ -450,6 +450,12 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
         let effects = app.initial_effects();
         (app, effects)
     };
+    // The graphics flags ride the app so the renderer stays
+    // environment-blind: the logo asks only for the protocol, the
+    // card asks for the text layer too.
+    app.graphics = crate::term_image::graphics();
+    app.card_graphics =
+        app.graphics && app.theme.prompt_fill_rgb().is_some() && crate::term_image::card_graphics();
 
     enable_raw_mode().context("the rhema-tui binary needs a terminal; pipe output through a pty or use the rhema CLI instead")?;
     // The hook goes on before anything else mutates the terminal: a
@@ -624,6 +630,17 @@ async fn event_loop(
     // below re-states its want every draw, and a change re-places the
     // image (a resize) or clears it (the wizard's screen went away).
     let mut logo_placed: Option<ratatui::layout::Rect> = None;
+    // The last card the graphics layer holds, and the fill the sprite
+    // ids carry: the frame below re-states its want every draw, and a
+    // change moves the placements or clears them. Each piece owns a
+    // stable placement slot, and restating a slot moves and resizes
+    // it — the protocol replaces the pair in place, no flicker and no
+    // delete — so a scrolled transcript writes placements only. A
+    // fill change alone re-transmits the five sprites under the same
+    // ids, and the re-transmit drops the layer's placements, which
+    // the same frame's re-states rebuild.
+    let mut pieces_placed: Vec<crate::ui::BubblePiece> = Vec::new();
+    let mut sprite_fill: Option<(u8, u8, u8)> = None;
     for effect in std::mem::take(effects) {
         dispatch(terminal, app, tx, &mut status, effect);
     }
@@ -636,6 +653,75 @@ async fn event_loop(
                 None => crate::term_image::clear(),
             }
             logo_placed = app.logo_rect;
+            // The logo's escapes delete every image on the terminal,
+            // the card's sprites included: the next bubble re-transmits.
+            sprite_fill = None;
+            pieces_placed.clear();
+        }
+        // The prompt card re-states its want like the logo: the
+        // frame's glyphs and text draw above it (the placements carry
+        // z=-1, under the text layer), and the cells repaint around
+        // it. The sprites transmit once a fill color; a scrolled
+        // transcript moves and resizes only placements, in place, and
+        // a piece that leaves the viewport drops its own slot — never
+        // the global delete, whose semantics a terminal may widen past
+        // the spec and take the sprites' data with it.
+        let fill = app.theme.prompt_fill_rgb();
+        if app.bubble_pieces != pieces_placed
+            || (!app.bubble_pieces.is_empty() && fill != sprite_fill)
+        {
+            if app.bubble_pieces.is_empty() {
+                for piece in pieces_placed.drain(..) {
+                    crate::term_image::delete_placement(piece.sprite, piece.slot);
+                }
+            } else if let Some(fill) = fill {
+                // The sprites retransmit at the head of every burst,
+                // not once per fill: a retransmit swaps the pixels and
+                // leaves the placements keyed on the id alone, so it
+                // costs a few kilobytes and heals any state a terminal
+                // lost — ghostty before 7f62fe70a frees an image's
+                // data on a placement delete that matched nothing,
+                // after which every placement of it failed with a
+                // silent ENOENT (the case of the sheared bottom
+                // corners). A transmit per burst makes that
+                // unobservable.
+                for corner in crate::term_image::Corner::ALL {
+                    crate::term_image::transmit_sprite(
+                        corner.sprite_id(),
+                        &crate::term_image::corner_sprite(corner, fill),
+                    );
+                }
+                for edge in crate::term_image::Edge::ALL {
+                    crate::term_image::transmit_sprite(
+                        edge.sprite_id(),
+                        &crate::term_image::edge_sprite(edge, fill),
+                    );
+                }
+                sprite_fill = Some(fill);
+                for piece in &app.bubble_pieces {
+                    crate::term_image::place_piece(
+                        piece.sprite,
+                        piece.slot,
+                        piece.col,
+                        piece.row,
+                        piece.cols,
+                        piece.rows,
+                    );
+                }
+                // The placements the frame gave up, gone one at a
+                // time, the images staying transmitted.
+                for piece in stale_placements(&pieces_placed, &app.bubble_pieces) {
+                    crate::term_image::delete_placement(piece.sprite, piece.slot);
+                }
+            }
+            pieces_placed.clone_from(&app.bubble_pieces);
+            // The placements homed the terminal cursor onto their
+            // anchors; the input's cursor goes back where the frame
+            // put it. A frame without a cursor hid it, and a moved
+            // hidden cursor is nothing to restore.
+            if let Some(anchor) = app.cursor_anchor {
+                let _ = terminal.set_cursor_position(anchor);
+            }
         }
 
         while let Ok(event) = rx.try_recv() {
@@ -693,6 +779,32 @@ async fn event_loop(
             }
         }
     }
+}
+
+/// The placements the frame's card no longer holds: the slots that
+/// dropped, and — just as stale — the slots that changed sprite. A
+/// placement is the pair of the image id and the slot; a slot that
+/// renumbers onto a different sprite (a bubble scrolled out and the
+/// next bubble's piece inherited its slot) would leave the old pair
+/// on screen forever if only the slot were compared — the ghost
+/// corners a scroll used to trail behind the card.
+fn stale_placements(
+    placed: &[crate::ui::BubblePiece],
+    current: &[crate::ui::BubblePiece],
+) -> Vec<crate::ui::BubblePiece> {
+    let held: Vec<(u16, u32)> = current
+        .iter()
+        .map(|piece| (piece.slot, piece.sprite))
+        .collect();
+    placed
+        .iter()
+        .filter(|piece| {
+            held.iter()
+                .any(|(slot, sprite)| slot == &piece.slot && sprite != &piece.sprite)
+                || !held.iter().any(|(slot, _)| slot == &piece.slot)
+        })
+        .copied()
+        .collect()
 }
 
 /// Performs one effect: spawn a fetch task or a turn task. The turn takes

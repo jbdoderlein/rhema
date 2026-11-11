@@ -7,6 +7,19 @@ use super::*;
 /// shared background, no panel. The command reads in accent, the
 /// description dim, and the highlighted row carries the elevated tone.
 /// Tab completes, enter runs.
+/// The popup's rect for `rows` over `input_area` — the same rect the
+/// transcript render keeps the bubble arcs out of, since the sprites
+/// composite above every cell and the popup paints over those.
+pub(crate) fn palette_area(rows: usize, input_area: Rect) -> Rect {
+    let visible = rows.min(6) as u16;
+    Rect {
+        x: input_area.x,
+        y: input_area.y.saturating_sub(visible + 2),
+        width: input_area.width,
+        height: visible + 2,
+    }
+}
+
 pub(crate) fn render_command_palette(
     frame: &mut Frame,
     app: &mut App,
@@ -26,12 +39,7 @@ pub(crate) fn render_command_palette(
         return;
     }
     let visible = rows.len().min(6) as u16;
-    let area = Rect {
-        x: input_area.x,
-        y: input_area.y.saturating_sub(visible + 2),
-        width: input_area.width,
-        height: visible + 2,
-    };
+    let area = palette_area(rows.len(), input_area);
     // Clear erases the transcript beneath; the well tone is painted back
     // so the rows sit on the shared background, framed by a hairline.
     frame.render_widget(Clear, area);
