@@ -339,6 +339,11 @@ export interface ClawApi {
   /** `POST /v1/sessions` — create an interactive session from a name;
    * 400 for a name off `SESSION_NAME_PATTERN`, 409 when it exists. */
   createSession(name: string): Promise<NewSession>
+  /** `DELETE /v1/sessions/{key}` — delete a session, its dispatch record
+   * and the turn history recorded under it, so a key re-created under the
+   * same name starts empty. 409 while a turn holds the key, 404 when it is
+   * already gone. */
+  deleteSession(key: string): Promise<void>
   /** `GET /v1/consents` — the pending consents, oldest first. */
   listConsents(): Promise<ConsentRequest[]>
   /** `POST /v1/consents/{id}` — answer one consent; 409 when already
@@ -452,6 +457,13 @@ export function useClaw(token: Ref<string | null>): ClawApi {
       headers: { 'Content-Type': 'application/json', ...authHeaders(token.value) },
       body: JSON.stringify({ name }),
     })) as NewSession
+  }
+
+  async function deleteSession(key: string): Promise<void> {
+    await send(`/v1/sessions/${encodeURIComponent(key)}`, {
+      method: 'DELETE',
+      headers: authHeaders(token.value),
+    })
   }
 
   async function listConsents(): Promise<ConsentRequest[]> {
@@ -722,6 +734,7 @@ export function useClaw(token: Ref<string | null>): ClawApi {
   return {
     sessions,
     createSession,
+    deleteSession,
     listConsents,
     resolveConsent,
     denyConsent,

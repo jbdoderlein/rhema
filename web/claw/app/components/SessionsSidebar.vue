@@ -2,9 +2,11 @@
 // The session inventory: the dispatch keys a human converses with,
 // interactive first. Clicking selects the session the chat mirrors.
 // Displayed names drop the `interactive:` prefix — the full key stays
-// in the tooltip. Creating is intent only: the name flows up, the
-// shell answers, and the form closes when the new key lands in the
-// inventory.
+// in the tooltip. Creating and deleting are intent only: the name (or
+// the key) flows up, the shell answers, and the form closes when the
+// new key lands in the inventory. The delete button asks nothing itself
+// — the confirmation, which names the transcript that goes with the
+// session, is the shell's.
 import { SESSION_NAME_PATTERN } from '~/composables/useClaw'
 import type { ClawSession } from '~/composables/useClaw'
 
@@ -16,7 +18,12 @@ const props = defineProps<{
   avatarUrl?: string | null
 }>()
 
-const emit = defineEmits<{ select: [key: string]; refresh: []; create: [name: string] }>()
+const emit = defineEmits<{
+  select: [key: string]
+  refresh: []
+  create: [name: string]
+  delete: [key: string]
+}>()
 
 interface Group {
   label: string
@@ -148,20 +155,29 @@ watch(
 
     <div v-for="group in groups" :key="group.label" class="group">
       <span class="label">{{ group.label }}</span>
-      <button
+      <div
         v-for="row in group.rows"
         :key="row.key"
-        class="entry"
+        class="row"
         :class="{ active: row.key === activeKey }"
         :title="row.key"
-        @click="$emit('select', row.key)"
       >
-        <StatusDot :tone="stateTone(row.session.state)" />
-        <span class="name">{{ row.name }}</span>
-        <span v-if="row.session.inbox_depth > 0" class="depth" title="inbox depth">
-          {{ row.session.inbox_depth }}
-        </span>
-      </button>
+        <button class="entry" @click="$emit('select', row.key)">
+          <StatusDot :tone="stateTone(row.session.state)" />
+          <span class="name">{{ row.name }}</span>
+          <span v-if="row.session.inbox_depth > 0" class="depth" title="inbox depth">
+            {{ row.session.inbox_depth }}
+          </span>
+        </button>
+        <button
+          class="ghost remove"
+          aria-label="delete session"
+          :title="`delete ${row.key}`"
+          @click.stop="$emit('delete', row.key)"
+        >
+          ×
+        </button>
+      </div>
     </div>
   </aside>
 </template>
@@ -270,28 +286,55 @@ watch(
   padding: 0 8px 4px;
 }
 
+/* The row owns the hover and active surface: the select button fills it
+   and the delete button sits beside it, so neither has to nest in the
+   other. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 7px;
+  padding-right: 4px;
+  color: var(--text2);
+}
+
+.row:hover {
+  background: var(--elevated);
+  color: var(--text);
+}
+
+.row.active {
+  background: color-mix(in srgb, var(--accent) 17%, transparent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
 .entry {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   text-align: left;
   background: none;
   border: none;
   border-radius: 7px;
   padding: 7px 10px;
-  color: var(--text2);
+  color: inherit;
+  font-weight: inherit;
 }
 
-.entry:hover:not(:disabled) {
-  background: var(--elevated);
-  color: var(--text);
+.row .remove {
+  flex: none;
+  padding: 0 5px;
+  font-size: 13px;
+  opacity: 0;
 }
 
-.entry.active {
-  background: color-mix(in srgb, var(--accent) 17%, transparent);
-  color: var(--accent-text);
-  font-weight: 600;
+.row:hover .remove,
+.row:focus-within .remove,
+.row.active .remove {
+  opacity: 1;
 }
 
 .name {

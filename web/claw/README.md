@@ -122,6 +122,14 @@ Two consequences worth knowing before changing this code:
   lets 400/409 land in the error banner. The phone client's status
   keys (`phone:…`) stay out of the inventory; the full list stays on
   the wire.
+- **Deleting a session is a decision, not a click.** The row's delete
+  button only names the key; the shell's dialog spells out that the
+  turn history goes with it, and `DELETE /v1/sessions/{key}` runs on
+  confirm — so a key created again under the same name starts empty.
+  A 409 (a turn holds the key) and a 404 (already gone) land in the
+  error banner like every other refusal, and the chat moves to the
+  first remaining session, the stream's watcher following the key so
+  nothing keeps streaming a session that no longer exists.
 
 ## Layout
 

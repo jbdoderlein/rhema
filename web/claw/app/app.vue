@@ -319,6 +319,54 @@ async function createSession(name: string): Promise<void> {
   void refreshSessions()
 }
 
+// --- deleting a session ----------------------------------------------
+/** The key the confirmation names; null while no dialog is open. */
+const deletingKey = ref<string | null>(null)
+const deleting = ref(false)
+
+function askDeleteSession(key: string): void {
+  deletingKey.value = key
+}
+
+function closeDeleteSession(): void {
+  // A delete in flight is not cancellable: the claw is already writing.
+  if (deleting.value) return
+  deletingKey.value = null
+}
+
+/** The session to show once `gone` is deleted: the first interactive one
+ * the inventory still has, else the first of any kind, else none — an
+ * empty key opens no stream (see `resubscribe`). */
+function nextActiveKey(gone: string): string {
+  const remaining = sessions.value.filter((session) => session.key !== gone)
+  const next = remaining.find((session) => isInteractive(session.key)) ?? remaining[0]
+  return next?.key ?? ''
+}
+
+async function confirmDeleteSession(): Promise<void> {
+  const key = deletingKey.value
+  if (key === null || deleting.value) return
+  deleting.value = true
+  try {
+    await claw.deleteSession(key)
+    apiError.value = null
+    pushNotice(`session ${key} deleted`)
+    // The inventory first: the replacement key is whatever is left.
+    await refreshSessions()
+    // Moving activeKey resubscribes the stream (the watcher below), so
+    // the chat follows the delete instead of streaming a key that is
+    // gone.
+    if (activeKey.value === key) activeKey.value = nextActiveKey(key)
+  } catch (err) {
+    noteApiError(err)
+  } finally {
+    deleting.value = false
+    // The dialog closes either way: a refusal lands in the banner, where
+    // the rest of the claw's errors do.
+    deletingKey.value = null
+  }
+}
+
 async function refreshProviders(): Promise<void> {
   try {
     providersState.value = await claw.providers()
@@ -540,11 +588,15 @@ let stream: { close: () => void } | null = null
 
 function resubscribe(): void {
   stream?.close()
+  stream = null
   transcript.reset()
   olderAvailable.value = true
   attemptedAttachments.clear()
   notices.value = []
   streamStatus.value = 'connecting'
+  // Deleting the last session clears the key, and an empty key is not a
+  // stream: subscribing to one would retry a 404 forever.
+  if (activeKey.value === '') return
   stream = claw.subscribeEvents(activeKey.value, {
     onEvent: (event, seq) => transcript.applyEvent(event, seq),
     // The record lost what this mirror holds (a wiped or reset
@@ -672,6 +724,7 @@ onUnmounted(() => {
             @select="activeKey = $event"
             @refresh="refreshSessions"
             @create="createSession"
+            @delete="askDeleteSession"
           />
           <ChatPanel
             :items="transcriptItems"
@@ -740,6 +793,26 @@ onUnmounted(() => {
         </template>
       </main>
     </div>
+
+    <AppModal
+      :open="deletingKey !== null"
+      title="Delete session"
+      @close="closeDeleteSession"
+    >
+      <p>
+        Delete <span class="mono">{{ deletingKey }}</span>? Its dispatch record and its
+        turn history both go: the transcript cannot be recovered, and a session
+        created under the same name starts empty.
+      </p>
+      <template #actions>
+        <button class="ghost" :disabled="deleting" @click="closeDeleteSession">
+          cancel
+        </button>
+        <button :disabled="deleting" @click="confirmDeleteSession">
+          {{ deleting ? 'deleting…' : 'delete' }}
+        </button>
+      </template>
+    </AppModal>
   </div>
 </template>
 

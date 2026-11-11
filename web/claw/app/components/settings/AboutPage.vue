@@ -13,6 +13,7 @@ const routes = [
   { method: 'GET', path: '/healthz', note: 'liveness, open without a token' },
   { method: 'GET', path: '/v1/sessions', note: 'the dispatch-key inventory' },
   { method: 'POST', path: '/v1/sessions', note: 'create an interactive session from a name' },
+  { method: 'DELETE', path: '/v1/sessions/{key}', note: 'delete a session and its turn history' },
   { method: 'POST', path: '/v1/sessions/{key}/messages', note: 'message ingest, 202 + stream' },
   { method: 'GET', path: '/v1/sessions/{key}/events', note: 'the turn-event stream (SSE)' },
   { method: 'POST', path: '/v1/consents/{id}', note: 'answer a consent (a secret or a grant)' },
