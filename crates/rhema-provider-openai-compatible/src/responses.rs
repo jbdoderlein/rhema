@@ -25,8 +25,9 @@
 //!   image already rides.
 //! - An assistant turn replays as a `reasoning` item (the chain of
 //!   thought that led to its calls, stored on the calls'
-//!   `provider_data` on the way in), then the text message, then one
-//!   `function_call` item per call.
+//!   `provider_data` on the way in, sent as the canonical `summary`
+//!   array), then the text message, then one `function_call` item per
+//!   call.
 //! - A tool result replays as a `function_call_output`: bare string
 //!   output for text-only results, a parts array — text first, then
 //!   each image — when the result carries images.
@@ -185,18 +186,22 @@ pub struct WireFunctionCallOutputItem {
     pub output: WireItemContent,
 }
 
-/// One reasoning item replayed into the context.
+/// One reasoning item replayed into the context. The chain of thought
+/// rides the canonical `summary` field — an array of summary parts —
+/// which strict OpenAI-compatible normalizers validate: OpenCode's
+/// gateway answers HTTP 400, `input[N].summary: expected an array`,
+/// when the field is absent.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct WireReasoningItem {
-    /// The chain of thought as plain text; summary and encrypted forms
-    /// are not sent.
-    pub content: Vec<WireReasoningText>,
+    /// The chain of thought as summary parts; encrypted forms are not
+    /// sent.
+    pub summary: Vec<WireReasoningSummary>,
 }
 
-/// One text part of a [`WireReasoningItem`].
+/// One summary part of a [`WireReasoningItem`].
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct WireReasoningText {
-    /// Always `"reasoning_text"`.
+pub struct WireReasoningSummary {
+    /// Always `"summary_text"`.
     #[serde(rename = "type")]
     pub kind: String,
     /// The text itself.
@@ -360,8 +365,8 @@ fn push_reasoning_item(input: &mut Vec<WireInputItem>, message: &Message) {
         return;
     }
     input.push(WireInputItem::Reasoning(WireReasoningItem {
-        content: vec![WireReasoningText {
-            kind: "reasoning_text".to_owned(),
+        summary: vec![WireReasoningSummary {
+            kind: "summary_text".to_owned(),
             text: reasoning,
         }],
     }));
@@ -993,7 +998,7 @@ mod tests {
             input[0],
             serde_json::json!({
                 "type": "reasoning",
-                "content": [{"type": "reasoning_text", "text": "need the listing"}]
+                "summary": [{"type": "summary_text", "text": "need the listing"}]
             })
         );
         assert_eq!(
