@@ -119,9 +119,11 @@ Two consequences worth knowing before changing this code:
 - **Sessions are created in place.** The sidebar's `+` form posts
   `POST /v1/sessions` with a client-validated name
   (`[A-Za-z0-9._-]{1,64}`), switches the chat to the new key, and
-  lets 400/409 land in the error banner. The phone client's status
-  keys (`phone:…`) stay out of the inventory; the full list stays on
-  the wire.
+  lets 400/409 land in the error banner. The inventory lists only the
+  resident prefixes (`interactive:`, `task:`, `calendar:`) — the ones the
+  message, event and history routes answer for. The phone's status keys
+  (`phone:…`), the coding jobs' `job:<instance>#<id>` keys and forge keys
+  stay out, and the full list stays on the wire.
 - **Deleting a session is a decision, not a click.** The row's delete
   button only names the key; the shell's dialog spells out that the
   turn history goes with it, and `DELETE /v1/sessions/{key}` runs on

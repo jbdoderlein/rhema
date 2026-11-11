@@ -5,7 +5,7 @@
 // state is in-memory; only the token and the active session persist.
 // The claw owns the conversation and the config, so this page is a
 // mirror, not a store.
-import { ClawError, clawHealth, isInteractive, useClaw } from '~/composables/useClaw'
+import { ClawError, clawHealth, isInteractive, isResidentKey, useClaw } from '~/composables/useClaw'
 import type {
   AgentIdentity,
   AgentImageKind,
@@ -339,7 +339,7 @@ function closeDeleteSession(): void {
  * empty key opens no stream (see `resubscribe`). */
 function nextActiveKey(gone: string): string {
   const remaining = sessions.value.filter((session) => session.key !== gone)
-  const next = remaining.find((session) => isInteractive(session.key)) ?? remaining[0]
+  const next = remaining.find((session) => isResidentKey(session.key))
   return next?.key ?? ''
 }
 

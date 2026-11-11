@@ -7,7 +7,7 @@
 // new key lands in the inventory. The delete button asks nothing itself
 // — the confirmation, which names the transcript that goes with the
 // session, is the shell's.
-import { SESSION_NAME_PATTERN } from '~/composables/useClaw'
+import { SESSION_NAME_PATTERN, isResidentKey } from '~/composables/useClaw'
 import type { ClawSession } from '~/composables/useClaw'
 
 const props = defineProps<{
@@ -32,10 +32,15 @@ interface Group {
 
 const groups = computed<Group[]>(() => {
   const byKey = (a: ClawSession, b: ClawSession) => a.key.localeCompare(b.key)
-  // `phone:<device>:<topic>` keys carry the phone client's status
-  // reporting (battery, network, dnd), not conversation; the inventory
+  // Only the resident prefixes are chat sessions: `interactive:` is the
+  // live chat surface, `task:` a scheduled task's own turn, `calendar:` a
+  // reminder's. The rest of the inventory has no transcript to open —
+  // `phone:<device>:<topic>` is status reporting, `job:<instance>#<id>`
+  // is the coding jobs' bookkeeping, a forge key is a thread the handler
+  // reports on — and the daemon's message, event and history routes
+  // refuse those prefixes, so a row for one is a dead end. The inventory
   // hides them rather than the API narrowing.
-  const conversable = props.sessions.filter((session) => !session.key.startsWith('phone:'))
+  const conversable = props.sessions.filter((session) => isResidentKey(session.key))
   const interactive = conversable
     .filter((session) => session.key.startsWith('interactive:'))
     .sort(byKey)

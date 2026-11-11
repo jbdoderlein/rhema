@@ -248,6 +248,18 @@ export function isInteractive(key: string): boolean {
   return key.startsWith(INTERACTIVE_PREFIX)
 }
 
+/** The prefixes the chat surface answers for: the daemon's
+ * `is_resident_key` (`crates/rhema-claw/src/interactive.rs`). Every other
+ * key in the inventory — `phone:` status reporting, `job:<instance>#<id>`,
+ * a forge thread — has no transcript: the message, event and history
+ * routes 400 on it. */
+const RESIDENT_PREFIXES = ['interactive:', 'task:', 'calendar:']
+
+/** Whether `key` is one the transcript surface can open. */
+export function isResidentKey(key: string): boolean {
+  return RESIDENT_PREFIXES.some((prefix) => key.startsWith(prefix))
+}
+
 /** The session name `POST /v1/sessions` accepts; the key becomes
  * `interactive:<name>`. Anything else is a 400. */
 export const SESSION_NAME_PATTERN = /^[A-Za-z0-9._-]{1,64}$/
