@@ -409,6 +409,10 @@ pub struct WireStreamEvent {
     pub item_id: Option<String>,
     /// The full response object the terminal events carry.
     pub response: Option<WireResponseBody>,
+    /// A mid-stream error's message (`{"type":"error"}`).
+    pub message: Option<String>,
+    /// A mid-stream error's code (`{"type":"error"}`).
+    pub code: Option<String>,
 }
 
 /// One output item of the response: a message, a reasoning block, a
@@ -536,13 +540,14 @@ impl ResponsesAssembler {
 
     /// Feeds one event, emitting its streaming events. Fails with
     /// [`ProviderError::Api`] when the event is the server's
-    /// `response.failed`; unknown event types are ignored, so a server
-    /// may grow its vocabulary without breaking the assembler.
+    /// `response.failed` or a mid-stream `error` event; unknown event
+    /// types are ignored, so a server may grow its vocabulary without
+    /// breaking the assembler.
     ///
     /// # Errors
     ///
     /// Fails with [`ProviderError::Api`] (no status) on a
-    /// `response.failed` event.
+    /// `response.failed` or `error` event.
     pub fn push(
         &mut self,
         event: WireStreamEvent,
@@ -622,6 +627,19 @@ impl ResponsesAssembler {
                     .and_then(|response| response.error.as_ref())
                     .and_then(|error| error.message.clone())
                     .unwrap_or_else(|| "response failed".to_owned());
+                return Err(ProviderError::Api {
+                    message,
+                    status: None,
+                });
+            }
+            // A mid-stream error event: OpenRouter and OpenAI both
+            // spell one, with the message at the event's top level.
+            // Failing here keeps a silent empty success impossible.
+            "error" => {
+                let message = event
+                    .message
+                    .filter(|message| !message.is_empty())
+                    .unwrap_or_else(|| "mid-stream error".to_owned());
                 return Err(ProviderError::Api {
                     message,
                     status: None,
@@ -1145,6 +1163,28 @@ mod tests {
             )
             .expect_err("failed response is an error");
         assert!(err.to_string().contains("boom"), "{err}");
+    }
+
+    #[test]
+    fn an_error_event_fails_the_push_with_its_message() {
+        let mut assembler = ResponsesAssembler::new();
+        let mut sink = Collector::new();
+        let err = assembler
+            .push(
+                event(r#"{"type":"error","code":"upstream_error","message":"provider exploded"}"#),
+                &mut sink,
+            )
+            .expect_err("an error event is an error");
+        assert!(err.to_string().contains("provider exploded"), "{err}");
+
+        // A nameless error still fails, never masquerades as success.
+        let err = assembler
+            .push(
+                event(r#"{"type":"error","code":"upstream_error"}"#),
+                &mut sink,
+            )
+            .expect_err("an error event is an error");
+        assert!(err.to_string().contains("mid-stream error"), "{err}");
     }
 
     #[test]

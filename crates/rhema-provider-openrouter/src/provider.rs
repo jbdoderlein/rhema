@@ -2,7 +2,10 @@
 //! and account endpoints, with completions driven through the shared
 //! dialect core
 //! ([`rhema_provider_openai_compatible`]) speaking OpenRouter's
-//! [`crate::wire::OPENROUTER`] dialect.
+//! Responses API by default (`POST {base}/responses` — their
+//! documented first dialect, where a tool result's images ride its
+//! `function_call_output` as content parts) and chat completions under
+//! [`OpenRouterProvider::with_api`](`Api::Chat`)
 //!
 //! Auth is by API key in the `Authorization: Bearer` header — never a query
 //! parameter, so the key never lands in URLs or access logs. Every request
@@ -30,7 +33,7 @@ use rhema_core::provider::{ModelProvider, ProviderError};
 use rhema_core::request::ModelRequest;
 use rhema_provider::{Allowance, ModelCard, ModelListing};
 use rhema_provider_openai_compatible::provider::{
-    OpenAiCompatibleProvider, network_error as dialect_network_error,
+    Api, OpenAiCompatibleProvider, network_error as dialect_network_error,
 };
 use rhema_provider_openai_compatible::wire::WireErrorBody;
 use serde::de::DeserializeOwned;
@@ -56,6 +59,9 @@ pub struct OpenRouterProvider {
     base_url: String,
     api_key: String,
     http: reqwest::Client,
+    /// Which request shape completions speak; the default is the
+    /// Responses API, OpenRouter's documented first dialect.
+    api: Api,
     /// The dialect-core transport carrying OpenRouter's dialect and
     /// attribution headers; every completion goes through it.
     transport: OpenAiCompatibleProvider,
@@ -89,10 +95,11 @@ impl OpenRouterProvider {
             .expect("a client builder with only timeouts cannot fail");
         let api_key = api_key.into();
         Self {
-            transport: transport_for(DEFAULT_BASE_URL, &api_key),
+            transport: transport_for(DEFAULT_BASE_URL, &api_key, Api::Responses),
             base_url: DEFAULT_BASE_URL.to_owned(),
             api_key,
             http,
+            api: Api::Responses,
         }
     }
 
@@ -100,7 +107,19 @@ impl OpenRouterProvider {
     /// a mock server.
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into().trim_end_matches('/').to_owned();
-        self.transport = transport_for(&self.base_url, &self.api_key);
+        self.transport = transport_for(&self.base_url, &self.api_key, self.api);
+        self
+    }
+
+    /// Chooses the request shape: the Responses API by default —
+    /// OpenRouter's documented first dialect, where a tool result's
+    /// images ride its `function_call_output` as content parts — or
+    /// chat completions for a caller pinning the older shape. The
+    /// choice lives here, not on the transport, so the transport
+    /// rebuild of [`Self::with_base_url`] keeps it.
+    pub fn with_api(mut self, api: Api) -> Self {
+        self.api = api;
+        self.transport = transport_for(&self.base_url, &self.api_key, self.api);
         self
     }
 
@@ -183,7 +202,7 @@ fn network_error(err: reqwest::Error) -> ProviderError {
 
 /// The dialect-core transport for one OpenRouter base: its dialect,
 /// its attribution headers, the bearer key.
-fn transport_for(base_url: &str, api_key: &str) -> OpenAiCompatibleProvider {
+fn transport_for(base_url: &str, api_key: &str, api: Api) -> OpenAiCompatibleProvider {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("HTTP-Referer", APP_REFERER.parse().expect("a header value"));
     headers.insert("X-Title", APP_TITLE.parse().expect("a header value"));
@@ -191,6 +210,7 @@ fn transport_for(base_url: &str, api_key: &str) -> OpenAiCompatibleProvider {
         .with_base_url(base_url)
         .with_dialect(OPENROUTER)
         .with_extra_headers(headers)
+        .with_api(api)
 }
 
 #[async_trait]

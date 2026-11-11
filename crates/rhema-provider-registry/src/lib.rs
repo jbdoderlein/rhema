@@ -73,15 +73,16 @@ where
 /// deepseek, Z.ai's plan route for zai), `Some` replaces it.
 ///
 /// The kinds whose endpoints speak the Responses API default to it:
-/// deepseek and opencode always (both their documented routes serve
-/// `POST {base}/responses`), and openai when speaking to OpenAI itself
-/// — a stored route override points at an arbitrary
-/// OpenAI-compatible server, and that one gets the conservative chat
-/// completions dialect, the one every such server answers. llama.cpp
-/// stays on chat completions too: its server's `/responses` route is
-/// newer than its tool handling and its default dialect is the one
-/// every build serves. ChatGPT needs no choice — the Codex backend it
-/// drives is Responses-only.
+/// deepseek, opencode, and openrouter always (all three are one
+/// endpoint whose documented API includes `POST {base}/responses`;
+/// openrouter's flip lives in its adapter, the other two here), and
+/// openai when speaking to OpenAI itself — a stored route override
+/// points at an arbitrary OpenAI-compatible server, and that one gets
+/// the conservative chat completions dialect, the one every such
+/// server answers. llama.cpp stays on chat completions too: its
+/// server's `/responses` route is newer than its tool handling and its
+/// default dialect is the one every build serves. ChatGPT needs no
+/// choice — the Codex backend it drives is Responses-only.
 pub fn build(
     name: &str,
     api_key: Option<&str>,

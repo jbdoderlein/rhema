@@ -2,12 +2,20 @@
 //! [`ModelProvider`](rhema_core::ModelProvider) seam.
 //!
 //! OpenRouter (openrouter.ai) aggregates hosted models behind an
-//! OpenAI-compatible chat-completions API. Speaks it directly: one
-//! `POST {base}/chat/completions` with `stream: true` per exchange, the API
-//! key in the `Authorization: Bearer` header (plus the recommended
-//! `HTTP-Referer`/`X-Title` attribution headers), the SSE stream decoded
-//! into rhema-core [`Event`](rhema_core::Event)s and assembled into a
-//! [`ModelOutput`](rhema_core::ModelOutput). `GET {base}/models` lists the
+//! OpenAI-compatible API with two request shapes, and the Responses
+//! one (`POST {base}/responses`) is both their documented first
+//! dialect and the default here: one streaming `POST` per exchange,
+//! the API key in the `Authorization: Bearer` header (plus the
+//! recommended `HTTP-Referer`/`X-Title` attribution headers), the SSE
+//! events decoded into rhema-core [`Event`](rhema_core::Event)s and
+//! assembled into a [`ModelOutput`](rhema_core::ModelOutput). Their
+//! Responses surface is stateless-only and rejects `store: true` —
+//! exactly the full-replay, no-server-state rule every rhema adapter
+//! already follows — and a tool result's images ride its
+//! `function_call_output` as content parts, so the chat-wire reroute
+//! is not needed here. Chat completions stays reachable through
+//! [`OpenRouterProvider::with_api`](`rhema_provider_openai_compatible::Api::Chat`).
+//! `GET {base}/models` lists the
 //! public catalog as [`ModelCard`](rhema_provider::ModelCard) rows — the
 //! shared normalized model type — with pricing converted from
 //! OpenRouter's USD-per-token strings to per-MTok; the text chat models

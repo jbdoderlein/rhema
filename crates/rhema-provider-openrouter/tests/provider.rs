@@ -6,6 +6,7 @@ use rhema_core::{
     Role, StopReason, ToolCall, ToolSpec, Usage,
 };
 use rhema_provider::ModelListing;
+use rhema_provider_openai_compatible::Api;
 use rhema_provider_openrouter::OpenRouterProvider;
 use serde_json::{Value, json};
 use wiremock::matchers::{header, method, path, query_param};
@@ -19,8 +20,13 @@ impl EventSink for Collector {
     }
 }
 
+/// The chat-completions dialect, pinned: the adapter's default is the
+/// Responses API, and these tests cover the chat wire for callers who
+/// opt back into it. The Responses default has its own test below.
 fn provider(server: &MockServer) -> OpenRouterProvider {
-    OpenRouterProvider::new("secret-key").with_base_url(server.uri())
+    OpenRouterProvider::new("secret-key")
+        .with_api(Api::Chat)
+        .with_base_url(server.uri())
 }
 
 fn request(messages: Vec<Message>, tools: Vec<ToolSpec>) -> ModelRequest {
@@ -122,6 +128,50 @@ async fn streams_sse_into_events_and_an_assembled_output() {
             .and_then(|value| value.to_str().ok()),
         Some("https://rhema.rs")
     );
+}
+
+#[tokio::test]
+async fn defaults_to_the_responses_route() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(responses_sse_body()),
+        )
+        .mount(&server)
+        .await;
+
+    // Bare construction: the default dialect, not the helper's pinned
+    // chat one.
+    let mut sink = Collector(vec![]);
+    let out = OpenRouterProvider::new("secret-key")
+        .with_base_url(server.uri())
+        .complete(
+            request(vec![Message::text(Role::User, "hi")], vec![]),
+            &mut sink,
+        )
+        .await
+        .expect("the Responses route answers");
+
+    // Text streamed as a delta and assembled into one part; usage came
+    // off the terminal event.
+    assert_eq!(out.message.role, Role::Assistant);
+    assert_eq!(out.message.content, vec![Content::Text("ok".into())]);
+    assert_eq!(out.stop_reason, StopReason::EndTurn);
+    assert_eq!(out.usage.input_tokens, 9);
+    assert!(sink.0.iter().any(|line| line.starts_with("TextDelta")));
+}
+
+/// A Responses-API stream: one text delta, then the terminal event
+/// carrying usage.
+fn responses_sse_body() -> String {
+    [
+        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":9,\"output_tokens\":2,\"total_tokens\":11}}}\n\n",
+    ]
+    .concat()
 }
 
 #[tokio::test]
