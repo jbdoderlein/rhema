@@ -294,6 +294,7 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
                     .map(|api_key| Backend::OpenAi {
                         api_key,
                         base_url: effective.openai_base_url(),
+                        api: None,
                     })
             }
             ProviderChoice::DeepSeek => effective

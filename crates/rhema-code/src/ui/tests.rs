@@ -404,6 +404,7 @@ fn the_settings_screen_draws_the_sidebar_and_the_page() {
             api_key: Some("k".into()),
             secret_ref: None,
             base_url: None,
+            api: None,
         },
     );
     settings.stored.provider = Some("google".into());
@@ -1384,6 +1385,7 @@ mod scroll_tests {
                 api_key: Some("k".into()),
                 secret_ref: None,
                 base_url: None,
+                api: None,
             },
         );
         let config = crate::store::Config {
@@ -1701,6 +1703,7 @@ mod scroll_tests {
                 api_key: None,
                 secret_ref: None,
                 base_url: Some("http://home:8080".into()),
+                api: None,
             },
         );
         settings.stored.instances.insert(
@@ -1710,6 +1713,7 @@ mod scroll_tests {
                 api_key: Some("g".into()),
                 secret_ref: None,
                 base_url: None,
+                api: None,
             },
         );
         settings.stored.provider = Some("copilot".into());

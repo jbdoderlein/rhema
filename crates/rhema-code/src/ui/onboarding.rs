@@ -271,6 +271,22 @@ pub(crate) fn onboarding_body(
                             ]));
                         }
                     }
+                    crate::screens::DialogStage::ChooseApi => {
+                        for (index, (label, _)) in crate::screens::API_CHOICES.iter().enumerate() {
+                            let selected = index == dialog.selected_api;
+                            lines.push(Line::from(vec![
+                                super::chrome::marker(selected, theme),
+                                Span::styled(
+                                    (*label).to_string(),
+                                    if selected {
+                                        ratatui::style::Style::default().fg(theme.text).bold()
+                                    } else {
+                                        ratatui::style::Style::default().fg(theme.text2)
+                                    },
+                                ),
+                            ]));
+                        }
+                    }
                     crate::screens::DialogStage::NameInstance
                     | crate::screens::DialogStage::EnterCredential => {
                         lines.push(Line::from(vec![

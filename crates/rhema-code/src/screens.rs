@@ -23,8 +23,9 @@ mod tests;
 
 pub use chat::{ChatAction, ChatState, Chip};
 pub use dialogs::{
-    AddInstanceDialog, AddProfileDialog, AddSandboxDialog, DialogAction, DialogStage, DialogStatus,
-    PendingInstance, ProfileDialogAction, SANDBOX_ADD_KINDS, SandboxDialogAction, SandboxRow,
+    API_CHOICES, AddInstanceDialog, AddProfileDialog, AddSandboxDialog, DialogAction, DialogStage,
+    DialogStatus, PendingInstance, ProfileDialogAction, SANDBOX_ADD_KINDS, SandboxDialogAction,
+    SandboxRow,
 };
 pub use mcp::{
     AddMcpServerDialog, MCP_TRANSPORTS, McpDialogAction, McpDialogStage, McpServerRow, PairLines,

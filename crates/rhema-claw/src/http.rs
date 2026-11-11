@@ -2094,6 +2094,7 @@ async fn providers_set_credentials(
         kind: kind.clone(),
         api_key: blank_is_absent(body["api_key"].as_str()),
         url: blank_is_absent(body["url"].as_str()),
+        api: None,
     };
     let mut backend = crate::backends::construct(&kind, &params).map_err(bad_request)?;
     backend.id = id.to_owned();

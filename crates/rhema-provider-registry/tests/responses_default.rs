@@ -64,7 +64,7 @@ async fn deepseek_defaults_to_the_responses_route() {
         .respond_with(sse(&responses_sse()))
         .mount(&server)
         .await;
-    let built = build("deepseek", Some("key"), None, Some(&server.uri())).expect("builds");
+    let built = build("deepseek", Some("key"), None, Some(&server.uri()), None).expect("builds");
     let mut sink = Collector::new();
     let out = built
         .provider
@@ -104,6 +104,35 @@ async fn opencode_defaults_to_the_responses_route() {
 }
 
 #[tokio::test]
+async fn an_explicit_responses_choice_lifts_the_override_default() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(sse(&responses_sse()))
+        .mount(&server)
+        .await;
+    let built = build(
+        "openai",
+        Some("key"),
+        None,
+        Some(&server.uri()),
+        Some("responses"),
+    )
+    .expect("builds");
+    let mut sink = Collector(vec![]);
+    let out = built
+        .provider
+        .complete(request(), &mut sink)
+        .await
+        .expect("the Responses route answered at an override URL");
+    assert_eq!(
+        out.message.content,
+        vec![Content::Text("ok".into())],
+        "the stored choice beats the conservative route rule"
+    );
+}
+
+#[tokio::test]
 async fn an_openai_route_override_stays_on_chat_completions() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
@@ -111,7 +140,7 @@ async fn an_openai_route_override_stays_on_chat_completions() {
         .respond_with(sse(&chat_sse()))
         .mount(&server)
         .await;
-    let built = build("openai", Some("key"), None, Some(&server.uri())).expect("builds");
+    let built = build("openai", Some("key"), None, Some(&server.uri()), None).expect("builds");
     let mut sink = Collector::new();
     let out = built
         .provider

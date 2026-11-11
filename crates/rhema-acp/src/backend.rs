@@ -126,10 +126,16 @@ fn catalog_fetch(
         // The server address is optional to guard with a key; every
         // other kind is keyed, and no credential means nothing to
         // fetch — `None`, the same answer an unresolvable turn gets.
-        "llama-cpp" => build(kind, key.as_deref(), Some(&llama_url), None),
+        "llama-cpp" => build(kind, key.as_deref(), Some(&llama_url), None, None),
         _ => {
             let key = key.as_deref()?;
-            build(kind, Some(key), None, route.as_deref())
+            build(
+                kind,
+                Some(key),
+                None,
+                route.as_deref(),
+                stored_api(&profile, kind),
+            )
         }
     }
     .expect("a PROVIDERS kind the registry has no wiring for");
@@ -150,6 +156,16 @@ fn stored_route(profile: &Profile, kind: &str) -> Option<String> {
                 .and_then(|(_, instance)| profile.instance_url(instance))
         })
         .flatten()
+}
+
+/// The stored request shape the instance chose, when it did: the
+/// registry honors it for the `openai` kind, whose dialect its route
+/// alone cannot imply.
+fn stored_api(profile: &Profile, kind: &str) -> Option<&'static str> {
+    profile
+        .instance_for_provider(kind)
+        .and_then(|(_, instance)| instance.api)
+        .map(rhema_config::ProviderApi::as_str)
 }
 
 /// Resolves the backend the profile's settings call for. `provider`
@@ -216,13 +232,19 @@ pub fn provider_for(
     let route = stored_route(profile, kind);
     let key = profile.api_key(kind, secrets);
     let built = match kind {
-        "llama-cpp" => build(kind, key.as_deref(), Some(&llama_url), None),
+        "llama-cpp" => build(kind, key.as_deref(), Some(&llama_url), None, None),
         _ => {
             let Some(key) = key.as_deref() else {
                 // No key, no provider — `auth_required` to the client.
                 return Ok(None);
             };
-            build(kind, Some(key), None, route.as_deref())
+            build(
+                kind,
+                Some(key),
+                None,
+                route.as_deref(),
+                stored_api(profile, kind),
+            )
         }
     }
     .map_err(|err| err.to_string())?;
@@ -369,6 +391,7 @@ mod tests {
                 api_key: Some("gho_token".into()),
                 secret_ref: None,
                 base_url: None,
+                api: None,
             },
         );
         let resolved = resolve(&profile, None, None, None, None)
@@ -391,6 +414,7 @@ mod tests {
                 api_key: Some("zkey".into()),
                 secret_ref: None,
                 base_url: Some("https://proxy.example/api/anthropic".into()),
+                api: None,
             },
         );
         let resolved = resolve(&profile, None, None, None, None)
@@ -411,6 +435,7 @@ mod tests {
                 api_key: None,
                 secret_ref: None,
                 base_url: None,
+                api: None,
             },
         );
         assert!(
@@ -435,6 +460,7 @@ mod tests {
                 api_key: Some("ockey".into()),
                 secret_ref: None,
                 base_url: Some("https://opencode.ai/inference/go/openai/v1".into()),
+                api: None,
             },
         );
         assert_eq!(
@@ -458,6 +484,7 @@ mod tests {
                 api_key: Some("g".into()),
                 secret_ref: None,
                 base_url: None,
+                api: None,
             },
         );
         let err = match provider_for("nonsense", &keyed, None, None) {

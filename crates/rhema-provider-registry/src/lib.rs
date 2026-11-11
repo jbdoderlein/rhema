@@ -79,7 +79,11 @@ where
 /// openai when speaking to OpenAI itself — a stored route override
 /// points at an arbitrary OpenAI-compatible server, and that one gets
 /// the conservative chat completions dialect, the one every such
-/// server answers. llama.cpp stays on chat completions too: its
+/// server answers. An explicit `api` (`"chat"` or `"responses"`,
+/// straight from the stored instance) overrides the route rule for the
+/// kinds that honor it — `openai` — because a user who knows their
+/// endpoint speaks Responses should not be told otherwise; any other
+/// spelling falls back to the rule. llama.cpp stays on chat completions too: its
 /// server's `/responses` route is newer than its tool handling and its
 /// default dialect is the one every build serves. ChatGPT needs no
 /// choice — the Codex backend it drives is Responses-only.
@@ -88,6 +92,7 @@ pub fn build(
     api_key: Option<&str>,
     llama_url: Option<&str>,
     base_url: Option<&str>,
+    api: Option<&str>,
 ) -> Result<Built, BuildError> {
     let keyed = || {
         api_key
@@ -102,7 +107,7 @@ pub fn build(
         "chatgpt" => assembled(ChatGptProvider::new(keyed()?)),
         "openai" => {
             let mut provider =
-                OpenAiCompatibleProvider::new(keyed()?).with_api(openai_api(base_url));
+                OpenAiCompatibleProvider::new(keyed()?).with_api(chosen_api(api, base_url));
             if let Some(base_url) = non_blank(base_url) {
                 provider = provider.with_base_url(base_url.to_owned());
             }
@@ -170,12 +175,19 @@ fn non_blank(base_url: Option<&str>) -> Option<&str> {
     base_url.map(str::trim).filter(|url| !url.is_empty())
 }
 
-/// Which dialect the `openai` kind speaks: the Responses API at OpenAI
-/// itself — the home route serves `POST /v1/responses` — and the
-/// conservative chat-completions dialect anywhere a stored override
-/// routes, since an override names an arbitrary OpenAI-compatible
-/// server whose one guaranteed surface is chat completions.
-fn openai_api(base_url: Option<&str>) -> Api {
+/// Which dialect the `openai` kind speaks. An explicit stored choice
+/// (`"chat"` / `"responses"`) wins; otherwise the Responses API at
+/// OpenAI itself — the home route serves `POST /v1/responses` — and
+/// the conservative chat-completions dialect anywhere a stored
+/// override routes, since an override names an arbitrary
+/// OpenAI-compatible server whose one guaranteed surface is chat
+/// completions.
+fn chosen_api(api: Option<&str>, base_url: Option<&str>) -> Api {
+    match api.map(str::trim) {
+        Some("responses") => return Api::Responses,
+        Some("chat") => return Api::Chat,
+        _ => {}
+    }
     if non_blank(base_url).is_some() {
         Api::Chat
     } else {
@@ -190,14 +202,34 @@ mod tests {
     #[test]
     fn the_openai_kind_dialect_follows_the_route_override() {
         // No override names OpenAI itself: Responses.
-        assert_eq!(openai_api(None), Api::Responses);
+        assert_eq!(chosen_api(None, None), Api::Responses);
         // A blank override reads as unset, the same reading every
         // frontend applies to stored strings.
-        assert_eq!(openai_api(Some("")), Api::Responses);
-        assert_eq!(openai_api(Some("   ")), Api::Responses);
+        assert_eq!(chosen_api(None, Some("")), Api::Responses);
+        assert_eq!(chosen_api(None, Some("   ")), Api::Responses);
         // A real override names an arbitrary OpenAI-compatible server:
         // chat completions, the one surface every such server answers.
-        assert_eq!(openai_api(Some("http://localhost:1234/v1")), Api::Chat);
+        assert_eq!(
+            chosen_api(None, Some("http://localhost:1234/v1")),
+            Api::Chat
+        );
+    }
+
+    #[test]
+    fn an_explicit_api_choice_beats_the_route_rule() {
+        // A custom endpoint the user knows serves Responses.
+        assert_eq!(
+            chosen_api(Some("responses"), Some("http://localhost:1234/v1")),
+            Api::Responses
+        );
+        // And OpenAI itself can be pinned to the older shape.
+        assert_eq!(chosen_api(Some("chat"), None), Api::Chat);
+        // An unknown spelling falls back to the route rule.
+        assert_eq!(
+            chosen_api(Some("graphql"), Some("http://localhost:1234/v1")),
+            Api::Chat
+        );
+        assert_eq!(chosen_api(Some("  responses  "), None), Api::Responses);
     }
 
     #[test]
@@ -213,7 +245,7 @@ mod tests {
             "zai",
             "opencode",
         ] {
-            let built = build(kind, Some("k"), None, None).expect("the kind builds");
+            let built = build(kind, Some("k"), None, None, None).expect("the kind builds");
             // One instance behind both seams: dropping either half
             // leaves the other alive, the same provider.
             let _ = built.provider;
@@ -224,7 +256,7 @@ mod tests {
     #[test]
     fn a_keyed_kind_without_a_key_is_an_error_naming_the_kind() {
         assert_eq!(
-            build("anthropic", None, None, None)
+            build("anthropic", None, None, None, None)
                 .err()
                 .expect("a keyed kind without a key fails"),
             BuildError::MissingKey("anthropic".to_owned())
@@ -234,7 +266,7 @@ mod tests {
     #[test]
     fn an_unknown_spelling_is_an_error_not_a_default() {
         assert_eq!(
-            build("mistral", Some("k"), None, None)
+            build("mistral", Some("k"), None, None, None)
                 .err()
                 .expect("an unknown spelling fails"),
             BuildError::Unknown("mistral".to_owned())
@@ -244,26 +276,32 @@ mod tests {
     #[test]
     fn llama_cpp_needs_a_url_and_takes_an_optional_key() {
         assert_eq!(
-            build("llama-cpp", None, None, None)
+            build("llama-cpp", None, None, None, None)
                 .err()
                 .expect("llama-cpp needs a url"),
             BuildError::MissingLlamaUrl
         );
-        let built =
-            build("llama-cpp", None, Some("http://localhost:8080"), None).expect("the url builds");
+        let built = build("llama-cpp", None, Some("http://localhost:8080"), None, None)
+            .expect("the url builds");
         let _ = built.provider;
-        let built = build("llama-cpp", Some("k"), Some("http://localhost:8080"), None)
-            .expect("the guarded server builds");
+        let built = build(
+            "llama-cpp",
+            Some("k"),
+            Some("http://localhost:8080"),
+            None,
+            None,
+        )
+        .expect("the guarded server builds");
         let _ = built.provider;
     }
 
     #[test]
     fn route_overrides_replace_defaults_and_blanks_read_as_unset() {
-        let deepseek = build("deepseek", Some("k"), None, None).expect("deepseek builds");
+        let deepseek = build("deepseek", Some("k"), None, None, None).expect("deepseek builds");
         let _ = deepseek;
-        let zai = build("zai", Some("k"), None, Some("  ")).expect("zai builds");
+        let zai = build("zai", Some("k"), None, Some("  "), None).expect("zai builds");
         let _ = zai;
-        let zai = build("zai", Some("k"), None, Some("https://proxy.internal"))
+        let zai = build("zai", Some("k"), None, Some("https://proxy.internal"), None)
             .expect("the override builds");
         let _ = zai;
     }

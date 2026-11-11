@@ -83,6 +83,9 @@ pub enum Backend {
         api_key: String,
         /// The instance's base URL, when it stored one.
         base_url: Option<String>,
+        /// The instance's stored request shape, when it chose one;
+        /// `None` lets the registry's route rule decide.
+        api: Option<rhema_config::ProviderApi>,
     },
     /// DeepSeek, by API key (their OpenAI-compatible endpoint).
     DeepSeek {
@@ -172,18 +175,26 @@ impl Backend {
     /// blank reading as unset.
     fn wired(&self) -> rhema_provider_registry::Built {
         match self {
-            Backend::Google { api_key } => build("google", Some(api_key), None, None),
+            Backend::Google { api_key } => build("google", Some(api_key), None, None, None),
             Backend::LlamaCpp { url, api_key } => {
-                build("llama-cpp", api_key.as_deref(), Some(url), None)
+                build("llama-cpp", api_key.as_deref(), Some(url), None, None)
             }
-            Backend::OpenRouter { api_key } => build("openrouter", Some(api_key), None, None),
-            Backend::Anthropic { api_key } => build("anthropic", Some(api_key), None, None),
-            Backend::OpenAi { api_key, base_url } => {
-                build("openai", Some(api_key), None, base_url.as_deref())
-            }
-            Backend::DeepSeek { api_key } => build("deepseek", Some(api_key), None, None),
+            Backend::OpenRouter { api_key } => build("openrouter", Some(api_key), None, None, None),
+            Backend::Anthropic { api_key } => build("anthropic", Some(api_key), None, None, None),
+            Backend::OpenAi {
+                api_key,
+                base_url,
+                api,
+            } => build(
+                "openai",
+                Some(api_key),
+                None,
+                base_url.as_deref(),
+                api.map(rhema_config::ProviderApi::as_str),
+            ),
+            Backend::DeepSeek { api_key } => build("deepseek", Some(api_key), None, None, None),
             Backend::Zai { api_key, base_url } => {
-                build("zai", Some(api_key), None, base_url.as_deref())
+                build("zai", Some(api_key), None, base_url.as_deref(), None)
             }
             Backend::OpenCode {
                 api_key,
@@ -194,8 +205,8 @@ impl Backend {
                 base_url.as_deref(),
                 Some(session_id),
             )),
-            Backend::Copilot { api_key } => build("copilot", Some(api_key), None, None),
-            Backend::ChatGpt { credential } => build("chatgpt", Some(credential), None, None),
+            Backend::Copilot { api_key } => build("copilot", Some(api_key), None, None, None),
+            Backend::ChatGpt { credential } => build("chatgpt", Some(credential), None, None, None),
         }
         .expect("a Backend's own credentials build")
     }
@@ -351,6 +362,7 @@ impl Backend {
                     .map(|api_key| Backend::OpenAi {
                         api_key,
                         base_url: profile.instance_url(instance),
+                        api: instance.api,
                     })
             }
             "deepseek" => profile
@@ -408,6 +420,7 @@ impl Backend {
                 .map(|api_key| Backend::OpenAi {
                     api_key,
                     base_url: None,
+                    api: None,
                 }),
             "deepseek" => profile
                 .api_key("deepseek", secrets)
@@ -600,6 +613,8 @@ pub enum SettingsHit {
     DialogCategory(usize),
     /// A provider row of the add-instance dialog.
     DialogProvider(usize),
+    /// A request-shape row of the add-instance dialog.
+    DialogApiChoice(usize),
     /// The running login flow's open button.
     DialogFlowOpen,
     /// The running login flow's copy button.

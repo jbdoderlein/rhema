@@ -281,6 +281,7 @@ fn keyed_profile(provider: &str, key: &str) -> rhema_config::Profile {
             api_key: Some(key.to_owned()),
             secret_ref: None,
             base_url: None,
+            api: None,
         },
     );
     profile
@@ -430,6 +431,7 @@ fn settings_rows_move_within_the_providers_page_and_wrap() {
             api_key: Some("o-key".into()),
             secret_ref: None,
             base_url: None,
+            api: None,
         },
     );
     // Rows: google, openrouter, the add row.
@@ -877,16 +879,65 @@ fn a_custom_endpoint_requires_a_base_url_before_the_key() {
     }
     settings.handle_key(key(KeyCode::Enter));
     let dialog = settings.dialog.as_ref().unwrap();
-    assert!(dialog.second_input, "the key prompt follows the URL");
-    assert_eq!(dialog.input_label(), "API key: ");
+    // The URL alone does not reach the key: a custom endpoint's dialect
+    // is asked first.
+    assert_eq!(dialog.stage, DialogStage::ChooseApi);
     assert_eq!(
         dialog.pending.as_ref().unwrap().base_url.as_deref(),
         Some("http://localhost:11434/v1")
     );
 
+    // Down to the Responses row, enter records it, and the key prompt
+    // follows.
+    settings.handle_key(key(KeyCode::Down));
+    settings.handle_key(key(KeyCode::Enter));
+    let dialog = settings.dialog.as_ref().unwrap();
+    assert_eq!(dialog.stage, DialogStage::EnterCredential);
+    assert!(dialog.second_input, "the key prompt follows the choice");
+    assert_eq!(dialog.input_label(), "API key: ");
+    assert_eq!(
+        dialog.pending.as_ref().unwrap().api,
+        Some(rhema_config::ProviderApi::Responses)
+    );
+
     settings.handle_key(key(KeyCode::Char('k')));
     let dialog = settings.dialog.as_ref().unwrap();
     assert_eq!(dialog.masked_input(), "\u{2022}");
+}
+
+#[test]
+fn the_choice_stage_defaults_to_chat_and_esc_returns_to_the_url() {
+    let (mut settings, _) = descend_to_credential(LoginProvider::OpenAiCompatible);
+    for c in "http://localhost:11434/v1".chars() {
+        settings.handle_key(key(KeyCode::Char(c)));
+    }
+    settings.handle_key(key(KeyCode::Enter));
+    let dialog = settings.dialog.as_ref().unwrap();
+    assert_eq!(dialog.stage, DialogStage::ChooseApi);
+    assert_eq!(dialog.input_label(), "", "no input line on the choice");
+    assert_eq!(dialog.selected_api, 0, "chat completions highlighted");
+
+    // Esc on the choice un-asks it and re-prompts the URL — one step
+    // back, not out.
+    settings.handle_key(key(KeyCode::Esc));
+    let dialog = settings.dialog.as_ref().unwrap();
+    assert_eq!(dialog.stage, DialogStage::EnterCredential);
+    assert!(!dialog.second_input, "the URL is asked again");
+    assert_eq!(dialog.input_label(), "base URL: ");
+
+    // Straight through again, enter without moving keeps the route
+    // rule's answer.
+    for c in "http://localhost:11434/v1".chars() {
+        settings.handle_key(key(KeyCode::Char(c)));
+    }
+    settings.handle_key(key(KeyCode::Enter));
+    settings.handle_key(key(KeyCode::Enter));
+    let dialog = settings.dialog.as_ref().unwrap();
+    assert_eq!(dialog.stage, DialogStage::EnterCredential);
+    assert_eq!(
+        dialog.pending.as_ref().unwrap().api,
+        Some(rhema_config::ProviderApi::Chat)
+    );
 }
 
 #[test]
@@ -939,6 +990,7 @@ fn the_name_suggestion_skips_taken_names() {
                 api_key: Some("k".into()),
                 secret_ref: None,
                 base_url: None,
+                api: None,
             },
         );
     }

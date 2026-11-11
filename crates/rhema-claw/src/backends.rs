@@ -360,6 +360,12 @@ pub struct ProviderParams {
     /// (OpenAI-compatible, Z.ai, OpenCode).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// The request shape an `openai` kind speaks, when the config
+    /// chose one: `chat` or `responses`. Unset lets the registry's
+    /// route rule decide. Writable in the config file today; the login
+    /// forms do not ask for it yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
 }
 
 /// Every kind a runtime login can construct, ascending: the addable
@@ -438,16 +444,31 @@ pub fn construct(kind: &str, params: &ProviderParams) -> Result<Backend, Backend
         .clone()
         .unwrap_or_else(|| rhema_config::Profile::default().llama_cpp_url());
     let built = match kind {
-        "llama-cpp" => build(kind, params.api_key.as_deref(), Some(&llama_url), None),
+        "llama-cpp" => build(
+            kind,
+            params.api_key.as_deref(),
+            Some(&llama_url),
+            None,
+            None,
+        ),
         // The route-bearing kinds take an optional stored override; the
-        // rest keep their adapter's default.
+        // rest keep their adapter's default. Only the `openai` kind
+        // reads the stored request shape — the one whose dialect its
+        // route cannot imply.
         "openai" | "zai" | "opencode" => build(
             kind,
             Some(require_key(kind, params)?.as_str()),
             None,
             params.url.as_deref(),
+            params.api.as_deref(),
         ),
-        _ => build(kind, Some(require_key(kind, params)?.as_str()), None, None),
+        _ => build(
+            kind,
+            Some(require_key(kind, params)?.as_str()),
+            None,
+            None,
+            None,
+        ),
     }
     .map_err(|err| match err {
         rhema_provider_registry::BuildError::Unknown(kind) => BackendError::UnknownKind(kind),
@@ -559,12 +580,14 @@ pub fn discover(
                 kind: kind.to_owned(),
                 api_key: None,
                 url: Some(stored.llama_cpp_url()),
+                api: None,
             }
         } else if let Some(api_key) = env_key(kind) {
             ProviderParams {
                 kind: kind.to_owned(),
                 api_key: Some(api_key),
                 url: stored_route(kind),
+                api: None,
             }
         } else if stored_of_kind {
             // The stored instance of the kind wins over the profile
@@ -582,6 +605,7 @@ pub fn discover(
                 kind: kind.to_owned(),
                 api_key,
                 url: stored_route(kind),
+                api: None,
             }
         };
         let has_creds = match kind {
@@ -733,6 +757,7 @@ mod tests {
             kind: kind.to_owned(),
             api_key: api_key.map(str::to_owned),
             url: url.map(str::to_owned),
+            api: None,
         }
     }
 
@@ -853,6 +878,7 @@ mod tests {
                 api_key: None,
                 secret_ref: Some("ref-1".into()),
                 base_url: None,
+                api: None,
             },
         );
         let store = rhema_config::secrets::VolatileSecretStore::new();
@@ -961,6 +987,7 @@ mod tests {
                 api_key: Some("pg".into()),
                 secret_ref: None,
                 base_url: None,
+                api: None,
             },
         );
         profile

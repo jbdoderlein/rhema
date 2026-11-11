@@ -78,6 +78,10 @@ impl App {
             | crate::screens::LoginProvider::OpenAiCompatible => Backend::OpenAi {
                 api_key: input,
                 base_url,
+                // Only the custom-endpoint row shows the choice stage;
+                // the OpenAI row leaves it unset, so the route rule
+                // decides.
+                api: pending.api,
             },
             crate::screens::LoginProvider::OpenRouter => Backend::OpenRouter { api_key: input },
             crate::screens::LoginProvider::Anthropic => Backend::Anthropic { api_key: input },
@@ -179,13 +183,19 @@ impl App {
         models: &[ModelCard],
     ) -> Result<(), String> {
         let provider = backend.config_name();
-        let (api_key, base_url) = match backend {
-            Backend::LlamaCpp { url, api_key } => (api_key.clone(), Some(url.clone())),
-            Backend::OpenAi { api_key, base_url }
-            | Backend::Zai { api_key, base_url }
+        let (api_key, base_url, api) = match backend {
+            Backend::LlamaCpp { url, api_key } => (api_key.clone(), Some(url.clone()), None),
+            Backend::OpenAi {
+                api_key,
+                base_url,
+                api,
+            } => (Some(api_key.clone()), base_url.clone(), *api),
+            Backend::Zai {
+                api_key, base_url, ..
+            }
             | Backend::OpenCode {
                 api_key, base_url, ..
-            } => (Some(api_key.clone()), base_url.clone()),
+            } => (Some(api_key.clone()), base_url.clone(), None),
             Backend::Google { api_key }
             | Backend::OpenRouter { api_key }
             | Backend::Anthropic { api_key }
@@ -193,7 +203,7 @@ impl App {
             | Backend::Copilot { api_key }
             | Backend::ChatGpt {
                 credential: api_key,
-            } => (Some(api_key.clone()), None),
+            } => (Some(api_key.clone()), None, None),
         };
         let secrets = self.secrets.as_deref();
         let mut keychain_delete_failure: Option<String> = None;
@@ -218,6 +228,7 @@ impl App {
                     api_key: None,
                     secret_ref: None,
                     base_url,
+                    api: api.filter(|_| provider == "openai"),
                 },
             );
             if let Some(key) = api_key.as_deref() {

@@ -18,6 +18,7 @@ pub(crate) fn render_add_dialog(
     let rows = match dialog.stage {
         crate::screens::DialogStage::SelectCategory => ProviderCategory::ALL.len(),
         crate::screens::DialogStage::SelectProvider => dialog.visible_providers().len(),
+        crate::screens::DialogStage::ChooseApi => crate::screens::API_CHOICES.len(),
         crate::screens::DialogStage::NameInstance
         | crate::screens::DialogStage::EnterCredential => 1,
         crate::screens::DialogStage::Flow => flow.lines.len().max(1),
@@ -108,6 +109,36 @@ pub(crate) fn render_add_dialog(
                     ListItem::new(Line::from(vec![
                         Span::raw(if selected { "❯ " } else { "  " }).fg(theme.accent_text),
                         Span::styled(entry.name.to_string(), name_style),
+                    ]))
+                })
+                .collect();
+            frame.render_widget(ratatui::widgets::List::new(rows), body_area);
+        }
+        crate::screens::DialogStage::ChooseApi => {
+            // The two request shapes, each row a click target; enter (or
+            // a second click's enter) confirms.
+            let rows: Vec<ListItem> = crate::screens::API_CHOICES
+                .iter()
+                .enumerate()
+                .map(|(index, (label, _))| {
+                    let selected = index == dialog.selected_api;
+                    hits.push((
+                        Rect {
+                            x: body_area.x,
+                            y: body_area.y + index as u16,
+                            width: body_area.width,
+                            height: 1,
+                        },
+                        SettingsHit::DialogApiChoice(index),
+                    ));
+                    let name_style = if selected {
+                        Style::default().fg(theme.text).bold()
+                    } else {
+                        Style::default().fg(theme.text2)
+                    };
+                    ListItem::new(Line::from(vec![
+                        Span::raw(if selected { "❯ " } else { "  " }).fg(theme.accent_text),
+                        Span::styled((*label).to_string(), name_style),
                     ]))
                 })
                 .collect();

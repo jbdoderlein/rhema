@@ -215,6 +215,16 @@ impl App {
                 dialog.select_provider_row(index);
                 return Vec::new();
             }
+            SettingsHit::DialogApiChoice(index) => {
+                let Screen::Settings(settings) = &mut self.screen else {
+                    return Vec::new();
+                };
+                let Some(dialog) = &mut settings.dialog else {
+                    return Vec::new();
+                };
+                dialog.select_api_row(index);
+                return Vec::new();
+            }
             SettingsHit::DialogFlowOpen => SettingsAction::OpenFlowUrl,
             SettingsHit::DialogFlowCopy => SettingsAction::CopyFlowUrl,
         };

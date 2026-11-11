@@ -84,6 +84,33 @@ pub enum ConfigError {
     Store(String),
 }
 
+/// Which request shape a provider instance speaks, when the choice is
+/// the user's to make. Today only the `openai` kind reads it — the one
+/// kind whose dialect its route alone cannot imply: OpenAI itself
+/// serves the Responses API, an arbitrary OpenAI-compatible server
+/// only promises chat completions, and the stored choice overrides the
+/// route rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderApi {
+    /// The Chat Completions API (`POST {base}/chat/completions`) — the
+    /// dialect every OpenAI-compatible server answers.
+    Chat,
+    /// The Responses API (`POST {base}/responses`) — the modern shape,
+    /// where a tool result's images can ride the result itself.
+    Responses,
+}
+
+impl ProviderApi {
+    /// The config spelling, matching the serde form.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Chat => "chat",
+            Self::Responses => "responses",
+        }
+    }
+}
+
 /// One logged-in provider instance: a named credential set for a single
 /// provider kind. A profile may hold any number of them — two llama.cpp
 /// servers, two OpenAI-compatible endpoints, a work and a personal
@@ -111,6 +138,11 @@ pub struct ProviderInstance {
     /// endpoint's base, or a Z.ai route override. Unset means the
     /// provider's own default.
     pub base_url: Option<String>,
+    /// The request shape the instance speaks, when the user chose one:
+    /// `chat` or `responses`. Unset lets the provider's route rule
+    /// decide (OpenAI itself: responses; a custom endpoint: chat
+    /// completions).
+    pub api: Option<ProviderApi>,
 }
 
 impl fmt::Debug for ProviderInstance {
@@ -120,6 +152,7 @@ impl fmt::Debug for ProviderInstance {
             .field("api_key", &redacted(&self.api_key))
             .field("secret_ref", &self.secret_ref)
             .field("base_url", &self.base_url)
+            .field("api", &self.api)
             .finish()
     }
 }
@@ -1311,6 +1344,7 @@ mod tests {
                     api_key: Some("sk-live-secret".into()),
                     secret_ref: None,
                     base_url: None,
+                    api: None,
                 },
             )]),
             sandbox: Some(SandboxSettings {
@@ -1432,6 +1466,7 @@ mod tests {
                     api_key: Some("k".to_owned()),
                     secret_ref: None,
                     base_url: None,
+                    api: None,
                 },
             );
             profile
@@ -1542,6 +1577,53 @@ profiles:
     }
 
     #[test]
+    fn a_custom_endpoint_api_choice_round_trips_and_parses_both_spellings() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        let profile = Profile {
+            provider: Some("openai".into()),
+            instance: Some("proxy".into()),
+            instances: BTreeMap::from([(
+                "proxy".to_owned(),
+                ProviderInstance {
+                    provider: "openai".into(),
+                    api_key: Some("sk-p".into()),
+                    secret_ref: None,
+                    base_url: Some("http://proxy:1234/v1".into()),
+                    api: Some(ProviderApi::Responses),
+                },
+            )]),
+            sandbox_instances: BTreeMap::new(),
+            mcp_servers: BTreeMap::new(),
+            model: Some("gpt-5".into()),
+            color: None,
+            thinking: None,
+            sandbox: None,
+        };
+        let settings = Settings {
+            profiles: BTreeMap::from([("personal".to_owned(), profile)]),
+            skills_disabled: BTreeSet::new(),
+            disabled_mcp_servers: BTreeSet::new(),
+            disabled_subagents: BTreeSet::new(),
+        };
+        Settings::save_to(&path, &settings).unwrap();
+        let loaded = Settings::load_from(&path).unwrap();
+        let instance = &loaded.profiles["personal"].instances["proxy"];
+        assert_eq!(instance.api, Some(ProviderApi::Responses));
+        assert_eq!(instance.api.unwrap().as_str(), "responses");
+
+        // The file spelling parses back, and an instance without the
+        // field — every config written before the choice existed —
+        // reads as unset.
+        let raw = "instances:\n  proxy:\n    provider: openai\n    api: responses\n";
+        let parsed = serde_yaml::from_str::<Profile>(raw).unwrap();
+        assert_eq!(parsed.instances["proxy"].api, Some(ProviderApi::Responses));
+        let raw = "instances:\n  proxy:\n    provider: openai\n";
+        let parsed = serde_yaml::from_str::<Profile>(raw).unwrap();
+        assert_eq!(parsed.instances["proxy"].api, None);
+    }
+
+    #[test]
     fn config_round_trips_through_disk_as_yaml() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.yaml");
@@ -1561,6 +1643,7 @@ profiles:
                                 api_key: None,
                                 secret_ref: None,
                                 base_url: Some("http://localhost:8080".into()),
+                                api: None,
                             },
                         ),
                         (
@@ -1570,6 +1653,7 @@ profiles:
                                 api_key: Some("sk-ant-123".into()),
                                 secret_ref: None,
                                 base_url: None,
+                                api: None,
                             },
                         ),
                         (
@@ -1579,6 +1663,7 @@ profiles:
                                 api_key: Some("gho-123".into()),
                                 secret_ref: None,
                                 base_url: None,
+                                api: None,
                             },
                         ),
                         (
@@ -1588,6 +1673,7 @@ profiles:
                                 api_key: Some("sk-dsk-123".into()),
                                 secret_ref: None,
                                 base_url: None,
+                                api: None,
                             },
                         ),
                     ]),
@@ -1737,6 +1823,7 @@ profiles:
                         api_key: None,
                         secret_ref: None,
                         base_url: Some("http://gpu:8080".into()),
+                        api: None,
                     },
                 ),
                 (
@@ -1746,6 +1833,7 @@ profiles:
                         api_key: None,
                         secret_ref: None,
                         base_url: Some("http://home:8080".into()),
+                        api: None,
                     },
                 ),
             ]),
@@ -1798,6 +1886,7 @@ profiles:
                 api_key: Some("sk-personal".into()),
                 secret_ref: None,
                 base_url: None,
+                api: None,
             },
         );
         profile.upsert_instance(
@@ -1807,6 +1896,7 @@ profiles:
                 api_key: Some("sk-proxy".into()),
                 secret_ref: None,
                 base_url: Some("http://localhost:1234/v1".into()),
+                api: None,
             },
         );
         assert_eq!(
@@ -1877,6 +1967,7 @@ profiles:
                 api_key: Some("zkey".into()),
                 secret_ref: None,
                 base_url: Some("https://proxy.example/api/anthropic".into()),
+                api: None,
             },
         );
         assert_eq!(profile.api_key("zai", None).as_deref(), Some("zkey"));
@@ -1894,6 +1985,7 @@ profiles:
                 api_key: Some("zkey".into()),
                 secret_ref: None,
                 base_url: Some("   ".into()),
+                api: None,
             },
         );
         assert_eq!(profile.instance_url_for("zai"), None);
@@ -1913,6 +2005,7 @@ profiles:
                 api_key: Some("ockey".into()),
                 secret_ref: None,
                 base_url: Some("https://opencode.ai/inference/go/openai/v1".into()),
+                api: None,
             },
         );
         assert_eq!(profile.api_key("opencode", None).as_deref(), Some("ockey"));
@@ -1991,6 +2084,7 @@ profiles:
                     api_key: Some(key.to_owned()),
                     secret_ref: None,
                     base_url: None,
+                    api: None,
                 },
             );
             profile
@@ -2049,6 +2143,7 @@ profiles:
                     api_key: Some("work-key".into()),
                     secret_ref: None,
                     base_url: None,
+                    api: None,
                 },
             );
         });
@@ -2095,6 +2190,7 @@ profiles:
                 api_key: Some("file-key".into()),
                 secret_ref: Some("ref-1".into()),
                 base_url: None,
+                api: None,
             },
         );
         let key_of = |profile: &Profile, secrets: Option<&dyn SecretStore>| {
@@ -2133,6 +2229,7 @@ profiles:
                 api_key: None,
                 secret_ref: None,
                 base_url: None,
+                api: None,
             },
         );
         // With a working store the key lives in the chain and the
@@ -2194,6 +2291,7 @@ profiles:
                     api_key: Some(key.to_owned()),
                     secret_ref: None,
                     base_url: None,
+                    api: None,
                 },
             );
             profile
@@ -2242,6 +2340,7 @@ profiles:
                     api_key: Some("stays-put".into()),
                     secret_ref: None,
                     base_url: None,
+                    api: None,
                 },
             );
         });

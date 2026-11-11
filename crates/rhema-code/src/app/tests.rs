@@ -194,6 +194,7 @@ fn store_key(profile: &mut rhema_config::Profile, provider: &str, key: &str) {
             api_key: Some(key.to_owned()),
             secret_ref: None,
             base_url: None,
+            api: None,
         },
     );
 }
@@ -285,6 +286,7 @@ fn harness_inner(
                 api_key: Some(key.to_owned()),
                 secret_ref: None,
                 base_url: None,
+                api: None,
             },
         );
     }
@@ -1009,6 +1011,7 @@ fn openai_login_validates_by_key_with_the_default_base() {
             backend: Backend::OpenAi {
                 api_key: "sk-proj-01".into(),
                 base_url: None,
+                api: None,
             },
             instance: Some("OpenAI".into()),
         })]
@@ -1020,6 +1023,7 @@ fn openai_login_validates_by_key_with_the_default_base() {
             backend: Backend::OpenAi {
                 api_key: "sk-proj-01".into(),
                 base_url: None,
+                api: None,
             },
             instance: Some("OpenAI".into()),
         },
@@ -1092,6 +1096,7 @@ fn a_zai_profile_builds_its_own_backend_from_a_stored_route() {
             api_key: Some("k-p".into()),
             secret_ref: None,
             base_url: Some("https://proxy.example/api/anthropic".into()),
+            api: None,
         },
     );
     let backend = Backend::from_profile(&profile, None).expect("a keyed zai profile serves turns");
@@ -1138,6 +1143,7 @@ fn an_opencode_profile_keeps_its_stored_go_route() {
             api_key: Some("k-go".into()),
             secret_ref: None,
             base_url: Some("https://opencode.ai/inference/go/openai/v1".into()),
+            api: None,
         },
     );
     let backend =
@@ -1254,6 +1260,7 @@ fn candidates_name_every_stored_instance_and_put_the_active_one_first() {
                     api_key: None,
                     secret_ref: None,
                     base_url: Some("http://gpu:8080".into()),
+                    api: None,
                 },
             ),
             (
@@ -1263,6 +1270,7 @@ fn candidates_name_every_stored_instance_and_put_the_active_one_first() {
                     api_key: None,
                     secret_ref: None,
                     base_url: Some("http://home:8080".into()),
+                    api: None,
                 },
             ),
             (
@@ -1272,6 +1280,7 @@ fn candidates_name_every_stored_instance_and_put_the_active_one_first() {
                     api_key: Some("gho-1".into()),
                     secret_ref: None,
                     base_url: None,
+                    api: None,
                 },
             ),
         ]),
@@ -1849,6 +1858,7 @@ fn enter_on_a_stored_instance_activates_it() {
                 api_key: None,
                 secret_ref: None,
                 base_url: Some("http://home:8080".into()),
+                api: None,
             },
         );
         settings.upsert_instance(
@@ -1858,6 +1868,7 @@ fn enter_on_a_stored_instance_activates_it() {
                 api_key: None,
                 secret_ref: None,
                 base_url: Some("http://gpu:8080".into()),
+                api: None,
             },
         );
     });
@@ -1898,6 +1909,7 @@ fn activating_across_providers_drops_the_foreign_model() {
                 api_key: Some("sk".into()),
                 secret_ref: None,
                 base_url: None,
+                api: None,
             },
         );
         settings.upsert_instance(
@@ -1907,6 +1919,7 @@ fn activating_across_providers_drops_the_foreign_model() {
                 api_key: None,
                 secret_ref: None,
                 base_url: Some("http://home:8080".into()),
+                api: None,
             },
         );
     });
@@ -1939,6 +1952,7 @@ fn d_forgets_the_highlighted_instance() {
                 api_key: None,
                 secret_ref: None,
                 base_url: Some("http://home:8080".into()),
+                api: None,
             },
         );
     });
@@ -1967,6 +1981,10 @@ fn a_second_openai_compatible_instance_lands_under_its_own_name() {
         h.app.on_key(key(KeyCode::Char(c)));
     }
     h.app.on_key(key(KeyCode::Enter));
+    // The request-shape choice follows the URL; enter takes the
+    // highlighted chat completions, the default the route rule would
+    // have picked.
+    h.app.on_key(key(KeyCode::Enter));
     for c in "sk-p".chars() {
         h.app.on_key(key(KeyCode::Char(c)));
     }
@@ -1977,6 +1995,8 @@ fn a_second_openai_compatible_instance_lands_under_its_own_name() {
             backend: Backend::OpenAi {
                 api_key: "sk-p".into(),
                 base_url: Some("http://proxy:1234/v1".into()),
+                // The stage recorded the highlighted chat completions.
+                api: Some(rhema_config::ProviderApi::Chat),
             },
             instance: Some("Custom OpenAI-compatible API".into()),
         })]
@@ -1986,6 +2006,8 @@ fn a_second_openai_compatible_instance_lands_under_its_own_name() {
             backend: Backend::OpenAi {
                 api_key: "sk-p".into(),
                 base_url: Some("http://proxy:1234/v1".into()),
+                // The stage recorded the highlighted chat completions.
+                api: Some(rhema_config::ProviderApi::Chat),
             },
             instance: Some("Custom OpenAI-compatible API".into()),
         },
@@ -1997,6 +2019,17 @@ fn a_second_openai_compatible_instance_lands_under_its_own_name() {
         "the custom base URL serves: {:?}",
         h.app.backend
     );
+    // The choice persisted with the instance: the login's saved
+    // instance records the shape the stage chose.
+    {
+        let settings = h.store.load().unwrap().effective(None);
+        let instance = settings.instances.get("Custom OpenAI-compatible API");
+        assert_eq!(
+            instance.and_then(|i| i.api),
+            Some(rhema_config::ProviderApi::Chat),
+            "the chosen shape lands in the saved instance"
+        );
+    }
 
     // A second login of the same provider suggests a fresh name.
     crate::commands::dispatch(&mut h.app, "/login");
@@ -5216,6 +5249,7 @@ fn a_rerun_shows_the_existing_configuration() {
                 api_key: None,
                 secret_ref: None,
                 base_url: None,
+                api: None,
             },
         );
         wizard.stored = stored;

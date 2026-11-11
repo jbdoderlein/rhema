@@ -142,6 +142,9 @@ pub enum DialogStage {
     SelectProvider,
     /// The name input for the instance being added.
     NameInstance,
+    /// The request shape for a custom OpenAI-compatible endpoint:
+    /// chat completions or the Responses API.
+    ChooseApi,
     /// The credential input — llama.cpp and a custom OpenAI-compatible
     /// endpoint ask a URL first, then a key.
     EnterCredential,
@@ -164,6 +167,16 @@ pub enum DialogStatus {
     Error(String),
 }
 
+/// The request shapes a custom OpenAI-compatible endpoint can speak,
+/// as the choice stage shows them: label first, stored value second.
+/// Chat completions leads — it is what the system assumes for a custom
+/// endpoint, so enter-without-looking keeps the behavior the route
+/// rule would have chosen.
+pub const API_CHOICES: [(&str, rhema_config::ProviderApi); 2] = [
+    ("Chat Completions API", rhema_config::ProviderApi::Chat),
+    ("Responses API", rhema_config::ProviderApi::Responses),
+];
+
 /// The instance the add flow is collecting: the provider kind, the name
 /// it will land under, and the URL captured on the credential stage's
 /// first prompt (llama.cpp's server address, OpenAI-compatible base).
@@ -176,6 +189,9 @@ pub struct PendingInstance {
     /// The URL from the first credential prompt, when the provider asks
     /// for one: llama.cpp's server address, a custom endpoint's base.
     pub base_url: Option<String>,
+    /// The request shape the custom endpoint speaks, once chosen on the
+    /// choice stage. Only the custom-endpoint row reaches that stage.
+    pub api: Option<rhema_config::ProviderApi>,
 }
 
 /// The pop-in dialog over the Providers page: the provider list for a
@@ -189,6 +205,8 @@ pub struct AddInstanceDialog {
     pub selected_category: usize,
     /// The highlighted row on the chosen category's provider list.
     pub selected: usize,
+    /// The highlighted row on the request-shape choice stage.
+    pub selected_api: usize,
     /// The line being typed: the instance name on `NameInstance`, the
     /// credential on `EnterCredential`.
     pub input: String,
@@ -228,6 +246,7 @@ impl AddInstanceDialog {
             stage: DialogStage::SelectCategory,
             selected_category: 0,
             selected: 0,
+            selected_api: 0,
             input: String::new(),
             status: DialogStatus::Idle,
             pending: None,
@@ -299,6 +318,7 @@ impl AddInstanceDialog {
             provider,
             name: self.name_suggestion(provider),
             base_url: None,
+            api: None,
         });
         self.input = self.pending_name();
         self.status = DialogStatus::Idle;
@@ -313,6 +333,9 @@ impl AddInstanceDialog {
                 "arrows choose · enter for providers · esc cancels".to_owned()
             }
             DialogStage::SelectProvider => "arrows choose · enter to log in · esc back".to_owned(),
+            DialogStage::ChooseApi => {
+                "arrows choose the API · enter to continue · esc back".to_owned()
+            }
             DialogStage::NameInstance => {
                 "name this login · enter to continue · esc back".to_owned()
             }
@@ -342,6 +365,7 @@ impl AddInstanceDialog {
     /// The input's label, per the stage's prompt.
     pub fn input_label(&self) -> &'static str {
         match self.stage {
+            DialogStage::ChooseApi => "",
             DialogStage::NameInstance => "name: ",
             DialogStage::EnterCredential => {
                 match (self.pending.as_ref().map(|p| p.provider), self.second_input) {
@@ -359,7 +383,7 @@ impl AddInstanceDialog {
     /// so it shows.
     pub fn masked_input(&self) -> String {
         let secret = match self.stage {
-            DialogStage::NameInstance => false,
+            DialogStage::ChooseApi | DialogStage::NameInstance => false,
             DialogStage::EnterCredential => match self.pending.as_ref().map(|p| p.provider) {
                 Some(LoginProvider::LlamaCpp) | Some(LoginProvider::OpenAiCompatible) => {
                     self.second_input
@@ -410,6 +434,7 @@ impl AddInstanceDialog {
         match self.stage {
             DialogStage::SelectCategory => self.handle_category_key(key),
             DialogStage::SelectProvider => self.handle_provider_key(key),
+            DialogStage::ChooseApi => self.handle_api_choice_key(key),
             DialogStage::NameInstance => self.handle_name_key(key),
             DialogStage::EnterCredential => self.handle_credential_key(key),
             DialogStage::Flow => self.handle_flow_key(key),
@@ -430,6 +455,57 @@ impl AddInstanceDialog {
             KeyCode::Enter => self.choose_category(),
             KeyCode::Esc => DialogAction::Close,
             _ => DialogAction::None,
+        }
+    }
+
+    /// Keys on the request-shape choice: arrows choose, enter records
+    /// the choice and descends into the key input, esc returns to the
+    /// base-URL prompt.
+    fn handle_api_choice_key(&mut self, key: KeyEvent) -> DialogAction {
+        match key.code {
+            KeyCode::Up | KeyCode::Down => {
+                let step = if key.code == KeyCode::Down { 1 } else { -1 };
+                self.selected_api = ((self.selected_api as isize + step)
+                    .rem_euclid(API_CHOICES.len() as isize))
+                    as usize;
+                DialogAction::None
+            }
+            KeyCode::Enter => self.choose_api(),
+            KeyCode::Esc => {
+                // Back to the URL prompt: the choice is unmade, the URL
+                // re-asked, exactly as arriving here found it.
+                self.selected_api = 0;
+                self.stage = DialogStage::EnterCredential;
+                self.second_input = false;
+                self.input.clear();
+                self.status = DialogStatus::Idle;
+                DialogAction::None
+            }
+            _ => DialogAction::None,
+        }
+    }
+
+    /// Records the highlighted request shape and descends into the key
+    /// input — the stage the URL prompt would have led to.
+    fn choose_api(&mut self) -> DialogAction {
+        let Some(pending) = self.pending.as_mut() else {
+            return DialogAction::None;
+        };
+        let Some((_, api)) = API_CHOICES.get(self.selected_api) else {
+            return DialogAction::None;
+        };
+        pending.api = Some(*api);
+        self.second_input = true;
+        self.input.clear();
+        self.status = DialogStatus::Idle;
+        self.stage = DialogStage::EnterCredential;
+        DialogAction::None
+    }
+
+    /// Sets the highlighted row on the choice stage (a mouse click).
+    pub fn select_api_row(&mut self, index: usize) {
+        if index < API_CHOICES.len() {
+            self.selected_api = index;
         }
     }
 
@@ -529,10 +605,18 @@ impl AddInstanceDialog {
                     }
                     if let Some(pending) = self.pending.as_mut() {
                         pending.base_url = Some(url);
+                        pending.api = None;
                     }
-                    self.second_input = true;
                     self.input.clear();
                     self.status = DialogStatus::Idle;
+                    if provider == Some(LoginProvider::OpenAiCompatible) {
+                        // A custom endpoint's dialect is its route's to
+                        // disown: the choice stage asks before the key.
+                        self.selected_api = 0;
+                        self.stage = DialogStage::ChooseApi;
+                        return DialogAction::None;
+                    }
+                    self.second_input = true;
                     return DialogAction::None;
                 }
                 self.submit()
