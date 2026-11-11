@@ -23,7 +23,7 @@ use rhema_provider_chatgpt::ChatGptProvider;
 use rhema_provider_copilot::CopilotProvider;
 use rhema_provider_google::GoogleProvider;
 use rhema_provider_llama_cpp::LlamaCppProvider;
-use rhema_provider_openai_compatible::{DEEPSEEK_BASE_URL, OpenAiCompatibleProvider};
+use rhema_provider_openai_compatible::{Api, DEEPSEEK_BASE_URL, OpenAiCompatibleProvider};
 use rhema_provider_opencode::OpenCodeProvider;
 use rhema_provider_openrouter::OpenRouterProvider;
 
@@ -71,6 +71,17 @@ where
 /// otherwise. `base_url` is a stored route override: `None` keeps the
 /// kind's default route (none for openai, deepseek's endpoint for
 /// deepseek, Z.ai's plan route for zai), `Some` replaces it.
+///
+/// The kinds whose endpoints speak the Responses API default to it:
+/// deepseek and opencode always (both their documented routes serve
+/// `POST {base}/responses`), and openai when speaking to OpenAI itself
+/// — a stored route override points at an arbitrary
+/// OpenAI-compatible server, and that one gets the conservative chat
+/// completions dialect, the one every such server answers. llama.cpp
+/// stays on chat completions too: its server's `/responses` route is
+/// newer than its tool handling and its default dialect is the one
+/// every build serves. ChatGPT needs no choice — the Codex backend it
+/// drives is Responses-only.
 pub fn build(
     name: &str,
     api_key: Option<&str>,
@@ -89,15 +100,20 @@ pub fn build(
         "copilot" => assembled(CopilotProvider::new(keyed()?)),
         "chatgpt" => assembled(ChatGptProvider::new(keyed()?)),
         "openai" => {
-            let mut provider = OpenAiCompatibleProvider::new(keyed()?);
+            let mut provider =
+                OpenAiCompatibleProvider::new(keyed()?).with_api(openai_api(base_url));
             if let Some(base_url) = non_blank(base_url) {
                 provider = provider.with_base_url(base_url.to_owned());
             }
             assembled(provider)
         }
         "deepseek" => {
-            let mut provider =
-                OpenAiCompatibleProvider::new(keyed()?).with_base_url(DEEPSEEK_BASE_URL);
+            let mut provider = OpenAiCompatibleProvider::new(keyed()?)
+                .with_base_url(DEEPSEEK_BASE_URL)
+                // Their documented API surface includes `/responses`;
+                // a route override still names a DeepSeek-shaped
+                // endpoint.
+                .with_api(Api::Responses);
             if let Some(base_url) = non_blank(base_url) {
                 provider = provider.with_base_url(base_url);
             }
@@ -140,6 +156,10 @@ pub fn build_opencode(api_key: &str, base_url: Option<&str>, session_id: Option<
     if let Some(base_url) = non_blank(base_url) {
         provider = provider.with_base_url(base_url);
     }
+    // Both gateway routes serve `POST {base}/responses`; the gateway is
+    // the only thing this kind addresses, so the Responses API is its
+    // default dialect.
+    provider = provider.with_api(Api::Responses);
     assembled(provider)
 }
 
@@ -149,9 +169,35 @@ fn non_blank(base_url: Option<&str>) -> Option<&str> {
     base_url.map(str::trim).filter(|url| !url.is_empty())
 }
 
+/// Which dialect the `openai` kind speaks: the Responses API at OpenAI
+/// itself — the home route serves `POST /v1/responses` — and the
+/// conservative chat-completions dialect anywhere a stored override
+/// routes, since an override names an arbitrary OpenAI-compatible
+/// server whose one guaranteed surface is chat completions.
+fn openai_api(base_url: Option<&str>) -> Api {
+    if non_blank(base_url).is_some() {
+        Api::Chat
+    } else {
+        Api::Responses
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_openai_kind_dialect_follows_the_route_override() {
+        // No override names OpenAI itself: Responses.
+        assert_eq!(openai_api(None), Api::Responses);
+        // A blank override reads as unset, the same reading every
+        // frontend applies to stored strings.
+        assert_eq!(openai_api(Some("")), Api::Responses);
+        assert_eq!(openai_api(Some("   ")), Api::Responses);
+        // A real override names an arbitrary OpenAI-compatible server:
+        // chat completions, the one surface every such server answers.
+        assert_eq!(openai_api(Some("http://localhost:1234/v1")), Api::Chat);
+    }
 
     #[test]
     fn every_keyed_kind_builds_with_a_key() {

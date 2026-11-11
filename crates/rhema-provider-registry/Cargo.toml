@@ -23,6 +23,8 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+# In-process HTTP mock for offline route tests
+wiremock = "0.6"
 
 [lints]
 workspace = true
