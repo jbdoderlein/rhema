@@ -167,6 +167,20 @@ impl CodingJobHandler {
     /// lands in the job row before it lands in the outcome, so the
     /// model's `status` read and the user's notification agree.
     async fn dispatch(&self, ctx: &mut SessionContext) -> Result<Outcome, String> {
+        // Poll to live, as every handler does — and here the poll is also
+        // what closes the dispatch. A job key carries exactly one kind of
+        // item, the row's own delivery, and those items are drained and
+        // dropped because this handler takes its work from the store, not
+        // from the inbox. Leaving them behind is not harmless: `release`
+        // reads a non-empty inbox as work that arrived mid-turn, sends the
+        // key to `reacquire`, and `admit` then hands out a fresh lease
+        // every debounce window for the rest of the process's life — for a
+        // job that is already done. The renewing half matters too: a
+        // coding turn runs for minutes, and the lease it started on has to
+        // hold for all of them.
+        ctx.poll_inbox()
+            .await
+            .map_err(|err| format!("inbox poll for {} failed: {err}", ctx.key))?;
         let (instance_name, job_id) = parse_job_key(&ctx.key)
             .ok_or_else(|| format!("resource key {} is not a job key", ctx.key))?;
         let job = self
@@ -333,7 +347,7 @@ mod tests {
     use crate::backends::Backend;
     use rhema_autonomous_agent::Driver;
     use rhema_core::{Message as CoreMessage, MockProvider, ModelOutput, Role, StopReason, Usage};
-    use rhema_rsd::{DispatcherConfig, SqliteStore, SystemClock};
+    use rhema_rsd::{DispatcherConfig, KeyState, SqliteStore, SystemClock};
 
     /// A registry whose only backend is the scripted mock.
     fn mock_handler(
@@ -380,7 +394,7 @@ mod tests {
 
         // The whole path: source detects the queued row, the driver
         // runs the handler over its own dispatcher.
-        let (source, driver) = harness(store.clone(), handler);
+        let (source, driver, _dispatcher) = harness(store.clone(), handler);
 
         assert_eq!(source.detect().await.unwrap(), 1);
         let outcomes = driver.run_once().await.unwrap();
@@ -418,7 +432,7 @@ mod tests {
             second.to_string().contains("job in flight"),
             "one live job per instance: {second}"
         );
-        let (source, driver) = harness(store.clone(), handler);
+        let (source, driver, _dispatcher) = harness(store.clone(), handler);
 
         assert_eq!(source.detect().await.unwrap(), 1);
         driver.run_once().await.unwrap();
@@ -452,7 +466,7 @@ mod tests {
             store.clone(),
             notifications.clone(),
         );
-        let (source, driver) = harness(store.clone(), handler);
+        let (source, driver, _dispatcher) = harness(store.clone(), handler);
 
         assert_eq!(source.detect().await.unwrap(), 1);
         let outcomes = driver.run_once().await.unwrap();
@@ -470,7 +484,10 @@ mod tests {
 
     /// The source and driver over one in-memory dispatcher, the shape
     /// the daemon wires and these tests drive.
-    fn harness(store: Arc<CodingJobStore>, handler: CodingJobHandler) -> (JobsSource, Driver) {
+    fn harness(
+        store: Arc<CodingJobStore>,
+        handler: CodingJobHandler,
+    ) -> (JobsSource, Driver, Arc<Dispatcher>) {
         let rsd_store = Arc::new(SqliteStore::open(tempdir().join("rsd.db")).unwrap());
         // A zero debounce: the queued row is admitted on this pass,
         // the shape the daemon's jobs dispatcher runs under.
@@ -483,9 +500,48 @@ mod tests {
             rsd_store,
         ));
         let source = JobsSource::new(&dispatcher, store);
-        let driver = Driver::new(dispatcher, Arc::new(handler))
+        let driver = Driver::new(dispatcher.clone(), Arc::new(handler))
             .with_holder("test-jobs")
             .owning(Arc::new(|key: &ResourceKey| is_job_key(key.as_str())));
-        (source, driver)
+        (source, driver, dispatcher)
+    }
+
+    /// A finished job's key settles back to idle.
+    ///
+    /// The item that opened the dispatch is drained by the handler, so
+    /// `release` finds an empty inbox and ends the key. Left behind, that
+    /// item reads as work that arrived mid-turn: the key enters
+    /// `reacquire` with a fresh debounce window, `admit` hands out a
+    /// lease when it lapses, the re-dispatched handler finds the row done
+    /// and releases, and the key re-acquires again — a finished job's key
+    /// holding leases and writing records for the rest of the process's
+    /// life.
+    #[tokio::test]
+    async fn a_finished_job_leaves_its_key_idle() {
+        let workspace = tempdir();
+        let store = Arc::new(CodingJobStore::in_memory().unwrap());
+        store
+            .add_instance("rhema", workspace.to_str().unwrap())
+            .unwrap();
+        let job = store.enqueue("rhema", "fix the lint").unwrap();
+        let notifications = Arc::new(NotificationStore::in_memory().unwrap());
+        let handler = mock_handler(vec![reply("done")], store.clone(), notifications);
+        let (source, driver, dispatcher) = harness(store, handler);
+
+        assert_eq!(source.detect().await.unwrap(), 1);
+        assert_eq!(driver.run_once().await.unwrap().len(), 1);
+
+        let key = ResourceKey::from(job_key("rhema", job.id));
+        let status = dispatcher.status(&key).unwrap();
+        assert_eq!(
+            status.state,
+            KeyState::Idle,
+            "a done job's key is idle, not waiting to re-acquire"
+        );
+        assert_eq!(status.inbox_depth, 0, "the dispatching item was drained");
+
+        // Nothing is due, so the next pass dispatches nothing: the
+        // re-acquire spin a leftover item would drive, and nothing else.
+        assert!(driver.run_once().await.unwrap().is_empty());
     }
 }
