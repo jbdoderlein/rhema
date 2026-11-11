@@ -48,6 +48,11 @@ impl Store for VolatileStore {
         Ok(())
     }
 
+    fn delete(&self, key: &ResourceKey) -> Result<bool, StoreError> {
+        let mut records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
+        Ok(records.remove(key).is_some())
+    }
+
     fn keys(&self) -> Result<Vec<ResourceKey>, StoreError> {
         let records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
         Ok(records.keys().cloned().collect())

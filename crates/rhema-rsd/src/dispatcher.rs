@@ -432,6 +432,49 @@ impl Dispatcher {
         Ok(active)
     }
 
+    /// Deletes `key`'s record: `Ok(true)` when one existed and is gone,
+    /// `Ok(false)` when there was none.
+    ///
+    /// Gated like every other transition — load → decide → delete runs under
+    /// the one mutex — because a delete that read the state outside it would
+    /// race: a lease landing between the read and the delete leaves a live
+    /// turn's `checkpoint`/`release` writing to a vanished record, and an
+    /// `ingest` after the delete recreates the record the caller was told
+    /// was gone.
+    ///
+    /// Not a compare-and-swap write: the caller asserts the key's absence,
+    /// not a revision, so no revision precondition applies and no save
+    /// follows — the record is about to go, and persisting the sweep first
+    /// would only write a record the next statement deletes.
+    ///
+    /// A lapsed lease does not block the delete: the sweep runs first, as in
+    /// [`Self::acquire`], so a crashed daemon's leftover lease cannot keep a
+    /// key undeletable until somebody else touches it. A record a live turn
+    /// still holds is refused with [`Conflict::LeaseHeld`] — the turn would
+    /// otherwise find its record gone mid-turn.
+    pub fn forget(&self, key: &ResourceKey) -> Result<bool, DispatchError> {
+        let _gate = self.gate.lock().unwrap_or_else(PoisonError::into_inner);
+        let now = self.clock.now_millis();
+        let Some(record) = self.store.load(key)? else {
+            return Ok(false);
+        };
+        // Swept, not saved: a lapsed lease ends in the copy we are about to
+        // delete. `false` — the running system's view, only leases past
+        // their TTL are dead.
+        let record = sweep_record(record, now, &self.config, false);
+        if record.state == KeyState::Leased
+            && let Some(held) = record.lease.as_ref()
+        {
+            return Err(DispatchError::Conflict(Conflict::LeaseHeld {
+                lease_id: held.id.clone(),
+                holder: held.holder.clone(),
+            }));
+        }
+        // A record that says leased without a lease to name is inconsistent,
+        // and there is no holder to refuse on behalf of: it deletes.
+        Ok(self.store.delete(key)?)
+    }
+
     /// Runs one sweep pass over every key, persisting whichever records the
     /// sweep moved.
     fn sweep_all(&self) -> Result<(), DispatchError> {

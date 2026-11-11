@@ -187,6 +187,18 @@ impl Store for SqliteStore {
         }
     }
 
+    fn delete(&self, key: &ResourceKey) -> Result<bool, StoreError> {
+        let conn = self.conn.lock().unwrap_or_else(PoisonError::into_inner);
+        // One statement, autocommitted: the row is gone before this
+        // returns, which is the contract's durability clause for a delete.
+        let removed = conn
+            .prepare_cached("DELETE FROM key_record WHERE resource_key = ?1")
+            .and_then(|mut stmt| stmt.execute(params![key.as_str()]))
+            .map_err(backend)?;
+        // `resource_key` is the primary key: at most one row per delete.
+        Ok(removed > 0)
+    }
+
     fn keys(&self) -> Result<Vec<ResourceKey>, StoreError> {
         let conn = self.conn.lock().unwrap_or_else(PoisonError::into_inner);
         let mut stmt = conn

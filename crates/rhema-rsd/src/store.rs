@@ -112,6 +112,13 @@ impl KeyRecord {
 ///   already durable (for an embedded database: committed). The dispatcher
 ///   persists every state transition before its own call returns, so a crash
 ///   between calls never loses coordination state.
+/// - **Durable deletion.** [`Store::delete`] removes a key's whole record:
+///   when it returns `Ok`, the record is gone (for an embedded database:
+///   committed), [`Store::load`] answers `None`, and [`Store::keys`] no
+///   longer lists the key. A delete carries no revision precondition —
+///   deletion is not a compare-and-swap write, so it succeeds whatever
+///   revision the stored record sits at — and deleting a key with no record
+///   is `Ok(false)`, not an error.
 /// - **Deterministic enumeration.** [`Store::keys`] returns every key with a
 ///   record, in ascending order.
 pub trait Store: Send + Sync {
@@ -126,6 +133,12 @@ pub trait Store: Send + Sync {
         record: KeyRecord,
         expected_revision: Option<Revision>,
     ) -> Result<(), crate::StoreError>;
+
+    /// Remove `key`'s record: `Ok(true)` when one existed and is gone,
+    /// `Ok(false)` when there was none. Durable before it returns, and not
+    /// a compare-and-swap write — the caller asserts the key's absence,
+    /// not a revision, so deleting across a revision change simply deletes.
+    fn delete(&self, key: &ResourceKey) -> Result<bool, crate::StoreError>;
 
     /// Every key with a record, in ascending order.
     fn keys(&self) -> Result<Vec<ResourceKey>, crate::StoreError>;

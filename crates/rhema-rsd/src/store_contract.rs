@@ -164,6 +164,31 @@ pub fn keys_lists_all_recorded_keys(store: &dyn Store) {
     );
 }
 
+/// A delete removes the record whole: an absent key answers `Ok(false)`, a
+/// saved-then-deleted key is gone from `load` and off `keys`, and the key is
+/// absent again for the create precondition — a fresh session under the same
+/// name starts empty.
+pub fn delete_removes_the_record(store: &dyn Store) {
+    let key = ResourceKey::from("contract/delete");
+    assert!(
+        !store.delete(&key).unwrap(),
+        "deleting a key with no record is Ok(false), not an error"
+    );
+
+    store.save(KeyRecord::fresh(key.clone(), 1), None).unwrap();
+    assert!(store.delete(&key).unwrap(), "an existing record is removed");
+    assert_eq!(store.load(&key).unwrap(), None, "the record is gone");
+    assert!(!store.keys().unwrap().contains(&key), "keys no longer lists it");
+
+    let recreated = KeyRecord::fresh(key.clone(), 2);
+    store.save(recreated.clone(), None).unwrap();
+    assert_eq!(
+        store.load(&key).unwrap(),
+        Some(recreated),
+        "the key is absent again, so a create lands"
+    );
+}
+
 /// Runs the whole contract suite against `store`, which must be fresh.
 pub fn run_all(store: &dyn Store) {
     load_missing_returns_none(store);
@@ -171,4 +196,5 @@ pub fn run_all(store: &dyn Store) {
     fresh_save_requires_absence(store);
     cas_rejects_stale_revision(store);
     keys_lists_all_recorded_keys(store);
+    delete_removes_the_record(store);
 }
