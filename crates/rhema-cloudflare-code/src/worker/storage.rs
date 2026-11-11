@@ -198,6 +198,17 @@ impl Store for DoStore {
         Ok(())
     }
 
+    fn delete(&self, key: &ResourceKey) -> Result<bool, StoreError> {
+        let cursor = self.run(
+            "DELETE FROM records WHERE key = ?1",
+            Some(vec![worker::SqlStorageValue::String(
+                key.as_str().to_owned(),
+            )]),
+        )?;
+        // `key` is the table's primary key: at most one row per delete.
+        Ok(cursor.rows_written() > 0)
+    }
+
     fn keys(&self) -> Result<Vec<ResourceKey>, StoreError> {
         let cursor = self.run("SELECT key FROM records ORDER BY key", None)?;
         Ok(cursor
