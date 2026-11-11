@@ -393,6 +393,19 @@ pub fn request_body(req: &ModelRequest) -> Result<GenerateContentRequest, Provid
                         }),
                         ..WirePart::default()
                     });
+                    // The result's images follow in the same user turn as
+                    // inline parts: a function response's JSON is text
+                    // only, and Gemini takes `inlineData` on a user turn —
+                    // the shape a pasted image already rides.
+                    for image in &result.images {
+                        parts.push(WirePart {
+                            inline_data: Some(WireInlineData {
+                                mime_type: image.media_type.as_str().to_owned(),
+                                data: image.data.clone(),
+                            }),
+                            ..WirePart::default()
+                        });
+                    }
                 }
                 Content::Image(image) => parts.push(WirePart {
                     inline_data: Some(WireInlineData {
@@ -514,17 +527,10 @@ fn object_args(args: &Value) -> Value {
 
 /// `functionResponse.response` must be a JSON object; the content rides
 /// under `output` on success and `error` on failure. A result's images
-/// have no wire home there — a function response is text — so each is
-/// named in a note the model can act on, instead of vanishing.
+/// have no wire home there — a function response is text — so they ride
+/// the same user turn as inline parts, right after the response part.
 fn response_object(result: &ToolResult) -> Value {
-    let mut content = result.content.clone();
-    if !result.images.is_empty() {
-        content.push_str(&format!(
-            "\n[{} image(s) attached in this result were not delivered: \
-             function responses carry text only]",
-            result.images.len()
-        ));
-    }
+    let content = result.content.clone();
     if result.is_error {
         serde_json::json!({ "error": content })
     } else {
@@ -1293,7 +1299,7 @@ mod tests {
     }
 
     #[test]
-    fn a_tool_results_images_become_a_withholding_note_in_the_response() {
+    fn a_tool_results_images_ride_the_response_turn_as_inline_parts() {
         let req = ModelRequest {
             system: None,
             messages: vec![Message {
@@ -1308,16 +1314,19 @@ mod tests {
         };
 
         let body = serde_json::to_value(request_body(&req).unwrap()).expect("body serializes");
-        let text = body["contents"][0]["parts"][0]["functionResponse"]["response"]["output"]
+        let parts = body["contents"][0]["parts"]
+            .as_array()
+            .expect("parts array");
+        // The function response keeps its bare text output — no note.
+        let text = parts[0]["functionResponse"]["response"]["output"]
             .as_str()
             .expect("output is text");
-        assert!(text.starts_with("out"), "{text}");
-        assert!(
-            text.contains(
-                "[1 image(s) attached in this result were not delivered: \
-                 function responses carry text only]"
-            ),
-            "{text}"
+        assert_eq!(text, "out");
+        // The image follows in the same turn as an inline part.
+        assert_eq!(parts.len(), 2, "{parts:?}");
+        assert_eq!(
+            parts[1],
+            serde_json::json!({ "inlineData": { "mimeType": "image/png", "data": "cG5n" } })
         );
     }
 

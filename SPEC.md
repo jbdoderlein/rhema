@@ -260,8 +260,10 @@ The RSD driver (crate 2) is the same shape with different scaffolding: `acquire(
   per-process dir; the shell tool drains that staging dir after every command and fills
   `ToolResult::images`, a core field, so the image rides the result it came from and checkpoints
   with it. Providers map the field onto their wire — Anthropic sends a `tool_result` content
-  block array, text first; OpenAI-dialect and Gemini tool messages carry text only, so each image
-  is named in a trailing note the model can act on. A session whose bash runs elsewhere (remote
+  block array, text first; OpenAI-dialect and Gemini tool messages carry text only, so the images follow
+  in the nearest image-capable spot: a `user` turn naming the call on the OpenAI dialect, `inlineData`
+  parts in the same turn on Gemini — the shapes a pasted image already rides. A Responses-API mode
+  carries them inside the `function_call_output` itself, which that API accepts as content parts. A session whose bash runs elsewhere (remote
   sandbox, client-executed) wires nothing, the MCP gate's rule: the executor cannot write where
   the drain reads. Two init files (this one and the MCP provision's) chain by literal path — each
   sources its predecessor once, `|| true` — never by an env var: the executor layers the env map

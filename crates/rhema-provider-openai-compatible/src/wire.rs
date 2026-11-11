@@ -90,7 +90,7 @@ use rhema_core::message::{Content, Message, Role};
 use rhema_core::output::{ModelOutput, StopReason, Usage};
 use rhema_core::provider::ProviderError;
 use rhema_core::request::{ModelRequest, ThinkingEffort};
-use rhema_core::tool::ToolCall;
+use rhema_core::tool::{ToolCall, ToolResult};
 use rhema_provider::{Allowance, ModelCard};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -743,32 +743,59 @@ fn joined_texts(message: &Message) -> String {
         .join("\n\n")
 }
 
-/// One `role: "tool"` wire message per result block of `message`. A
-/// result's images cannot ride along — this API's tool messages accept
-/// text parts only — so each image is named in a note the model can
-/// act on, instead of vanishing.
+/// One result block's wire messages: the `role: "tool"` message the API
+/// requires, then — when the result carries images — one `role: "user"`
+/// turn delivering them, since a tool message accepts text parts only
+/// and the images must not vanish. The turn's text names the call the
+/// images answer, so the model reads the pair as one result; every
+/// OpenAI-dialect server takes `image_url` parts on a user message,
+/// which is the same shape a pasted image already rides.
 fn tool_results_of(message: &Message) -> impl Iterator<Item = WireMessage> + '_ {
-    message.content.iter().filter_map(|content| match content {
-        Content::ToolResult(result) => {
-            let mut text = result.content.clone();
-            if !result.images.is_empty() {
-                text.push_str(&format!(
-                    "\n[{} image(s) attached in this result were not delivered: \
-                     tool results carry text only on this API]",
-                    result.images.len()
-                ));
-            }
-            Some(WireMessage {
-                role: "tool".into(),
-                content: Some(WireContent::Text(text)),
-                reasoning_content: None,
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: Some(result.id.clone()),
-            })
-        }
-        _ => None,
-    })
+    message
+        .content
+        .iter()
+        .filter_map(|content| match content {
+            Content::ToolResult(result) => Some(result_wire_messages(result)),
+            _ => None,
+        })
+        .flatten()
+}
+
+/// One result's wire messages, in order: the tool message, then the
+/// image turn when the result staged any.
+fn result_wire_messages(result: &ToolResult) -> Vec<WireMessage> {
+    let mut messages = vec![WireMessage {
+        role: "tool".into(),
+        content: Some(WireContent::Text(result.content.clone())),
+        reasoning_content: None,
+        reasoning: None,
+        tool_calls: None,
+        tool_call_id: Some(result.id.clone()),
+    }];
+    if result.images.is_empty() {
+        return messages;
+    }
+    let mut parts = vec![WirePart::Text {
+        text: format!(
+            "[{} image(s) returned by tool call {}]",
+            result.images.len(),
+            result.id
+        ),
+    }];
+    parts.extend(result.images.iter().map(|image| WirePart::ImageUrl {
+        image_url: WireImageUrl {
+            url: format!("data:{};base64,{}", image.media_type.as_str(), image.data),
+        },
+    }));
+    messages.push(WireMessage {
+        role: "user".into(),
+        content: Some(WireContent::Parts(parts)),
+        reasoning_content: None,
+        reasoning: None,
+        tool_calls: None,
+        tool_call_id: None,
+    });
+    messages
 }
 
 /// Call arguments as their JSON text; a `null` payload becomes `{}`.
@@ -1288,7 +1315,7 @@ mod tests {
     }
 
     #[test]
-    fn a_tool_results_images_become_a_withholding_note() {
+    fn a_tool_results_images_ride_a_follow_up_user_turn() {
         let req = ModelRequest {
             system: None,
             messages: vec![Message {
@@ -1304,17 +1331,72 @@ mod tests {
             params: ChatParams::new("gpt-4o-mini"),
         };
 
-        let body = serde_json::to_string(&request_body(&req, &OPENAI_COMPATIBLE))
-            .expect("body serializes");
-        // The text rides; the images cannot, and the note says so.
-        assert!(
-            body.contains(
-                "[2 image(s) attached in this result were not delivered: \
-                 tool results carry text only on this API]"
-            ),
-            "{body}"
+        let body =
+            serde_json::to_value(request_body(&req, &OPENAI_COMPATIBLE)).expect("body serializes");
+        let messages = body["messages"].as_array().expect("messages array");
+        // The tool message keeps its role, its call id, and its bare text;
+        // the note is gone.
+        assert_eq!(messages[0]["role"], "tool");
+        assert_eq!(messages[0]["tool_call_id"], "call_0");
+        assert_eq!(messages[0]["content"], "out");
+        // The images follow in a user turn that names the call, as
+        // image_url data-URI parts — the shape a pasted image rides.
+        assert_eq!(messages[1]["role"], "user");
+        let parts = messages[1]["content"].as_array().expect("parts array");
+        assert_eq!(parts.len(), 3, "{parts:?}");
+        assert_eq!(
+            parts[0],
+            serde_json::json!({ "type": "text", "text": "[2 image(s) returned by tool call call_0]" })
         );
-        assert!(!body.contains("cG5n"), "{body}");
+        assert_eq!(
+            parts[1],
+            serde_json::json!({ "type": "image_url", "image_url": { "url": "data:image/png;base64,cG5n" } })
+        );
+        assert_eq!(
+            parts[2],
+            serde_json::json!({ "type": "image_url", "image_url": { "url": "data:image/jpeg;base64,anM=" } })
+        );
+        assert_eq!(messages.len(), 2);
+    }
+
+    #[test]
+    fn results_without_images_gain_no_image_turn_and_ordering_holds() {
+        let req = ModelRequest {
+            system: None,
+            messages: vec![Message {
+                role: Role::Tool,
+                content: vec![
+                    Content::ToolResult(ToolResult::success("call_0", "first")),
+                    Content::ToolResult(
+                        ToolResult::success("call_1", "second")
+                            .with_images(vec![Image::new(ImageMediaType::Png, "cG5n")]),
+                    ),
+                    Content::ToolResult(ToolResult::success("call_2", "third")),
+                ],
+            }],
+            tools: vec![],
+            params: ChatParams::new("gpt-4o-mini"),
+        };
+
+        let body =
+            serde_json::to_value(request_body(&req, &OPENAI_COMPATIBLE)).expect("body serializes");
+        let messages = body["messages"].as_array().expect("messages array");
+        // Each result's tool message, then the one image turn right after
+        // the result it belongs to; the bare results gain no turn.
+        let roles: Vec<&str> = messages
+            .iter()
+            .map(|message| message["role"].as_str().expect("role"))
+            .collect();
+        assert_eq!(roles, ["tool", "tool", "user", "tool"], "{roles:?}");
+        assert_eq!(messages[0]["tool_call_id"], "call_0");
+        assert_eq!(messages[1]["tool_call_id"], "call_1");
+        assert_eq!(messages[3]["tool_call_id"], "call_2");
+        let parts = messages[2]["content"].as_array().expect("parts array");
+        assert_eq!(
+            parts[0]["text"],
+            "[1 image(s) returned by tool call call_1]"
+        );
+        assert_eq!(parts.len(), 2);
     }
 
     #[test]
