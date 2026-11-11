@@ -47,7 +47,8 @@ use rhema_claw_tools_contract::CONTRACT_HEADER;
 use rhema_claw_tools_contract::CONTRACT_VERSION;
 use rhema_core::ImageMediaType;
 use rhema_rsd::{
-    DispatchError, Dispatcher, IngestResult, KeyRecord, KeyState, ResourceKey, SqliteStore, Store,
+    Conflict, DispatchError, Dispatcher, IngestResult, KeyRecord, KeyState, ResourceKey,
+    SqliteStore, Store,
 };
 use serde::{Deserialize, Deserializer};
 use serde_json::{Value, json};
@@ -68,6 +69,21 @@ pub(crate) const MAX_DRAIN_PASSES: usize = 10;
 
 /// How often the SSE keep-alive comment goes out.
 pub(crate) const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(15);
+
+/// Why a delete stopped short: the dispatcher refused it (a live lease holds
+/// the key, or the store failed), or the turn-history purge did. The two
+/// answers the route derives itself — deleted, or never there — ride the
+/// `Ok(bool)`, so this carries the failure seams and nothing else.
+#[derive(Debug, thiserror::Error)]
+pub enum SessionForgetError {
+    /// The dispatcher refused the delete, or the store under it failed.
+    #[error(transparent)]
+    Dispatch(#[from] DispatchError),
+    /// The turn-history table failed, so a transcript survived the record
+    /// it belonged to.
+    #[error(transparent)]
+    History(#[from] crate::turn_store::TurnStoreError),
+}
 
 /// Everything the routes touch, shared behind `Arc`s. Built by the
 /// daemon's assembly; [`ClawState::new`] is its only constructor.
@@ -198,6 +214,30 @@ impl ClawState {
         Ok(sessions)
     }
 
+    /// Delete one session: the dispatch record — through the dispatcher, so
+    /// the decision and the delete are one gated transition — and the turn
+    /// history recorded under the key, so a key re-created under the same
+    /// name starts empty.
+    ///
+    /// `Ok(true)` when a record existed and is gone, `Ok(false)` when there
+    /// was none; the history is purged either way. A live lease refuses the
+    /// delete ([`Conflict::LeaseHeld`]) — the running turn's own checkpoint
+    /// would otherwise write to a vanished record. Any key with a record
+    /// deletes: the inventory is not narrowed to the `interactive:` prefix.
+    pub fn delete_session(&self, key: &ResourceKey) -> Result<bool, SessionForgetError> {
+        // The record goes first, gated inside the dispatcher, so a refusal
+        // leaves the transcript alone: the purge below is the one step this
+        // side cannot undo, and it must never run for a session the 409 kept.
+        let existed = self.dispatcher.forget(key)?;
+        // Then the history, unconditionally — including the `Ok(false)` path,
+        // where a record already gone left the transcript behind. Deleting
+        // that transcript is the repair: a retried DELETE finishes a half-done
+        // delete instead of 404-ing with the old turns still under the key,
+        // where a session created again under the same name would replay them.
+        self.hub.forget(key)?;
+        Ok(existed)
+    }
+
     /// The interactive dispatcher: message ingest and key status.
     pub fn dispatcher(&self) -> &Dispatcher {
         &self.dispatcher
@@ -256,6 +296,7 @@ impl ClawState {
 pub fn router(state: ClawState) -> Router {
     let v1 = Router::new()
         .route("/sessions", get(sessions).post(sessions_create))
+        .route("/sessions/{key}", delete(session_delete))
         .route(
             "/sessions/{key}/messages",
             post(messages).layer(axum::extract::DefaultBodyLimit::max(MAX_MESSAGE_BODY_BYTES)),
@@ -520,6 +561,59 @@ async fn sessions_create(
             Json(json!({"error": format!("session {:?} already exists", key.as_str())})),
         )
             .into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": err.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+/// `DELETE /v1/sessions/{key}`: drop one session — its dispatch record
+/// and the turn history recorded under the key — so a key re-created
+/// under the same name starts empty. 409 while a turn holds the key, 404
+/// when there is no such session, 200 with `{"key", "deleted"}` once both
+/// tables are clean. Any key with a record is deletable: the route does
+/// not narrow the inventory to the `interactive:` prefix.
+///
+/// One segment is the whole key: a key carrying `/` — `github:acme/widgets#7`
+/// — arrives intact only percent-encoded (`%2F`), which is what an
+/// `encodeURIComponent` client sends, because a raw `/` splits the path and
+/// the route does not match.
+async fn session_delete(State(state): State<ClawState>, Path(key): Path<String>) -> Response {
+    let key = key.trim();
+    if key.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "key is required"})),
+        )
+            .into_response();
+    }
+    let key = ResourceKey::from(key);
+    match state.delete_session(&key) {
+        Ok(true) => (
+            StatusCode::OK,
+            Json(json!({"key": key.as_str(), "deleted": true})),
+        )
+            .into_response(),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": format!("no session {key:?}")})),
+        )
+            .into_response(),
+        // A live turn is the one refusal: the body spells the holder and the
+        // lease the way the dispatcher recorded them.
+        Err(SessionForgetError::Dispatch(DispatchError::Conflict(Conflict::LeaseHeld {
+            lease_id,
+            holder,
+        }))) => {
+            let held = Conflict::LeaseHeld { lease_id, holder };
+            (
+                StatusCode::CONFLICT,
+                Json(json!({"error": format!("session {key:?}: {held}")})),
+            )
+                .into_response()
+        }
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),

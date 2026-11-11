@@ -3293,3 +3293,218 @@ async fn a_restart_releases_a_dead_lease_and_the_key_answers() {
     read_until(&mut stream, &mut seen, "back, and whole.").await;
     read_until(&mut stream, &mut seen, r#""type":"turn_done""#).await;
 }
+
+/// Listing the inventory, as a client reads it.
+async fn inventory(client: &reqwest::Client, base: &str) -> Vec<Value> {
+    client
+        .get(format!("{base}/v1/sessions"))
+        .send()
+        .await
+        .expect("sessions reads")
+        .json()
+        .await
+        .expect("sessions parses")
+}
+
+/// `DELETE /v1/sessions/{key}` is the whole story of a session's life
+/// ending: the record leaves the inventory, its turn history goes with
+/// it, and the key is absent again — so re-creating the same name starts
+/// a chat that streams nothing from before.
+#[tokio::test]
+async fn deleting_a_session_drops_the_record_and_its_history() {
+    let provider = Arc::new(MockProvider::new([reply("first words"), reply("second words")]));
+    let dir = tempfile::tempdir().expect("tempdir");
+    let daemon = Daemon::build(
+        &config(&dir, None),
+        mock_registry(provider),
+        rhema_rsd::DispatcherConfig::default(),
+    )
+    .expect("the daemon assembles");
+    let base = serve(&daemon).await;
+    let client = reqwest::Client::new();
+
+    // One session with one recorded turn.
+    let created = client
+        .post(format!("{base}/v1/sessions"))
+        .json(&json!({"name": "web"}))
+        .send()
+        .await
+        .expect("the create posts");
+    assert_eq!(created.status(), 201);
+    let events = client
+        .get(format!("{base}/v1/sessions/interactive:web/events"))
+        .send()
+        .await
+        .expect("the events request goes out");
+    let mut stream = sse_body(events).await;
+    let mut seen = String::new();
+    client
+        .post(format!("{base}/v1/sessions/interactive:web/messages"))
+        .json(&json!({"text": "hello"}))
+        .send()
+        .await
+        .expect("the message posts")
+        .error_for_status()
+        .expect("the message accepts");
+    read_until(&mut stream, &mut seen, "first words").await;
+    read_until(&mut stream, &mut seen, r#""type":"turn_done""#).await;
+    // The subscriber goes away; the transcript stays in the table.
+    drop(stream);
+    assert_eq!(inventory(&client, &base).await.len(), 1);
+
+    // The delete answers the key it removed.
+    let deleted = client
+        .delete(format!("{base}/v1/sessions/interactive:web"))
+        .send()
+        .await
+        .expect("the delete goes out");
+    assert_eq!(deleted.status(), 200);
+    assert_eq!(
+        deleted.json::<Value>().await.expect("the body parses"),
+        json!({"key": "interactive:web", "deleted": true})
+    );
+
+    // Gone from the inventory...
+    assert!(inventory(&client, &base).await.is_empty(), "the key is gone");
+
+    // ...and gone from the store, so the create precondition holds again.
+    let recreated = client
+        .post(format!("{base}/v1/sessions"))
+        .json(&json!({"name": "web"}))
+        .send()
+        .await
+        .expect("the second create posts");
+    assert_eq!(recreated.status(), 201, "a deleted key can be created again");
+
+    // The re-created key replays nothing from before: its stream opens
+    // with the new turn only — one user message, the new reply, and no
+    // trace of the deleted transcript.
+    let events = client
+        .get(format!("{base}/v1/sessions/interactive:web/events"))
+        .send()
+        .await
+        .expect("the events request goes out");
+    let mut stream = sse_body(events).await;
+    let mut seen = String::new();
+    client
+        .post(format!("{base}/v1/sessions/interactive:web/messages"))
+        .json(&json!({"text": "a fresh start"}))
+        .send()
+        .await
+        .expect("the message posts")
+        .error_for_status()
+        .expect("the message accepts");
+    read_until(&mut stream, &mut seen, "second words").await;
+    read_until(&mut stream, &mut seen, r#""type":"turn_done""#).await;
+    assert!(!seen.contains("first words"), "no old turn replays: {seen}");
+    assert_eq!(
+        seen.matches(r#""type":"user_message""#).count(),
+        1,
+        "only the new turn replays: {seen}"
+    );
+}
+
+/// A delete of a key with no record is a 404 that names the key — and a
+/// key with a record is deletable whatever its prefix: the route never
+/// narrows the inventory to `interactive:`.
+#[tokio::test]
+async fn deleting_an_unknown_session_is_a_404_and_any_key_deletes() {
+    let provider = Arc::new(MockProvider::new([reply("unused")]));
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = dir.path().join("dispatch.db");
+    let daemon = Daemon::build(
+        &config(&dir, None),
+        mock_registry(provider),
+        rhema_rsd::DispatcherConfig::default(),
+    )
+    .expect("the daemon assembles");
+    let base = serve(&daemon).await;
+    let client = reqwest::Client::new();
+
+    let unknown = client
+        .delete(format!("{base}/v1/sessions/interactive:nope"))
+        .send()
+        .await
+        .expect("the delete goes out");
+    assert_eq!(unknown.status(), 404);
+    let body: Value = unknown.json().await.expect("the body parses");
+    assert!(
+        body["error"].as_str().expect("an error").contains("interactive:nope"),
+        "the refusal names the key: {body}"
+    );
+
+    // A forge key's record — written by the dispatcher in every real
+    // deployment — deletes on the same route.
+    let store = SqliteStore::open(&db).expect("the store opens");
+    let forge = ResourceKey::from("github:acme/widgets#7");
+    store.save(rhema_rsd::KeyRecord::fresh(forge.clone(), 1), None).expect("the row seeds");
+    let deleted = client
+        .delete(format!("{base}/v1/sessions/github%3Aacme%2Fwidgets%237"))
+        .send()
+        .await
+        .expect("the delete goes out");
+    assert_eq!(deleted.status(), 200);
+    assert_eq!(
+        store.load(&forge).expect("the store reads"),
+        None,
+        "no prefix is special: the forge key's record is gone"
+    );
+}
+
+/// A delete never races a running turn: while a lease holds the key the
+/// route answers 409 and leaves the session exactly as it was — the
+/// turn's own save would otherwise fail on the missing record, or write
+/// the session back after the delete.
+#[tokio::test]
+async fn a_leased_session_is_not_deletable() {
+    let provider = Arc::new(MockProvider::new([reply("still working")]));
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = dir.path().join("dispatch.db");
+    let daemon = Daemon::build(
+        &config(&dir, None),
+        mock_registry(provider),
+        rhema_rsd::DispatcherConfig::default(),
+    )
+    .expect("the daemon assembles");
+    let base = serve(&daemon).await;
+    let client = reqwest::Client::new();
+
+    // A turn in flight, modelled the way the store sees one: a dispatcher
+    // over the same file holds the key's lease with hours left on it.
+    {
+        use rhema_rsd::DispatcherConfig;
+        let store = Arc::new(SqliteStore::open(&db).expect("the store opens"));
+        let dispatcher = rhema_rsd::Dispatcher::new(
+            DispatcherConfig {
+                debounce_window_millis: 0,
+                lease_ttl_millis: 3_600_000,
+                ..DispatcherConfig::default()
+            },
+            Arc::new(rhema_rsd::SystemClock),
+            store,
+        );
+        let (lease, _) = dispatcher
+            .acquire(ResourceKey::from("interactive:web"), "a-running-turn")
+            .expect("the running turn takes its lease");
+        assert_eq!(lease.holder, "a-running-turn");
+    }
+
+    let refused = client
+        .delete(format!("{base}/v1/sessions/interactive:web"))
+        .send()
+        .await
+        .expect("the delete goes out");
+    assert_eq!(refused.status(), 409, "a running turn blocks the delete");
+    let body: Value = refused.json().await.expect("the body parses");
+    let error = body["error"].as_str().expect("an error");
+    assert!(
+        error.contains("leased") && error.contains("a-running-turn"),
+        "the refusal names the lease and its holder: {body}"
+    );
+
+    // Untouched: still listed, still leased.
+    let sessions = inventory(&client, &base).await;
+    assert_eq!(sessions.len(), 1, "{sessions:?}");
+    assert_eq!(sessions[0]["key"], "interactive:web");
+    assert_eq!(sessions[0]["state"], "leased", "{sessions:?}");
+}

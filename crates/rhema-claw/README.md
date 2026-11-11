@@ -126,6 +126,7 @@ POST /v1/sessions                    {"name"} — create an empty interactive se
 POST /v1/sessions/{key}/messages       {"text": "..."}   -> 202
 GET  /v1/sessions/{key}/events         SSE turn events (see below); ?since=<seq> resumes a cursor
 GET  /v1/sessions/{key}/history        one page of older turns: ?before=<seq>&limit=<n>
+DELETE /v1/sessions/{key}              drop a session and its turn history
 GET  /v1/watches                       POST /v1/watches  DELETE /v1/watches/{forge}/{repo}
 GET  /v1/bootstrap                     {"soul": bool, "user": bool}
 POST /v1/ingest                         {"source","key","payload"} -> 202

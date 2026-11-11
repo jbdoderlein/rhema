@@ -220,6 +220,18 @@ impl TurnStore {
         )
         .map_err(TurnStoreError::from)
     }
+
+    /// Removes `key`'s whole recorded stream, durable before it returns:
+    /// every row for the key goes, and the next append starts the stream
+    /// over at its own sequence, so a key re-created under the same name
+    /// replays nothing from before. A key with no rows is not an error —
+    /// deleting a session purges whatever history it has, including none.
+    pub fn forget(&self, key: &str) -> Result<(), TurnStoreError> {
+        let conn = self.conn.lock().unwrap_or_else(PoisonError::into_inner);
+        conn.execute("DELETE FROM turn_events WHERE key = ?1", params![key])
+            .map_err(TurnStoreError::from)?;
+        Ok(())
+    }
 }
 
 /// Moves a legacy `turn_history` table (one JSON-array blob per key,
@@ -402,6 +414,40 @@ mod tests {
             .events_from("interactive:web", -1, usize::MAX)
             .expect_err("corruption is loud");
         assert!(err.to_string().contains("interactive:web"), "{err}");
+    }
+
+    #[test]
+    fn forget_removes_one_keys_rows_and_leaves_the_rest() {
+        let store = TurnStore::in_memory().expect("store opens");
+        store
+            .append("interactive:web", &[text_delta("a"), text_delta("b")])
+            .expect("appends");
+        store.append("task:2", &[text_delta("c")]).expect("appends");
+
+        store.forget("interactive:web").expect("forgets");
+
+        assert_eq!(
+            store.events("interactive:web").expect("reads"),
+            vec![],
+            "the deleted key's stream is gone"
+        );
+        assert_eq!(
+            store.events("task:2").expect("reads"),
+            vec![text_delta("c")],
+            "another key's stream is untouched"
+        );
+        // The stream starts over: a re-created key replays nothing from
+        // before, and appends land at sequence 0 again.
+        store
+            .append("interactive:web", &[text_delta("fresh")])
+            .expect("appends");
+        assert_eq!(
+            store.events("interactive:web").expect("reads"),
+            vec![text_delta("fresh")],
+            "the re-created stream starts empty"
+        );
+        // A key with no rows is not an error.
+        store.forget("interactive:absent").expect("quiet");
     }
 
     /// The one-time migration: a pre-window blob table opens into the

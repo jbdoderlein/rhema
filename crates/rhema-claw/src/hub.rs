@@ -32,7 +32,7 @@ use rhema_rsd::ResourceKey;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
-use crate::turn_store::TurnStore;
+use crate::turn_store::{TurnStore, TurnStoreError};
 
 /// How many events a subscriber may trail by before the oldest drop.
 /// Generous: a turn's deltas arrive faster than any viewer, but rarely
@@ -499,6 +499,23 @@ impl EventHub {
             }
         }
         let _ = entry.sender.send(event);
+    }
+
+    /// Forgets `key`'s recorded stream: the store's rows go, and so does
+    /// the in-memory record an assembly without one keeps, so a key
+    /// re-created under the same name replays nothing from before. The
+    /// live channel stays — it belongs to the process, not to the deleted
+    /// session's history. A failed purge is the caller's to report: the
+    /// delete is not done until the history is.
+    pub fn forget(&self, key: &ResourceKey) -> Result<(), TurnStoreError> {
+        let mut entries = self.entries.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(entry) = entries.get_mut(key) {
+            entry.history.clear();
+        }
+        match self.record_store.as_ref() {
+            Some(store) => store.forget(key.as_str()),
+            None => Ok(()),
+        }
     }
 
     /// The map entry for `key`, creating it (and its channel) on first
