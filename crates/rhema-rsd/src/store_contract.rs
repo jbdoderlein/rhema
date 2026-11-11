@@ -178,7 +178,10 @@ pub fn delete_removes_the_record(store: &dyn Store) {
     store.save(KeyRecord::fresh(key.clone(), 1), None).unwrap();
     assert!(store.delete(&key).unwrap(), "an existing record is removed");
     assert_eq!(store.load(&key).unwrap(), None, "the record is gone");
-    assert!(!store.keys().unwrap().contains(&key), "keys no longer lists it");
+    assert!(
+        !store.keys().unwrap().contains(&key),
+        "keys no longer lists it"
+    );
 
     let recreated = KeyRecord::fresh(key.clone(), 2);
     store.save(recreated.clone(), None).unwrap();

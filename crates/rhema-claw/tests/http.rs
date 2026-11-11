@@ -3312,7 +3312,10 @@ async fn inventory(client: &reqwest::Client, base: &str) -> Vec<Value> {
 /// a chat that streams nothing from before.
 #[tokio::test]
 async fn deleting_a_session_drops_the_record_and_its_history() {
-    let provider = Arc::new(MockProvider::new([reply("first words"), reply("second words")]));
+    let provider = Arc::new(MockProvider::new([
+        reply("first words"),
+        reply("second words"),
+    ]));
     let dir = tempfile::tempdir().expect("tempdir");
     let daemon = Daemon::build(
         &config(&dir, None),
@@ -3365,7 +3368,10 @@ async fn deleting_a_session_drops_the_record_and_its_history() {
     );
 
     // Gone from the inventory...
-    assert!(inventory(&client, &base).await.is_empty(), "the key is gone");
+    assert!(
+        inventory(&client, &base).await.is_empty(),
+        "the key is gone"
+    );
 
     // ...and gone from the store, so the create precondition holds again.
     let recreated = client
@@ -3374,7 +3380,11 @@ async fn deleting_a_session_drops_the_record_and_its_history() {
         .send()
         .await
         .expect("the second create posts");
-    assert_eq!(recreated.status(), 201, "a deleted key can be created again");
+    assert_eq!(
+        recreated.status(),
+        201,
+        "a deleted key can be created again"
+    );
 
     // The re-created key replays nothing from before: its stream opens
     // with the new turn only — one user message, the new reply, and no
@@ -3429,7 +3439,10 @@ async fn deleting_an_unknown_session_is_a_404_and_any_key_deletes() {
     assert_eq!(unknown.status(), 404);
     let body: Value = unknown.json().await.expect("the body parses");
     assert!(
-        body["error"].as_str().expect("an error").contains("interactive:nope"),
+        body["error"]
+            .as_str()
+            .expect("an error")
+            .contains("interactive:nope"),
         "the refusal names the key: {body}"
     );
 
@@ -3437,7 +3450,9 @@ async fn deleting_an_unknown_session_is_a_404_and_any_key_deletes() {
     // deployment — deletes on the same route.
     let store = SqliteStore::open(&db).expect("the store opens");
     let forge = ResourceKey::from("github:acme/widgets#7");
-    store.save(rhema_rsd::KeyRecord::fresh(forge.clone(), 1), None).expect("the row seeds");
+    store
+        .save(rhema_rsd::KeyRecord::fresh(forge.clone(), 1), None)
+        .expect("the row seeds");
     let deleted = client
         .delete(format!("{base}/v1/sessions/github%3Aacme%2Fwidgets%237"))
         .send()

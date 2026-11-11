@@ -26,7 +26,10 @@ fn harness() -> (Arc<Dispatcher>, Arc<FixedClock>, Arc<VolatileStore>) {
 fn forgetting_a_key_with_no_record_deletes_nothing() {
     let (dispatcher, _clock, store) = harness();
     let key = the_key();
-    assert!(!dispatcher.forget(&key).unwrap(), "a key with no record deletes nothing");
+    assert!(
+        !dispatcher.forget(&key).unwrap(),
+        "a key with no record deletes nothing"
+    );
     assert!(store.keys().unwrap().is_empty());
 }
 
@@ -37,8 +40,14 @@ fn an_idle_record_forgets_and_the_key_starts_empty() {
     dispatcher.ingest(event(key.as_str(), "e1")).unwrap();
     assert_eq!(store.keys().unwrap(), vec![key.clone()]);
 
-    assert!(dispatcher.forget(&key).unwrap(), "an existing record is removed");
-    assert!(store.keys().unwrap().is_empty(), "the store no longer lists it");
+    assert!(
+        dispatcher.forget(&key).unwrap(),
+        "an existing record is removed"
+    );
+    assert!(
+        store.keys().unwrap().is_empty(),
+        "the store no longer lists it"
+    );
     let status = dispatcher.status(&key).unwrap();
     assert_eq!(status.state, KeyState::Idle);
     assert_eq!(status.inbox_depth, 0);
@@ -88,11 +97,18 @@ fn a_lapsed_lease_does_not_block_the_delete() {
     // arrives, which is what a crashed daemon leaves behind.
     assert_eq!(dispatcher.status(&key).unwrap().state, KeyState::Leased);
     clock.advance(TTL);
-    assert!(dispatcher.forget(&key).unwrap(), "a dead lease blocks nothing");
+    assert!(
+        dispatcher.forget(&key).unwrap(),
+        "a dead lease blocks nothing"
+    );
     assert!(store.keys().unwrap().is_empty());
 
     // The zombie handler resurrects nothing: its checkpoint answers an error
     // and errors persist nothing.
-    assert!(dispatcher.checkpoint(&lease, Session::fresh(key.clone(), 0)).is_err());
+    assert!(
+        dispatcher
+            .checkpoint(&lease, Session::fresh(key.clone(), 0))
+            .is_err()
+    );
     assert!(store.keys().unwrap().is_empty(), "the delete holds");
 }

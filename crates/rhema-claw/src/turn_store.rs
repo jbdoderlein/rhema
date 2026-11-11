@@ -427,13 +427,15 @@ mod tests {
         store.forget("interactive:web").expect("forgets");
 
         assert_eq!(
-            store.events("interactive:web").expect("reads"),
+            store
+                .events_from("interactive:web", -1, usize::MAX)
+                .expect("reads"),
             vec![],
             "the deleted key's stream is gone"
         );
         assert_eq!(
-            store.events("task:2").expect("reads"),
-            vec![text_delta("c")],
+            store.events_from("task:2", -1, usize::MAX).expect("reads"),
+            vec![(0, text_delta("c"))],
             "another key's stream is untouched"
         );
         // The stream starts over: a re-created key replays nothing from
@@ -442,8 +444,10 @@ mod tests {
             .append("interactive:web", &[text_delta("fresh")])
             .expect("appends");
         assert_eq!(
-            store.events("interactive:web").expect("reads"),
-            vec![text_delta("fresh")],
+            store
+                .events_from("interactive:web", -1, usize::MAX)
+                .expect("reads"),
+            vec![(0, text_delta("fresh"))],
             "the re-created stream starts empty"
         );
         // A key with no rows is not an error.
