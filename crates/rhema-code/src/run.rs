@@ -106,6 +106,14 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
             argv.extend(rest);
             std::process::exit(rhema_agent_tools::vision::cli_run(&argv));
         }
+        // The jobs macro's road: `job …` in the agent shell execs
+        // `rhema __jobs …`, whose exit code owns the process.
+        Some(crate::args::Command::Jobs { args: rest }) => {
+            let mut argv = Vec::with_capacity(rest.len() + 1);
+            argv.push(std::ffi::OsString::from(rhema_agent_tools::jobs::MODE));
+            argv.extend(rest);
+            std::process::exit(rhema_agent_tools::jobs::cli_run(&argv));
+        }
         // The stubs' road: `rhema __server …` and every unrecognized
         // subcommand go to the MCP CLI, whose exit code owns the
         // process. An unknown mode is its exit-2 usage error.
@@ -233,6 +241,12 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
         && let Err(err) = crate::bundled::seed(&dir, &config.skills_disabled)
     {
         eprintln!("warning: the bundled skills were not seeded: {err}");
+    }
+    // A backend that is installed but too old would advertise `job` and
+    // fail on the first call: say so once, here, while stderr is still a
+    // plain terminal. An absent backend is silent by design.
+    if let Some(problem) = rhema_agent_tools::jobs::backend_problem() {
+        eprintln!("warning: background jobs disabled: {problem}");
     }
     // The session's keychain: startup resolution reads it, and the app
     // places fresh logins in it and cleans up after removals.

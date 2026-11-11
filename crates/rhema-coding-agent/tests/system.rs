@@ -278,6 +278,7 @@ fn the_skills_share_excludes_the_mcp_section() {
             None,
             mcp,
             None,
+            None,
         )
         .unwrap()
     };

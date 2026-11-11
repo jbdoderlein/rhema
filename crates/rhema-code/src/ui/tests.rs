@@ -1394,6 +1394,28 @@ mod scroll_tests {
             .collect()
     }
 
+    /// A background shell pins one line under the spinner: its badge, the
+    /// command as the model wrote it, and how long this process has
+    /// watched it.
+    #[test]
+    fn a_running_job_pins_a_line_with_its_command_and_age() {
+        let mut app = chat_app();
+        app.jobs = Some(crate::jobs::JobsHandle::stub(vec![crate::jobs::JobEntry {
+            row: rhema_agent_tools::jobs::JobRow {
+                id: "abc".to_owned(),
+                status: "running".to_owned(),
+                exit_code: None,
+                command: "npm run dev".to_owned(),
+                session: Some("s1".to_owned()),
+                started_at: None,
+            },
+            age: std::time::Duration::from_secs(65),
+        }]));
+        let text = screen_text(&mut app);
+        assert!(text.contains("npm run dev"), "{text}");
+        assert!(text.contains("1min 5s"), "{text}");
+    }
+
     /// A selection reverses exactly the cells its text covers: the
     /// painter reads the same row strings the copy does, so the two
     /// cannot disagree.

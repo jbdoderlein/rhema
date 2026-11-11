@@ -235,6 +235,16 @@ pub enum Command {
         #[arg(allow_hyphen_values = true, trailing_var_arg = true)]
         args: Vec<std::ffi::OsString>,
     },
+    /// The pass-through that makes the agent shell's `job` macro work:
+    /// `rhema __jobs …` owns the background-job verbs, which delegate to
+    /// the backend CLI behind one shim (see [`rhema_agent_tools::jobs`]).
+    /// Outside a wired shell the verbs that need a session exit 4.
+    #[command(name = "__jobs")]
+    Jobs {
+        /// The CLI's own argv, passed through untouched.
+        #[arg(allow_hyphen_values = true, trailing_var_arg = true)]
+        args: Vec<std::ffi::OsString>,
+    },
     /// The catch-all the init file's stubs land in: `rhema __server
     /// <name> …` execs this binary with `__server` as the first
     /// token, and any other unrecognized subcommand follows the same

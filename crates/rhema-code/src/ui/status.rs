@@ -85,6 +85,13 @@ pub(crate) fn render_status(frame: &mut Frame, app: &App, area: Rect, theme: &Th
     for subagent in subagent_lines(app, theme) {
         lines.push(subagent);
     }
+    // Background shells pin a line of their own under the subagents: the
+    // play badge, the command as the model wrote it, and how long this
+    // process has watched it. A finished job is not pinned; `job logs` is
+    // where its outcome lives.
+    for job in job_lines(app, theme) {
+        lines.push(job);
+    }
     // The live preview rides under the spinner — the reasoning trace's
     // tail, or a running command's earned output — at most three dim
     // rows. The reasoning half is gone the moment real output starts,
@@ -160,6 +167,33 @@ pub(crate) fn subagent_lines(app: &App, theme: &Theme) -> Vec<Line<'static>> {
         .iter()
         .map(|job| subagent_line(app, job, theme))
         .collect()
+}
+
+/// The most background shells the strip pins at once. A session that
+/// starts more is a session whose strip would otherwise eat the
+/// transcript, and the rest are one `job ls` away.
+const MAX_PINNED_JOBS: usize = 4;
+
+/// The background shells the session started, oldest first, read off the
+/// jobs handle's last poll. Empty in a session that started none, on a
+/// machine without the backend, and in a sandbox session.
+pub(crate) fn job_lines(app: &App, theme: &Theme) -> Vec<Line<'static>> {
+    app.job_entries()
+        .iter()
+        .take(MAX_PINNED_JOBS)
+        .map(|entry| job_line(app, entry, theme))
+        .collect()
+}
+
+/// One background shell's line: the play badge, the command the model
+/// wrote, and its age on this process's clock. No spinner: a long-running
+/// server is not "working" any more than a paused one is.
+fn job_line(app: &App, entry: &crate::jobs::JobEntry, theme: &Theme) -> Line<'static> {
+    Line::from(vec![
+        Span::raw(format!("{} ", app.icons.jobs)).fg(theme.text3),
+        Span::raw(entry.row.command.clone()).fg(theme.text),
+        Span::raw(format!(" · running {}", elapsed_text(entry.age))).fg(theme.running),
+    ])
 }
 
 /// The pinned live line of one working subagent job: the robot badge

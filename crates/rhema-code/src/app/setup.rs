@@ -828,12 +828,25 @@ pub(crate) fn session_agent_config(
         sandboxed.apply_tools(&mut config);
     }
     apply_prompt_sections(&mut config, options, sandboxed);
-    // Vision: the same local-only gate. The wiring lands first so the
-    // MCP wire can chain its init file through ours: `BASH_ENV` names
-    // the MCP file, whose guard sources ours by literal path, and both
-    // functions end up defined.
+    // Jobs and vision: the same local-only gate, chained into one
+    // `BASH_ENV` lineage. Jobs lands first, so the chain reads
+    // jobs -> vision -> MCP: each init file sources its predecessor by
+    // literal path and guards the failure, and every generated function
+    // ends up defined whichever file the variable names.
+    let jobs_wiring = (sandboxed.is_none())
+        .then(|| {
+            rhema_agent_tools::jobs::wire(std::env::var_os("BASH_ENV"), crate::jobs::session_id())
+        })
+        .flatten();
+    if let Some(wiring) = &jobs_wiring {
+        config.shell_env.extend(wiring.shell_env.clone());
+        config.jobs = Some(wiring.section.to_owned());
+    }
+    let bash_env = jobs_wiring
+        .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
+        .or_else(|| std::env::var_os("BASH_ENV"));
     let vision_wiring = (sandboxed.is_none())
-        .then(|| rhema_agent_tools::vision::wire(std::env::var_os("BASH_ENV")))
+        .then(|| rhema_agent_tools::vision::wire(bash_env.clone()))
         .flatten();
     if let Some(wiring) = &vision_wiring {
         config.shell_env.extend(wiring.shell_env.clone());
@@ -841,7 +854,7 @@ pub(crate) fn session_agent_config(
     }
     let bash_env = vision_wiring
         .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
-        .or_else(|| std::env::var_os("BASH_ENV"));
+        .or(bash_env);
     // MCP: the local-only wire, gated on the sandbox — a session
     // whose bash runs elsewhere never sees the section, because its
     // executor could not reach the socket or the provisioned env.

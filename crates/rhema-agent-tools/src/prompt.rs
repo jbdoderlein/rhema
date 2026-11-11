@@ -56,7 +56,17 @@ pub fn render_system(
     skills: &[Skill],
     tools: &[ToolSpec],
 ) -> Result<String, TemplateError> {
-    render_system_with_sections(template, workspace, skills, tools, None, None, &[], None)
+    render_system_with_sections(
+        template,
+        workspace,
+        skills,
+        tools,
+        None,
+        None,
+        &[],
+        None,
+        None,
+    )
 }
 
 /// [`render_system`] with the two optional prompt sections: `environment`
@@ -64,7 +74,9 @@ pub fn render_system(
 /// the user's own preferences file, verbatim. Both ride the template as
 /// plain string variables (`{{ environment }}`, `{% if user %}`), so the
 /// template decides whether and where they appear; `None` renders the
-/// referencing parts empty, the same as an undefined variable.
+/// referencing parts empty, the same as an undefined variable. The
+/// `mcp`, `vision`, and `jobs` sections ride the same way: each is text
+/// a frontend provisioned, or `None` for a frontend that wired nothing.
 #[expect(
     clippy::too_many_arguments,
     reason = "one parameter per prompt section keeps the render's inputs flat"
@@ -78,6 +90,7 @@ pub fn render_system_with_sections(
     user: Option<&str>,
     mcp: &[McpServerLine],
     vision: Option<&str>,
+    jobs: Option<&str>,
 ) -> Result<String, TemplateError> {
     let context = serde_json::json!({
         "workspace": workspace.display().to_string(),
@@ -87,6 +100,7 @@ pub fn render_system_with_sections(
         "user": user,
         "mcp": mcp,
         "vision": vision,
+        "jobs": jobs,
     });
     render_template(template, &context)
 }
@@ -258,6 +272,7 @@ mod tests {
             None,
             &lines,
             None,
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -272,6 +287,7 @@ mod tests {
             None,
             None,
             &[],
+            None,
             None,
         )
         .unwrap();
@@ -337,6 +353,7 @@ mod tests {
             Some("prefer short answers"),
             &[],
             None,
+            None,
         )
         .unwrap();
         assert_eq!(out, "open\nprefer short answers\n- OS: linux\nclose\n");
@@ -357,6 +374,7 @@ mod tests {
             None,
             None,
             &[],
+            None,
             None,
         )
         .unwrap();

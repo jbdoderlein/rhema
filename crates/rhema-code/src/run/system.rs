@@ -22,6 +22,12 @@ pub(crate) fn system_command(
             system_restore_at(&path)
         }
         SystemCommand::Show => {
+            // A preview that silently lacks a section reads as a bug in
+            // the prompt. When the backend is installed but too old to
+            // serve `job`, say so on stderr and keep stdout byte-exact.
+            if let Some(problem) = rhema_agent_tools::jobs::backend_problem() {
+                eprintln!("warning: background jobs disabled: {problem}");
+            }
             let prompt = system_show_at(
                 rhema_config::Home::discover()
                     .ok()
@@ -243,6 +249,11 @@ pub(crate) fn system_show_at_with_mcp(
         // carries; the preview never provisions, it just shows the
         // block the template would render.
         Some(rhema_agent_tools::vision::PROMPT_SECTION),
+        // Jobs is the one section a machine may lack outright: its
+        // backend is a separate install, so the preview asks the same
+        // probe the wire uses rather than promising a command that
+        // would not exist.
+        rhema_agent_tools::jobs::available().then_some(rhema_agent_tools::jobs::PROMPT_SECTION),
     )?)
 }
 

@@ -56,6 +56,7 @@ pub mod bundled;
 pub mod commands;
 pub mod events;
 pub mod icons;
+pub mod jobs;
 pub mod markdown;
 pub(crate) mod mcp_wire;
 pub mod onboarding;

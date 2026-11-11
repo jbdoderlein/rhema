@@ -154,6 +154,14 @@ pub struct CodingAgentConfig {
     /// frontend that wired nothing advertises nothing, the same rule
     /// the `mcp_servers` section follows.
     pub vision: Option<String>,
+    /// The prompt section documenting the wired
+    /// [`jobs`](rhema_agent_tools::jobs) macro — the `job` bash
+    /// function's documentation, produced by the frontend's provisioning
+    /// and passed verbatim. `None` renders no section: a frontend that
+    /// wired nothing (a sandbox session, a machine without the backend)
+    /// advertises nothing, the same rule [`vision`](Self::vision)
+    /// follows.
+    pub jobs: Option<String>,
     /// The directory conventions skill discovery reads when
     /// [`skills`](Self::skills) is `None`: the user-wide skills directory
     /// and the cross-agent `.agents/skills` convention. `None` — the
@@ -220,6 +228,7 @@ impl CodingAgentConfig {
             environment: None,
             user_preferences: None,
             vision: None,
+            jobs: None,
             home: None,
         }
     }

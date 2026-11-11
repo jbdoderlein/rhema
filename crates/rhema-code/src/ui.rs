@@ -28,7 +28,7 @@ use onboarding::render_onboarding;
 use overlay::render_command_palette;
 use pane::render_transcript;
 use settings::render_settings;
-use status::{render_status, spinner_char, subagent_lines, thinking_rows};
+use status::{job_lines, render_status, spinner_char, subagent_lines, thinking_rows};
 
 pub(crate) mod chrome;
 
@@ -136,14 +136,19 @@ pub fn render(app: &mut App, frame: &mut Frame) {
                         + 1
                         + u16::from(app.retryable)
                         + subagent_lines(app, &theme).len() as u16
+                        + job_lines(app, &theme).len() as u16
                 }
                 None if app.turn.running => {
                     2 + subagent_lines(app, &theme).len() as u16
+                        + job_lines(app, &theme).len() as u16
                         + thinking_rows(app, frame.area().width as usize)
                 }
                 // A job outliving its turn keeps its line: jobs are
                 // bound to the agent's lifetime, not the turn's.
-                None => 1 + subagent_lines(app, &theme).len() as u16,
+                None => {
+                    1 + subagent_lines(app, &theme).len() as u16
+                        + job_lines(app, &theme).len() as u16
+                }
             };
             let input_rows =
                 input_rows(&app.chat.input, &app.chat.chips, frame.area().width, &theme);

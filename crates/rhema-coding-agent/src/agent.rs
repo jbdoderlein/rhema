@@ -100,7 +100,7 @@ pub fn stamped_system(
     let global = home.as_ref().map(|h| h.skills());
     let skills =
         rhema_agent_tools::skills::discover(agents.as_deref(), global.as_deref(), workspace);
-    stamped_system_with_sections(base, workspace, extra, &skills, None, None, &[], None)
+    stamped_system_with_sections(base, workspace, extra, &skills, None, None, &[], None, None)
 }
 
 /// [`stamped_system`] over skills collected elsewhere — the input path
@@ -115,7 +115,7 @@ pub fn stamped_system_with_skills(
     extra: &[ToolSpec],
     skills: &[Skill],
 ) -> Result<String, CodingAgentError> {
-    stamped_system_with_sections(base, workspace, extra, skills, None, None, &[], None)
+    stamped_system_with_sections(base, workspace, extra, skills, None, None, &[], None, None)
 }
 
 /// The full assembly: the template over `workspace`, the skills, the
@@ -137,6 +137,7 @@ pub fn stamped_system_with_sections(
     user: Option<&str>,
     mcp: &[rhema_agent_tools::prompt::McpServerLine],
     vision: Option<&str>,
+    jobs: Option<&str>,
 ) -> Result<String, CodingAgentError> {
     let mut tools = ShellTools::builtin_specs();
     tools.extend_from_slice(extra);
@@ -149,6 +150,7 @@ pub fn stamped_system_with_sections(
         user,
         mcp,
         vision,
+        jobs,
     )
     .map_err(CodingAgentError::from)
 }
@@ -264,6 +266,7 @@ impl CodingAgent {
                 config.user_preferences.as_deref(),
                 &mcp,
                 config.vision.as_deref(),
+                config.jobs.as_deref(),
             )?,
         };
         // The skills section's byte share of the system prompt: the
@@ -293,6 +296,7 @@ impl CodingAgent {
                     config.user_preferences.as_deref(),
                     &mcp,
                     config.vision.as_deref(),
+                    config.jobs.as_deref(),
                 )
                 .map(|without| system.len().saturating_sub(without.len()))
                 .unwrap_or(0)
@@ -1062,15 +1066,18 @@ mod extra_tools_tests {
             Some("prefer concise answers"),
             &[],
             Some("pipe bytes into `see`"),
+            Some("`job run` starts it"),
         )
         .unwrap();
         assert!(prompt.contains("- OS: test os"), "{prompt}");
         assert!(prompt.contains("prefer concise answers"), "{prompt}");
         assert!(prompt.contains("pipe bytes into `see`"), "{prompt}");
+        assert!(prompt.contains("`job run` starts it"), "{prompt}");
         // The section-less constructors render neither: an absent
         // section is the render a template without the blocks makes.
         let bare = stamped_system_with_skills(None, &workspace, &[], &[]).unwrap();
         assert!(!bare.contains("- OS: test os"), "{bare}");
+        assert!(!bare.contains("`job run` starts it"), "{bare}");
         assert!(!bare.contains("prefer concise answers"), "{bare}");
         assert!(!bare.contains("pipe bytes into `see`"), "{bare}");
     }

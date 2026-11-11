@@ -217,6 +217,10 @@ fn subagent_base_system(config: &CodingAgentConfig, workspace: &Path) -> String 
         // function rides its env either way, and the section documents
         // the parent shell's tool surface.
         None,
+        // Unlike vision, jobs does belong here: a subagent's whole point
+        // is long shell work, and the parent wired the function into the
+        // env this prompt's shell also runs with.
+        config.jobs.as_deref(),
     )
     .unwrap_or_else(|err| {
         eprintln!(

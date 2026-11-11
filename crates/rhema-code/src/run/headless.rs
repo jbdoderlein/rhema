@@ -185,11 +185,26 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     if let Some(assembled) = &sandboxed {
         assembled.apply_tools(&mut agent_config);
     }
-    // Vision: the same local-only gate. The wiring lands before the
-    // MCP wire so its init file chains through ours (see the TUI's
-    // assembly).
+    // Jobs and vision: the TUI's chain, in the TUI's order (jobs ->
+    // vision -> MCP), so a one-shot run wires the same shell a session
+    // does and its `job` calls land in the same backend.
+    if let Some(problem) = rhema_agent_tools::jobs::backend_problem() {
+        eprintln!("warning: background jobs disabled: {problem}");
+    }
+    let jobs_wiring = (sandboxed.is_none())
+        .then(|| {
+            rhema_agent_tools::jobs::wire(std::env::var_os("BASH_ENV"), crate::jobs::session_id())
+        })
+        .flatten();
+    if let Some(wiring) = &jobs_wiring {
+        agent_config.shell_env.extend(wiring.shell_env.clone());
+        agent_config.jobs = Some(wiring.section.to_owned());
+    }
+    let bash_env = jobs_wiring
+        .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
+        .or_else(|| std::env::var_os("BASH_ENV"));
     let vision_wiring = (sandboxed.is_none())
-        .then(|| rhema_agent_tools::vision::wire(std::env::var_os("BASH_ENV")))
+        .then(|| rhema_agent_tools::vision::wire(bash_env.clone()))
         .flatten();
     if let Some(wiring) = &vision_wiring {
         agent_config.shell_env.extend(wiring.shell_env.clone());
@@ -197,7 +212,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     }
     let bash_env = vision_wiring
         .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
-        .or_else(|| std::env::var_os("BASH_ENV"));
+        .or(bash_env);
     // MCP: the same local-only gate the TUI applies — a sandboxed
     // executor cannot reach the socket, so it advertises nothing.
     if let Some(entry) = crate::mcp_wire::wire_for_session(

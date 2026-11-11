@@ -55,6 +55,12 @@ Before you answer, check the skills list below in this priority order.
 
 {{ vision }}
 {% endif %}
+{% if jobs %}
+
+## Background jobs
+
+{{ jobs }}
+{% endif %}
 {% if mcp %}
 
 ## MCP servers

@@ -18,6 +18,8 @@ pub struct Icons {
     pub settings: &'static str,
     /// The subagent badge — a delegated worker's line.
     pub robot: &'static str,
+    /// The jobs badge — a background shell's line.
+    pub jobs: &'static str,
     /// The vision badge — a model that accepts image input.
     pub vision: &'static str,
     /// The sandbox badge — where the session's `bash` runs.
@@ -39,6 +41,7 @@ pub const UNICODE: Icons = Icons {
     allowance: "¤",
     settings: "\u{2699}\u{fe0e}",
     robot: "@",
+    jobs: "▶",
     vision: "◉",
     sandbox: "▣",
 };
@@ -58,6 +61,7 @@ pub const NERD: Icons = Icons {
     allowance: "\u{f09d}",
     settings: "\u{f013}",
     robot: "\u{f544}",
+    jobs: "\u{f04b}",
     vision: "\u{f06e}",
     sandbox: "\u{f1b2}",
 };

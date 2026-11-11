@@ -17,6 +17,8 @@
 //! - [`prompt`] — the Jinja system-prompt renderer
 //! - [`vision`] — the `see` macro: a bash command's staged images
 //!   become [`ToolResult`] image blocks
+//! - [`jobs`] — the `job` macro: background shells the model starts now
+//!   and reads on a later turn
 //!
 //! # Skills
 //!
@@ -37,6 +39,7 @@
 
 pub mod approval;
 pub mod exec;
+pub mod jobs;
 pub mod overlay;
 pub mod paste;
 pub mod prompt;

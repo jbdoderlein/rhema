@@ -279,6 +279,15 @@ impl App {
             .and_then(|entry| entry.model.pricing)
     }
 
+    /// The background shells this session started, as the last poll saw
+    /// them: running ones only, oldest first.
+    pub(crate) fn job_entries(&self) -> Vec<crate::jobs::JobEntry> {
+        self.jobs
+            .as_ref()
+            .map(crate::jobs::JobsHandle::entries)
+            .unwrap_or_default()
+    }
+
     /// The background subagent jobs' live state, read off the wire's
     /// registry handle: one entry per working job — queued or running.
     /// A finished job left already; its outcome arrived as a finish

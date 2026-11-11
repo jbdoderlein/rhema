@@ -199,8 +199,11 @@ impl AgentAssembly {
             // preference file is a later SessionConfig decision.
             user_preferences: None,
             // The commands run in the remote sandbox; no local
-            // provision means no `see` function, so no section.
+            // provision means no `see` function, so no section. The same
+            // goes for `job`: its backend would have to be installed on
+            // the far side first.
             vision: None,
+            jobs: None,
         };
         (config, shell)
     }

@@ -89,6 +89,11 @@ pub struct App {
     pub models: Vec<crate::screens::CatalogModel>,
     /// The agent; `None` while a turn runs (the turn task owns it).
     pub agent: Option<CodingAgent>,
+    /// The session's background shells, as the strip draws them: a
+    /// snapshot the poll thread replaces, read fresh on every redraw.
+    /// `None` on a machine without the backend, and in a sandbox session,
+    /// whose jobs run where this process cannot see them.
+    pub jobs: Option<crate::jobs::JobsHandle>,
     /// The subagent job registry the current agent's tool resolver
     /// starts jobs into — the wire's handle, replaced at every agent
     /// rebuild, exactly when the old registry dies with its agent. The
@@ -460,6 +465,14 @@ impl App {
             }
         };
         let config_disabled_mcp = setup.config.disabled_mcp_servers.clone();
+        // Jobs are local by construction: a sandbox session's shells run
+        // elsewhere, so there is nothing here to watch (the wiring in
+        // `session_agent_config` is gated the same way).
+        let jobs = setup
+            .sandboxed
+            .is_none()
+            .then(crate::jobs::JobsHandle::spawn)
+            .flatten();
         Ok(Self {
             secrets: setup.secrets,
             // Read before `options` moves into the struct.
@@ -488,6 +501,7 @@ impl App {
             screen,
             models: Vec::new(),
             agent,
+            jobs,
             subagents: subagents_handle,
             turn: TurnState::idle(),
             transcript,
