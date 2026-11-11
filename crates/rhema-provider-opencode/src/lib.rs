@@ -38,7 +38,7 @@ use rhema_core::provider::{ModelProvider, ProviderError};
 use rhema_core::request::ModelRequest;
 use rhema_provider::{ModelCard, ModelListing};
 use rhema_provider_openai_compatible::provider::{
-    OpenAiCompatibleProvider, network_error as core_network_error,
+    Api, OpenAiCompatibleProvider, network_error as core_network_error,
 };
 use rhema_provider_openai_compatible::wire::WireErrorBody;
 
@@ -77,6 +77,10 @@ pub struct OpenCodeProvider {
     /// The conversation id every request carries.
     session_id: String,
     http: reqwest::Client,
+    /// Which request shape completions speak; the default is chat
+    /// completions, and `/responses` switches the gateway's Responses
+    /// route on.
+    api: Api,
     /// The dialect-core transport carrying the session header; every
     /// completion goes through it.
     transport: OpenAiCompatibleProvider,
@@ -107,10 +111,11 @@ impl OpenCodeProvider {
         let session_id = new_session_id();
         Self {
             base_url: DEFAULT_BASE_URL.to_owned(),
-            transport: transport_for(DEFAULT_BASE_URL, &api_key, &session_id),
+            transport: transport_for(DEFAULT_BASE_URL, &api_key, &session_id, Api::Chat),
             api_key,
             session_id,
             http: http_client(),
+            api: Api::Chat,
         }
     }
 
@@ -125,7 +130,19 @@ impl OpenCodeProvider {
     /// Go, and how tests reach a mock server.
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into().trim_end_matches('/').to_owned();
-        self.transport = transport_for(&self.base_url, &self.api_key, &self.session_id);
+        self.transport = transport_for(&self.base_url, &self.api_key, &self.session_id, self.api);
+        self
+    }
+
+    /// Speaks the gateway's Responses route (`POST {base}/responses`)
+    /// instead of chat completions. A tool result's images ride its
+    /// `function_call_output` as content parts there, so `see`'s staged
+    /// images reach the model with no follow-up turn. The choice lives
+    /// here, not on the transport, so the transport rebuilds of
+    /// [`Self::with_base_url`] and [`Self::with_session_id`] keep it.
+    pub fn with_api(mut self, api: Api) -> Self {
+        self.api = api;
+        self.transport = transport_for(&self.base_url, &self.api_key, &self.session_id, self.api);
         self
     }
 
@@ -136,7 +153,8 @@ impl OpenCodeProvider {
         let session_id = session_id.into();
         if !session_id.trim().is_empty() {
             self.session_id = session_id;
-            self.transport = transport_for(&self.base_url, &self.api_key, &self.session_id);
+            self.transport =
+                transport_for(&self.base_url, &self.api_key, &self.session_id, self.api);
         }
         self
     }
@@ -202,8 +220,15 @@ fn header_value(value: &str) -> reqwest::header::HeaderValue {
 
 /// The dialect-core transport for one base: the session header, the
 /// client name, the bearer key when present.
-fn transport_for(base_url: &str, api_key: &str, session_id: &str) -> OpenAiCompatibleProvider {
-    let mut transport = OpenAiCompatibleProvider::new(api_key).with_base_url(base_url);
+fn transport_for(
+    base_url: &str,
+    api_key: &str,
+    session_id: &str,
+    api: Api,
+) -> OpenAiCompatibleProvider {
+    let mut transport = OpenAiCompatibleProvider::new(api_key)
+        .with_base_url(base_url)
+        .with_api(api);
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(SESSION_HEADER, header_value(session_id));
     headers.insert(reqwest::header::USER_AGENT, header_value(USER_AGENT));
@@ -294,6 +319,19 @@ mod tests {
         let second = OpenCodeProvider::new("k").session_id().to_owned();
         assert!(first.starts_with("ses_"), "{first}");
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn the_responses_choice_survives_the_transport_rebuilds() {
+        let provider = OpenCodeProvider::new("k")
+            .with_api(Api::Responses)
+            .with_base_url(GO_BASE_URL)
+            .with_session_id("ses_kept");
+        assert_eq!(provider.api, Api::Responses);
+        assert_eq!(provider.base_url, GO_BASE_URL);
+        // Chat stays the default, before and after a rebuild.
+        let provider = OpenCodeProvider::new("k").with_base_url(GO_BASE_URL);
+        assert_eq!(provider.api, Api::Chat);
     }
 
     #[test]

@@ -690,7 +690,7 @@ fn effort_field(
 /// The OpenAI-shaped wire spelling of a thinking level, under the
 /// dialect's [`Dialect::effort_key`]; `None` sends nothing and the
 /// server's default stands.
-fn reasoning_effort_value(thinking: ThinkingEffort) -> Option<Value> {
+pub(crate) fn reasoning_effort_value(thinking: ThinkingEffort) -> Option<Value> {
     match thinking {
         ThinkingEffort::Default => None,
         ThinkingEffort::Low => Some(Value::String("low".to_owned())),
@@ -731,7 +731,7 @@ fn parts_of(message: &Message) -> Option<WireContent> {
 }
 
 /// The text blocks of a message, joined by a blank line.
-fn joined_texts(message: &Message) -> String {
+pub(crate) fn joined_texts(message: &Message) -> String {
     message
         .content
         .iter()
@@ -799,7 +799,7 @@ fn result_wire_messages(result: &ToolResult) -> Vec<WireMessage> {
 }
 
 /// Call arguments as their JSON text; a `null` payload becomes `{}`.
-fn arguments_text(args: &Value) -> String {
+pub(crate) fn arguments_text(args: &Value) -> String {
     if args.is_null() {
         "{}".to_owned()
     } else {
@@ -1018,7 +1018,7 @@ impl ChunkAssembler {
 
 /// Parses a call's assembled arguments text; an empty payload is `{}` and
 /// an unparseable one wraps under [`WRAPPED_ARGS_KEY`] so the turn survives.
-fn parse_args(raw: &str, args_key: &'static str) -> Value {
+pub(crate) fn parse_args(raw: &str, args_key: &'static str) -> Value {
     if raw.trim().is_empty() {
         return Value::Object(serde_json::Map::new());
     }

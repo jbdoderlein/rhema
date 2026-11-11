@@ -45,13 +45,18 @@
 //!   [`rhema_core::ModelRequest`] / SSE chunks and
 //!   [`rhema_core::ModelOutput`] / [`rhema_core::Event`]s, and the models
 //!   listing mapping onto `ModelCard`
+//! - [`responses`] — the Responses-API wire, the second request shape
+//!   (`POST {base}/responses`) that DeepSeek, OpenCode's gateway, and
+//!   llama.cpp speak beside chat completions; a tool result's images
+//!   ride its `function_call_output` as content parts there
 //! - [`provider`] — the HTTP transport and the
 //!   [`ModelProvider`](rhema_core::ModelProvider) implementation
 
 #![forbid(unsafe_code)]
 
 pub mod provider;
+pub mod responses;
 pub mod wire;
 
-pub use provider::{DEEPSEEK_BASE_URL, DEFAULT_BASE_URL, OpenAiCompatibleProvider};
+pub use provider::{Api, DEEPSEEK_BASE_URL, DEFAULT_BASE_URL, OpenAiCompatibleProvider};
 pub use wire::{ChatCompletionChunk, ChatCompletionRequest, ChunkAssembler};

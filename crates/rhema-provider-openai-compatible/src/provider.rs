@@ -31,6 +31,7 @@ use rhema_core::provider::{ModelProvider, ProviderError};
 use rhema_core::request::ModelRequest;
 use rhema_provider::{Allowance, ModelCard, ModelListing, Pricing, SseDecoder};
 
+use crate::responses::{ResponsesAssembler, WireStreamEvent};
 use crate::wire::{ChatCompletionChunk, ChunkAssembler, WireBalance, WireErrorBody, is_text};
 
 /// The production OpenAI API base, version segment included.
@@ -57,6 +58,22 @@ pub fn http_client() -> reqwest::Client {
 /// kind speaks by default, over the generic adapter.
 pub const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/v1";
 
+/// Which request shape a provider speaks. Both ride the same base URL,
+/// key, headers, and client; only the endpoint, the body, and the
+/// stream vocabulary differ.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Api {
+    /// `POST {base}/chat/completions` — the default, the dialect every
+    /// OpenAI-compatible server speaks.
+    #[default]
+    Chat,
+    /// `POST {base}/responses` — the Responses API, spoken by OpenAI,
+    /// DeepSeek, OpenCode's gateway, and llama.cpp's server. A tool
+    /// result's images ride its `function_call_output` as content parts
+    /// there, with no follow-up turn.
+    Responses,
+}
+
 /// Any server speaking the OpenAI chat-completions dialect, addressed by
 /// its full versioned base URL.
 pub struct OpenAiCompatibleProvider {
@@ -67,6 +84,9 @@ pub struct OpenAiCompatibleProvider {
     /// dialect names the keys where the addressed server family spells
     /// its deviations.
     dialect: crate::wire::Dialect,
+    /// Which request shape `complete` speaks; the default is chat
+    /// completions.
+    api: Api,
     /// Extra headers every request carries — routing metadata,
     /// editor identification, whatever the service demands.
     extra_headers: reqwest::header::HeaderMap,
@@ -95,6 +115,7 @@ impl OpenAiCompatibleProvider {
             api_key: api_key.into(),
             http: http_client(),
             dialect: crate::wire::OPENAI_COMPATIBLE,
+            api: Api::Chat,
             extra_headers: reqwest::header::HeaderMap::new(),
         }
     }
@@ -119,11 +140,46 @@ impl OpenAiCompatibleProvider {
         self
     }
 
+    /// Speaks the Responses API instead of chat completions — same base
+    /// URL, same key; the endpoint, the body, and the stream vocabulary
+    /// change. Address a server that serves `{base}/responses` (OpenAI,
+    /// DeepSeek, OpenCode's gateway, llama.cpp's server).
+    pub fn with_api(mut self, api: Api) -> Self {
+        self.api = api;
+        self
+    }
+
     /// Attaches headers every request carries. Called repeatedly, the
     /// maps merge; later values win per header name.
     pub fn with_extra_headers(mut self, headers: reqwest::header::HeaderMap) -> Self {
         self.extra_headers.extend(headers);
         self
+    }
+
+    /// Posts a streaming request and hands back the live response: the
+    /// key and extra headers attached, non-2xx mapped onto
+    /// [`ProviderError::Api`]. No overall timeout — a long generation
+    /// is legitimate, and the client's read timeout already bounds
+    /// stalls between chunks.
+    async fn post_stream<T: serde::Serialize>(
+        &self,
+        url: &str,
+        body: &T,
+    ) -> Result<reqwest::Response, ProviderError> {
+        let response = self
+            .http
+            .post(url)
+            .authorized(&self.api_key, &self.extra_headers)
+            .json(body)
+            .send()
+            .await
+            .map_err(network_error)?;
+        let status = response.status();
+        if !status.is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(api_error(status, &text));
+        }
+        Ok(response)
     }
 
     /// The DeepSeek account's prepaid balance (`GET /user/balance`).
@@ -325,6 +381,55 @@ fn feed_chunk(
     assembler.push(chunk, sink)
 }
 
+/// Drains one Responses-API SSE stream to its terminal event
+/// (`response.completed` / `response.incomplete` / `response.failed`),
+/// assembling the output and emitting streaming events along the way.
+/// This wire has no `[DONE]` sentinel; one arriving from a proxy ends
+/// the stream early, with whatever has assembled standing.
+pub async fn drain_responses_stream(
+    response: reqwest::Response,
+    sink: &mut dyn EventSink,
+) -> Result<ModelOutput, ProviderError> {
+    let mut stream = response.bytes_stream();
+    let mut decoder = SseDecoder::new();
+    let mut assembler = ResponsesAssembler::new();
+    while let Some(item) = stream.next().await {
+        let bytes = item.map_err(network_error)?;
+        for payload in decoder.push(&bytes) {
+            if payload.trim() == DONE_SENTINEL {
+                return Ok(assembler.finish());
+            }
+            feed_event(&payload, &mut assembler, sink)?;
+            if let Some(err) = decoder.take_error() {
+                return Err(ProviderError::Network(err));
+            }
+        }
+    }
+    for payload in decoder.finish() {
+        if payload.trim() == DONE_SENTINEL {
+            break;
+        }
+        feed_event(&payload, &mut assembler, sink)?;
+    }
+    Ok(assembler.finish())
+}
+
+fn feed_event(
+    payload: &str,
+    assembler: &mut ResponsesAssembler,
+    sink: &mut dyn EventSink,
+) -> Result<(), ProviderError> {
+    if payload.trim().is_empty() {
+        return Ok(());
+    }
+    let event: WireStreamEvent =
+        serde_json::from_str(payload).map_err(|err| ProviderError::Api {
+            message: format!("malformed SSE event: {err}"),
+            status: None,
+        })?;
+    assembler.push(event, sink)
+}
+
 #[async_trait]
 impl ModelListing for OpenAiCompatibleProvider {
     /// The text chat models the server can serve (`GET {base}/models` →
@@ -373,27 +478,20 @@ impl ModelProvider for OpenAiCompatibleProvider {
         req: ModelRequest,
         sink: &mut dyn EventSink,
     ) -> Result<ModelOutput, ProviderError> {
-        let body = crate::wire::request_body(&req, &self.dialect);
-        let url = format!("{}/chat/completions", self.base_url);
-
-        let response = self
-            .http
-            .post(&url)
-            .authorized(&self.api_key, &self.extra_headers)
-            .json(&body)
-            .send()
-            .await
-            .map_err(network_error)?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(api_error(status, &text));
+        match self.api {
+            Api::Chat => {
+                let body = crate::wire::request_body(&req, &self.dialect);
+                let url = format!("{}/chat/completions", self.base_url);
+                let response = self.post_stream(&url, &body).await?;
+                drain_chat_stream(response, &self.dialect, sink).await
+            }
+            Api::Responses => {
+                let body = crate::responses::request_body(&req);
+                let url = format!("{}/responses", self.base_url);
+                let response = self.post_stream(&url, &body).await?;
+                drain_responses_stream(response, sink).await
+            }
         }
-
-        // No overall timeout: a long generation is legitimate, and the
-        // client's read timeout already bounds stalls between chunks.
-        drain_chat_stream(response, &self.dialect, sink).await
     }
 }
 
