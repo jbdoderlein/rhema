@@ -174,6 +174,7 @@ fn fetch_url_blocking(url: &str) -> Result<String, String> {
     }
 }
 
+#[cfg(not(windows))]
 fn run_installer_blocking(url: &str) -> Result<String, String> {
     // The URL rides as a positional parameter, never spliced into the
     // shell text. The script lands in a temp file rather than piping
