@@ -19,11 +19,11 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
       # The crates.io publish order is hand-held in
-      # scripts/publish-crates.sh; check it here so a crate that joins
+      # .gitea/scripts/publish-crates.sh; check it here so a crate that joins
       # the dependency graph without joining the list fails the push,
       # not the tag release.
       - name: Check the crates.io publish order
-        run: scripts/publish-crates.sh --check
+        run: .gitea/scripts/publish-crates.sh --check
 
       # reqwest's default TLS links openssl; rusqlite's bundled SQLite
       # needs a C compiler (present on the runner image, kept explicit

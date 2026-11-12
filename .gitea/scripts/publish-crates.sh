@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Publish the library closure to crates.io, in dependency order.
 #
-#   scripts/publish-crates.sh --check    # offline: the list is complete
-#                                        # and topologically ordered
-#   scripts/publish-crates.sh 0.2.3      # publish whatever is missing
+#   .gitea/scripts/publish-crates.sh --check    # offline: the list is complete
+#                                               # and topologically ordered
+#   .gitea/scripts/publish-crates.sh 0.2.3      # publish whatever is missing
 #
 # CRATES is hand-ordered because the release also skips crates that never
 # reach crates.io (rhema-code waits for its crossterm patches to land
