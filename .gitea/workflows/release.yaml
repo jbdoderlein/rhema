@@ -25,10 +25,11 @@ jobs:
     # ships in the binary (the crates.io one waits for the patches).
     # The two cross legs link a vendored OpenSSL (`vendored-openssl`),
     # since the runner carries no target libssl; the native leg keeps
-    # the system one. darwin-arm64 and windows-amd64 are absent on
-    # purpose: the first needs an Apple toolchain a Linux runner cannot
-    # carry, the second does not compile until rhema-mcp's bridge has a
-    # non-Unix transport.
+    # the system one. darwin-arm64 is absent on purpose: it needs an
+    # Apple toolchain a Linux runner cannot carry. windows-amd64
+    # cross-builds with mingw; the mcp bridge stays unix-only there
+    # (a session on windows wires no servers — see rhema-mcp's
+    # bridge.rs) until a named-pipe transport lands.
     if: ${{ !contains(gitea.ref_name, '-') }}
     runs-on: ubuntu-latest
     strategy:
@@ -50,6 +51,11 @@ jobs:
             packages: gcc-riscv64-linux-gnu perl
             cc: riscv64-linux-gnu-gcc
             features: vendored-openssl
+          - name: windows-amd64
+            target: x86_64-pc-windows-gnu
+            packages: gcc-mingw-w64-x86-64
+            cc: x86_64-w64-mingw32-gcc
+            features: ""
     steps:
       - uses: https://gitea.com/actions/checkout@v4
 
@@ -100,8 +106,12 @@ jobs:
           fi
           cargo build "${args[@]}"
           mkdir -p dist
-          cp "target/$TARGET/release/rhema" dist/rhema
-          tar -czf "dist/rhema-$NAME.tar.gz" -C dist rhema
+          # windows-gnu names the binary rhema.exe; the tarball keeps
+          # the suffix so the extraction lands a runnable file.
+          exe=
+          [ "$TARGET" = "x86_64-pc-windows-gnu" ] && exe=.exe
+          cp "target/$TARGET/release/rhema$exe" "dist/rhema$exe"
+          tar -czf "dist/rhema-$NAME.tar.gz" -C dist "rhema$exe"
 
       - name: Upload the tarball
         env:

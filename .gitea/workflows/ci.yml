@@ -58,6 +58,25 @@ jobs:
   # The cloud closure compiles to wasm32: the Durable Object with the
   # worker feature is the real build, and the platform-neutral closure
   # must also stay wasm-clean without the local shell.
+  # The frontend keeps building for windows: a cross check (no link,
+  # so no full mingw toolchain) catches a unix-only regression. ring
+  # compiles its C sources even under check, so the target compiler
+  # is installed for it.
+  windows-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: https://gitea.com/actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: x86_64-pc-windows-gnu
+
+      - name: Install the mingw compiler (ring's build script)
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Check the frontend for windows
+        run: cargo check -p rhema-code --bins --target x86_64-pc-windows-gnu
+
   cloudflare-wasm:
     runs-on: ubuntu-latest
     steps:
