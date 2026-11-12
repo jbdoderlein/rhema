@@ -8,6 +8,10 @@
 //! insurance beside it, the same pair the claw's resident server
 //! uses).
 //!
+//! The bind is unix-only; [`serve`] refuses on other families (there
+//! is no named-pipe transport yet), and the wire layer skips the
+//! bridge there instead of failing the session.
+//!
 //! Routes follow spec §5's surface: `/servers` (no spawns), `/tools`
 //! (names and descriptions only — the disclosure boundary: schemas
 //! never pass this route), `/catalog` (full schemas, the CLI's
@@ -19,9 +23,10 @@
 //! and sends `notifications/cancelled` unconditionally, and a late
 //! result is discarded by construction.
 
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
+
 use std::convert::Infallible;
 use std::future::Future;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -37,7 +42,6 @@ use axum::routing::{get, post};
 use futures_util::Stream;
 use serde::Deserialize;
 use serde_json::json;
-use tokio::net::UnixListener;
 
 use crate::client::Cancel;
 use crate::manager::McpManager;
@@ -94,38 +98,52 @@ pub async fn serve(
     socket_path: PathBuf,
     token: String,
 ) -> std::io::Result<BridgeHandle> {
-    // A leftover socket from a crashed session blocks the bind;
-    // remove it and let the bind fail on anything that is not ours.
-    let _ = std::fs::remove_file(&socket_path);
-    let listener = UnixListener::bind(&socket_path)?;
-    std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))?;
+    #[cfg(unix)]
+    {
+        // A leftover socket from a crashed session blocks the bind;
+        // remove it and let the bind fail on anything that is not ours.
+        let _ = std::fs::remove_file(&socket_path);
+        use std::os::unix::fs::PermissionsExt;
+        use tokio::net::UnixListener;
+        let listener = UnixListener::bind(&socket_path)?;
+        std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))?;
 
-    let state = BridgeState { manager, token };
-    let app = Router::new()
-        .route("/servers", get(servers))
-        .route("/tools/{server}", get(tools))
-        .route("/catalog/{server}", get(catalog))
-        .route("/schema/{server}/{tool}", get(schema))
-        .route(
-            "/call",
-            post(call).layer(axum::extract::DefaultBodyLimit::max(MAX_BODY_BYTES)),
-        )
-        .layer(middleware::from_fn_with_state(state.clone(), require_auth))
-        .with_state(state);
+        let state = BridgeState { manager, token };
+        let app = Router::new()
+            .route("/servers", get(servers))
+            .route("/tools/{server}", get(tools))
+            .route("/catalog/{server}", get(catalog))
+            .route("/schema/{server}/{tool}", get(schema))
+            .route(
+                "/call",
+                post(call).layer(axum::extract::DefaultBodyLimit::max(MAX_BODY_BYTES)),
+            )
+            .layer(middleware::from_fn_with_state(state.clone(), require_auth))
+            .with_state(state);
 
-    let path_for_task = socket_path.clone();
-    let server = tokio::spawn(async move {
-        let listener_for_task = listener;
-        if let Err(err) = axum::serve(listener_for_task, app).await {
-            eprintln!("[mcp] bridge stopped: {err}");
-        }
-        let _ = std::fs::remove_file(&path_for_task);
-    });
+        let path_for_task = socket_path.clone();
+        let server = tokio::spawn(async move {
+            let listener_for_task = listener;
+            if let Err(err) = axum::serve(listener_for_task, app).await {
+                eprintln!("[mcp] bridge stopped: {err}");
+            }
+            let _ = std::fs::remove_file(&path_for_task);
+        });
 
-    Ok(BridgeHandle {
-        socket_path,
-        server,
-    })
+        Ok(BridgeHandle {
+            socket_path,
+            server,
+        })
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = (manager, socket_path, token);
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "the mcp bridge binds a unix-domain socket; there is no windows transport for it",
+        ))
+    }
 }
 
 /// The bearer check, constant-time on mismatch — the token is cheap

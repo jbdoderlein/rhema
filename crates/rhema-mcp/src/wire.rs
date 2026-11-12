@@ -24,6 +24,8 @@
 //! with the wiring and its clients kill their stdio children on drop.
 //! HTTP servers hold no child to clean.
 
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -48,7 +50,7 @@ pub struct Wiring {
     socket_path: PathBuf,
     bridge: Option<crate::bridge::BridgeHandle>,
     _bridge_thread: Option<std::thread::JoinHandle<()>>,
-    _provision: Provision,
+    _provision: Option<Provision>,
 }
 
 impl Wiring {
@@ -151,10 +153,45 @@ pub fn wire_with_bin(
         notices: Vec::new(),
     };
 
+    // No unix socket, no bridge: wire to nothing (empty env, no
+    // lines, one notice) rather than fail the session. The frontend
+    // drops an empty wiring, so the session runs without the servers.
+    #[cfg(not(unix))]
+    {
+        let _ = (disabled, agent_id, bash_env, bin);
+        Ok(Wiring {
+            shell_env: BTreeMap::new(),
+            socket_path: session_tmp.join("mcp.sock"),
+            lines: Vec::new(),
+            notices: vec![
+                "mcp: the bridge binds a unix-domain socket; servers are not wired on this platform"
+                    .to_owned(),
+            ],
+            manager: std::sync::Arc::new(McpManager::new(&filtered)),
+            bridge: None,
+            _bridge_thread: None,
+            _provision: None,
+        })
+    }
+
+    #[cfg(unix)]
+    wire_with_bin_unix(&filtered, session_tmp, agent_id, bash_env, bin)
+}
+
+/// The unix wiring body: bind the bridge in the session temp dir,
+/// provision the init file and env map. Split from [`wire_with_bin`]
+/// so the non-unix refusal needs no unreachable tail.
+fn wire_with_bin_unix(
+    filtered: &McpConfig,
+    session_tmp: &Path,
+    agent_id: &str,
+    bash_env: Option<std::ffi::OsString>,
+    bin: &Path,
+) -> std::io::Result<Wiring> {
     let socket_path = session_tmp.join("mcp.sock");
     let socket = socket_path.clone();
     let token = session_token();
-    let manager = std::sync::Arc::new(McpManager::new(&filtered));
+    let manager = std::sync::Arc::new(McpManager::new(filtered));
     // The bridge's runtime lives on its own thread for the wiring's
     // lifetime: bind first, then keep the runtime parked forever. The
     // shutdown aborts the accept task, which ends block_on, which
@@ -196,7 +233,7 @@ pub fn wire_with_bin(
         .recv()
         .map_err(|_| std::io::Error::other("the bridge thread died before binding"))??;
     let provisioned = provision::provision_with_bin(
-        &filtered,
+        filtered,
         bridge.socket_path(),
         &token,
         session_tmp,
@@ -226,7 +263,7 @@ pub fn wire_with_bin(
         manager,
         bridge: Some(bridge),
         _bridge_thread: Some(thread),
-        _provision: provisioned,
+        _provision: Some(provisioned),
     })
 }
 

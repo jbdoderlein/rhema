@@ -16,6 +16,8 @@
 //! bridge's SSE stream; keepalive comments are skipped, the first
 //! terminal event carries the outcome.
 
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
+
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
@@ -189,25 +191,37 @@ fn exchange_inner(
     path: &str,
     body: Option<&str>,
 ) -> Result<Answer, std::io::Error> {
-    let mut stream = std::os::unix::net::UnixStream::connect(&env.socket)?;
-    stream.set_read_timeout(Some(std::time::Duration::from_secs(180)))?;
-    let mut request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: rhema-mcp\r\nAuthorization: Bearer {}\r\nConnection: close\r\n",
-        env.token
-    );
-    match body {
-        Some(body) => {
-            request.push_str("Content-Type: application/json\r\n");
-            request.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
-            request.push_str(body);
+    #[cfg(unix)]
+    {
+        let mut stream = std::os::unix::net::UnixStream::connect(&env.socket)?;
+        stream.set_read_timeout(Some(std::time::Duration::from_secs(180)))?;
+        let mut request = format!(
+            "{method} {path} HTTP/1.1\r\nHost: rhema-mcp\r\nAuthorization: Bearer {}\r\nConnection: close\r\n",
+            env.token
+        );
+        match body {
+            Some(body) => {
+                request.push_str("Content-Type: application/json\r\n");
+                request.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
+                request.push_str(body);
+            }
+            None => request.push_str("\r\n"),
         }
-        None => request.push_str("\r\n"),
+        use std::io::Write as _;
+        stream.write_all(request.as_bytes())?;
+        let mut raw = Vec::new();
+        stream.read_to_end(&mut raw)?;
+        parse_answer(&raw)
     }
-    use std::io::Write as _;
-    stream.write_all(request.as_bytes())?;
-    let mut raw = Vec::new();
-    stream.read_to_end(&mut raw)?;
-    parse_answer(&raw)
+
+    #[cfg(not(unix))]
+    {
+        let _ = (env, method, path, body);
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "the mcp bridge binds a unix-domain socket; there is no windows transport for it",
+        ))
+    }
 }
 
 /// Splits head from body, decodes chunked transfer or content-length.
