@@ -25,6 +25,11 @@ jobs:
       - name: Check the crates.io publish order
         run: scripts/publish-crates.sh --check
 
+      # The claw product is leaving this repo; while it still lives
+      # here, keep the framework from growing an edge into it.
+      - name: Check the claw boundary
+        run: scripts/check-claw-boundary.sh
+
       # reqwest's default TLS links openssl; rusqlite's bundled SQLite
       # needs a C compiler (present on the runner image, kept explicit
       # next to the rest).
