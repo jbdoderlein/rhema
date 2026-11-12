@@ -1183,8 +1183,10 @@ impl Home {
 
 /// The user's home directory: `$HOME`, falling back to `$USERPROFILE`
 /// — windows does not set `HOME` (git-bash and MSYS do, cmd and
-/// powershell never), so the windows convention answers second.
-fn user_home() -> Result<PathBuf, ConfigError> {
+/// powershell never), so the windows convention answers second. Public:
+/// every convention outside this crate that hangs off the home (the
+/// sessions' cache dir, for one) resolves it the same one way.
+pub fn user_home() -> Result<PathBuf, ConfigError> {
     match std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
         Ok(home) if !home.trim().is_empty() => Ok(PathBuf::from(home)),
         _ => Err(ConfigError::NoHome),
