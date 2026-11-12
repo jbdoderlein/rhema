@@ -68,9 +68,10 @@ fn redacted(value: &Option<String>) -> Option<&'static str> {
 /// Why a config operation failed.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    /// `HOME` is not set, so the user home — and every convention that
-    /// hangs off it, the config base included — cannot be located.
-    #[error("cannot locate the home directory: HOME is not set")]
+    /// Neither `HOME` nor `USERPROFILE` is set, so the user home — and
+    /// every convention that hangs off it, the config base included —
+    /// cannot be located.
+    #[error("cannot locate the home directory: HOME and USERPROFILE are both unset")]
     NoHome,
     /// Reading or writing the file failed.
     #[error(transparent)]
@@ -1180,9 +1181,11 @@ impl Home {
     }
 }
 
-/// The user's home directory (`$HOME`).
+/// The user's home directory: `$HOME`, falling back to `$USERPROFILE`
+/// — windows does not set `HOME` (git-bash and MSYS do, cmd and
+/// powershell never), so the windows convention answers second.
 fn user_home() -> Result<PathBuf, ConfigError> {
-    match std::env::var("HOME") {
+    match std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
         Ok(home) if !home.trim().is_empty() => Ok(PathBuf::from(home)),
         _ => Err(ConfigError::NoHome),
     }
