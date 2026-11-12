@@ -303,10 +303,23 @@ pub(crate) fn lxd_launch_argv(name: &str, vm: bool, uid: u32, gid: u32) -> Vec<S
 /// The workspace owner: the uid/gid the tree answers to on the host.
 /// The instance's map and exec's identity are both this pair.
 pub(crate) fn workspace_owner(workspace: &std::path::Path) -> anyhow::Result<(u32, u32)> {
-    use std::os::unix::fs::MetadataExt;
-    let meta = std::fs::metadata(workspace)
-        .map_err(|err| anyhow::anyhow!("the lxd sandbox needs the workspace's owner: {err}"))?;
-    Ok((meta.uid(), meta.gid()))
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let meta = std::fs::metadata(workspace)
+            .map_err(|err| anyhow::anyhow!("the lxd sandbox needs the workspace's owner: {err}"))?;
+        Ok((meta.uid(), meta.gid()))
+    }
+
+    // The idmap maps a unix host's owner into the container; a
+    // windows host has no uid/gid pair to map, so the launch refuses.
+    #[cfg(not(unix))]
+    {
+        let _ = workspace;
+        Err(anyhow::anyhow!(
+            "the lxd sandbox's idmap needs a unix host; there is no uid/gid to map on windows"
+        ))
+    }
 }
 
 pub(crate) fn lxc_output(args: &[&str]) -> anyhow::Result<std::process::Output> {
