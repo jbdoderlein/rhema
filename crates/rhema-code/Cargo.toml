@@ -28,36 +28,36 @@ mock = ["rhema-core/mock", "rhema-coding-agent/mock"]
 vendored-openssl = ["dep:openssl"]
 
 [dependencies]
-rhema-core = { path = "../rhema-core", version = "0.2.4" }
-rhema-config = { path = "../rhema-config", version = "0.2.4" }
-rhema-agent-tools = { path = "../rhema-agent-tools", version = "0.2.4" }
-rhema-coding-agent = { path = "../rhema-coding-agent", version = "0.2.4" }
+rhema-core = { path = "../rhema-core", version = "0.2.5" }
+rhema-config = { path = "../rhema-config", version = "0.2.5" }
+rhema-agent-tools = { path = "../rhema-agent-tools", version = "0.2.5" }
+rhema-coding-agent = { path = "../rhema-coding-agent", version = "0.2.5" }
 # The subagent extension: discovered definitions wired in as one tool
-rhema-subagents = { path = "../rhema-subagents", version = "0.2.4" }
+rhema-subagents = { path = "../rhema-subagents", version = "0.2.5" }
 # The bounded request view, when --transcript is set
-rhema-transcript = { path = "../rhema-transcript", version = "0.2.4" }
+rhema-transcript = { path = "../rhema-transcript", version = "0.2.5" }
 # The `rhema acp` subcommand: the Agent Client Protocol server
-rhema-acp = { path = "../rhema-acp", version = "0.2.4" }
+rhema-acp = { path = "../rhema-acp", version = "0.2.5" }
 # Where bash runs: the sandbox seam and its backends — docker, lxd,
 # ecrou, ssh, http — behind the stored choice; the seam itself brings
 # `FsRoot` (feature `spawn`)
-rhema-sandbox = { path = "../rhema-sandbox", version = "0.2.4", features = [
+rhema-sandbox = { path = "../rhema-sandbox", version = "0.2.5", features = [
     "spawn",
 ] }
-rhema-sandbox-ecrou = { path = "../rhema-sandbox-ecrou", version = "0.2.4" }
-rhema-sandbox-lxd = { path = "../rhema-sandbox-lxd", version = "0.2.4" }
-rhema-sandbox-docker = { path = "../rhema-sandbox-docker", version = "0.2.4" }
-rhema-sandbox-http = { path = "../rhema-sandbox-http", version = "0.2.4" }
-rhema-sandbox-ssh = { path = "../rhema-sandbox-ssh", version = "0.2.4" }
+rhema-sandbox-ecrou = { path = "../rhema-sandbox-ecrou", version = "0.2.5" }
+rhema-sandbox-lxd = { path = "../rhema-sandbox-lxd", version = "0.2.5" }
+rhema-sandbox-docker = { path = "../rhema-sandbox-docker", version = "0.2.5" }
+rhema-sandbox-http = { path = "../rhema-sandbox-http", version = "0.2.5" }
+rhema-sandbox-ssh = { path = "../rhema-sandbox-ssh", version = "0.2.5" }
 # The shared model card every adapter's catalog normalizes into
-rhema-provider = { path = "../rhema-provider", version = "0.2.4" }
-rhema-provider-registry = { path = "../rhema-provider-registry", version = "0.2.4" }
-rhema-provider-anthropic = { path = "../rhema-provider-anthropic", version = "0.2.4" }
-rhema-provider-copilot = { path = "../rhema-provider-copilot", version = "0.2.4" }
-rhema-provider-chatgpt = { path = "../rhema-provider-chatgpt", version = "0.2.4" }
-rhema-provider-openai-compatible = { path = "../rhema-provider-openai-compatible", version = "0.2.4" }
-rhema-provider-opencode = { path = "../rhema-provider-opencode", version = "0.2.4" }
-rhema-provider-openrouter = { path = "../rhema-provider-openrouter", version = "0.2.4" }
+rhema-provider = { path = "../rhema-provider", version = "0.2.5" }
+rhema-provider-registry = { path = "../rhema-provider-registry", version = "0.2.5" }
+rhema-provider-anthropic = { path = "../rhema-provider-anthropic", version = "0.2.5" }
+rhema-provider-copilot = { path = "../rhema-provider-copilot", version = "0.2.5" }
+rhema-provider-chatgpt = { path = "../rhema-provider-chatgpt", version = "0.2.5" }
+rhema-provider-openai-compatible = { path = "../rhema-provider-openai-compatible", version = "0.2.5" }
+rhema-provider-opencode = { path = "../rhema-provider-opencode", version = "0.2.5" }
+rhema-provider-openrouter = { path = "../rhema-provider-openrouter", version = "0.2.5" }
 # Derives for the saved session's usage-stats blob (src/sessions.rs);
 # the session types themselves live in rhema-core
 serde = { workspace = true }
@@ -90,7 +90,7 @@ base64 = "0.22"
 # is how the feature reaches openssl-sys for every crate in the graph.
 openssl = { version = "0.10", features = ["vendored"], optional = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
-rhema-mcp = { version = "0.2.4", path = "../rhema-mcp" }
+rhema-mcp = { version = "0.2.5", path = "../rhema-mcp" }
 serde_yaml.workspace = true
 
 [dev-dependencies]
