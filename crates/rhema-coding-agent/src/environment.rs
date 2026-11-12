@@ -311,7 +311,14 @@ fn os_label(manifest: &Manifest, raw: &str) -> String {
     let Some((system, _rest)) = raw.split_once(' ') else {
         return raw.to_owned();
     };
-    match manifest.os_names.get(&system.to_lowercase()) {
+    let system = system.to_lowercase();
+    // The git-bash family reports itself as MINGW64_NT-10.0-19045 and
+    // kin — a windows host by any prefix spelling, so the family gets
+    // the friendly name without a table row per environment.
+    if system.starts_with("mingw") || system.starts_with("msys") || system.starts_with("cygwin") {
+        return format!("Windows ({raw})");
+    }
+    match manifest.os_names.get(&system) {
         Some(friendly) => format!("{friendly} ({raw})"),
         None => raw.to_owned(),
     }
@@ -322,7 +329,7 @@ fn os_label(manifest: &Manifest, raw: &str) -> String {
 /// reads it sees EOF; anything still running at the deadline is killed
 /// and reaped.
 fn run_probe(manifest: &Manifest, workspace: &Path) -> Result<String, String> {
-    let mut child = Command::new("bash")
+    let mut child = Command::new(rhema_agent_tools::exec::bash_executable())
         .arg("-c")
         .arg(probe_script(manifest))
         .current_dir(workspace)
@@ -330,7 +337,10 @@ fn run_probe(manifest: &Manifest, workspace: &Path) -> Result<String, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|err| format!("cannot spawn the probe: {err}"))?;
+        .map_err(|err| match err.kind() {
+            std::io::ErrorKind::NotFound => rhema_agent_tools::exec::bash_missing_message(),
+            _ => format!("cannot spawn the probe: {err}"),
+        })?;
     let deadline = Instant::now() + PROBE_BUDGET;
     let status = loop {
         match child.try_wait() {
