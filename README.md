@@ -32,9 +32,10 @@ Each crate under `crates/` has its own README with its scope and usage; the work
 
 <img align="center" src=".github/img/rhema-code.png">
 
-Get Rhema Code: 
+Get Rhema Code (Linux, macOS, and Windows):
 ```
-curl -fsSL https://get.rhema.rs/code | sh
+curl -fsSL https://get.rhema.rs/code | sh                  # Linux, macOS, git bash
+irm https://get.rhema.rs/code.ps1 | iex                    # Windows PowerShell
 ```
 
 See <a href="./crates/rhema-code/README.md">Rhema Code README.md</a> for more.
