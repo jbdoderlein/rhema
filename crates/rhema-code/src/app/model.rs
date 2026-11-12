@@ -473,18 +473,24 @@ impl App {
         }
     }
 
-    /// A model was named for `/model <needle>`: resolve the needle against
-    /// the cached catalog — exact id first, then a unique prefix — and
-    /// switch, or say what went missing. `/model` with no needle opens
-    /// the full picker instead.
+    /// A model was named for `/model <needle>`: resolve the needle
+    /// against the cached catalog's fully-qualified rows — `provider/id`,
+    /// the shape the palette completes and the picker displays — exact
+    /// match first, then a unique prefix — and switch, or say what went
+    /// missing. A bare id matches nothing on purpose: several providers
+    /// can serve one id, so the name carries its provider
+    /// (`opencode/glm-5.3-flash`, never just `glm-5.3-flash`). `/model`
+    /// with no needle opens the full picker instead.
     pub fn choose_model_by_id(&mut self, needle: &str) -> Vec<Effect> {
         // The active instance wins ties: the same model id may be served
         // by several instances of one provider.
         let active = self.effective().instance;
+        let qualified =
+            |entry: &crate::screens::CatalogModel| format!("{}/{}", entry.provider, entry.model.id);
         let mut tag: Vec<(&'static str, Option<String>, String)> = self
             .models
             .iter()
-            .filter(|entry| entry.model.id == needle)
+            .filter(|entry| qualified(entry) == needle)
             .map(|entry| {
                 (
                     entry.provider,
@@ -496,7 +502,7 @@ impl App {
         let prefix: Vec<(&'static str, Option<String>, String)> = self
             .models
             .iter()
-            .filter(|entry| entry.model.id.starts_with(needle))
+            .filter(|entry| qualified(entry).starts_with(needle))
             .map(|entry| {
                 (
                     entry.provider,

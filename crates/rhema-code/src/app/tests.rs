@@ -1377,7 +1377,7 @@ fn slash_model_with_a_needle_switches_directly() {
         why: FetchWhy::Bootstrap,
         result: loaded("google", models()),
     });
-    for c in "/model m-b".chars() {
+    for c in "/model google/m-b".chars() {
         h.app.on_key(key(KeyCode::Char(c)));
     }
     let effects = h.app.on_key(key(KeyCode::Enter));
@@ -1406,7 +1406,7 @@ fn slash_model_with_a_unique_prefix_resolves_and_an_unknown_needle_says_so() {
         why: FetchWhy::Bootstrap,
         result: loaded("google", models()),
     });
-    for c in "/model m-".chars() {
+    for c in "/model google/m-".chars() {
         h.app.on_key(key(KeyCode::Char(c)));
     }
     h.app.on_key(key(KeyCode::Enter));
@@ -1432,6 +1432,20 @@ fn slash_model_with_a_unique_prefix_resolves_and_an_unknown_needle_says_so() {
             .lines()
             .iter()
             .any(|line| matches!(line, Line::Notice(text) if text.contains("no model matches")))
+    );
+    // A bare id names no provider, so it resolves to nothing: the
+    // needle must be the fully-qualified row.
+    for c in "/model m-b".chars() {
+        h.app.on_key(key(KeyCode::Char(c)));
+    }
+    h.app.on_key(key(KeyCode::Enter));
+    assert!(
+        h.app
+            .transcript
+            .lines()
+            .iter()
+            .any(|line| matches!(line, Line::Notice(text) if text.contains("no model matches"))),
+        "a bare id is declined"
     );
 }
 
@@ -1772,7 +1786,7 @@ fn turn_costs_accumulate_from_the_model_pricing() {
             )],
         ),
     });
-    crate::commands::dispatch(&mut h.app, "/model gemini-3.8-flash");
+    crate::commands::dispatch(&mut h.app, "/model google/gemini-3.8-flash");
     assert!(h.app.agent.is_some(), "the pick built the agent");
     h.app.on_key(key(KeyCode::Char('a')));
     let effects = h.app.on_key(key(KeyCode::Enter));
@@ -6191,7 +6205,7 @@ fn a_model_switch_keeps_the_retry_offer() {
         result: Err("provider api error: 429 (retry-after: 37)".to_owned()),
         steer: tokio::sync::mpsc::channel(STEER_QUEUE_CAP).1,
     });
-    crate::commands::dispatch(&mut h.app, "/model m-b");
+    crate::commands::dispatch(&mut h.app, "/model google/m-b");
     assert!(h.app.agent.is_some(), "the pick rebuilt the agent");
     assert!(h.app.retryable, "the switch is not a conversation change");
     assert_eq!(

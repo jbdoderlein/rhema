@@ -1955,10 +1955,14 @@ fn the_model_palette_narrows_and_tab_fills_the_argument() {
     })
     .collect();
     assert_eq!(ids, ["openrouter/auto"], "openrouter/ stays alive");
-    // Tab completes the argument, keeping the command prefix.
+    // Tab completes the argument to the fully-qualified name —
+    // provider prefixed, the only shape `/model` accepts.
     chat.handle_key(key(KeyCode::Tab), &models, &[], &[], &crate::icons::UNICODE);
-    assert_eq!(chat.input, "/model openrouter/auto");
-    assert_eq!(chat.cursor, "/model openrouter/auto".chars().count());
+    assert_eq!(chat.input, "/model openrouter/openrouter/auto");
+    assert_eq!(
+        chat.cursor,
+        "/model openrouter/openrouter/auto".chars().count()
+    );
 }
 
 #[test]
