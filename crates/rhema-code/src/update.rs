@@ -31,16 +31,99 @@ pub async fn fetch_latest_version() -> Result<String, String> {
     parse_stable(&body)
 }
 
-/// Runs the install script — the published `get.rhema.rs/code` one —
-/// through `sh`. Returns the script's output tail (its last line names
-/// what landed where), or the failure with the script's own error text.
-/// The new binary is on disk when this answers `Ok`; the running process
-/// keeps the old one until a restart.
+/// Runs the install script — the published `get.rhema.rs/code` one
+/// through `sh` on unix, the `code.ps1` twin on windows, where `sh`
+/// has no interpreter and every host ships powershell. Returns the
+/// script's output tail (its last line names what landed where), or
+/// the failure with the script's own error text. The new binary is on
+/// disk when this answers `Ok`; the running process keeps the old one
+/// until a restart.
 pub async fn run_installer() -> Result<String, String> {
+    #[cfg(windows)]
+    let url = format!("{}/code.ps1", dist_base());
+    #[cfg(not(windows))]
     let url = format!("{}/code", dist_base());
-    tokio::task::spawn_blocking(move || run_installer_blocking(&url))
-        .await
-        .map_err(|err| format!("the install task failed: {err}"))?
+    tokio::task::spawn_blocking(move || {
+        #[cfg(windows)]
+        {
+            run_powershell_installer_blocking(&url)
+        }
+        #[cfg(not(windows))]
+        {
+            run_installer_blocking(&url)
+        }
+    })
+    .await
+    .map_err(|err| format!("the install task failed: {err}"))?
+}
+
+/// The windows twin: the published `code.ps1` fetched to a temp file
+/// and run with `-File` — a param-carrying script cannot ride inside
+/// `-Command`, and a file run keeps the fetch's nonzero exit from
+/// reading as an empty-input success. The script also serves
+/// `irm | iex`, which cannot exit nonzero, so its output is the
+/// contract: the `installed rhema` line only prints once the binary
+/// landed. stdout is piped, and both powershell 5.1 and 7 land
+/// `Write-Host` text in redirected stdout.
+#[cfg(windows)]
+fn run_powershell_installer_blocking(url: &str) -> Result<String, String> {
+    let script = fetch_url_blocking(url)?;
+    let path = std::env::temp_dir().join(format!("rhema-install-{}.ps1", std::process::id()));
+    std::fs::write(&path, &script)
+        .map_err(|err| format!("cannot write the install script: {err}"))?;
+    let out = Command::new("powershell.exe")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(&path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|err| format!("cannot run powershell.exe: {err}"));
+    let _ = std::fs::remove_file(&path);
+    let out = out?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = tail(&text, OUTPUT_TAIL_BYTES);
+    if reports_install(&text) {
+        Ok(text)
+    } else {
+        Err(format!(
+            "the installer did not report an install{}{}",
+            if text.is_empty() { "" } else { ":" },
+            if text.is_empty() {
+                String::new()
+            } else {
+                format!("\n{text}")
+            }
+        ))
+    }
+}
+
+/// The script's success line: `installed rhema <version> to <path>`.
+#[cfg(windows)]
+fn reports_install(output: &str) -> bool {
+    output
+        .lines()
+        .any(|line| line.trim().starts_with("installed rhema"))
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::reports_install;
+
+    #[test]
+    fn the_success_line_names_the_install() {
+        assert!(reports_install(
+            "downloading rhema 0.2.6 ...\ninstalled rhema 0.2.6 to C:\\u\\rhema.exe\n"
+        ));
+        assert!(!reports_install(
+            "rhema installer: cannot reach https://get.rhema.rs\n"
+        ));
+        assert!(!reports_install(""));
+    }
 }
 
 /// One fetch through curl, else wget — the installer's own fallback
