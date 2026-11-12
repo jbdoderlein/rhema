@@ -226,8 +226,17 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           endpoint="https://s3.rhema.rs"
-          names="linux-amd64 linux-arm64 linux-riscv64"
           mkdir -p dist
+          # Whatever the legs uploaded, plus any platform built outside
+          # this matrix (a Mac laptop running the rhema.rs repo's
+          # scripts/publish-binary.sh): the prefix is the set, not this
+          # file.
+          names=$(aws s3 ls "s3://get/$version/" --endpoint-url "$endpoint" |
+            awk '{print $4}' | sed -n 's/^rhema-\(.*\)\.tar\.gz$/\1/p' | sort)
+          for required in linux-amd64 linux-arm64 linux-riscv64; do
+            echo "$names" | grep -qx "$required" ||
+              { echo "no rhema-$required.tar.gz under $version" >&2; exit 1; }
+          done
           for name in $names; do
             curl -fsSL "https://get.rhema.rs/$version/rhema-$name.tar.gz" \
               -o "dist/rhema-$name.tar.gz"
