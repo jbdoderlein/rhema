@@ -243,8 +243,8 @@ Document that exception in `src/lib.rs` (precedent for sanctioned exceptions:
 - Accept: a fresh clone with `wrangler dev` + one secret works.
 
 ### Phase 6 — docs & conventions debt
-- README: component row for `rhema-cloudflare-code` (the README crate table
-  is the product map — keep it in sync). AGENTS.md: add commit scope
+- README: a component mention for `rhema-cloudflare-code`. AGENTS.md: add
+  commit scope
   `cloudflare-code`. SPEC.md: the design-decision section (why DO + sandbox;
   the replay-safety implications of container eviction; the approval model;
   the turn-driving model).

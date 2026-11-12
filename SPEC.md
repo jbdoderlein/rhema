@@ -1,9 +1,14 @@
-# Rhema v1 spec
+# Rhema design record
 
-> **Status:** v1, 2026-10-06. Supersedes the morning draft.
+> **Status:** started as the v1 spec on 2026-10-06, extended as each
+> component landed.
 > **System-level companion:** `specs/rhema-framework-v1.md`
 > **Primitive deep-dive:** `specs/resource-scoped-dispatch.md`
 > **One-line promise:** a small, embeddable, *generic* step engine in Rust. No coding-agent assumptions, no dispatch, no I/O baked in.
+
+Section numbers stay stable because code comments cite them. §3 (the v1
+API sketch) and §9 (the follow-ups) were removed; rustdoc and the
+released crates replaced them.
 
 ---
 
@@ -44,122 +49,12 @@ Corollary from RSD §10: these are not two mechanisms. The interactive loop *is*
 
 ## 2. Layout
 
-```
-rhema/
-  Cargo.toml            # [workspace] members = ["crates/*"]
-  rust-toolchain.toml
-  SPEC.md               # this file
-  specs/                # the two predecessor specs
-  README.md
-  .gitignore            # /target
-  crates/
-    rhema-core/         # <-- crate 1
-      Cargo.toml
-      src/
-        lib.rs          # re-exports; #![forbid(unsafe_code)]
-        message.rs      # Role, Content, Message
-        session.rs      # Session (history + opaque driver blob)
-        request.rs      # ModelRequest, ChatParams, ToolSpec
-        output.rs       # ModelOutput, StopReason, Usage, Step
-        provider.rs     # trait ModelProvider + ProviderError
-        tool.rs         # trait ToolResolver + ToolCall/ToolResult + ToolContext
-        event.rs        # Event enum + EventSink
-        engine.rs       # Agent (step engine) + builder + `step()`
-        mock.rs         # MockProvider (behind `mock` feature)
-      tests/
-        step_tool_call.rs
-        driver_code_agent.rs
-        driver_rsd_style.rs
-      examples/
-        step_demo.rs
-```
+The workspace members are the crates under `crates/`, each with its
+own README; `tools/` is the client-tools workspace and `integrations/`
+holds the forge and calendar integrations. `crates/rhema-core/` is the
+step engine the rest builds on. The workspace manifest is the list.
 
-Project codename **Rhema** (ῥῆμα, "the spoken word": words that do things). Crate 1 is **`rhema-core`**.
-
----
-
-## 3. Public API
-
-`serde`-friendly. `thiserror`. `#![forbid(unsafe_code)]`. Trait names align with the framework spec (`ModelProvider`, `Session`, `ToolSpec`): one vocabulary, no synonyms.
-
-```rust
-// message.rs
-pub enum Role { System, User, Assistant, Tool }
-pub enum Content {
-    Text(String),
-    ToolCall(ToolCall),               // { id, name, args: Value }
-    ToolResult(ToolResult),           // { id, content, is_error }
-}
-pub struct Message { pub role: Role, pub content: Vec<Content> }
-
-// session.rs — caller-owned; loop only touches `history`
-pub struct Session {
-    pub history: Vec<Message>,
-    /// Driver-owned. Crate 1 never reads this.
-    /// The coding driver may leave it empty; the RSD driver stores key/plan/
-    /// artifact_ref here (or keeps its own table). Opaque on purpose.
-    pub driver_state: serde_json::Value,
-}
-
-// request.rs
-pub struct ToolSpec { pub name: String, pub description: String, pub parameters: serde_json::Value }
-pub struct ChatParams { pub model: String, pub temperature: Option<f32>, pub max_tokens: Option<u32> }
-pub struct ModelRequest {
-    pub system: Option<String>,
-    pub messages: Vec<Message>,
-    pub tools: Vec<ToolSpec>,
-    pub params: ChatParams,
-}
-
-// output.rs
-pub enum StopReason { EndTurn, ToolUse, MaxTokens, StopSequence, Other(String) }
-pub struct Usage { pub input_tokens: u32, pub output_tokens: u32, pub cached_input_tokens: u32 }
-pub struct ModelOutput { pub message: Message, pub stop_reason: StopReason, pub usage: Usage }
-pub struct Step { pub output: ModelOutput }
-
-// provider.rs — the model seam
-#[async_trait::async_trait]
-pub trait ModelProvider: Send + Sync {
-    /// Stream deltas to `sink`; return the assembled final output.
-    async fn complete(&self, req: ModelRequest, sink: &mut dyn EventSink)
-        -> Result<ModelOutput, ProviderError>;
-}
-
-// tool.rs — the capability seam (one primitive, not a registry)
-#[async_trait::async_trait]
-pub trait ToolResolver: Send + Sync {
-    /// The tools offered to the model this step.
-    fn specs(&self) -> Vec<ToolSpec>;
-    /// Replay safety of one tool (default `Unsafe`): whether a committed
-    /// call that lost its result to a crash may be re-executed on resume.
-    fn replay_safety(&self, name: &str) -> ReplaySafety;
-    /// Turn a model's call into a result. Errors become in-band results.
-    async fn resolve(&self, call: ToolCall, ctx: &ToolContext) -> ToolResult;
-}
-pub struct ToolContext { /* cwd, run id, cancellation — per-run, driver-provided */ }
-
-// event.rs
-pub enum Event<'a> {
-    StepStart { iteration: u32 },
-    TextDelta(&'a str),
-    ToolCallStart { id: &'a str, name: &'a str },
-    ToolCallArgsDelta(&'a str),
-    ToolResult { id: &'a str, content: &'a str, is_error: bool },
-    Usage(Usage),                  // provider-emitted running tally, cumulative per call
-    StepEnd { usage: Usage, stop_reason: &'a StopReason },
-}
-pub trait EventSink { fn emit(&mut self, event: Event<'_>); }
-
-// engine.rs
-pub struct Agent { /* provider, resolver: Option<Arc<dyn ToolResolver>>, system, params,
-                      commit: Option<CommitHook> — checkpoint per stream, see §4 */ }
-impl Agent {
-    pub fn builder() -> AgentBuilder;
-    /// ONE exchange. Never loops. Appends to `session.history` in place.
-    pub async fn step(&mut self, session: &mut Session, sink: &mut dyn EventSink)
-        -> Result<Step, AgentError>;
-}
-```
+Project codename **Rhema** (ῥῆμα, "the spoken word": words that do things).
 
 ---
 
@@ -240,14 +135,14 @@ The RSD driver (crate 2) is the same shape with different scaffolding: `acquire(
 
 ---
 
-## 8. Open decisions
+## 8. Decisions
 
 - ~~**Crate name**~~, **decided:** `rhema-core` (project codename **Rhema**).
-- **`driver_state` shape**: opaque `serde_json::Value` (recommended, crate 1 stays ignorant) vs typed/generic `Session<T>`.
-- **Streaming**: sink callback (recommended) vs `Stream` return; sink adapter is trivial.
-- **`run_turn` home**: core convenience vs sibling crate.
-- **Provider naming**: `ModelProvider` aligned to the framework spec (chosen) vs shorter `Llm`.
-- **Whether `ToolContext` is created by the driver or the engine**: driver, so permissions/cwd are fixed before the step.
+- ~~**`driver_state` shape**~~, **decided:** opaque `serde_json::Value`, so crate 1 stays ignorant of what a driver stores.
+- ~~**Streaming**~~, **decided:** a sink callback; a `Stream` return would need a trivial adapter for no gain.
+- ~~**`run_turn` home**~~, **decided:** `rhema_core`, beside `Agent::step`.
+- ~~**Provider naming**~~, **decided:** `ModelProvider`, aligned to the framework spec.
+- ~~**Whether `ToolContext` is created by the driver or the engine**~~, **decided:** the driver, so permissions and cwd are fixed before the step.
 - ~~**Where the adapters' shared catalog types live**~~, **decided:** `rhema-provider`, the adapter-family base crate: `ModelCard` (the normalized listing row), `Pricing`, and the `SseDecoder`. What varies per backend stays in the adapter; each owns its text-chat filter over its own ids and bakes its prices into the rows it hands out, so `list_models` only ever returns models a coding agent can drive. No adapter depends on another.
 - ~~**How a provider runs an interactive login**~~, **decided:** the `InteractiveLogin` seam in `rhema-provider` (`login.rs`). An adapter declares the flow (device codes, polling, expiry, all inside the flow) and reports `LoginUpdate`s to a sink; a frontend renders the updates generically and persists the `Completed` credential, one opaque string, the same shape a static API key takes, into the profile field it maps the provider to. Cancellation is dropping the flow's task; the flow keeps no state a retry would trip over. First consumer: the GitHub Copilot device flow. The ChatGPT adapter adds the browser authorization-code flow with PKCE on the same seam.
 - ~~**Where image input lives**~~, **decided:** the message seam, not a crate: a `Content::Image` block (`media_type` in the four formats every target provider accepts, bare-base64 `data`) rides `Message` beside the tool blocks, so sessions checkpoint it and every consumer speaks it. Each provider maps the block onto its own wire shape — OpenAI-dialect `image_url` data URIs, Anthropic base64 sources, Gemini `inlineData` — with the mapping documented as its wire contract. Vision support is a tri-state on `ModelCard` (`None` = unknown: most listings carry no modality field, and a curated verdict beats a guessed one only where the claim has a source — claude ids, Z.ai's GLM rows, DeepSeek's text-only facts, OpenRouter's published `input_modalities`). Frontends stage images as chips; claw stores inbound bytes in the attachment store and replays ids, never megabytes, over SSE.
@@ -456,20 +351,6 @@ The RSD driver (crate 2) is the same shape with different scaffolding: `acquire(
 
 ---
 
-## 9. Follow-ups (not v1)
-
-Crate 2: RSD `SessionManager` (dispatch, leases, inbox, revisions, SQLite). Then: `rhema-provider-anthropic`, `rhema-provider-openai`, `rhema-tui`, compaction, provider fixtures via cassettes.
-
-Later arrivals: `rhema-acp` serves the Agent Client Protocol (the
-coding agent as an editor subprocess; the third `CodingAgent`
-consumer, after the TUI and the one-shot), a falsification pass on
-the driver seams that demanded no core changes and one justified
-approval-bridge addition (`repair_dangling_calls` shared with the
-TUI). Structured file tools remain the gate for ACP's diff and
-follow-along UX; the adapter already answers `session/request_permission`.
-
----
-
 ## 10. The cloud frontend (`rhema-cloudflare-code`)
 
 The fourth `CodingAgent` consumer, and the first whose platform is not
@@ -545,9 +426,9 @@ no subagents (both need storage-backed discovery to be honest on a
 host with no filesystem); no hibernating WebSockets (the live-request
 turn drives v1; hibernation rides the alarm-driven queue).
 
-## 11. The frontend family (`rhema-cloud-agent`, `rhema-vercel-agent`)
+## 11. The frontend family (`rhema-cloud-agent`)
 
-The second cloud frontend made the harness its own crate. The rule
+A second cloud frontend made the harness its own crate. The rule
 the extraction encodes: a cloud frontend is platform glue over the
 same three pieces — an assembly that touches no filesystem, approval
 decisions that round-trip through the connected client, and `bash` in
@@ -562,20 +443,17 @@ and hands it to the assembly.
 The client wire protocol is the shared surface too: one small
 serde-typed module in the harness (`wire`), pinned by tests to the
 byte shapes the DO already spoke, so a client written against one
-frontend talks to the other and a shape drift fails a test here, not
+frontend talks to any other and a shape drift fails a test here, not
 a debugging session there.
 
-`rhema-vercel-agent` is the proof the extraction was real: an axum
-server (a Vercel container runs native Rust, so no JS shim and no
-`!Send` bridge), the Sandbox REST client behind its own seam so the
-offline tests run without a token, and Postgres carrying the same
-revision-guarded `Store` records the DO's SQLite does. The sync
-`Store` contract stands: the engine's commit hook calls it from
-inside the turn, and a turn's checkpoint parking its worker thread
-for a local-pool round trip is the same trade the ACP adapter makes
-parking one for the editor. Turn driving stays v1 (the live
-connection's request); an alarm-driven queue would let turns outlive
-connections and is the same future refinement on both platforms.
+A second cloud frontend on Vercel (an axum server, since removed) proved
+the extraction was real. What it proved still stands: the sync `Store`
+contract is workable, because the engine's commit hook calls it from
+inside the turn, and a turn's checkpoint parking its worker thread for a
+local-pool round trip is the same trade the ACP adapter makes parking
+one for the editor. Turn driving stays v1 (the live connection's
+request); an alarm-driven queue would let turns outlive connections and
+is the same future refinement.
 
 **On "coding" agent.** Nothing in the engine, the harness, or the
 cloud frontends knows code from anything else: `bash` is a tool, the
