@@ -16,8 +16,11 @@ use crate::store::Config;
 use anyhow::Context;
 use crossterm::event::{
     DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture, Event,
-    KeyEventKind, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
-    PushKeyboardEnhancementFlags,
+    KeyEventKind,
+};
+#[cfg(unix)]
+use crossterm::event::{
+    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -507,9 +510,15 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
     // alternate screen. `restore_terminal` is idempotent and swallows
     // its own errors, so running it here is safe whatever landed.
     let setup = (|| -> anyhow::Result<Terminal<CrosstermBackend<std::io::Stdout>>> {
+        crossterm::execute!(stdout(), EnterAlternateScreen)
+            .context("cannot enter the alternate screen")?;
+        // The kitty protocol is a unix terminal's answer; the windows
+        // console has no progressive enhancement to ask for (crossterm
+        // refuses the push there), and its legacy key records already
+        // carry arrows, modifiers, and shift+enter.
+        #[cfg(unix)]
         crossterm::execute!(
             stdout(),
-            EnterAlternateScreen,
             PushKeyboardEnhancementFlags(
                 KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
                     | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
@@ -518,8 +527,9 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
             ),
             EnableMouseCapture,
             EnableBracketedPaste
-        )
-        .context("cannot enter the alternate screen")?;
+        )?;
+        #[cfg(not(unix))]
+        crossterm::execute!(stdout(), EnableMouseCapture, EnableBracketedPaste)?;
         Terminal::new(CrosstermBackend::new(stdout()))
             .context("cannot initialize the terminal backend")
     })();
@@ -972,9 +982,10 @@ fn edit_in_editor(
     // The kitty flags pop before the screen they were pushed on is
     // left, and each step runs on its own so one failure cannot skip
     // the rest (the same order restore_terminal tears down in).
+    #[cfg(unix)]
+    let _ = crossterm::execute!(stdout(), PopKeyboardEnhancementFlags);
     let _ = crossterm::execute!(
         stdout(),
-        PopKeyboardEnhancementFlags,
         DisableBracketedPaste,
         DisableMouseCapture,
         LeaveAlternateScreen
@@ -983,9 +994,11 @@ fn edit_in_editor(
     let _ = stdout().flush();
     let result = run_editor(path, None);
     let _ = enable_raw_mode();
+    let _ = crossterm::execute!(stdout(), EnterAlternateScreen);
+    // The push mirrors the setup's: a unix terminal protocol only.
+    #[cfg(unix)]
     let _ = crossterm::execute!(
         stdout(),
-        EnterAlternateScreen,
         PushKeyboardEnhancementFlags(
             KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
                 | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
@@ -995,6 +1008,8 @@ fn edit_in_editor(
         EnableMouseCapture,
         EnableBracketedPaste
     );
+    #[cfg(not(unix))]
+    let _ = crossterm::execute!(stdout(), EnableMouseCapture, EnableBracketedPaste);
     let _ = stdout().flush();
     let _ = terminal.clear();
     result
