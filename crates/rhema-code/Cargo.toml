@@ -21,6 +21,11 @@ path = "src/main.rs"
 # Scripted MockProvider for offline turn-level tests; mirrors rhema-core's
 # feature.
 mock = ["rhema-core/mock", "rhema-coding-agent/mock"]
+# Cross builds link no target OpenSSL: this turns the vendored build on
+# for the whole graph through feature unification, so the arm64 and
+# riscv64 release legs need no target libssl-dev. Native builds keep
+# the system library.
+vendored-openssl = ["dep:openssl"]
 
 [dependencies]
 rhema-core = { path = "../rhema-core", version = "0.2.3" }
@@ -81,6 +86,9 @@ arboard = { version = "3", default-features = false, features = [
 image = { version = "0.25", default-features = false, features = ["png"] }
 # The image block's data is bare base64
 base64 = "0.22"
+# Only the `vendored-openssl` feature brings this in. A dependency edge
+# is how the feature reaches openssl-sys for every crate in the graph.
+openssl = { version = "0.10", features = ["vendored"], optional = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 rhema-mcp = { version = "0.2.3", path = "../rhema-mcp" }
 serde_yaml.workspace = true
