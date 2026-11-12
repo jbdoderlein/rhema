@@ -297,7 +297,9 @@ jobs:
       - name: Publish
         # The list, the ordering, the already-published check and the
         # rate-limit behaviour all live in the script, so the same rules
-        # run here and in the CI check.
+        # run here and in the CI check. The token must cover every crate
+        # in that list: a crate-scoped token answers 403 on the ones it
+        # misses.
         run: scripts/publish-crates.sh "${GITHUB_REF_NAME#v}"
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

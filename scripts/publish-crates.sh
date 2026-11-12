@@ -10,6 +10,11 @@
 # upstream), so the list, not the workspace, says what ships. --check runs
 # in CI on every push: a crate that joins the dependency chain without
 # joining the list fails there, not halfway through a tag release.
+#
+# CARGO_REGISTRY_TOKEN must be allowed to publish every crate in the
+# list. A token restricted to specific crates answers 403 for the first
+# name it does not carry, and a brand-new name is the usual culprit:
+# tokens cannot be edited, so a crate joining the list needs a new one.
 set -euo pipefail
 
 CRATES=(
