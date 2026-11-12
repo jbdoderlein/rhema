@@ -38,6 +38,9 @@ curl -fsSL https://get.rhema.rs/code | sh                  # Linux, macOS, git b
 irm https://get.rhema.rs/code.ps1 | iex                    # Windows PowerShell
 ```
 
+On Windows, the agent's shell commands run through Git Bash — install
+[Git for Windows](https://git-scm.com/download/win) first.
+
 See <a href="./crates/rhema-code/README.md">Rhema Code README.md</a> for more.
 
 ### Rhema Claw
