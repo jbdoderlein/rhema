@@ -84,16 +84,16 @@ Rules:
     (`crates/rhema-rsd/`)
   - `forge` — the forge integration: GitHub/Gitea/GitLab clients, the
     normalized event vocabulary, the notification triage, and the RSD
-    ingest path (`integrations/rhema-forge-integration/`)
+    ingest path (`rhema-claw` repository, `integrations/rhema-forge-integration/`)
   - `calendar` — the calendar integration: the `Calendar` client
     contract, the ICS, CalDAV, and Google feed adapters, the
     normalized occurrence vocabulary, and the default reminder source
-    (`integrations/rhema-calendar-integration/`)
+    (`rhema-claw` repository, `integrations/rhema-calendar-integration/`)
   - `autonomous-agent` — the resident-agent core tier: sources, the
     lease-driven driver, and the tool registry
     (`crates/rhema-autonomous-agent/`)
-  - `claw` — the resident agent daemon: the first
-    autonomous-agent consumer (`crates/rhema-claw/`)
+  - `claw` — the resident agent daemon: the first autonomous-agent
+    consumer (`rhema-claw` repository)
   - `acp` — the Agent Client Protocol adapter and the `rhema acp`
     subcommand (`crates/rhema-acp/`)
   - `config` — the framework's stored section (profiles, the
@@ -123,10 +123,11 @@ Rules:
     Cloudflare Durable Object — the workers-rs glue over the shared
     harness, and the deploy assets
     (`crates/rhema-cloudflare-code/`, `deploy/cloudflare/`)
-  - `deploy` — the docker image and helm chart under `deploy/`
-  - `web` — the claw's Nuxt UI under `web/`
-  - `android` — the claw's phone client: chat, status source,
-    notifications (`android/`)
+  - `deploy` — the docker image under `deploy/` (sandboxd) and the
+    cloudflare deploy assets
+  - `claw-web` — the claw's Nuxt UI (`rhema-claw` repository, `web/claw/`)
+  - `claw-android` — the claw's phone client: chat, status source,
+    notifications (`rhema-claw` repository, `android/`)
   - `deps` — dependency additions/bumps (manifests, lockfile)
 - Omit the scope entirely for repo-wide changes that do not belong to
   a single component (root config, README.md, SPEC.md).

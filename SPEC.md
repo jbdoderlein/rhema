@@ -50,9 +50,11 @@ Corollary from RSD §10: these are not two mechanisms. The interactive loop *is*
 ## 2. Layout
 
 The workspace members are the crates under `crates/`, each with its
-own README; `tools/` is the client-tools workspace and `integrations/`
-holds the forge and calendar integrations. `crates/rhema-core/` is the
-step engine the rest builds on. The workspace manifest is the list.
+own README. `crates/rhema-core/` is the step engine the rest builds
+on. The workspace manifest is the list. The claw product (the daemon,
+the forge and calendar integrations, the client tools, the web UI and
+the Android client) lives in the `rhema-claw` repository and pulls
+these crates from crates.io.
 
 Project codename **Rhema** (ῥῆμα, "the spoken word": words that do things).
 

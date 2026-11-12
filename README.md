@@ -42,16 +42,11 @@ See <a href="./crates/rhema-code/README.md">Rhema Code README.md</a> for more.
 ### Rhema Claw
 
 Still Work-In-Progress.
-See [Rhema Claw README.md](./crates/rhema-claw/README.md) for more.
-
-### The client tools (`tools/`)
-
-A separate Cargo workspace holding what runs on the *user's machine*
-and talks to a claw-shaped daemon: the shared contract crate
-(`rhema-claw-tools-contract` — the scoped agent-token allowlist, the
-version header, and the conformance suite) and the tools themselves
-(`notify` today). The arrow runs tool → daemon only, over the scoped
-agent token, never the reverse; `specs/rhema-tools.md` is the design.
+Rhema Claw is the resident tier of the framework: a claw-shaped daemon
+that watches forges and calendar feeds, dispatches work to its agents,
+and serves a chat surface over HTTP — with a web UI and an Android
+client talking to it. It lives in its own repository:
+<https://git.vhaudiquet.fr/vhaudiquet/rhema-claw>.
 
 ## rhema-core
 
