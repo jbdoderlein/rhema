@@ -17,6 +17,12 @@ CRATES=(
   rhema-config
   rhema-provider
   rhema-agent-tools
+  mcp-to-cli
+  rhema-mcp
+  rhema-rsd
+  rhema-memory
+  rhema-identity
+  rhema-autonomous-agent
   rhema-transcript
   rhema-coding-agent
   rhema-provider-anthropic
