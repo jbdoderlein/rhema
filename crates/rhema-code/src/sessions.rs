@@ -39,12 +39,16 @@ pub struct SavedSession {
 pub fn base_dir() -> io::Result<PathBuf> {
     let cache = match std::env::var("XDG_CACHE_HOME") {
         Ok(dir) if !dir.trim().is_empty() => PathBuf::from(dir),
-        _ => match std::env::var("HOME") {
-            Ok(home) if !home.trim().is_empty() => PathBuf::from(home).join(".cache"),
-            _ => {
+        // The home is rhema-config's resolution — HOME, then
+        // USERPROFILE for windows, where HOME is unset outside git
+        // bash — so the sessions land where the rest of the state
+        // does.
+        _ => match rhema_config::user_home() {
+            Ok(home) => home.join(".cache"),
+            Err(_) => {
                 return Err(io::Error::new(
                     io::ErrorKind::NotFound,
-                    "neither XDG_CACHE_HOME nor HOME is set",
+                    "neither XDG_CACHE_HOME, HOME, nor USERPROFILE is set",
                 ));
             }
         },
