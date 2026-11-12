@@ -10,7 +10,7 @@
 //! the executor object crosses await points freely.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 #[cfg(feature = "local-shell")]
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -48,6 +48,57 @@ pub enum ShellError {
     /// transport to its host failed.
     #[error("failed to run bash: {0}")]
     Failed(String),
+}
+
+/// The bash executable the shell tool and the startup probe run under.
+/// `RHEMA_SHELL` answers first, everywhere — a frontend provisioning a
+/// known bash, a container, a nonstandard layout. Windows has no bash
+/// of its own, so the resolution goes for Git Bash: the one bash most
+/// windows dev boxes have, and what keeps the agent's unix vocabulary
+/// true — the Git for Windows layouts first, then `bash` on PATH (a
+/// git bash that put itself there, MSYS2, cygwin). Everywhere else,
+/// plain `bash` on PATH.
+pub fn bash_executable() -> PathBuf {
+    if let Ok(shell) = std::env::var("RHEMA_SHELL")
+        && !shell.trim().is_empty()
+    {
+        return shell.into();
+    }
+    #[cfg(windows)]
+    for base in ["ProgramFiles", "ProgramFiles(x86)"] {
+        if let Ok(dir) = std::env::var(base) {
+            let candidate = PathBuf::from(dir).join("Git").join("bin").join("bash.exe");
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+    PathBuf::from("bash")
+}
+
+/// What a spawn that could not find bash reports: the fact plus the
+/// one install that fixes it, so a windows session names the gap
+/// instead of retrying unix commands into it. In-band: callers shape
+/// this into an error the model reads.
+pub fn bash_missing_message() -> String {
+    if cfg!(windows) {
+        "bash was not found on this windows host — install Git for \
+         Windows (https://git-scm.com/download/win), or point \
+         RHEMA_SHELL at a bash.exe"
+    } else {
+        "bash was not found on this host — install bash, or point \
+         RHEMA_SHELL at the bash executable"
+    }
+    .to_owned()
+}
+
+/// Shapes a spawn failure: not-found names the gap (see
+/// [`bash_missing_message`]), anything else rides the io error text.
+fn spawn_error(err: std::io::Error) -> ShellError {
+    match err.kind() {
+        std::io::ErrorKind::NotFound => ShellError::Failed(bash_missing_message()),
+        _ => ShellError::Failed(format!("{err}")),
+    }
 }
 
 /// Runs shell commands for the `bash` tool.
@@ -128,7 +179,7 @@ impl ShellExecutor for LocalShell {
 
         // kill_on_drop so the timeout dropping the child handle kills the
         // process; without it an expired command would keep running.
-        let mut child = tokio::process::Command::new("bash")
+        let mut child = tokio::process::Command::new(bash_executable())
             .arg("-c")
             .arg(command)
             .current_dir(cwd)
@@ -141,7 +192,7 @@ impl ShellExecutor for LocalShell {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|err| ShellError::Failed(format!("{err}")))?;
+            .map_err(spawn_error)?;
         // One reader per stream, complete lines into one channel: each
         // line streams live through `progress` and lands in its
         // stream's tail for the result.
@@ -338,5 +389,28 @@ mod tests {
             "tail lost: …{}",
             &tail[tail.len().saturating_sub(40)..]
         );
+    }
+}
+
+#[cfg(test)]
+mod bash_resolution_tests {
+    use super::*;
+    use std::io::ErrorKind;
+
+    // `RHEMA_SHELL` unset, no Git Bash on a unix CI: the PATH name.
+    #[cfg(unix)]
+    #[test]
+    fn bash_executable_defaults_to_the_path_name() {
+        assert_eq!(bash_executable(), PathBuf::from("bash"));
+    }
+
+    #[test]
+    fn a_missing_bash_names_the_gap_not_the_io_error() {
+        let ShellError::Failed(message) = spawn_error(ErrorKind::NotFound.into()) else {
+            panic!("a not-found spawn is a Failed error");
+        };
+        assert!(message.contains("bash was not found"), "{message}");
+        #[cfg(windows)]
+        assert!(message.contains("Git for Windows"), "{message}");
     }
 }
