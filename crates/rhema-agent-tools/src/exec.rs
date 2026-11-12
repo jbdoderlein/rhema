@@ -94,6 +94,9 @@ pub fn bash_missing_message() -> String {
 
 /// Shapes a spawn failure: not-found names the gap (see
 /// [`bash_missing_message`]), anything else rides the io error text.
+/// The shell's shape: the one caller is the local executor, and the
+/// shell-less targets (wasm) keep neither.
+#[cfg(feature = "local-shell")]
 fn spawn_error(err: std::io::Error) -> ShellError {
     match err.kind() {
         std::io::ErrorKind::NotFound => ShellError::Failed(bash_missing_message()),
@@ -392,7 +395,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "local-shell"))]
 mod bash_resolution_tests {
     use super::*;
     use std::io::ErrorKind;
