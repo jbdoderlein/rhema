@@ -265,8 +265,7 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
     // The real path, before anything moves into the app: the profile
     // memory and the saved sessions group by it, so a relative "." must
     // not become a "." directory.
-    let workspace =
-        std::fs::canonicalize(&args.workspace).unwrap_or_else(|_| args.workspace.clone());
+    let workspace = crate::args::canonical(&args.workspace);
     let profile = args
         .profile
         .clone()

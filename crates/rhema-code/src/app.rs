@@ -422,8 +422,7 @@ impl App {
         };
         let config_root = rhema_home.as_ref().map(|home| home.config.clone());
         let screen = if setup.onboard {
-            let workspace = std::fs::canonicalize(&setup.options.workspace)
-                .unwrap_or_else(|_| setup.options.workspace.clone());
+            let workspace = crate::args::canonical(&setup.options.workspace);
             let agents = rhema_home.as_ref().map(|home| home.agents_skills());
             let skills = skill_rows(
                 agents.as_deref(),

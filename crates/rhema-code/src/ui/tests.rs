@@ -1864,6 +1864,25 @@ mod scroll_tests {
         );
     }
 
+    /// The windows spelling trims by the same rule: the separators
+    /// fold, the drive component never shows, and the verbatim prefix
+    /// a windows canonicalize adds has been stripped upstream — the
+    /// footer spells '/' whatever the host.
+    #[test]
+    fn the_footer_trims_a_windows_path_the_same_way() {
+        let home = Path::new(r"C:\Users\u");
+        assert_eq!(
+            footer_folder(Path::new(r"C:\Users\u\Documents\prjs\rhema"), Some(home)),
+            (String::new(), vec!["prjs".to_owned()], "rhema".to_owned())
+        );
+        // Outside the home: absolute, so the slash prefix rides, and
+        // the drive letter stays out of the parents.
+        assert_eq!(
+            footer_folder(Path::new(r"D:\work\foo"), Some(home)),
+            ("/".to_owned(), vec!["work".to_owned()], "foo".to_owned())
+        );
+    }
+
     /// The window title: the mark, then the workspace as the footer
     /// spells it — the home trim, the capped parents. No badge glyph:
     /// title bars render plain text, and the badge arrives as tofu.

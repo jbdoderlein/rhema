@@ -3,6 +3,7 @@
 
 use super::status::cost_text;
 use super::*;
+use std::path::PathBuf;
 
 /// The model id as the footer shows it: everything after the last `/`,
 /// so an OpenRouter id like `apodex/apodex-1.1-mini:free` reads without
@@ -26,9 +27,13 @@ pub(crate) fn footer_folder(
     workspace: &Path,
     home: Option<&Path>,
 ) -> (String, Vec<String>, String) {
-    let mut rel = workspace.to_path_buf();
+    // The windows spelling rides as the unix one: the separators
+    // normalize first, so the home trim and the parent cap read the
+    // same rule on every host, and the footer always spells '/'.
+    let mut rel = PathBuf::from(workspace.to_string_lossy().replace('\\', "/"));
     if let Some(home) = home {
-        if let Ok(stripped) = rel.strip_prefix(home) {
+        let home = PathBuf::from(home.to_string_lossy().replace('\\', "/"));
+        if let Ok(stripped) = rel.strip_prefix(&home) {
             rel = stripped.to_path_buf();
         }
         if let Ok(stripped) = rel.strip_prefix("Documents") {
@@ -36,8 +41,16 @@ pub(crate) fn footer_folder(
         }
     }
     let text = rel.to_string_lossy();
-    let absolute = text.starts_with('/');
-    let names: Vec<&str> = text.split('/').filter(|name| !name.is_empty()).collect();
+    // Absolute by either spelling: a leading separator, or a drive
+    // letter — the windows shape a unix host still renders.
+    let absolute = text.starts_with('/') || text.chars().nth(1) == Some(':');
+    let names: Vec<&str> = text
+        .split('/')
+        .filter(|name| {
+            // The drive component (`D:`) is spelling, not a folder.
+            !name.is_empty() && !(name.len() == 2 && name.ends_with(':'))
+        })
+        .collect();
     let Some(folder) = names.last() else {
         let fallback = workspace
             .file_name()

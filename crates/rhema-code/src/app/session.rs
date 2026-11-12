@@ -95,8 +95,7 @@ impl App {
                 .push_notice("a turn is running; /resume waits for it to finish");
             return Vec::new();
         }
-        let workspace = std::fs::canonicalize(&self.options.workspace)
-            .unwrap_or_else(|_| self.options.workspace.clone());
+        let workspace = crate::args::canonical(&self.options.workspace);
         match crate::sessions::list_sessions(base, &workspace) {
             Ok(entries) if entries.is_empty() => {
                 self.transcript

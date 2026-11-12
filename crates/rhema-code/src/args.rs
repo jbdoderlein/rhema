@@ -7,7 +7,7 @@
 //! subset minus the workspace (the client names it per session).
 
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use rhema_coding_agent::CodingAgentConfig;
@@ -365,6 +365,36 @@ impl From<ThinkingKind> for rhema_core::request::ThinkingEffort {
             ThinkingKind::High => Self::High,
         }
     }
+}
+
+/// The path as the session sees it: canonicalized, falling back to the
+/// input when the filesystem says no — and on windows with the
+/// `\\?\` verbatim prefix canonicalize adds stripped, so the footer's
+/// home trim, the window title, and the model all read the spelling a
+/// human typed.
+pub(crate) fn canonical(path: &Path) -> PathBuf {
+    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    strip_verbatim(canonical)
+}
+
+/// Drops the verbatim prefix a windows canonicalize produces:
+/// `\\?\C:\...` answers as `C:\...`, and `\\?\UNC\srv\share` as
+/// `\\srv\share`. Elsewhere, the path itself.
+#[cfg(windows)]
+fn strip_verbatim(path: PathBuf) -> PathBuf {
+    let text = path.as_os_str().to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) => PathBuf::from(rest),
+        None => path,
+    }
+}
+
+#[cfg(not(windows))]
+fn strip_verbatim(path: PathBuf) -> PathBuf {
+    path
 }
 
 #[cfg(test)]
