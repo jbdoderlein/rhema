@@ -537,10 +537,7 @@ section whole, exactly like the skills section.
 ## 8. Layout
 
 ```
-crates/mcp-to-cli/
-  Cargo.toml        # clap, serde_json, thiserror. No rhema deps.
-  src/lib.rs        # command(), args(), cli_safe(), MappingError
-  tests/            # the mapping table, row by row
+# mcp-to-cli lives in its own repository; see §12.
 
 crates/rhema-mcp/
   Cargo.toml        # serde, serde_json, thiserror, tokio, axum, clap;
@@ -675,6 +672,9 @@ the README note rides the same commit. Both frontends set
   with no code changes. The standalone-project ambition survives the
   shape; a future `mcp-to-cli` binary (config in, shell stubs out) is
   an addition there, not a refactor here.
+  **Update (0.2.4):** it now lives in its own repository and publishes
+  on its own line (`mcp-to-cli` 0.1.0); `rhema-mcp` takes it from
+  crates.io. The zero-deps rule is what made the move a copy.
 - **Generated per-server commands over a god CLI.** The model writes
   flags (`atlassian create_issue --project ENG`), a form it has seen
   millions of, not bespoke JSON-in-bash quoting. The god CLI stays as

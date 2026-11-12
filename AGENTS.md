@@ -73,8 +73,8 @@ Rules:
     the bridge, and the provisioned shell functions
     (`crates/rhema-mcp/`)
   - `mcp-to-cli` — the schema-to-CLI mapping crate: MCP tool catalogs
-    to clap commands, argv matches to JSON (`crates/mcp-to-cli/`; zero
-    rhema deps)
+    to clap commands, argv matches to JSON (its own repository,
+    `git.vhaudiquet.fr/vhaudiquet/mcp-to-cli`; zero rhema deps)
   - `memory` — the agent memory layer: the `MemoryStore` contract, its
     stores, and the memory tools (`crates/rhema-memory/`)
   - `identity` — the agent accounts layer: the `IdentityStore`

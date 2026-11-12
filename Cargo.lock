@@ -2104,7 +2104,9 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "mcp-to-cli"
-version = "0.2.3"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b7300661cc3c7abc1fc38158c89bbcc17b6e9c7af5754b4b56d8fb9e1a53d30"
 dependencies = [
  "clap",
  "serde_json",

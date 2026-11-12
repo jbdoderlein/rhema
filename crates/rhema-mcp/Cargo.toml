@@ -27,7 +27,8 @@ futures-util = "0.3.34"
 sha2 = "0.10"
 base64 = "0.22"
 clap = "4.6.7"
-mcp-to-cli = { version = "0.2.3", path = "../mcp-to-cli" }
+# The mapping crate: its own repository and release line
+mcp-to-cli = "0.1.0"
 rhema-agent-tools = { version = "0.2.3", path = "../rhema-agent-tools" }
 
 [dev-dependencies]
