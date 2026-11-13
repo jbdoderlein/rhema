@@ -6,7 +6,11 @@
 //! write. Raw mode + alternate screen are entered once here and restored
 //! on EVERY exit path — after the event loop returns, and again in the
 //! panic hook (restore is idempotent enough: failures are ignored), so a
-//! panic never leaves the user inside the alternate screen.
+//! panic never leaves the user inside the alternate screen. A watcher
+//! thread repeats the restore for the fatal signals that unwind
+//! nothing — the SIGHUP of an ssh drop or a closed window, SIGTERM,
+//! SIGINT — and startup clears whatever a run without this teardown
+//! left pushed, so one leaked state never compounds.
 
 use std::io::{IsTerminal, stdout};
 use std::sync::Arc;
@@ -465,6 +469,11 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
     // panic from here to the loop's first frame must not strand the
     // user's shell.
     install_panic_hook();
+    // The panic hook cannot see a signal death: no unwinding, no
+    // hook, just the default disposition tearing the process down
+    // with every pushed mode still live in the emulator.
+    #[cfg(unix)]
+    install_signal_restore();
     // The window title: the mark, the workspace folder as the footer
     // spells it. `CSI 22;0t` saves the terminal's previous title on its
     // title stack (xterm, kitty, WezTerm keep one), and the matching pop
@@ -508,6 +517,12 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
     // has to restore: the shell must not keep raw mode on, or the
     // alternate screen. `restore_terminal` is idempotent and swallows
     // its own errors, so running it here is safe whatever landed.
+    // A run that died without its teardown — a SIGKILL, a crash from
+    // before the signal watcher, another program's leak — may have
+    // left capture modes on; clear them before this run pushes its
+    // own, or the new state sits on top of the old leak and the
+    // shell's next exit is broken twice over.
+    heal_terminal();
     let setup = (|| -> anyhow::Result<Terminal<CrosstermBackend<std::io::Stdout>>> {
         crossterm::execute!(stdout(), EnterAlternateScreen)
             .context("cannot enter the alternate screen")?;
@@ -610,6 +625,64 @@ fn restore_terminal() {
     // terminal without one ignores the pop and leaves the title for the
     // shell to overwrite.
     let _ = write!(stdout(), "\x1b[23;0t");
+    let _ = stdout().flush();
+}
+
+/// Watches the fatal signals that bypass both the event loop and the
+/// panic hook — the SIGHUP of an ssh drop or a closed terminal window,
+/// SIGTERM, SIGINT — and restores the terminal before dying with the
+/// shell's `128 + signal` code. Without it a dropped connection leaves
+/// the emulator holding every mode the run pushed: a captured mouse
+/// that pours `^[[<…M` motion reports into the next shell, raw mode,
+/// the kitty keyboard protocol, bracketed paste.
+#[cfg(unix)]
+fn install_signal_restore() {
+    use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
+    use signal_hook::iterator::Signals;
+    // A registration failure leaves the default dispositions and the
+    // pre-watcher behavior; not a reason to abort a start over.
+    let Ok(mut signals) = Signals::new([SIGHUP, SIGTERM, SIGINT]) else {
+        return;
+    };
+    // A plain OS thread on purpose: a wedged runtime is exactly the
+    // abrupt-death case this exists for, so the restore must not
+    // depend on tokio or the event loop being alive. A failed spawn
+    // degrades the same way a failed registration does.
+    let _ = std::thread::Builder::new()
+        .name("signal-restore".into())
+        .spawn(move || {
+            // One wait for the process's lifetime: whichever of the
+            // watched signals lands first (`forever` never ends, so
+            // this `next` blocks until it does). The shell convention
+            // reports a signal death as 128 + the signal, so a
+            // wrapper can tell it from a normal exit.
+            if let Some(signal) = signals.forever().next() {
+                restore_terminal();
+                std::process::exit(128 + signal);
+            }
+        });
+}
+
+/// Clears the pushed modes a previous run may have leaked: one that
+/// died without its restore leaves mouse capture, bracketed paste,
+/// and the kitty keyboard protocol live in the emulator, and the
+/// shell behind it drowns in `^[[<…M` motion reports. Every disable
+/// here is a no-op when nothing leaked, and this run re-pushes the
+/// modes it needs right after — this only stops a leak from
+/// compounding into a second broken run.
+fn heal_terminal() {
+    // The same spellings restore_terminal tears down with: the bare
+    // pops (crossterm's numbered pop a terminal may ignore), the
+    // zero-flag push masking any pop the terminal skipped, then the
+    // two capture modes.
+    use std::io::Write;
+    let _ = write!(stdout(), "\x1b[<u");
+    let _ = stdout().flush();
+    let _ = write!(stdout(), "\x1b[<u");
+    let _ = stdout().flush();
+    let _ = write!(stdout(), "\x1b[>0u");
+    let _ = stdout().flush();
+    let _ = crossterm::execute!(stdout(), DisableBracketedPaste, DisableMouseCapture);
     let _ = stdout().flush();
 }
 

@@ -3342,6 +3342,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "signal-hook",
  "tempfile",
  "tokio",
  "unicode-width",
