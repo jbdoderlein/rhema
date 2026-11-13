@@ -22,6 +22,32 @@ pub trait Steering: Send + Sync {
     fn drain(&self) -> Vec<String>;
 }
 
+/// Several steering sources as one, in announcement order: a frontend
+/// with two feeds — the subagent registry and the background-shell
+/// poller — hands the driver one source, so the two announcements
+/// coalesce into one User message with a stable order instead of
+/// racing for the config's one `steering` slot.
+pub struct SteeringChain {
+    sources: Vec<Arc<dyn Steering>>,
+}
+
+impl SteeringChain {
+    /// Chains `sources`, first drained first. An empty chain drains
+    /// empty; a single source behaves as itself.
+    pub fn new(sources: Vec<Arc<dyn Steering>>) -> Self {
+        Self { sources }
+    }
+}
+
+impl Steering for SteeringChain {
+    fn drain(&self) -> Vec<String> {
+        self.sources
+            .iter()
+            .flat_map(|source| source.drain())
+            .collect()
+    }
+}
+
 /// How a frontend resolves any provider kind to a turn provider: the
 /// credential policy behind the subagent tool's cross-provider
 /// `model` argument. A `None` answer means that kind has no usable

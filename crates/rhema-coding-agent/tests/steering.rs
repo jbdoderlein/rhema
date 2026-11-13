@@ -334,3 +334,30 @@ async fn without_steering_the_history_keeps_its_plain_shape() {
         [Role::User, Role::Assistant, Role::Tool, Role::Assistant]
     );
 }
+
+/// Two feeds, one slot: the chain drains each source in order and the
+/// announcements coalesce into one batch, subagent lines first, job
+/// lines second. An empty chain is a legal no-op.
+#[test]
+fn a_chain_drains_its_sources_in_order() {
+    let first = Scripted::new(vec![vec!["first".to_owned()]]);
+    let second = Scripted::new(vec![vec!["second".to_owned(), "third".to_owned()]]);
+    let chain = Arc::new(rhema_coding_agent::SteeringChain::new(vec![
+        first.clone() as Arc<dyn Steering>,
+        second.clone() as Arc<dyn Steering>,
+    ]));
+    assert_eq!(
+        chain.drain(),
+        vec!["first".to_owned(), "second".to_owned(), "third".to_owned(),]
+    );
+    // One query reached each source: both queues came back empty
+    // (`drained` counts the batches left).
+    assert_eq!(first.drained(), 0);
+    assert_eq!(second.drained(), 0);
+    assert!(
+        Arc::new(rhema_coding_agent::SteeringChain::new(Vec::new()))
+            .drain()
+            .is_empty(),
+        "an empty chain drains empty"
+    );
+}
