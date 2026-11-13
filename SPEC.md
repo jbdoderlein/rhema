@@ -2,7 +2,6 @@
 
 > **Status:** started as the v1 spec on 2026-10-06, extended as each
 > component landed.
-> **System-level companion:** `specs/rhema-framework-v1.md`
 > **Primitive deep-dive:** `specs/resource-scoped-dispatch.md`
 > **One-line promise:** a small, embeddable, *generic* step engine in Rust. No coding-agent assumptions, no dispatch, no I/O baked in.
 

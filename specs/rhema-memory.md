@@ -2,8 +2,6 @@
 
 > **Status:** v1, 2026-10-08 (decisions in §8); amended v1.1,
 > 2026-10-14 — temporal validity, invalidation, and review in §10.
-> **Framework grounding:** `rhema-framework-v1.md` §2 (memory-store is a
-> MODULE-tier contract) and §9 (context and memory strategy).
 > **One-line promise:** durable, cross-session memory the model *pulls*
 > through tools — never context the engine pushes.
 

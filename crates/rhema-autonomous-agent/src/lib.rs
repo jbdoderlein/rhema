@@ -1,5 +1,5 @@
-//! `rhema-autonomous-agent` — the resident-agent core tier
-//! (specs/rhema-framework-v1.md): the source-driven session loop, the
+//! `rhema-autonomous-agent` — the resident-agent core tier: the
+//! source-driven session loop, the
 //! `Source` contract for deterministic detection, and a tool registry
 //! with allowlists, all over `rhema-rsd`'s dispatcher.
 //!

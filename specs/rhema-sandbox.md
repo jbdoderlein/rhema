@@ -43,7 +43,10 @@ problem, not a sandbox one).
 ## 1. The problem in this tree
 
 Verified against this tree. Line numbers move; the file names are the
-anchor. Re-verify before implementing if the tree has moved.
+anchor. Re-verify before implementing if the tree has moved. It has:
+the rollout below landed, so the seam lives in `crates/rhema-sandbox`
+and the pre-extraction homes cited below are history. The vercel
+frontend shipped as item 8 and later left the tree entirely.
 
 - **The seam is cloud-scoped.** `Sandbox` — `exec`, `seed`, `read_file`,
   `write_file`; object-safe, async, no platform dependency — lives in
@@ -100,7 +103,7 @@ crates/rhema-sandbox/
 
 Dependency order stays clean:
 `rhema-core ← rhema-agent-tools ← rhema-sandbox ← {rhema-cloud-agent,
-rhema-cloudflare-code, rhema-vercel-agent, rhema-code}`. The default
+rhema-cloudflare-code, rhema-code}`. The default
 build needs only serde and async-trait — wasm-clean, the same dep stance
 `rhema-core` keeps; `client`, `server`, and `local` are feature-gated so
 each consumer compiles only what it drives. House attributes apply:
