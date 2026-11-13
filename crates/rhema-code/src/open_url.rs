@@ -21,25 +21,27 @@ pub fn browser(url: &str) -> bool {
 /// The launchers to try, in order. Linux follows the `$BROWSER`
 /// convention first, then the desktop's opener, then GNOME's.
 fn launchers(url: &str) -> Vec<(String, Vec<String>)> {
-    let mut commands: Vec<(String, Vec<String>)> = Vec::new();
     #[cfg(target_os = "macos")]
-    commands.push(("open".to_owned(), vec![url.to_owned()]));
+    let commands = vec![("open".to_owned(), vec![url.to_owned()])];
     #[cfg(target_os = "windows")]
     // `rundll32` takes the URL as a plain argument, so shell
     // metacharacters in a query string never reach `cmd`.
-    commands.push((
+    let commands = vec![(
         "rundll32.exe".to_owned(),
         vec!["url.dll,FileProtocolHandler".to_owned(), url.to_owned()],
-    ));
+    )];
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
+    let commands = {
+        let mut commands = vec![
+            ("xdg-open".to_owned(), vec![url.to_owned()]),
+            ("gio".to_owned(), vec!["open".to_owned(), url.to_owned()]),
+        ];
         if let Ok(browser) = std::env::var("BROWSER")
             && !browser.trim().is_empty()
         {
-            commands.push((browser, vec![url.to_owned()]));
+            commands.insert(0, (browser, vec![url.to_owned()]));
         }
-        commands.push(("xdg-open".to_owned(), vec![url.to_owned()]));
-        commands.push(("gio".to_owned(), vec!["open".to_owned(), url.to_owned()]));
-    }
+        commands
+    };
     commands
 }
