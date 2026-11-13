@@ -19,6 +19,9 @@ pub(crate) enum Kind {
     User,
     /// A maximal run of tool-call lines; they sit tight together.
     ToolRun,
+    /// A maximal run of session notifications: one left-aligned card
+    /// per finish, stacked tight.
+    Notification,
     /// A UI notice.
     Notice,
     /// A system-generated markdown block.
@@ -28,9 +31,9 @@ pub(crate) enum Kind {
 /// A block: a half-open line range and its kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TranscriptBlock {
-    start: usize,
-    end: usize,
-    kind: Kind,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) kind: Kind,
 }
 
 /// A graphical bubble's geometry inside its block's rendered rows:
@@ -48,6 +51,9 @@ pub(crate) struct BubbleGeom {
     pub(crate) left: usize,
     /// The card's width in cells, corner to corner.
     pub(crate) width: usize,
+    /// Which fill the graphics pass paints behind the card: the
+    /// prompt's accent tint, or a notification's neutral one.
+    pub(crate) fill: CardFill,
 }
 
 /// Partitions the transcript lines into blocks. A whitespace-only
@@ -67,6 +73,7 @@ pub(crate) fn partition(lines: &[transcript::Line]) -> Vec<TranscriptBlock> {
             }
             transcript::Line::User { .. } => Kind::User,
             transcript::Line::ToolCall { .. } => Kind::ToolRun,
+            transcript::Line::Notification(_) => Kind::Notification,
             transcript::Line::Notice(_) => Kind::Notice,
             transcript::Line::Markdown(_) => Kind::Markdown,
         };
@@ -90,6 +97,11 @@ pub(crate) fn partition(lines: &[transcript::Line]) -> Vec<TranscriptBlock> {
                         _ => false,
                     }
                 {
+                    index += 1;
+                }
+            }
+            Kind::Notification => {
+                while matches!(lines.get(index), Some(transcript::Line::Notification(_))) {
                     index += 1;
                 }
             }
@@ -182,7 +194,7 @@ pub(crate) fn render_transcript(
         if index > 0
             && matches!(
                 blocks[index - 1].kind,
-                Kind::Response | Kind::User | Kind::ToolRun
+                Kind::Response | Kind::User | Kind::ToolRun | Kind::Notification
             )
         {
             rows.push(Line::from(""));
@@ -252,10 +264,14 @@ pub(crate) fn render_transcript(
             let left = inner.x + geometry.left as u16;
             let right = left + width - 1;
             let screen_y = |row_index: usize| inner.y + (row_index - top) as u16;
+            // The card's own sprite set: the prompt set at the base,
+            // the notification set one width above, so both cards
+            // scroll under the same placement discipline.
+            let offset = geometry.fill.sprite_offset();
             let mut card: Vec<BubblePiece> = Vec::new();
             let mut edge = |sprite: u32, col: u16, row_index: usize, cols: u16, rows: u16| {
                 card.push(BubblePiece {
-                    sprite,
+                    sprite: sprite + offset,
                     col,
                     row: screen_y(row_index),
                     cols,
@@ -440,6 +456,21 @@ pub(crate) fn render_block(
             }
             rows
         }
+        Kind::Notification => {
+            let mut rows: Vec<Line<'static>> = Vec::new();
+            for text in range.iter().filter_map(|line| match line {
+                transcript::Line::Notification(text) => Some(text.as_str()),
+                _ => None,
+            }) {
+                let (mut card_rows, mut geoms) = render_notification(text, theme, width);
+                for geometry in geoms.iter_mut() {
+                    geometry.first_row += rows.len();
+                }
+                bubbles.extend(geoms);
+                rows.append(&mut card_rows);
+            }
+            rows
+        }
         // The run's absorbed empty text parts render as nothing.
         Kind::ToolRun => range
             .iter()
@@ -543,6 +574,63 @@ pub(crate) fn render_user(
     width: usize,
 ) -> (Vec<Line<'static>>, Option<BubbleGeom>) {
     let body = user_body(text, images, theme);
+    bubble_card(body, width, true, theme, CardFill::Prompt)
+}
+
+/// A session notification as its own card: the same bubble frame, but
+/// hugging the left edge and painted with the neutral fill. The
+/// alignment and the fill carry the whole read — this is neither the
+/// reader's prompt nor the model's response — so the text itself
+/// carries no marker and no status hue. One card per finish; a run of
+/// finishes stacks them tight.
+pub(crate) fn render_notification(
+    text: &str,
+    theme: &Theme,
+    width: usize,
+) -> (Vec<Line<'static>>, Vec<BubbleGeom>) {
+    let body = vec![vec![Span::styled(
+        text.to_owned(),
+        Style::default().fg(theme.text),
+    )]];
+    let (rows, geometry) = bubble_card(body, width, false, theme, CardFill::Notice);
+    (rows, geometry.into_iter().collect())
+}
+
+/// Which card a bubble is: the reader's prompt, or a session
+/// notification. The card the graphics pass paints under the frame,
+/// and with it the sprite set the placements reference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CardFill {
+    /// The prompt card: the palette's accent tint.
+    Prompt,
+    /// The notification card: the palette's neutral lift.
+    Notice,
+}
+
+impl CardFill {
+    /// The sprite-id offset this card's set transmits under: the
+    /// prompt set sits at the base, the notification set one width
+    /// above it.
+    fn sprite_offset(self) -> u32 {
+        match self {
+            CardFill::Prompt => 0,
+            CardFill::Notice => crate::term_image::NOTICE_SPRITE_OFFSET,
+        }
+    }
+}
+
+/// Frames body rows as a bubble: the rounded cap and foot, one pad
+/// cell each side, hugging its longest row up to the quarter-share
+/// cap — at the right edge for a prompt, the left for a notification.
+/// An empty body still draws a frame. Returns the rows and the card
+/// geometry the graphics pass paints behind them.
+fn bubble_card(
+    body: Vec<Vec<Span<'static>>>,
+    width: usize,
+    align_right: bool,
+    theme: &Theme,
+    fill: CardFill,
+) -> (Vec<Line<'static>>, Option<BubbleGeom>) {
     if width < BUBBLE_CHROME + 1 {
         // Too narrow for a frame: the text uses the cells it has.
         let rows = body
@@ -559,12 +647,10 @@ pub(crate) fn render_user(
         .into_iter()
         .flat_map(|spans| wrap_line(&Line::from(spans), padded))
         .collect();
-    // The bubble hugs its longest row, up to the quarter-share cap. An
-    // empty prompt still draws a frame.
     let widest = wrapped.iter().map(Line::width).max().unwrap_or(0);
     let bubble_width = (widest + BUBBLE_CHROME).min(max_width);
     let content_width = bubble_width - BUBBLE_CHROME;
-    let left = width - bubble_width;
+    let left = if align_right { width - bubble_width } else { 0 };
 
     let mut rows = Vec::with_capacity(wrapped.len() + 2);
     rows.push(bubble_edge(left, '╭', '╮', bubble_width, theme));
@@ -592,6 +678,7 @@ pub(crate) fn render_user(
         rows: rows.len(),
         left,
         width: bubble_width,
+        fill,
     };
     (rows, Some(geometry))
 }
@@ -663,6 +750,9 @@ pub(crate) fn render_line(
             }
             Line::from(spans)
         }
+        // Off the card path — selection copy reads the same rows —
+        // a notification is its plain text.
+        transcript::Line::Notification(text) => Line::from(Span::raw(text.clone())),
         transcript::Line::Assistant(text) => Line::from(Span::raw(text.clone())),
         transcript::Line::ToolCall {
             name,

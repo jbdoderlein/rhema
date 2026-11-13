@@ -541,9 +541,11 @@ marks the lines taken — announced, not fetched — so the driver's
 turn-start drain cannot repeat what the prompt already said; the
 report stays unfetched, so the fetch protocol works unchanged.
 rhema-code does this on its redraw tick: idle, it joins the pending
-lines into one prompt and starts the turn; mid-turn it takes only
-the finish events (the transcript's notices) and leaves the lines to
-the driver.
+lines into one prompt, records each as its own notification card —
+the transcript's record of the delivery, never styled as user input,
+though the model-facing history is a User message either way — and
+starts the turn; mid-turn it takes only the finish events (their
+cards, at detection) and leaves the lines to the driver.
 
 **Lifecycle.** `queued → running → finished(ok, report) |
 finished(error, reason)`. A fetch marks the job fetched — its UI
@@ -745,14 +747,24 @@ the frontend reads, and a subscription would tie the frontend to
 the backend's name and line format. Detection latency is one live
 tick; delivery, once detected, is instant.
 
-Delivery is the subagent registry's two paths, unchanged: the
-driver steers mid-turn (a User-role message at the next step
-boundary, one line per finish), and the frontend's idle tick runs
-the pending lines as the next turn's prompt. The latches mirror the
-registry's — the finish notice is taken once for the transcript;
-the notification line is a pure query until a take (the idle
-prompt) retires it, so the driver's turn-start drain never repeats
-what the prompt said. The vocabulary:
+Delivery is the subagent registry's two paths with one divergence,
+and a finish reaches the model exactly once: the driver steers
+mid-turn (a User-role message at the next step boundary, one line
+per finish), or the frontend's idle tick runs the pending lines as
+the next turn's prompt — never both. The registry earns exactly-once
+with the fetch: the model fetching the report retires everything,
+and its drain stays a query because a crash between append and
+checkpoint must re-deliver an unfetched report. A job has no report
+to lose — the exit code was the whole message — so here the delivery
+itself retires the line: the steering drain consumes what it
+returns, a steered finish never re-delivers as the idle prompt, and
+a line the idle take ran is gone from the drain too. The finish
+card is taken once for the transcript either way. The presentation:
+the transcript records every finish as its own card, left-aligned
+under a neutral per-palette fill — the third voice, neither the
+reader's prompt (right-aligned, accent tint) nor the response (the
+accent bullet); a run of finishes stacks as one block. The
+vocabulary:
 
     Background job abc ("npm run dev") has finished (exit 0).
     Background job abc ("npm run dev") has finished with an error (exit 1).

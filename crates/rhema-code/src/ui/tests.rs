@@ -3448,3 +3448,63 @@ fn the_mcp_page_lists_the_servers_and_their_marks() {
         "the empty state nudges at the add row: {text}"
     );
 }
+/// A session notification renders as its own card: the shared bubble
+/// frame, hugging the left edge — neither the prompt's right rail nor
+/// the response's bullet — and named by the neutral fill, not the
+/// accent.
+#[test]
+fn a_notification_renders_as_a_left_aligned_card() {
+    let theme = DARK;
+    let lines = vec![crate::transcript::Line::Notification(
+        "Background job abc (\"npm run dev\") has finished (exit 0).".to_owned(),
+    )];
+    let blocks = pane::partition(&lines);
+    assert_eq!(blocks.len(), 1);
+    assert_eq!(blocks[0].kind, pane::Kind::Notification);
+    // Wide enough that the sentence fits one padded row whole.
+    let (rows, bubbles) = pane::render_block(&lines, &blocks[0], &theme, 200, "r");
+    let geometry = bubbles[0];
+    assert_eq!(geometry.left, 0, "the card hugs the left edge");
+    assert_eq!(geometry.fill, pane::CardFill::Notice);
+    assert!(rows[0].spans.iter().any(|s| s.content.contains('╭')));
+    let flat: String = rows
+        .iter()
+        .map(|line| {
+            line.spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>()
+        })
+        .collect();
+    assert!(
+        flat.contains("has finished (exit 0)"),
+        "the card carries the line: {flat}"
+    );
+    // Narrow, the card still frames: the sentence wraps, the glyphs hold.
+    let (narrow, _) = pane::render_block(&lines, &blocks[0], &theme, 40, "r");
+    assert!(narrow[0].spans.iter().any(|s| s.content.contains('╭')));
+    assert!(narrow.len() > 2, "the body wrapped: {}", narrow.len());
+}
+
+/// A run of finishes coalesces into one block, one stacked card per
+/// finish — the tick's joined prompt tells the model once, the
+/// transcript shows the same count.
+#[test]
+fn a_run_of_notifications_is_one_block_of_stacked_cards() {
+    let theme = DARK;
+    let lines = vec![
+        crate::transcript::Line::Notification(
+            "Background job abc (\"a\") has finished (exit 0).".to_owned(),
+        ),
+        crate::transcript::Line::Notification(
+            "Background job def (\"b\") has finished with an error (exit 1).".to_owned(),
+        ),
+    ];
+    let blocks = pane::partition(&lines);
+    assert_eq!(blocks.len(), 1, "both cards sit in one block");
+    assert_eq!(blocks[0].start, 0);
+    assert_eq!(blocks[0].end, 2);
+    let (_, bubbles) = pane::render_block(&lines, &blocks[0], &theme, 80, "r");
+    assert_eq!(bubbles.len(), 2, "one card per finish");
+    assert!(bubbles.iter().all(|geometry| geometry.left == 0));
+}

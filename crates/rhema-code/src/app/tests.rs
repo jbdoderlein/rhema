@@ -5871,8 +5871,8 @@ async fn an_idle_session_runs_a_finished_jobs_notification_as_the_next_prompt() 
     assert!(images.is_empty());
     let last = h.app.transcript.lines().last();
     assert!(
-        matches!(last, Some(Line::User { text, .. }) if text == prompt.as_str()),
-        "the prompt's user line is the record, got {last:?}"
+        matches!(last, Some(Line::Notification(text)) if text == prompt.as_str()),
+        "the notification card is the record, got {last:?}"
     );
 
     // A second tick starts nothing: the take retired the line.
@@ -5882,12 +5882,13 @@ async fn an_idle_session_runs_a_finished_jobs_notification_as_the_next_prompt() 
     assert!(steering.drain().is_empty(), "a taken line stops announcing");
 }
 
-/// A job finishing while a turn runs shows the notice and leaves
-/// the delivery to the driver's steering: the tick starts nothing
-/// and takes no notification line, so the drain still names the
-/// job.
+/// A subagent job finishing while a turn runs lands as its card and
+/// leaves the delivery to the driver's steering: the tick starts
+/// nothing and takes no notification line, so the drain still names
+/// the job — the registry's drain stays a query, the fetch or the
+/// idle take retiring it.
 #[tokio::test]
-async fn a_running_turn_shows_the_finish_notice_and_leaves_steering_to_the_driver() {
+async fn a_running_turn_shows_the_finish_card_and_leaves_steering_to_the_driver() {
     use rhema_core::{EventSink, ProviderError};
     use rhema_subagents::{SubagentDef, SubagentTools};
 
@@ -5960,9 +5961,9 @@ async fn a_running_turn_shows_the_finish_notice_and_leaves_steering_to_the_drive
     );
     let last = h.app.transcript.lines().last();
     assert!(
-        matches!(last, Some(Line::Notice(text))
+        matches!(last, Some(Line::Notification(text))
                 if text == "Subagent reviewer (job-1) has finished."),
-        "the finish lands as a notice, got {last:?}"
+        "the finish lands as its card, got {last:?}"
     );
     // The driver still steers: the announcement line is pending.
     let steering = h.app.subagents.as_ref().unwrap().steering();
@@ -5973,9 +5974,9 @@ async fn a_running_turn_shows_the_finish_notice_and_leaves_steering_to_the_drive
 }
 
 /// A background job finishing while the session is idle becomes the
-/// next prompt: the tick runs the line as a turn, the prompt's user
-/// line is the record, and the take retires the line so the driver's
-/// drain does not repeat it.
+/// next prompt: the tick delivers the line as a turn, records it as
+/// its notification card — never as user input — and the take retires
+/// it so neither the driver's drain nor a second tick repeats it.
 #[test]
 fn an_idle_session_runs_a_finished_job_line_as_the_next_prompt() {
     let mut h = harness(Some("key"), Some("m"), Session::default());
@@ -6001,8 +6002,8 @@ fn an_idle_session_runs_a_finished_job_line_as_the_next_prompt() {
     assert!(images.is_empty());
     let last = h.app.transcript.lines().last();
     assert!(
-        matches!(last, Some(Line::User { text, .. }) if text == line.as_str()),
-        "the prompt's user line is the record, got {last:?}"
+        matches!(last, Some(Line::Notification(text)) if text == line.as_str()),
+        "the notification card is the record, got {last:?}"
     );
     // A second tick starts nothing: the take retired the line.
     assert!(h.app.on_tick().is_empty());
@@ -6010,12 +6011,12 @@ fn an_idle_session_runs_a_finished_job_line_as_the_next_prompt() {
     assert!(steering.drain().is_empty(), "a taken line stops announcing");
 }
 
-/// A background job finishing while a turn runs shows the notice and
-/// leaves the delivery to the driver's steering: the tick starts
-/// nothing and takes no notification line, so the drain still names
-/// the job.
+/// A background job finishing while a turn runs lands as its card and
+/// leaves the delivery to the driver's steering — which consumes the
+/// line, so the idle prompt never repeats it: the tick starts nothing,
+/// the drain names the job once.
 #[test]
-fn a_running_turn_shows_a_job_finish_notice_and_leaves_steering_to_the_driver() {
+fn a_running_turn_shows_a_job_finish_card_and_leaves_one_delivery_to_the_driver() {
     let mut h = harness(Some("key"), Some("m"), Session::default());
     let line =
         "Background job abc (\"npm run dev\") has finished with an error (exit 1).".to_owned();
@@ -6035,12 +6036,13 @@ fn a_running_turn_shows_a_job_finish_notice_and_leaves_steering_to_the_driver() 
     );
     let last = h.app.transcript.lines().last();
     assert!(
-        matches!(last, Some(Line::Notice(text)) if text == line.as_str()),
-        "the finish lands as a notice, got {last:?}"
+        matches!(last, Some(Line::Notification(text)) if text == line.as_str()),
+        "the finish lands as its card, got {last:?}"
     );
-    // The driver still steers: the announcement line is pending.
+    // The driver steers the delivery — once, the drain consuming it.
     let steering = h.app.jobs.as_ref().unwrap().steering();
     assert_eq!(steering.drain(), vec![line]);
+    assert!(h.app.jobs.as_ref().unwrap().take_notifications().is_empty());
 }
 
 /// Both feeds pending and the session idle: one prompt carries both

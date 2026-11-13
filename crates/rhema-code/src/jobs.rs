@@ -19,6 +19,15 @@
 //! something is running, slow when nothing is. Detection latency is
 //! one live tick; delivery, once detected, is the registry's and
 //! instant.
+//!
+//! One delivery per finish, like a subagent's: steering mid-turn or
+//! the idle prompt, never both. The registry earns that with its
+//! fetch — the model fetching the report retires everything — so
+//! here the delivery itself retires: the drain consumes the line,
+//! because the exit code was the whole message. The divergence is
+//! the point where the mirror ends, and it is the registry's own
+//! rule telling the truth: a query-only drain protects a fetch, and
+//! a job has none.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -241,22 +250,42 @@ impl JobsHandle {
     }
 
     /// The driver's steering source over this feed: one notification
-    /// line per finished-but-untaken job, per drain — a pure query the
-    /// driver deduplicates within a turn. A frontend with both feeds
-    /// chains this with the subagent registry's through
-    /// `SteeringChain` into the config's one `steering` slot.
+    /// line per finished-but-undelivered job, and the drain consumes —
+    /// a steered line never comes back, so a finish the driver
+    /// announced mid-turn does not re-deliver as the idle session's
+    /// prompt. A frontend with both feeds chains this with the
+    /// subagent registry's through `SteeringChain` into the config's
+    /// one `steering` slot; the registry's drain stays a query, its
+    /// retirement being the fetch or the idle take.
     pub fn steering(&self) -> Arc<dyn Steering> {
         Arc::new(JobSteering(Arc::clone(&self.feed)))
     }
 }
 
-/// The steering source over one feed: reads the pending lines and
-/// leaves them pending — the take, never the query, retires.
+/// The steering source over one feed. Unlike the subagent registry's,
+/// the drain retires what it returns: a steered line is delivered —
+/// its whole payload, the exit code, rode inside it, and the card
+/// entered the transcript when the finish was detected. The registry
+/// re-announces because an unfetched report is expensive work that
+/// must not be lost; a job has nothing to fetch.
 struct JobSteering(Arc<Mutex<Feed>>);
 
 impl Steering for JobSteering {
     fn drain(&self) -> Vec<String> {
-        self.0.lock().map(|feed| feed.lines()).unwrap_or_default()
+        let Ok(mut feed) = self.0.lock() else {
+            return Vec::new();
+        };
+        let lines = feed.lines();
+        for pending in feed.pending.iter_mut() {
+            pending.announced = true;
+        }
+        // A finish both noticed and announced is fully delivered. One
+        // announced but never noticed (headless: no transcript exists
+        // to notice it) stays in the feed, inert, until the handle
+        // drops — bounded by the job count, never re-delivered.
+        feed.pending
+            .retain(|pending| !(pending.noticed && pending.announced));
+        lines
     }
 }
 
@@ -473,7 +502,7 @@ mod tests {
     }
 
     #[test]
-    fn the_notice_take_leaves_the_line_pending() {
+    fn the_steering_drain_delivers_exactly_once() {
         let handle = JobsHandle::stub_with_finished(vec![JobFinished {
             id: "abc".to_owned(),
             command: "npm run dev".to_owned(),
@@ -484,10 +513,10 @@ mod tests {
         // The notice: once.
         assert_eq!(handle.take_finished().len(), 1);
         assert!(handle.take_finished().is_empty());
-        // The steering still names the job.
+        // The steering delivers the line — and consumes it. A steered
+        // finish never re-delivers as the idle prompt: the exit code
+        // rode inside the line, there is nothing left to fetch.
         assert_eq!(handle.steering().drain(), vec![line.clone()]);
-        // The idle take retires the line everywhere.
-        assert_eq!(handle.take_notifications(), vec![line]);
         assert!(handle.steering().drain().is_empty());
         assert!(handle.take_notifications().is_empty());
     }

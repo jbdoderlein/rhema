@@ -196,6 +196,12 @@ fn write_chunks(head: &str, encoded: &str, out: &mut impl Write) {
 /// image's data under it.
 const SPRITE_BASE: u32 = 1000;
 
+/// How far the notification card's sprite set sits above the prompt
+/// set: nine sprites each (four corners, five edges), so a transcript
+/// holding both cards transmits both sets and their placements never
+/// share an image id.
+pub const NOTICE_SPRITE_OFFSET: u32 = 9;
+
 /// One card corner: the quarter-disc a bubble arc sprite draws. The
 /// four corners transmit once per fill color — a few kilobytes — and
 /// every bubble's placements reference its corners' ids, so a scrolled

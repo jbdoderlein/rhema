@@ -650,7 +650,7 @@ async fn event_loop(
     // ids, and the re-transmit drops the layer's placements, which
     // the same frame's re-states rebuild.
     let mut pieces_placed: Vec<crate::ui::BubblePiece> = Vec::new();
-    let mut sprite_fill: Option<(u8, u8, u8)> = None;
+    let mut sprite_fills = (None, None);
     for effect in std::mem::take(effects) {
         dispatch(terminal, app, tx, &mut status, effect);
     }
@@ -665,26 +665,28 @@ async fn event_loop(
             logo_placed = app.logo_rect;
             // The logo's escapes delete every image on the terminal,
             // the card's sprites included: the next bubble re-transmits.
-            sprite_fill = None;
+            sprite_fills = (None, None);
             pieces_placed.clear();
         }
-        // The prompt card re-states its want like the logo: the
-        // frame's glyphs and text draw above it (the placements carry
-        // z=-1, under the text layer), and the cells repaint around
-        // it. The sprites transmit once a fill color; a scrolled
+        // The cards re-state their want like the logo: the frame's
+        // glyphs and text draw above them (the placements carry z=-1,
+        // under the text layer), and the cells repaint around them.
+        // The sprites transmit once a fill color; a scrolled
         // transcript moves and resizes only placements, in place, and
         // a piece that leaves the viewport drops its own slot — never
         // the global delete, whose semantics a terminal may widen past
-        // the spec and take the sprites' data with it.
-        let fill = app.theme.prompt_fill_rgb();
+        // the spec and take the sprites' data with it. Two fills, two
+        // sets: the prompt's accent card and the notification's
+        // neutral one, each nine sprites under its own ids.
+        let fills = (app.theme.prompt_fill_rgb(), app.theme.notice_fill_rgb());
         if app.bubble_pieces != pieces_placed
-            || (!app.bubble_pieces.is_empty() && fill != sprite_fill)
+            || (!app.bubble_pieces.is_empty() && fills != sprite_fills)
         {
             if app.bubble_pieces.is_empty() {
                 for piece in pieces_placed.drain(..) {
                     crate::term_image::delete_placement(piece.sprite, piece.slot);
                 }
-            } else if let Some(fill) = fill {
+            } else if let (Some(prompt_fill), Some(notice_fill)) = fills {
                 // The sprites retransmit at the head of every burst,
                 // not once per fill: a retransmit swaps the pixels and
                 // leaves the placements keyed on the id alone, so it
@@ -695,19 +697,24 @@ async fn event_loop(
                 // silent ENOENT (the case of the sheared bottom
                 // corners). A transmit per burst makes that
                 // unobservable.
-                for corner in crate::term_image::Corner::ALL {
-                    crate::term_image::transmit_sprite(
-                        corner.sprite_id(),
-                        &crate::term_image::corner_sprite(corner, fill),
-                    );
+                for (offset, fill) in [
+                    (0, prompt_fill),
+                    (crate::term_image::NOTICE_SPRITE_OFFSET, notice_fill),
+                ] {
+                    for corner in crate::term_image::Corner::ALL {
+                        crate::term_image::transmit_sprite(
+                            corner.sprite_id() + offset,
+                            &crate::term_image::corner_sprite(corner, fill),
+                        );
+                    }
+                    for edge in crate::term_image::Edge::ALL {
+                        crate::term_image::transmit_sprite(
+                            edge.sprite_id() + offset,
+                            &crate::term_image::edge_sprite(edge, fill),
+                        );
+                    }
                 }
-                for edge in crate::term_image::Edge::ALL {
-                    crate::term_image::transmit_sprite(
-                        edge.sprite_id(),
-                        &crate::term_image::edge_sprite(edge, fill),
-                    );
-                }
-                sprite_fill = Some(fill);
+                sprite_fills = fills;
                 for piece in &app.bubble_pieces {
                     crate::term_image::place_piece(
                         piece.sprite,

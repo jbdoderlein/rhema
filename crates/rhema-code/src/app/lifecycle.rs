@@ -92,48 +92,55 @@ impl App {
     }
 
     /// The redraw loop's per-tick work: subagent and background-job
-    /// finishes reach the transcript, and a finished job's notification
-    /// reaches the model. Both feeds deliver the same way, and both
-    /// deliveries split on the turn state — the steering path and the
-    /// regular-prompt path:
+    /// finishes reach the transcript and the model through one feed
+    /// loop — the two feeds answer the same two takes, so the tick
+    /// cannot tell them apart, and neither can the transcript. The
+    /// delivery splits on the turn state, and the transcript record
+    /// is the notification card either way:
     ///
-    /// - a finish lands as a transcript notice right away, whatever
-    ///   the turn state — the job's live line left the strip at the
-    ///   same moment, so the notice is the record;
-    /// - while a turn runs, the driver steers: it appends the pending
-    ///   notification lines at the next step boundary, and the tick
-    ///   touches nothing but the notice;
-    /// - with no turn running, the tick takes the pending lines —
-    ///   subagent lines first, then background jobs', the steering
-    ///   chain's order — and runs them as the next turn's prompt: the
-    ///   same delivery a user submit would give them. The take retires
-    ///   the lines, so the driver's turn-start drain does not repeat
-    ///   what the prompt already said, and the prompt's user line is
-    ///   the transcript's record (no separate notice for the same
-    ///   text).
+    /// - while a turn runs, each detected finish lands as a card
+    ///   right away — the finish's live line left the strip at the
+    ///   same moment, so the card is the record — and the driver
+    ///   delivers the pending lines itself, steering at the next
+    ///   step boundary;
+    /// - with no turn running, the tick delivers: it takes the
+    ///   pending lines — subagent lines first, then background jobs',
+    ///   the steering chain's order — records each as its own card,
+    ///   and runs the joined text as the next turn's prompt. The
+    ///   take retires the lines, so the driver's turn-start drain
+    ///   does not repeat what the prompt already said.
+    ///
+    /// A finish is delivered exactly once per line: a job's steering
+    /// drain consumes what it returns (the exit code was the whole
+    /// message), and a subagent's is retired by the fetch or this
+    /// take — the re-announce in between is the registry's crash
+    /// durability, not a second delivery.
     pub fn on_tick(&mut self) -> Vec<Effect> {
         let promptable = !self.turn.running
             && !self.confirm_quit
             && self.agent.is_some()
             && self.assembling.is_none();
-        let mut lines: Vec<String> = Vec::new();
+        let mut feeds: Vec<&dyn FinishFeed> = Vec::new();
         if let Some(handle) = self.subagents.as_ref() {
-            let finishes = handle.take_finished();
-            if promptable {
-                lines.extend(handle.take_notifications());
-            } else {
-                for job in finishes {
-                    self.transcript.push_notice(&job.line);
-                }
-            }
+            feeds.push(handle);
         }
         if let Some(jobs) = self.jobs.as_ref() {
-            let finishes = jobs.take_finished();
+            feeds.push(jobs);
+        }
+        let mut lines: Vec<String> = Vec::new();
+        for feed in feeds {
+            let finishes = feed.take_finished_lines();
             if promptable {
-                lines.extend(jobs.take_notifications());
+                // The delivery is the record: one card per line.
+                for line in feed.take_notifications() {
+                    self.transcript.push_notification(&line);
+                    lines.push(line);
+                }
             } else {
-                for job in finishes {
-                    self.transcript.push_notice(&job.line);
+                // The detection is the record; the delivery stays
+                // with the driver's steering.
+                for line in finishes {
+                    self.transcript.push_notification(&line);
                 }
             }
         }
@@ -141,7 +148,6 @@ impl App {
             return Vec::new();
         }
         let prompt = lines.join("\n");
-        self.transcript.push_user(&prompt, Vec::new());
         vec![Effect::StartTurn {
             text: prompt,
             images: Vec::new(),
@@ -362,5 +368,45 @@ impl App {
             StopReason::StopSequence => "stop sequence".to_owned(),
             StopReason::Other(other) => other.clone(),
         }
+    }
+}
+
+/// One finish feed as the tick sees it. The subagent registry and the
+/// background-shell poller expose the same two takes, so the tick's
+/// loop — and the transcript it writes — cannot tell the feeds apart;
+/// which feed a card came from is not a fact the transcript carries.
+trait FinishFeed {
+    /// The finish events detected since the last take, each as its
+    /// notification line. Consuming: the card is the record.
+    fn take_finished_lines(&self) -> Vec<String>;
+
+    /// The pending notification lines, oldest first. Consuming: the
+    /// take is the delivery.
+    fn take_notifications(&self) -> Vec<String>;
+}
+
+impl FinishFeed for rhema_subagents::SubagentHandle {
+    fn take_finished_lines(&self) -> Vec<String> {
+        self.take_finished()
+            .into_iter()
+            .map(|finish| finish.line)
+            .collect()
+    }
+
+    fn take_notifications(&self) -> Vec<String> {
+        self.take_notifications()
+    }
+}
+
+impl FinishFeed for crate::jobs::JobsHandle {
+    fn take_finished_lines(&self) -> Vec<String> {
+        self.take_finished()
+            .into_iter()
+            .map(|finish| finish.line)
+            .collect()
+    }
+
+    fn take_notifications(&self) -> Vec<String> {
+        self.take_notifications()
     }
 }

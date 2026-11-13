@@ -171,12 +171,41 @@ impl Theme {
             _ => None,
         }
     }
+
+    /// The notification card's fill: the same lifted card the prompt
+    /// bubble gets, tinted by the text ink instead of the accent — a
+    /// neutral card, so a session notification reads as neither the
+    /// reader's own prompt nor the model's response. Derived, never
+    /// stated: every palette tints its own card, the generated one
+    /// included.
+    pub fn notice_fill(&self) -> Color {
+        let base = if self.is_native() {
+            self.ground
+        } else {
+            self.elevated
+        };
+        mix(base, self.text, NOTICE_TINT)
+    }
+
+    /// The notification fill as sRGB bytes, when it is one — the
+    /// sprites bake bytes, [`Self::prompt_fill_rgb`] explains.
+    pub fn notice_fill_rgb(&self) -> Option<(u8, u8, u8)> {
+        match self.notice_fill() {
+            Color::Rgb(r, g, b) => Some((r, g, b)),
+            _ => None,
+        }
+    }
 }
 
 /// How much of the accent the prompt bubble's fill carries, in percent:
 /// enough to read as the reader's own card, not enough to compete with
 /// the accent's inks.
 const PROMPT_TINT: u32 = 10;
+
+/// How much of the text ink the notification card's fill carries, in
+/// percent: a visible lift off the page that stays neutral — no hue of
+/// its own, so the card never competes with the status set.
+const NOTICE_TINT: u32 = 8;
 
 /// Mixes `percent` of `tint` into `base`. Terminal colors that are not
 /// `Rgb` (a native fill left on the terminal) cannot be mixed and read
@@ -981,6 +1010,49 @@ mod tests {
     /// The prompt card reads as the reader's own: a fill of its own on
     /// either background, apart from the transcript well, and still
     /// legible under the body ink on every palette.
+    /// The notification card is its own voice: painted on either
+    /// background, apart from the prompt's accent tint, and neutral —
+    /// the text ink tints it, no hue of the status set rides the fill.
+    #[test]
+    fn the_notification_fill_is_a_neutral_card_of_its_own() {
+        for background in [Background::Rhema, Background::Native] {
+            for palette in Palette::ALL {
+                for kind in [ThemeKind::Dark, ThemeKind::Light] {
+                    let theme = palette
+                        .theme(kind, PaletteInputs::default())
+                        .painted(background);
+                    let fill = theme.notice_fill();
+                    assert!(
+                        matches!(fill, Color::Rgb(..)),
+                        "{palette:?} {kind:?} {background:?}: the card is painted"
+                    );
+                    assert_ne!(
+                        fill,
+                        theme.prompt_fill(),
+                        "{palette:?} {kind:?} {background:?}: not the prompt's card"
+                    );
+                    let base = if background == Background::Native {
+                        theme.ground
+                    } else {
+                        theme.elevated
+                    };
+                    assert_ne!(
+                        fill, base,
+                        "{palette:?} {kind:?} {background:?}: the text ink lifts the card"
+                    );
+                    // The card's ink is the body text — the card is
+                    // set apart by alignment and fill, not by dimmer
+                    // ink — and it reads at the same floor the prompt
+                    // card answers to.
+                    assert!(
+                        contrast(fill, theme.text) >= 3.0,
+                        "{palette:?} {kind:?} {background:?}: the card's ink reads"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn the_prompt_fill_lifts_off_the_well_on_both_backgrounds() {
         for background in [Background::Rhema, Background::Native] {

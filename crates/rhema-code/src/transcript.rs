@@ -44,6 +44,10 @@ pub enum Line {
         /// The process exit code of command tools; `None` otherwise.
         code: Option<i32>,
     },
+    /// A session notification: a background job or a subagent finish,
+    /// delivered to the model and recorded as its own card — not user
+    /// input, and dropped by a rebuild like a notice.
+    Notification(String),
     /// A UI notice (model switched, turn declined, ...).
     Notice(String),
     /// A system-generated markdown block: rendered as markdown, but not
@@ -185,6 +189,12 @@ impl Transcript {
     /// Adds a UI notice line.
     pub fn push_notice(&mut self, text: &str) {
         self.lines.push(Line::Notice(text.to_owned()));
+    }
+
+    /// Adds a session notification line: the card a job or subagent
+    /// finish renders as.
+    pub fn push_notification(&mut self, text: &str) {
+        self.lines.push(Line::Notification(text.to_owned()));
     }
 
     /// Adds a system-generated markdown block.
