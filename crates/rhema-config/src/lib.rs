@@ -1274,6 +1274,73 @@ impl Store for YamlStore {
     }
 }
 
+/// The config file whole: the framework's section, plus every other
+/// consumer's keys. One file carries two vocabularies. The reference
+/// terminal stores its look and feel (`icons`, `theme`, and friends)
+/// beside the profiles, so a reader of the bare [`Settings`] rejects
+/// every file the terminal has written, and saving one back through
+/// the bare section would strip it. A consumer that is not the
+/// file's owner loads and saves the whole document through this
+/// type: bad values inside the settings section still fail the load,
+/// and the keys this type does not know land in `rest` and survive
+/// the round-trip unchanged.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "snake_case")]
+pub struct SettingsDocument {
+    /// The framework's section.
+    #[serde(flatten)]
+    pub settings: Settings,
+    /// Every other consumer's keys, carried through untouched.
+    #[serde(flatten)]
+    pub rest: serde_json::Map<String, serde_json::Value>,
+}
+
+impl SettingsDocument {
+    /// [`Settings::load`] over the whole file: the discovered
+    /// reference file, a missing one included.
+    ///
+    /// # Errors
+    ///
+    /// As [`Settings::load`].
+    pub fn load() -> Result<Self, ConfigError> {
+        Self::load_from(&YamlStore::discover()?.path)
+    }
+
+    /// [`Settings::load_from`] over the whole file: a missing file is
+    /// the default, and the owner's keys land in `rest`.
+    ///
+    /// # Errors
+    ///
+    /// A malformed YAML file, or a bad value inside the settings
+    /// section; the owner's keys are never validated here.
+    pub fn load_from(path: &impl AsRef<Path>) -> Result<Self, ConfigError> {
+        let raw = match std::fs::read_to_string(path.as_ref()) {
+            Ok(raw) => raw,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Self::default());
+            }
+            Err(err) => return Err(err.into()),
+        };
+        Ok(serde_yaml::from_str(&raw)?)
+    }
+
+    /// [`Settings::save_to`] over the whole file: the same `0700`
+    /// directory and atomic `0600` write, with the owner's keys
+    /// re-emitted after the section.
+    ///
+    /// # Errors
+    ///
+    /// As [`Settings::save_to`].
+    pub fn save_to(path: &impl AsRef<Path>, document: &Self) -> Result<(), ConfigError> {
+        if let Some(parent) = path.as_ref().parent() {
+            private_dir(parent)?;
+        }
+        let yaml = serde_yaml::to_string(document)?;
+        private_write_atomic(path.as_ref(), yaml.as_bytes())?;
+        Ok(())
+    }
+}
+
 /// The platform a frontend hands the framework: the directory
 /// conventions, the settings store, and the keychain namespace — the
 /// three decisions that belong to the frontend, collected at one
@@ -2663,5 +2730,53 @@ profiles:
             assert_eq!(mode & 0o777, 0o700, "the directory must be 0700");
         }
         assert_eq!(YamlStore::at(&path).load().unwrap(), Settings::default());
+    }
+}
+
+#[cfg(test)]
+mod settings_document_tests {
+    use super::*;
+
+    #[test]
+    fn foreign_keys_survive_a_round_trip() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.yaml");
+        std::fs::write(
+            &path,
+            "icons: nerd\ntheme: dark\nprofiles:\n  personal:\n    provider: google\n",
+        )
+        .expect("writes the file");
+        let mut document = SettingsDocument::load_from(&path).expect("loads");
+        assert_eq!(
+            document.rest.get("icons").and_then(|value| value.as_str()),
+            Some("nerd")
+        );
+        assert!(document.settings.profiles.contains_key("personal"));
+        // A mutation through the section, saved: the terminal's keys
+        // are still in the file, and the section's change is in it too.
+        document.settings.skills_disabled.insert("old-skill".into());
+        SettingsDocument::save_to(&path, &document).expect("saves");
+        let raw = std::fs::read_to_string(&path).expect("reads");
+        assert!(raw.contains("icons: nerd"), "{raw}");
+        assert!(raw.contains("theme: dark"), "{raw}");
+        assert!(raw.contains("old-skill"), "{raw}");
+        let again = SettingsDocument::load_from(&path).expect("reloads");
+        assert_eq!(again, document);
+    }
+
+    #[test]
+    fn a_missing_file_reads_as_the_default() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.yaml");
+        let document = SettingsDocument::load_from(&path).expect("loads");
+        assert_eq!(document, SettingsDocument::default());
+    }
+
+    #[test]
+    fn bad_values_in_the_section_still_fail_the_load() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.yaml");
+        std::fs::write(&path, "icons: nerd\nprofiles: not-a-map\n").expect("writes the file");
+        assert!(SettingsDocument::load_from(&path).is_err());
     }
 }

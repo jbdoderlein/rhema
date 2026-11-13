@@ -24,13 +24,19 @@
 //! not be loaded or saved, with the reason on stderr — the call path's
 //! "1 prints nothing" rule keeps agent tool output clean, which is not
 //! this surface's problem.
+//!
+//! The file is read and written whole, not as the bare settings
+//! section: the reference terminal stores its look and feel beside
+//! the profiles, and a section-only round-trip would reject the file
+//! on load and strip it on save. [`SettingsDocument`] carries the
+//! keys this crate does not know through both directions untouched.
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use rhema_config::mcp::{McpConfig, McpServerEntry, McpTransport};
-use rhema_config::{DEFAULT_PROFILE, Settings};
+use rhema_config::{DEFAULT_PROFILE, SettingsDocument};
 
 /// Answers `mcp add|list|remove` when the invocation is one of them,
 /// `None` for everything else (the bridge verbs keep their dispatch).
@@ -89,21 +95,23 @@ fn global_path(config_path: &Path) -> PathBuf {
 }
 
 /// Loads the config file, a missing file included: the reason a load
-/// can fail is always the caller's to print.
-fn load_config(config_path: &Path) -> Result<Settings, String> {
-    Settings::load_from(&config_path.to_path_buf())
+/// can fail is always the caller's to print. The whole document
+/// loads, never the bare section: the terminal's own keys ride
+/// [`SettingsDocument::rest`] and survive every write.
+fn load_config(config_path: &Path) -> Result<SettingsDocument, String> {
+    SettingsDocument::load_from(&config_path.to_path_buf())
         .map_err(|err| format!("reading {}: {err}", config_path.display()))
 }
 
 /// Persists the config: the directory `0700` first (it may not exist
 /// yet — a first `add` on a fresh machine), the file through
-/// [`Settings::save_to`]'s atomic `0600` write.
-fn save_config(config_path: &Path, config: &Settings) -> Result<(), String> {
+/// [`SettingsDocument::save_to`]'s atomic `0600` write.
+fn save_config(config_path: &Path, config: &SettingsDocument) -> Result<(), String> {
     if let Some(dir) = config_path.parent() {
         rhema_config::privacy::private_dir(dir)
             .map_err(|err| format!("creating {}: {err}", dir.display()))?;
     }
-    Settings::save_to(&config_path.to_path_buf(), config).map_err(|err| err.to_string())
+    SettingsDocument::save_to(&config_path.to_path_buf(), config).map_err(|err| err.to_string())
 }
 
 fn print_usage() {
@@ -305,8 +313,9 @@ fn add(config_path: &Path, argv: &[OsString]) -> i32 {
             return 1;
         }
     };
-    let profile_is_new = !config.profiles.contains_key(&profile);
+    let profile_is_new = !config.settings.profiles.contains_key(&profile);
     if config
+        .settings
         .effective(Some(&profile))
         .mcp_servers
         .contains_key(&name)
@@ -320,7 +329,7 @@ fn add(config_path: &Path, argv: &[OsString]) -> i32 {
         .servers
         .iter()
         .any(|server| server.name == name);
-    config.set_for_profile(Some(&profile), |target| {
+    config.settings.set_for_profile(Some(&profile), |target| {
         target.mcp_servers.insert(name.clone(), entry.clone());
     });
     if let Err(reason) = save_config(config_path, &config) {
@@ -367,7 +376,7 @@ fn resolved_row(name: &str, transport: &McpTransport) -> String {
 /// broken entry is the point of the listing.
 fn list_render(config_path: &Path, profile: &str) -> Result<String, String> {
     let config = load_config(config_path)?;
-    let stored = config.effective(Some(profile));
+    let stored = config.settings.effective(Some(profile));
     let global = McpConfig::load_from(&global_path(config_path));
     if stored.mcp_servers.is_empty() && global.servers.is_empty() {
         return Ok(format!(
@@ -493,6 +502,7 @@ fn remove(config_path: &Path, argv: &[OsString]) -> i32 {
         }
     };
     let removed = config
+        .settings
         .profiles
         .get_mut(&profile)
         .map(|target| target.mcp_servers.remove(&name))
@@ -544,7 +554,9 @@ mod tests {
             run(&config, &["add", "lightcraft", "--", "/bin/echo", "mcp"]),
             0
         );
-        let stored = Settings::load_from(&config).expect("loads");
+        let stored = SettingsDocument::load_from(&config)
+            .expect("loads")
+            .settings;
         let entry = &stored.effective(None).mcp_servers["lightcraft"];
         assert_eq!(
             entry.command,
@@ -589,7 +601,9 @@ mod tests {
             ),
             0
         );
-        let stored = Settings::load_from(&config).expect("loads");
+        let stored = SettingsDocument::load_from(&config)
+            .expect("loads")
+            .settings;
         let atlassian = &stored.effective(Some("work")).mcp_servers["atlassian"];
         assert_eq!(atlassian.description, "Jira and Confluence");
         assert_eq!(
@@ -612,14 +626,18 @@ mod tests {
         let (_dir, config, _global) = setup();
         assert_eq!(run(&config, &["add", "x", "--", "true"]), 0);
         assert_eq!(run(&config, &["add", "x", "--", "false"]), 2);
-        let stored = Settings::load_from(&config).expect("loads");
+        let stored = SettingsDocument::load_from(&config)
+            .expect("loads")
+            .settings;
         assert_eq!(
             stored.effective(None).mcp_servers["x"].command,
             Some(vec!["true".to_owned()]),
             "the failed add did not touch the entry"
         );
         assert_eq!(run(&config, &["add", "--force", "x", "--", "false"]), 0);
-        let stored = Settings::load_from(&config).expect("loads");
+        let stored = SettingsDocument::load_from(&config)
+            .expect("loads")
+            .settings;
         assert_eq!(
             stored.effective(None).mcp_servers["x"].command,
             Some(vec!["false".to_owned()])
@@ -642,7 +660,9 @@ mod tests {
         assert_eq!(run(&config, &["add", "n", "-H", "K: V", "--", "c"]), 2);
         assert_eq!(run(&config, &["add", "n", "c1", "c2"]), 2);
         // Nothing was stored by any of the failures.
-        let stored = Settings::load_from(&config).expect("loads");
+        let stored = SettingsDocument::load_from(&config)
+            .expect("loads")
+            .settings;
         assert!(stored.effective(None).mcp_servers.is_empty());
     }
 
@@ -653,7 +673,9 @@ mod tests {
             run(&config, &["add", "--profile", "farm", "x", "--", "true"]),
             0
         );
-        let stored = Settings::load_from(&config).expect("loads");
+        let stored = SettingsDocument::load_from(&config)
+            .expect("loads")
+            .settings;
         assert!(stored.profiles["farm"].mcp_servers.contains_key("x"));
     }
 
@@ -691,7 +713,9 @@ mod tests {
         let (_dir, config, global) = setup();
         assert_eq!(run(&config, &["add", "x", "--", "true"]), 0);
         assert_eq!(run(&config, &["remove", "x"]), 0);
-        let stored = Settings::load_from(&config).expect("loads");
+        let stored = SettingsDocument::load_from(&config)
+            .expect("loads")
+            .settings;
         assert!(stored.effective(None).mcp_servers.is_empty());
         // Unknown in the profile, present in the global file: named.
         std::fs::write(&global, "servers:\n  g:\n    command: [true]\n").expect("writes global");
@@ -730,5 +754,32 @@ mod tests {
         assert_eq!(run(&config, &["list", "--help"]), 0);
         assert_eq!(run(&config, &["remove", "--help"]), 0);
         assert_eq!(run(&config, &[]), 0);
+    }
+
+    #[test]
+    fn the_verbs_leave_the_frontends_own_keys_alone() {
+        let (_dir, config, _global) = setup();
+        // The terminal wrote its look and feel; the file carries both
+        // vocabularies.
+        std::fs::write(&config, "icons: nerd\ntheme: dark\n").expect("writes config");
+        assert_eq!(
+            run(&config, &["add", "lightcraft", "--", "/bin/echo", "mcp"]),
+            0,
+            "a file the terminal touched still loads"
+        );
+        let raw = std::fs::read_to_string(&config).expect("reads");
+        assert!(
+            raw.contains("icons: nerd"),
+            "add kept the terminal's keys: {raw}"
+        );
+        assert!(raw.contains("lightcraft"), "{raw}");
+        assert_eq!(run(&config, &["list"]), 0, "list reads the mixed file");
+        assert_eq!(run(&config, &["remove", "lightcraft"]), 0);
+        let raw = std::fs::read_to_string(&config).expect("reads");
+        assert!(
+            raw.contains("icons: nerd"),
+            "remove kept the terminal's keys: {raw}"
+        );
+        assert!(!raw.contains("lightcraft"), "{raw}");
     }
 }

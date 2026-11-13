@@ -104,14 +104,16 @@ impl App {
         if let Some(config) = &options.config {
             return Ok(config.clone());
         }
-        Settings::load()
+        Ok(rhema_config::SettingsDocument::load()?.settings)
     }
 
     #[cfg(not(feature = "mock"))]
     pub(crate) fn load_config(
         _options: &AcpOptions,
     ) -> Result<Settings, rhema_config::ConfigError> {
-        Settings::load()
+        // The whole document loads: the file carries the terminal's
+        // look and feel beside the section served here.
+        Ok(rhema_config::SettingsDocument::load()?.settings)
     }
 
     pub(crate) fn new(options: AcpOptions) -> Self {

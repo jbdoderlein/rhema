@@ -3403,6 +3403,7 @@ name = "rhema-mcp"
 version = "0.2.6"
 dependencies = [
  "async-stream",
+ "async-trait",
  "axum",
  "base64 0.22.1",
  "bytes",
@@ -3413,7 +3414,9 @@ dependencies = [
  "hyper-util",
  "mcp-to-cli",
  "rhema-agent-tools",
+ "rhema-coding-agent",
  "rhema-config",
+ "rhema-core",
  "serde",
  "serde_json",
  "sha2 0.10.9",
