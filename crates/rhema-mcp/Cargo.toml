@@ -34,9 +34,19 @@ rhema-agent-tools = { version = "0.2.6", path = "../rhema-agent-tools" }
 [dev-dependencies]
 tempfile = "3"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+# The wire-turn end-to-end drives a CodingAgent over a scripted
+# provider. Dev-only: the production graph stays disconnected (the
+# frontends bring the driver, the crate never does).
+rhema-coding-agent = { version = "0.2.6", path = "../rhema-coding-agent" }
+rhema-core = { version = "0.2.6", path = "../rhema-core" }
+async-trait.workspace = true
 
 [[test]]
 name = "fake_server"
+harness = false
+
+[[test]]
+name = "wire_turn"
 harness = false
 
 [lints]
