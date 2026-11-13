@@ -31,6 +31,11 @@
 //!   server to another. [`run_command`] lists first and refuses instead,
 //!   naming the owner.
 //!
+//! The prompt promises the model a notification when a job finishes or
+//! dies. The shim itself stays forwarding-only: the notification is a
+//! session-side delivery, made true by the frontend's poller over this
+//! same listing, never a backend feature and never a shim verb.
+//!
 //! Everything else is a forwarding shim, and stays one so the backend can
 //! be replaced without the prompt, the shim name, or the frontend moving.
 
@@ -83,7 +88,7 @@ pub const EXIT_NO_BACKEND: i32 = 5;
 /// The system-prompt section a wired frontend renders: the macro's whole
 /// documentation. Kept beside the code so prompt and behavior cannot
 /// drift.
-pub const PROMPT_SECTION: &str = "You can start background jobs that outlive a bash call: a server, a watcher, a build. Start one, then read it on a later turn instead of blocking:
+pub const PROMPT_SECTION: &str = "You can start background jobs that outlive a bash call: a server, a watcher, a build. Start one, then carry on \u{2014} you will be notified when it finishes or dies, exit code included, the same way a subagent's finish arrives. Nothing to poll: no `sleep`, no `job ls` rounds, no speculative `job logs`; read the output once, when the notice lands (`job logs <id>`).
 
     job run \"npm run dev\"     # starts it, prints a job id
     job ls                    # the jobs this session started
