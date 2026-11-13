@@ -91,4 +91,11 @@ jobs:
         run: cargo check -p rhema-cloudflare-code --target wasm32-unknown-unknown --features worker
 
       - name: Check the platform-neutral closure
-        run: cargo check -p rhema-agent-tools -p rhema-subagents -p rhema-cloud-agent --target wasm32-unknown-unknown --no-default-features
+        run: cargo check -p rhema-agent-tools -p rhema-subagents -p rhema-cloud-agent -p rhema-sandbox-http --target wasm32-unknown-unknown --no-default-features
+
+      # The DO also builds rhema-sandbox-http featureless on a native
+      # host (its neutral half compiles there): the reqwest code must
+      # gate on the feature, not on the target alone. A workspace
+      # member's --all-features unification hides exactly this class.
+      - name: Check the featureless client on the host
+        run: cargo check -p rhema-sandbox-http --no-default-features

@@ -7,23 +7,25 @@
 //! the daemon's location (`https://box.example:7600`, no trailing
 //! slash); the session name is the one path segment ahead of every
 //! route — the daemon multiplexes one root directory per session name
-//! (spec §3). The [`HttpTransport`] seam keeps reqwest out of the wasm
-//! frontends: the native transport hides behind
-//! [`HttpSandbox::new`], and any host that cannot own sockets brings
-//! its own transport through `new_with_transport` — the
-//! `AnthropicProvider` precedent. reqwest is a native-only dependency,
-//! absent from the wasm build even with the feature on.
+//! (spec §3). The [`HttpTransport`] seam keeps reqwest out of any
+//! build that does not name the `native` feature: the native transport
+//! hides behind [`HttpSandbox::new`], and any host that cannot own
+//! sockets — wasm or a featureless consumer — brings its own transport
+//! through `new_with_transport` — the `AnthropicProvider` precedent.
+//! reqwest is a native-only dependency, absent from the wasm build
+//! even with the feature on, and the reqwest code is gated on the
+//! feature, not just the target.
 #![forbid(unsafe_code)]
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 use std::time::Duration;
 
 use async_trait::async_trait;
 use base64::Engine;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 use rhema_sandbox::protocol::TOKEN_HEADER;
 use rhema_sandbox::protocol::{
     self, Ack, EXEC, ExecCall, ExecReply, FileReply, GET, PUT, PutFile, SEED, SeedRequest,
@@ -54,12 +56,12 @@ pub trait HttpTransport: Send + Sync {
 /// feature carries reqwest. Native-only: reqwest's own wasm client is
 /// `!Send` under this seam's `Send` contract, so a wasm build compiles
 /// the rest of the module and brings its own transport instead.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 struct ReqwestTransport {
     http: reqwest::Client,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 impl ReqwestTransport {
     /// A client with the total budget the longest route can want: an
     /// exec's real budget rides `timeout_secs` in the request body and
@@ -74,14 +76,14 @@ impl ReqwestTransport {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 impl Default for ReqwestTransport {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 #[async_trait]
 impl HttpTransport for ReqwestTransport {
     async fn post(
@@ -128,7 +130,7 @@ impl HttpSandbox {
     /// the `session` path segment. The reqwest transport is
     /// native-only: wasm frontends bring their own [`HttpTransport`]
     /// through [`Self::new_with_transport`].
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
     pub fn new(base: String, session: &str, token: &str) -> Self {
         Self::new_with_transport(base, session, token, Arc::new(ReqwestTransport::new()))
     }
@@ -250,7 +252,7 @@ impl Sandbox for HttpSandbox {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(all(test, unix, feature = "native"))]
 mod tests {
     use super::*;
     use serde_json::json;
