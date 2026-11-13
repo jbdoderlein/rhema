@@ -121,10 +121,8 @@ Rules:
     this crate (`crates/rhema-cloud-agent/`)
   - `cloudflare-code` — the cloud frontend: the coding agent as a
     Cloudflare Durable Object — the workers-rs glue over the shared
-    harness, and the deploy assets
-    (`crates/rhema-cloudflare-code/`, `deploy/cloudflare/`)
-  - `deploy` — the docker image under `deploy/` (sandboxd) and the
-    cloudflare deploy assets
+    harness, and the sandbox daemon image
+    (its own repository, `rhema-cloudflare-code`)
   - `claw-web` — the claw's Nuxt UI (`rhema-claw` repository, `web/claw/`)
   - `claw-android` — the claw's phone client: chat, status source,
     notifications (`rhema-claw` repository, `android/`)

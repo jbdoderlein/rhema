@@ -55,9 +55,6 @@ jobs:
       - name: Test
         run: cargo test --workspace --all-features
 
-  # The cloud closure compiles to wasm32: the Durable Object with the
-  # worker feature is the real build, and the platform-neutral closure
-  # must also stay wasm-clean without the local shell.
   # The frontend keeps building for windows: a cross check (no link,
   # so no full mingw toolchain) catches a unix-only regression. ring
   # compiles its C sources even under check, so the target compiler
@@ -77,7 +74,11 @@ jobs:
       - name: Check the frontend for windows
         run: cargo check -p rhema-code --bins --target x86_64-pc-windows-gnu
 
-  cloudflare-wasm:
+  # The published crates the cloud frontend consumes must stay
+  # wasm-clean: rhema-cloudflare-code (its own repository) builds its
+  # neutral half from rhema-agent-tools, rhema-subagents, and
+  # rhema-cloud-agent with no default features and no local shell.
+  wasm:
     runs-on: ubuntu-latest
     steps:
       - uses: https://gitea.com/actions/checkout@v4
@@ -90,4 +91,4 @@ jobs:
         run: cargo check -p rhema-cloudflare-code --target wasm32-unknown-unknown --features worker
 
       - name: Check the platform-neutral closure
-        run: cargo check -p rhema-agent-tools -p rhema-subagents -p rhema-cloud-agent -p rhema-cloudflare-code --target wasm32-unknown-unknown --no-default-features
+        run: cargo check -p rhema-agent-tools -p rhema-subagents -p rhema-cloud-agent --target wasm32-unknown-unknown --no-default-features

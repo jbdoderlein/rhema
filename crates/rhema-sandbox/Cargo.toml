@@ -7,11 +7,6 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-# The daemon binary's wiring rests at src/bin/rhema-sandboxd.rs until the
-# stage that stands up rhema-sandbox-server takes it; with no [[bin]] here
-# the auto-discovery stays off, so the orphan compiles nowhere.
-autobins = false
-
 [features]
 default = []
 # The scripted sandbox for offline tests; mirrors rhema-core's feature.

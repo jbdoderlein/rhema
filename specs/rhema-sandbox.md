@@ -3,8 +3,8 @@
 > **Status:** design, 2026-10-20 (decisions in §9). The rollout in §7 is
 > the commit plan; every phase lands green before the next starts.
 > **Grounding:** SPEC.md §10–§11 (the cloud frontends; the harness
-> extraction), `specs/rhema-cloudflare-code.md` (the shell seam and the
-> shim contract this builds on).
+> extraction); the shim contract lives in the `rhema-cloudflare-code`
+> repository's `specs/` now.
 > **One-line promise:** one `Sandbox` seam any frontend can aim at any
 > machine — the host, a container, a VM, a box over SSH, a cloud sandbox —
 > chosen by configuration, never by which crate a frontend was born in.
@@ -61,8 +61,9 @@ frontend shipped as item 8 and later left the tree entirely.
   `VercelSandbox` itself (`server.rs`). Running the DO with `bash` on an
   EC2 box — or the Vercel container against a Cloudflare container —
   means forking a frontend.
-- **The wire protocol exists but is unnamed.** `deploy/cloudflare/
-  sandbox-shim.mjs` already specifies a complete sandbox surface —
+- **The wire protocol exists but is unnamed.** The `rhema-cloudflare-code`
+  repository's `deploy/cloudflare/sandbox-shim.mjs` already specifies a
+  complete sandbox surface —
   `exec`, `put`, `get`, `seed`, a token header, tail-capped streams,
   clamped timeouts — but its payload types are private (`ShimExec`,
   `ShimAck`, `ShimFile` in the cloudflare crate) and its only transport
@@ -131,10 +132,11 @@ backend.
 
 ## 3. The wire protocol
 
-The contract below is `deploy/cloudflare/sandbox-shim.mjs`'s documented
-surface, promoted. `protocol.rs` owns the serde types (replacing the
-private `Shim*` trio) and pins the shapes with tests, the way `wire.rs`
-pins the client protocol. No version field in v1: a shape drift fails a
+The contract below is the `rhema-cloudflare-code` repository's
+`deploy/cloudflare/sandbox-shim.mjs` documented surface, promoted.
+`protocol.rs` owns the serde types (replacing the private `Shim*`
+trio) and pins the shapes with tests, the way `wire.rs` pins the
+client protocol. No version field in v1: a shape drift fails a
 test here instead of a debugging session there.
 
 - **Auth:** one shared secret in the `x-rhema-token` header on every

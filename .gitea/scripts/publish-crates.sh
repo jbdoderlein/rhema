@@ -22,6 +22,9 @@ CRATES=(
   rhema-config
   rhema-provider
   rhema-agent-tools
+  rhema-sandbox
+  rhema-sandbox-local
+  rhema-sandbox-http
   rhema-mcp
   rhema-rsd
   rhema-memory
@@ -29,6 +32,7 @@ CRATES=(
   rhema-autonomous-agent
   rhema-transcript
   rhema-coding-agent
+  rhema-cloud-agent
   rhema-provider-anthropic
   rhema-provider-chatgpt
   rhema-provider-openai-compatible

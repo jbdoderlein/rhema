@@ -1,10 +1,11 @@
 //! The sandbox wire protocol: the JSON shapes, the routes, and the auth
 //! header every sandbox backend speaks.
 //!
-//! The shapes are `deploy/cloudflare/sandbox-shim.mjs`'s documented
-//! surface, promoted: one command over [`EXEC`], single files over
-//! [`PUT`] and [`GET`], a workspace seed over [`SEED`] — every route a
-//! JSON POST carrying the shared secret in [`TOKEN_HEADER`]. No version
+//! The shapes are the `rhema-cloudflare-code` repository's
+//! `deploy/cloudflare/sandbox-shim.mjs` documented surface, promoted:
+//! one command over [`EXEC`], single files over [`PUT`] and [`GET`], a
+//! workspace seed over [`SEED`] — every route a JSON POST carrying the
+//! shared secret in [`TOKEN_HEADER`]. No version
 //! field in v1: a shape drift fails a test here instead of a debugging
 //! session there. Caps are per-implementation policy, not protocol —
 //! stream and payload size limits are imposed by each side before the

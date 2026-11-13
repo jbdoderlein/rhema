@@ -9,9 +9,9 @@
 //! [`Sandbox`] seam, [`ShellSandbox`] adapting it onto the shell
 //! executor). This crate is that layer, next to its per-vendor
 //! siblings — the seam crate of the provider family, applied to
-//! frontends: [`rhema-cloudflare-code`](../rhema-cloudflare-code)
-//! assembles from here and adds only the transport, the store, and the
-//! glue its platform demands.
+//! frontends: `rhema-cloudflare-code` (its own repository) assembles
+//! from here and adds only the transport, the store, and the glue its
+//! platform demands.
 //!
 //! The per-session configuration ([`SessionConfig`]) — model, base
 //! prompt, approval policy, workspace, seed, skills, step cap — lives
