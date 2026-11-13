@@ -24,8 +24,17 @@ pub const RANGE_HEAD_BYTES: usize = 300;
 /// visible and worth a `zoom`.
 pub const USER_BYTES: usize = 8 * 1024;
 
-/// The bytes a message costs on the wire: text, tool-call arguments,
-/// and tool-result content, summed. This is the unit the view's budget
+/// The bytes one image costs the budget. A provider tokenizes an image
+/// by its pixels, not by its base64 length: a 228 KB screenshot is
+/// about two thousand tokens, near the top of the range. Charging the
+/// encoded length would count that screenshot as 57 KB of text, and an
+/// image-heavy turn would flush the block over bytes compaction can
+/// never remove. One image is charged as one small message.
+pub const IMAGE_BYTES: usize = 1024;
+
+/// The bytes a message costs the budget: text, tool-call arguments,
+/// and tool-result content, summed, with each image at [`IMAGE_BYTES`]
+/// instead of its encoded length. This is the unit the view's budget
 /// spends.
 pub fn message_bytes(message: &Message) -> usize {
     message
@@ -34,15 +43,8 @@ pub fn message_bytes(message: &Message) -> usize {
         .map(|content| match content {
             Content::Text(text) => text.len(),
             Content::ToolCall(call) => call.name.len() + call.args.to_string().len(),
-            Content::ToolResult(result) => {
-                result.content.len()
-                    + result
-                        .images
-                        .iter()
-                        .map(|image| image.data.len())
-                        .sum::<usize>()
-            }
-            Content::Image(image) => image.data.len(),
+            Content::ToolResult(result) => result.content.len() + result.images.len() * IMAGE_BYTES,
+            Content::Image(_) => IMAGE_BYTES,
         })
         .sum()
 }
@@ -256,10 +258,26 @@ mod tests {
                 )]),
             )],
         };
-        // "out" plus the base64 data's four bytes.
-        assert_eq!(message_bytes(&message), 7);
+        // "out" plus one image at its flat budget charge, not the
+        // base64 data's four bytes.
+        assert_eq!(message_bytes(&message), 3 + IMAGE_BYTES);
         let rendered = render_message(&message);
         assert!(rendered.contains("[image: image/png]"), "{rendered}");
+    }
+
+    #[test]
+    fn an_images_encoded_length_does_not_reach_the_budget() {
+        let tiny = Message {
+            role: Role::Tool,
+            content: vec![Content::ToolResult(
+                ToolResult::success("c1", "").with_images(vec![rhema_core::Image::new(
+                    rhema_core::ImageMediaType::Png,
+                    "a".repeat(4_000_000),
+                )]),
+            )],
+        };
+        // Four megabytes of base64 is one message's worth of context.
+        assert_eq!(message_bytes(&tiny), IMAGE_BYTES);
     }
 
     #[test]

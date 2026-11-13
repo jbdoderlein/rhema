@@ -379,12 +379,10 @@ fn add_message_content(content: &mut LogContent, message: &Message) {
             }
             Content::ToolResult(result) => {
                 content.tool_results += result.content.len();
-                // Result-embedded images are wire bytes like any other.
-                content.tool_results += result
-                    .images
-                    .iter()
-                    .map(|image| image.data.len())
-                    .sum::<usize>();
+                // Each image costs one message, the same charge the
+                // budget spends: the split then tiles the log's bytes
+                // whatever the log holds.
+                content.tool_results += result.images.len() * summary::IMAGE_BYTES;
             }
             Content::Image(_) => {}
         }
@@ -694,16 +692,12 @@ impl Transcript {
                     }
                     Content::ToolResult(result) => {
                         shares.tool_results += result.content.len();
-                        // Result-embedded images are wire bytes like any
-                        // other; the message budgets count their data.
-                        shares.tool_results += result
-                            .images
-                            .iter()
-                            .map(|image| image.data.len())
-                            .sum::<usize>();
+                        // An image is one message's worth of context,
+                        // here and in the view's budget alike.
+                        shares.tool_results += result.images.len() * summary::IMAGE_BYTES;
                     }
-                    // Shares spreads tokens over the categories it names;
-                    // image bytes are the message budgets' to count.
+                    // Shares spreads tokens over the categories it names,
+                    // and none of them is a bare image.
                     Content::Image(_) => {}
                 }
             }
@@ -2100,6 +2094,26 @@ mod tests {
             content.tool_calls + content.tool_results + content.user_text + content.assistant_text,
             transcript.stats().log_bytes
         );
+    }
+
+    #[test]
+    fn an_image_costs_one_message_in_the_split_and_the_budget() {
+        let mut transcript = Transcript::new(settings(128_000));
+        transcript.observe(&[Message {
+            role: Role::Tool,
+            content: vec![Content::ToolResult(
+                ToolResult::success("c1", "ok").with_images(vec![rhema_core::Image::new(
+                    rhema_core::ImageMediaType::Png,
+                    "A".repeat(2_000_000),
+                )]),
+            )],
+        }]);
+        transcript.render();
+        let stats = transcript.stats();
+        // Two megabytes of base64 is one message: "ok" plus the flat
+        // charge, so the split still tiles the log's bytes.
+        assert_eq!(stats.log_bytes, 2 + summary::IMAGE_BYTES);
+        assert_eq!(stats.log_content.tool_results, stats.log_bytes);
     }
 
     #[test]
