@@ -49,6 +49,37 @@ pub fn message_bytes(message: &Message) -> usize {
         .sum()
 }
 
+/// The tokens one image stands for: a vision price, not a text
+/// length. A flat figure keeps an image-heavy turn from reading as
+/// millions of tokens; the footer's context gauge prices an image the
+/// same way.
+pub const IMAGE_TOKENS: u64 = 1_000;
+
+/// The tokens a run of text stands for: about four bytes per token.
+/// No tokenizer runs this side of the wire, so every token figure the
+/// Usage page shows is this estimate, and the page marks it as one.
+pub fn text_tokens(bytes: usize) -> u64 {
+    bytes as u64 / 4
+}
+
+/// The estimated tokens a message stands for: its text at about four
+/// bytes per token, each image at [`IMAGE_TOKENS`]. Summed part by
+/// part, so the split can price each category with the same rounding.
+pub fn message_tokens(message: &Message) -> u64 {
+    message
+        .content
+        .iter()
+        .map(|content| match content {
+            Content::Text(text) => text_tokens(text.len()),
+            Content::ToolCall(call) => text_tokens(call.name.len() + call.args.to_string().len()),
+            Content::ToolResult(result) => {
+                text_tokens(result.content.len()) + result.images.len() as u64 * IMAGE_TOKENS
+            }
+            Content::Image(_) => IMAGE_TOKENS,
+        })
+        .sum()
+}
+
 /// `text` on one line, at most `cap` bytes, cut on a char boundary
 /// with an ellipsis when longer.
 pub fn head(text: &str, cap: usize) -> String {
@@ -263,6 +294,22 @@ mod tests {
         assert_eq!(message_bytes(&message), 3 + IMAGE_BYTES);
         let rendered = render_message(&message);
         assert!(rendered.contains("[image: image/png]"), "{rendered}");
+    }
+
+    #[test]
+    fn tokens_are_text_over_four_plus_a_flat_image_price() {
+        let message = Message {
+            role: Role::Tool,
+            content: vec![Content::ToolResult(
+                ToolResult::success("c1", "abcdefgh").with_images(vec![
+                    rhema_core::Image::new(rhema_core::ImageMediaType::Png, "a".repeat(4_000_000)),
+                    rhema_core::Image::new(rhema_core::ImageMediaType::Png, "b".repeat(8)),
+                ]),
+            )],
+        };
+        // Eight bytes of text is two tokens; the two images are a
+        // flat price each, whatever their base64 length.
+        assert_eq!(message_tokens(&message), 2 + 2 * IMAGE_TOKENS);
     }
 
     #[test]

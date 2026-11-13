@@ -122,20 +122,30 @@ impl UsageBreakdown {
     }
 }
 
-/// The log's own wire bytes by category — each message counted once,
-/// the content the billed split re-sends once per request. The system
-/// prompt, the skills section, and the tool definitions ride every
-/// request but live in no message, so they have no figure here.
+/// The log's own content by category, in estimated tokens — each
+/// message counted once, the content the billed split re-sends once
+/// per request. Tool content has its own buckets, text and images go
+/// to the message's role, and a system message counts nowhere: the
+/// system prompt, the skills section, and the tool definitions ride
+/// every request but live in no message, so they have no figure here.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LogContent {
     /// Tool-call arguments in assistant messages.
-    pub tool_calls: usize,
+    pub tool_calls: u64,
     /// Tool results in tool messages.
-    pub tool_results: usize,
+    pub tool_results: u64,
     /// User text, the compaction block included.
-    pub user_text: usize,
+    pub user_text: u64,
     /// Assistant text.
-    pub assistant_text: usize,
+    pub assistant_text: u64,
+}
+
+impl LogContent {
+    /// The four categories summed: the log's estimated tokens, each
+    /// message counted once.
+    pub fn total(&self) -> u64 {
+        self.tool_calls + self.tool_results + self.user_text + self.assistant_text
+    }
 }
 
 /// The compaction's benchmark snapshot: what the view has been doing,
@@ -170,20 +180,31 @@ pub struct TranscriptStats {
     pub sectioned_messages: usize,
     /// The block's section count at the last request.
     pub sections: usize,
-    /// The block's bytes at the last request.
+    /// The block's bytes at the last request: the budget's unit.
     pub block_bytes: usize,
+    /// The block's estimated tokens at the last request.
+    #[serde(default)]
+    pub block_tokens: u64,
     /// The bytes carried whole from the cut to the log's end, at the
     /// last request.
     pub band_bytes: usize,
+    /// The estimated tokens carried whole from the cut to the log's
+    /// end, at the last request.
+    #[serde(default)]
+    pub band_tokens: u64,
     /// The current turn's bytes at the last request.
     pub tail_bytes: usize,
+    /// The current turn's estimated tokens at the last request.
+    #[serde(default)]
+    pub tail_tokens: u64,
     /// The log's wire bytes at the last request — what the
     /// conversation actually holds, each message counted once. The
     /// usage split below sums the same content once per request;
     /// this is the once.
     #[serde(default)]
     pub log_bytes: usize,
-    /// The log's bytes by category at the last request, counted once.
+    /// The log's estimated tokens by category at the last request,
+    /// counted once.
     #[serde(default)]
     pub log_content: LogContent,
     /// Input tokens the providers reported, summed over requests —
@@ -242,8 +263,11 @@ impl TranscriptStats {
             self.sectioned_messages = saved.sectioned_messages;
             self.sections = saved.sections;
             self.block_bytes = saved.block_bytes;
+            self.block_tokens = saved.block_tokens;
             self.band_bytes = saved.band_bytes;
+            self.band_tokens = saved.band_tokens;
             self.tail_bytes = saved.tail_bytes;
+            self.tail_tokens = saved.tail_tokens;
             self.log_bytes = saved.log_bytes;
             self.log_content = saved.log_content;
         }
@@ -271,12 +295,17 @@ pub struct Transcript {
     /// Per-message wire bytes, parallel to `log`: the budget's unit,
     /// counted once per message instead of per request.
     sizes: Vec<usize>,
+    /// Per-message estimated tokens, parallel to `log`: the Usage
+    /// page's unit, maintained beside `sizes`.
+    tokens: Vec<u64>,
     /// [`Vec`]`sizes` summed once, maintained by `observe` and read by
     /// the planner and the counters. The whole-log walk this replaces
     /// re-serialized every tool call's arguments on every request.
     total_bytes: usize,
-    /// The log's bytes by category, maintained by `observe` the same
-    /// way; `render` snapshots it into `stats.log_content`.
+    /// [`Vec`]`tokens` summed once, maintained beside `total_bytes`.
+    total_tokens: u64,
+    /// The log's estimated tokens by category, maintained by `observe`
+    /// the same way; `render` snapshots it into `stats.log_content`.
     content: LogContent,
     /// First message not under the block: `[0, cut)` is sectioned,
     /// `[cut, len)` travels whole. Moves only at flushes.
@@ -362,7 +391,7 @@ struct Shares {
     assistant_text: usize,
 }
 
-/// Adds one message's bytes by category into `content` — the
+/// Adds one message's estimated tokens by category into `content` — the
 /// per-message form of the split the counters and the usage shares
 /// both read. The same taxonomy the request shares spread the billed
 /// input over, minus the pieces that ride no message.
@@ -370,21 +399,29 @@ fn add_message_content(content: &mut LogContent, message: &Message) {
     for part in &message.content {
         match part {
             Content::Text(text) => match message.role {
-                Role::User => content.user_text += text.len(),
-                Role::Assistant => content.assistant_text += text.len(),
+                Role::User => content.user_text += summary::text_tokens(text.len()),
+                Role::Assistant => content.assistant_text += summary::text_tokens(text.len()),
                 Role::System | Role::Tool => {}
             },
             Content::ToolCall(call) => {
-                content.tool_calls += call.name.len() + call.args.to_string().len();
+                content.tool_calls +=
+                    summary::text_tokens(call.name.len() + call.args.to_string().len());
             }
             Content::ToolResult(result) => {
-                content.tool_results += result.content.len();
-                // Each image costs one message, the same charge the
-                // budget spends: the split then tiles the log's bytes
-                // whatever the log holds.
-                content.tool_results += result.images.len() * summary::IMAGE_BYTES;
+                content.tool_results += summary::text_tokens(result.content.len());
+                // An image is a vision price, not text: the split
+                // prices it as one, and the categories still tile the
+                // log's tokens whatever the log holds.
+                content.tool_results += result.images.len() as u64 * summary::IMAGE_TOKENS;
             }
-            Content::Image(_) => {}
+            // A bare image rides the message's own turn: its vision
+            // price joins that role's bucket, so the split still
+            // covers every token a user or assistant message carries.
+            Content::Image(_) => match message.role {
+                Role::User => content.user_text += summary::IMAGE_TOKENS,
+                Role::Assistant => content.assistant_text += summary::IMAGE_TOKENS,
+                Role::System | Role::Tool => {}
+            },
         }
     }
 }
@@ -408,7 +445,9 @@ impl Transcript {
             settings,
             log: Vec::new(),
             sizes: Vec::new(),
+            tokens: Vec::new(),
             total_bytes: 0,
+            total_tokens: 0,
             content: LogContent::default(),
             cut: 0,
             sections: Vec::new(),
@@ -433,8 +472,11 @@ impl Transcript {
             let first = self.log.len();
             for message in &messages[first..] {
                 let bytes = summary::message_bytes(message);
+                let tokens = summary::message_tokens(message);
                 self.sizes.push(bytes);
+                self.tokens.push(tokens);
                 self.total_bytes += bytes;
+                self.total_tokens += tokens;
                 add_message_content(&mut self.content, message);
             }
             self.log.extend_from_slice(&messages[first..]);
@@ -442,13 +484,18 @@ impl Transcript {
         } else {
             self.log = messages.to_vec();
             self.sizes = Vec::with_capacity(self.log.len());
+            self.tokens = Vec::with_capacity(self.log.len());
             self.total_bytes = 0;
+            self.total_tokens = 0;
             self.content = LogContent::default();
-            for message in &self.log {
-                let bytes = summary::message_bytes(message);
+            for index in 0..self.log.len() {
+                let bytes = summary::message_bytes(&self.log[index]);
+                let tokens = summary::message_tokens(&self.log[index]);
                 self.sizes.push(bytes);
+                self.tokens.push(tokens);
                 self.total_bytes += bytes;
-                add_message_content(&mut self.content, message);
+                self.total_tokens += tokens;
+                add_message_content(&mut self.content, &self.log[index]);
             }
             self.cut = 0;
             self.sections.clear();
@@ -860,8 +907,11 @@ impl Transcript {
         self.stats.sectioned_messages = self.cut;
         self.stats.sections = self.sections.len();
         self.stats.block_bytes = self.block_bytes();
+        self.stats.block_tokens = summary::text_tokens(self.stats.block_bytes);
         self.stats.band_bytes = self.bytes(self.cut, len);
+        self.stats.band_tokens = self.tokens_between(self.cut, len);
         self.stats.tail_bytes = self.bytes(tail_start, len);
+        self.stats.tail_tokens = self.tokens_between(tail_start, len);
         self.stats.viewed += 1;
 
         let mut text = String::from(
@@ -904,6 +954,11 @@ impl Transcript {
         self.sizes[from..to].iter().sum()
     }
 
+    /// The estimated tokens of `log[from..to]`, from the token cache.
+    fn tokens_between(&self, from: usize, to: usize) -> u64 {
+        self.tokens[from..to].iter().sum()
+    }
+
     /// The block's bytes: every section's header plus text.
     fn block_bytes(&self) -> usize {
         self.sections.iter().map(Section::view_bytes).sum()
@@ -914,14 +969,17 @@ impl Transcript {
     /// the running totals rebuild from scratch.
     fn sync_sizes(&mut self) {
         self.sizes.truncate(self.log.len());
+        self.tokens.truncate(self.log.len());
         let mut patched = false;
         while self.sizes.len() < self.log.len() {
             let id = self.sizes.len();
             self.sizes.push(summary::message_bytes(&self.log[id]));
+            self.tokens.push(summary::message_tokens(&self.log[id]));
             patched = true;
         }
         if patched {
             self.total_bytes = self.sizes.iter().sum();
+            self.total_tokens = self.tokens.iter().sum();
             self.content = LogContent::default();
             for message in &self.log {
                 add_message_content(&mut self.content, message);
@@ -1355,6 +1413,10 @@ mod tests {
         assert_eq!(stats.sectioned_messages, transcript.cut);
         assert!(stats.block_bytes > 0);
         assert!(stats.band_bytes + stats.block_bytes < 245 * 1024);
+        // The token figures describe the same parts as the byte ones.
+        assert!(stats.block_tokens > 0);
+        assert!(stats.band_tokens > 0);
+        assert!(stats.tail_tokens <= stats.band_tokens);
     }
 
     #[test]
@@ -1995,8 +2057,11 @@ mod tests {
             sectioned_messages: 4,
             sections: 2,
             block_bytes: 900,
+            block_tokens: 225,
             band_bytes: 3_000,
+            band_tokens: 820,
             tail_bytes: 1_200,
+            tail_tokens: 340,
             log_bytes: 5_400,
             log_content: LogContent {
                 tool_calls: 100,
@@ -2071,10 +2136,10 @@ mod tests {
         assert_eq!(transcript.stats().log_bytes, expected);
     }
 
-    /// The content split: the log's bytes by category, each message
-    /// counted once. For this fixture the categories tile the log —
-    /// no images, no system or tool-role text — so they sum to the
-    /// log's whole size.
+    /// The content split: the log's estimated tokens by category, each
+    /// message counted once. For this fixture the categories tile the
+    /// log — no images, no system or tool-role text — so they sum to
+    /// the log's whole estimate.
     #[test]
     fn the_content_split_counts_each_message_once() {
         let mut transcript = Transcript::new(settings(128_000));
@@ -2082,18 +2147,28 @@ mod tests {
         transcript.observe(&messages);
         transcript.render();
         let content = transcript.stats().log_content;
-        assert_eq!(content.tool_results, 4 * result_bytes(8).len());
-        assert_eq!(content.assistant_text, 4 * "checking".len());
+        assert_eq!(
+            content.tool_results,
+            4 * summary::text_tokens(result_bytes(8).len())
+        );
+        assert_eq!(
+            content.assistant_text,
+            4 * summary::text_tokens("checking".len())
+        );
         assert_eq!(
             content.user_text,
-            "fix the build".len() + "and now summarize".len()
+            summary::text_tokens("fix the build".len())
+                + summary::text_tokens("and now summarize".len())
         );
         let args = serde_json::json!({ "command": "make test" }).to_string();
-        assert_eq!(content.tool_calls, 4 * ("bash".len() + args.len()));
         assert_eq!(
-            content.tool_calls + content.tool_results + content.user_text + content.assistant_text,
-            transcript.stats().log_bytes
+            content.tool_calls,
+            4 * summary::text_tokens("bash".len() + args.len())
         );
+        // The categories tile the log's tokens: the figure the Usage
+        // page heads the split with.
+        let expected: u64 = messages.iter().map(summary::message_tokens).sum();
+        assert_eq!(content.total(), expected);
     }
 
     #[test]
@@ -2113,7 +2188,8 @@ mod tests {
         // Two megabytes of base64 is one message: "ok" plus the flat
         // charge, so the split still tiles the log's bytes.
         assert_eq!(stats.log_bytes, 2 + summary::IMAGE_BYTES);
-        assert_eq!(stats.log_content.tool_results, stats.log_bytes);
+        // In tokens the image is its vision price, not a byte count.
+        assert_eq!(stats.log_content.tool_results, summary::IMAGE_TOKENS);
     }
 
     #[test]
