@@ -12,8 +12,9 @@
 //! never the next step.
 //!
 //! Two writers fill a section's text. The **extractive** fill is the
-//! mechanical digest — a few hundred bytes, cannot be wrong about what
-//! happened, only short; it is the fallback and the default. The
+//! mechanical digest: the user's words whole, the rest counted and
+//! headed, so it cannot be wrong about what happened, only short; it
+//! is the fallback and the default. The
 //! **model** fill is a [`Summarizer`]: a cheap worker call that
 //! rewrites the same range densely. A worker failure never blocks the
 //! request — the extractive digest stands in and the section keeps the

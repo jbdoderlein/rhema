@@ -46,9 +46,9 @@ pub struct TranscriptSettings {
     /// A section carries at least one message whatever this says.
     pub step_bytes: usize,
     /// The messages one section covers at most. Bounds the extractive
-    /// stand-in's lossiness: each section's digest is a few hundred
-    /// bytes, so this caps how much history one line may paper over
-    /// when no model fill is configured.
+    /// stand-in's lossiness: a digest keeps the user's words whole and
+    /// counts the rest, so this caps how much tool traffic one line
+    /// may paper over when no model fill is configured.
     pub max_section_messages: usize,
     /// The bytes the committed block may reach before the oldest
     /// sections consolidate into one. Consolidation rewrites the

@@ -17,6 +17,13 @@ pub const HEAD_BYTES: usize = 160;
 /// Byte cap on one structural line covering a range.
 pub const RANGE_HEAD_BYTES: usize = 300;
 
+/// Byte cap on one user message carried whole in a digest. A user's
+/// instruction is the one thing the block must not paraphrase, so it
+/// stands as written up to this size. Past it the head stands and an
+/// explicit marker states the message's full length, so a cut is
+/// visible and worth a `zoom`.
+pub const USER_BYTES: usize = 8 * 1024;
+
 /// The bytes a message costs on the wire: text, tool-call arguments,
 /// and tool-result content, summed. This is the unit the view's budget
 /// spends.
@@ -52,6 +59,18 @@ pub fn head(text: &str, cap: usize) -> String {
         end -= 1;
     }
     format!("{}\u{2026}", &flat[..end])
+}
+
+/// A user message as one digest line: every message, whole, on one
+/// line, cut only past [`USER_BYTES`] and then with a marker carrying
+/// the length it lost. The marker matters: text that disappears with
+/// no sign reads as text that was never there.
+fn user_line(text: &str) -> String {
+    let flat = one_line(text);
+    if flat.len() <= USER_BYTES {
+        return flat;
+    }
+    format!("{} [{} B, cut]", head(&flat, USER_BYTES), flat.len())
 }
 
 /// Newlines and tab runs become single spaces: a line is one line.
@@ -93,6 +112,8 @@ pub(crate) fn summarize_range(messages: &[Message], range: Range) -> ((usize, us
     let mut results = 0usize;
     let mut failures = 0usize;
 
+    // Assistant heads stay a two-line preview: the range's shape is
+    // what a future reader needs. The user's words come whole below.
     let push_head = |heads: &mut Vec<String>, text: &str| {
         if heads.len() < 2 {
             heads.push(head(text, 80));
@@ -103,7 +124,7 @@ pub(crate) fn summarize_range(messages: &[Message], range: Range) -> ((usize, us
             match content {
                 Content::Text(text) => {
                     if message.role == Role::User {
-                        push_head(&mut user_heads, text);
+                        user_heads.push(user_line(text));
                     } else if message.role == Role::Assistant {
                         push_head(&mut assistant_heads, text);
                     }
@@ -239,6 +260,44 @@ mod tests {
         assert_eq!(message_bytes(&message), 7);
         let rendered = render_message(&message);
         assert!(rendered.contains("[image: image/png]"), "{rendered}");
+    }
+
+    #[test]
+    fn every_user_text_gets_a_line_whole() {
+        let mut messages: Vec<Message> = (0..12)
+            .map(|i| Message::text(Role::User, format!("decision {i}: keep this")))
+            .collect();
+        messages.push(Message::text(Role::Assistant, "done"));
+        let (_, text) = summarize_range(&messages, Range { id: 0, n: 13 });
+        for i in 0..12 {
+            assert!(
+                text.contains(&format!("user: decision {i}: keep this")),
+                "{text}"
+            );
+        }
+        assert!(!text.contains("cut"), "{text}");
+    }
+
+    #[test]
+    fn a_user_text_past_the_cap_says_what_it_lost() {
+        let long = "x".repeat(USER_BYTES + 500);
+        let messages = vec![Message::text(Role::User, long)];
+        let (_, text) = summarize_range(&messages, Range { id: 0, n: 1 });
+        // The whole head, then the marker naming the bytes that did
+        // not fit.
+        let head = format!("user: {}", "x".repeat(USER_BYTES));
+        assert!(
+            text.starts_with(&head),
+            "digest starts wrong: {}",
+            &text[..64]
+        );
+        let marker = format!(" [{} B, cut]", USER_BYTES + 500);
+        assert!(
+            text.ends_with(&marker),
+            "digest ends wrong: len {}",
+            text.len()
+        );
+        assert_eq!(text.len(), head.len() + "\u{2026}".len() + marker.len());
     }
 
     #[test]
