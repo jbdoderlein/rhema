@@ -7,8 +7,10 @@
 //! oversize args JSON); `3` unknown server; `4` transport (bridge
 //! unreachable, server down past respawn); `5` the server reported
 //! failure (JSON-RPC error or `isError: true` — the failure envelope
-//! still prints, it is the model's diagnostic); `6` timeout; `1`
-//! reserved for internal faults and never printed by design.
+//! still prints, it is the model's diagnostic); `6` timeout. Two
+//! faults answer `4` in different voices: outside a wired agent
+//! shell the meta verbs print the explanation spec §10 asks for,
+//! and internal faults print nothing.
 //!
 //! The bridge client is a hand-rolled HTTP/1.1 exchange over the
 //! Unix socket, `Connection: close` — one request per process, no
@@ -57,10 +59,15 @@ impl From<Exit> for i32 {
     }
 }
 
-/// Why the process ends now: either a named exit or an internal
-/// fault, which exits `1` and prints nothing (spec §5).
+/// Why the process ends now: a named exit, or one of two transport
+/// faults. The no-session case prints the explanation spec §10 asks
+/// for; an internal fault prints nothing.
 enum Outcome {
     Exit(Exit),
+    /// The env vars the init file sets are absent: this process is
+    /// not inside a wired agent shell, and the bridge verbs have
+    /// nothing to talk to.
+    NoWiredSession,
     Internal(String),
 }
 
@@ -74,13 +81,12 @@ struct CliEnv {
 
 /// The environment the init file provides, read from this process's
 /// env; any missing piece means the CLI ran outside a provisioned
-/// shell.
+/// shell, and the process has no session to talk to.
 fn cli_env() -> Result<CliEnv, Outcome> {
     let socket = std::env::var_os(crate::provision::VAR_BRIDGE)
         .map(PathBuf::from)
-        .ok_or_else(|| Outcome::Internal("missing RHEMA_MCP_BRIDGE".to_owned()))?;
-    let token = std::env::var(crate::provision::VAR_TOKEN)
-        .map_err(|_| Outcome::Internal("missing RHEMA_MCP_TOKEN".to_owned()))?;
+        .ok_or(Outcome::NoWiredSession)?;
+    let token = std::env::var(crate::provision::VAR_TOKEN).map_err(|_| Outcome::NoWiredSession)?;
     let tmp = std::env::var_os(crate::provision::VAR_TMP).map(PathBuf::from);
     Ok(CliEnv { socket, token, tmp })
 }
@@ -99,6 +105,19 @@ pub fn run(argv: &[std::ffi::OsString]) -> i32 {
     match dispatch(cli_env(), argv) {
         Ok(exit) => i32::from(exit),
         Err(Outcome::Exit(exit)) => i32::from(exit),
+        Err(Outcome::NoWiredSession) => {
+            // Spec §10: outside a wired agent shell the meta verbs
+            // exit 4 with an explanation. The bridge binds a
+            // per-session socket and its env lives only in the
+            // agent's shell; the config verbs are the road that works
+            // here.
+            eprintln!(
+                "mcp: no wired session. `servers`, `tools`, `schema`, and `call` talk to \
+                 the bridge inside a running agent session; `rhema mcp list` reads the \
+                 config and works anywhere"
+            );
+            i32::from(Exit::Transport)
+        }
         Err(Outcome::Internal(reason)) => {
             let _ = reason; // never printed, by design
             i32::from(Exit::Transport)
@@ -132,6 +151,9 @@ pub fn run_with_env(
     match dispatch(Ok(env), argv) {
         Ok(exit) => i32::from(exit),
         Err(Outcome::Exit(exit)) => i32::from(exit),
+        // The env is explicit here, so this never fires; the arm
+        // completes the match.
+        Err(Outcome::NoWiredSession) => i32::from(Exit::Transport),
         Err(Outcome::Internal(reason)) => {
             let _ = reason; // never printed, by design
             i32::from(Exit::Transport)
