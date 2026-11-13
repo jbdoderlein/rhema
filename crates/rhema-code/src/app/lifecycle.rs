@@ -91,40 +91,53 @@ impl App {
         }
     }
 
-    /// The redraw loop's per-tick work: subagent finishes reach the
-    /// transcript, and a finished job's notification reaches the model.
-    /// Both deliveries split on the turn state — the steering path and
-    /// the regular-prompt path:
+    /// The redraw loop's per-tick work: subagent and background-job
+    /// finishes reach the transcript, and a finished job's notification
+    /// reaches the model. Both feeds deliver the same way, and both
+    /// deliveries split on the turn state — the steering path and the
+    /// regular-prompt path:
     ///
     /// - a finish lands as a transcript notice right away, whatever
-    ///   the turn state — the job's pinned line left the strip at the
+    ///   the turn state — the job's live line left the strip at the
     ///   same moment, so the notice is the record;
     /// - while a turn runs, the driver steers: it appends the pending
     ///   notification lines at the next step boundary, and the tick
     ///   touches nothing but the notice;
-    /// - with no turn running, the tick takes the pending lines and
-    ///   runs them as the next turn's prompt — the same delivery a
-    ///   user submit would give them. The take retires the lines, so
-    ///   the driver's turn-start drain does not repeat what the prompt
-    ///   already said, and the prompt's user line is the transcript's
-    ///   record (no separate notice for the same text).
+    /// - with no turn running, the tick takes the pending lines —
+    ///   subagent lines first, then background jobs', the steering
+    ///   chain's order — and runs them as the next turn's prompt: the
+    ///   same delivery a user submit would give them. The take retires
+    ///   the lines, so the driver's turn-start drain does not repeat
+    ///   what the prompt already said, and the prompt's user line is
+    ///   the transcript's record (no separate notice for the same
+    ///   text).
     pub fn on_tick(&mut self) -> Vec<Effect> {
-        let Some(handle) = self.subagents.as_ref() else {
-            return Vec::new();
-        };
-        let finishes = handle.take_finished();
         let promptable = !self.turn.running
             && !self.confirm_quit
             && self.agent.is_some()
             && self.assembling.is_none();
-        if !promptable {
-            for job in finishes {
-                self.transcript.push_notice(&job.line);
+        let mut lines: Vec<String> = Vec::new();
+        if let Some(handle) = self.subagents.as_ref() {
+            let finishes = handle.take_finished();
+            if promptable {
+                lines.extend(handle.take_notifications());
+            } else {
+                for job in finishes {
+                    self.transcript.push_notice(&job.line);
+                }
             }
-            return Vec::new();
         }
-        let lines = handle.take_notifications();
-        if lines.is_empty() {
+        if let Some(jobs) = self.jobs.as_ref() {
+            let finishes = jobs.take_finished();
+            if promptable {
+                lines.extend(jobs.take_notifications());
+            } else {
+                for job in finishes {
+                    self.transcript.push_notice(&job.line);
+                }
+            }
+        }
+        if !promptable || lines.is_empty() {
             return Vec::new();
         }
         let prompt = lines.join("\n");

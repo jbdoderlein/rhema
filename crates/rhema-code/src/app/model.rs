@@ -712,6 +712,7 @@ impl App {
                 .unwrap_or(rhema_config::DEFAULT_PROFILE),
             &self.config.disabled_mcp_servers,
             self.secrets.as_ref(),
+            self.jobs.as_ref().map(crate::jobs::JobsHandle::steering),
         );
         Ok((
             CodingAgent::from_session(provider, agent_config, session)?,

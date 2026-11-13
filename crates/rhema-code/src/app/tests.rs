@@ -5972,6 +5972,162 @@ async fn a_running_turn_shows_the_finish_notice_and_leaves_steering_to_the_drive
     );
 }
 
+/// A background job finishing while the session is idle becomes the
+/// next prompt: the tick runs the line as a turn, the prompt's user
+/// line is the record, and the take retires the line so the driver's
+/// drain does not repeat it.
+#[test]
+fn an_idle_session_runs_a_finished_job_line_as_the_next_prompt() {
+    let mut h = harness(Some("key"), Some("m"), Session::default());
+    let line = "Background job abc (\"npm run dev\") has finished (exit 0).".to_owned();
+    h.app.jobs = Some(crate::jobs::JobsHandle::stub_with_finished(vec![
+        crate::jobs::JobFinished {
+            id: "abc".to_owned(),
+            command: "npm run dev".to_owned(),
+            exit_code: Some(0),
+            line: line.clone(),
+        },
+    ]));
+    let effects = h.app.on_tick();
+    assert_eq!(effects.len(), 1);
+    let Effect::StartTurn {
+        text: prompt,
+        images,
+    } = &effects[0]
+    else {
+        panic!("the idle tick starts a turn, got {:?}", effects[0]);
+    };
+    assert_eq!(prompt, &line);
+    assert!(images.is_empty());
+    let last = h.app.transcript.lines().last();
+    assert!(
+        matches!(last, Some(Line::User { text, .. }) if text == line.as_str()),
+        "the prompt's user line is the record, got {last:?}"
+    );
+    // A second tick starts nothing: the take retired the line.
+    assert!(h.app.on_tick().is_empty());
+    let steering = h.app.jobs.as_ref().unwrap().steering();
+    assert!(steering.drain().is_empty(), "a taken line stops announcing");
+}
+
+/// A background job finishing while a turn runs shows the notice and
+/// leaves the delivery to the driver's steering: the tick starts
+/// nothing and takes no notification line, so the drain still names
+/// the job.
+#[test]
+fn a_running_turn_shows_a_job_finish_notice_and_leaves_steering_to_the_driver() {
+    let mut h = harness(Some("key"), Some("m"), Session::default());
+    let line =
+        "Background job abc (\"npm run dev\") has finished with an error (exit 1).".to_owned();
+    h.app.jobs = Some(crate::jobs::JobsHandle::stub_with_finished(vec![
+        crate::jobs::JobFinished {
+            id: "abc".to_owned(),
+            command: "npm run dev".to_owned(),
+            exit_code: Some(1),
+            line: line.clone(),
+        },
+    ]));
+    h.app.turn.running = true;
+    let effects = h.app.on_tick();
+    assert!(
+        effects.is_empty(),
+        "a running turn takes no prompt: {effects:?}"
+    );
+    let last = h.app.transcript.lines().last();
+    assert!(
+        matches!(last, Some(Line::Notice(text)) if text == line.as_str()),
+        "the finish lands as a notice, got {last:?}"
+    );
+    // The driver still steers: the announcement line is pending.
+    let steering = h.app.jobs.as_ref().unwrap().steering();
+    assert_eq!(steering.drain(), vec![line]);
+}
+
+/// Both feeds pending and the session idle: one prompt carries both
+/// announcements, subagents first, background jobs second — the
+/// steering chain's order, and neither feed swallowed by the other.
+#[tokio::test]
+async fn both_feeds_join_into_one_idle_prompt_with_subagents_first() {
+    use rhema_core::ProviderError;
+    use rhema_subagents::{SubagentDef, SubagentTools};
+
+    /// Answers one report and ends.
+    struct Report;
+
+    #[async_trait::async_trait]
+    impl ModelProvider for Report {
+        async fn complete(
+            &self,
+            _req: rhema_core::ModelRequest,
+            _sink: &mut dyn rhema_core::EventSink,
+        ) -> Result<rhema_core::ModelOutput, ProviderError> {
+            Ok(rhema_core::ModelOutput {
+                message: Message::text(Role::Assistant, "the report"),
+                stop_reason: StopReason::EndTurn,
+                usage: Usage::default(),
+            })
+        }
+    }
+
+    let mut h = harness(Some("key"), Some("m"), Session::default());
+    let tools = {
+        let shell = Arc::new(rhema_coding_agent::ShellTools::new(std::env::temp_dir()));
+        let def = SubagentDef {
+            name: "reviewer".into(),
+            description: "reviews".into(),
+            model: None,
+            max_steps: None,
+            body: "Review.".into(),
+        };
+        Arc::new(SubagentTools::new(Arc::new(Report), vec![def], shell, "m"))
+    };
+    h.app.subagents = Some(tools.handle());
+    let job_line = "Background job abc (\"npm run dev\") has finished (exit 0).".to_owned();
+    h.app.jobs = Some(crate::jobs::JobsHandle::stub_with_finished(vec![
+        crate::jobs::JobFinished {
+            id: "abc".to_owned(),
+            command: "npm run dev".to_owned(),
+            exit_code: Some(0),
+            line: job_line.clone(),
+        },
+    ]));
+    let _ = rhema_core::ToolResolver::resolve(
+        tools.as_ref(),
+        ToolCall {
+            id: "c1".into(),
+            name: "subagent".into(),
+            args: serde_json::json!({"name": "reviewer", "prompt": "review"}),
+            ..ToolCall::default()
+        },
+        &rhema_core::ToolContext::default(),
+    )
+    .await;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while h
+        .app
+        .subagents
+        .as_ref()
+        .unwrap()
+        .status()
+        .iter()
+        .any(|job| job.id == "job-1")
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the job never finished"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    let effects = h.app.on_tick();
+    assert_eq!(effects.len(), 1, "the idle tick starts one turn");
+    let Effect::StartTurn { text: prompt, .. } = &effects[0] else {
+        panic!("the idle tick starts a turn, got {:?}", effects[0]);
+    };
+    let expected = "Subagent reviewer (job-1) has finished.\n".to_owned() + &job_line;
+    assert_eq!(prompt.as_str(), expected);
+}
+
 /// A turn that failed with a network error leaves the offer up:
 /// the error strip rides the hint, and `/retry` re-issues the same
 /// request — no new prompt, the flag spent.

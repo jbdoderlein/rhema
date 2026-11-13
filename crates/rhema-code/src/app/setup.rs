@@ -811,6 +811,12 @@ fn agent_config(
 /// sends. Returns the wire's handle beside the config: the
 /// registry-backed status subscription the status strip renders one
 /// live line per background subagent job from.
+///
+/// `jobs_steering` is the background-shell poller's finish feed, when
+/// the process spawned one: the config has one `steering` slot and two
+/// feeds reach for it, so the wire's registry and this chain through
+/// `SteeringChain` — subagent finishes first, job finishes second, one
+/// message either way.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn session_agent_config(
     options: &RunOptions,
@@ -823,6 +829,7 @@ pub(crate) fn session_agent_config(
     session_key: &str,
     disabled_mcp: &std::collections::BTreeSet<String>,
     secrets: Option<&Arc<dyn rhema_config::secrets::SecretStore>>,
+    jobs_steering: Option<Arc<dyn rhema_coding_agent::Steering>>,
 ) -> (CodingAgentConfig, rhema_subagents::SubagentHandle) {
     let mut config = agent_config(options, model, disabled_skills, disabled_subagents);
     // The subagent tool's cross-provider `model` spellings resolve
@@ -881,6 +888,19 @@ pub(crate) fn session_agent_config(
     }
     config.disabled_mcp_servers = disabled_mcp.clone();
     let (mut config, subagents) = rhema_subagents::wire(provider, config);
+    // One steering slot, two feeds: the subagent registry drains
+    // first, the background-shell feed second, so the announcements
+    // coalesce into one message in a stable order. Either alone rides
+    // as itself.
+    config.steering = match (config.steering, jobs_steering) {
+        (Some(subagents), Some(jobs)) => {
+            Some(Arc::new(rhema_coding_agent::SteeringChain::new(vec![
+                subagents, jobs,
+            ])))
+        }
+        (steering, None) => steering,
+        (None, Some(jobs)) => Some(jobs),
+    };
     if let Some(sandboxed) = sandboxed {
         sandboxed.apply_workspace(&mut config);
     }

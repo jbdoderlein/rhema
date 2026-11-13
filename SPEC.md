@@ -719,3 +719,66 @@ terminal gets the wordmark.
 **Shared chrome.** The full-screen menus draw their panels, selection
 markers, and rules through `chrome.rs`, so the visual vocabulary
 changes in one place — the coherence is in the calls, not in copies.
+
+## 15. Background shells (`rhema-code/src/jobs.rs`)
+
+The `job` bash function is a shim over an external backend (`gob`
+today; `BACKEND` is the only place its name may appear): a dev
+server, a watcher, a build outlives one `bash` call, and the
+foreground call that waits on it burns the tool's timeout. The shim
+wraps the model's line in `bash -c`, tags every job with the
+session id in its description, and refuses to start a line another
+session already runs (the backend's dedupe would rewrite the
+description and hand one session's server to another). A machine
+without a backend that can tag gets no `job` function and no prompt
+section at all, rather than a command that fails at first use.
+
+**The notification.** The prompt promises the model it will hear
+when a job finishes or dies; the frontend's poller makes it true.
+The poller reads `rhema __jobs ls --json --session <id>` on a slow
+tick (fast while something runs, slow when nothing does) and splits
+each answer in two: running rows feed the status strip; a row that
+was running at the last poll and is not running now is a finish,
+minted once. The backend does have an event stream (`gob events`);
+the poll is deliberate — the shim's listing is the whole interface
+the frontend reads, and a subscription would tie the frontend to
+the backend's name and line format. Detection latency is one live
+tick; delivery, once detected, is instant.
+
+Delivery is the subagent registry's two paths, unchanged: the
+driver steers mid-turn (a User-role message at the next step
+boundary, one line per finish), and the frontend's idle tick runs
+the pending lines as the next turn's prompt. The latches mirror the
+registry's — the finish notice is taken once for the transcript;
+the notification line is a pure query until a take (the idle
+prompt) retires it, so the driver's turn-start drain never repeats
+what the prompt said. The vocabulary:
+
+    Background job abc ("npm run dev") has finished (exit 0).
+    Background job abc ("npm run dev") has finished with an error (exit 1).
+    Background job abc ("npm run dev") was stopped.
+
+**Two feeds, one steering slot.** The subagent registry and the job
+feed chain through `SteeringChain` — subagent finishes first, job
+finishes second — so the driver's single `config.steering`
+coalesces both into one message in a stable order, and the idle
+prompt joins them in the same order. Scoping is the session tag: a
+poller sees only its session's jobs, so a job another session
+started, or a hand-run `gob add`, never announces here. A subagent
+starting a job uses the shared shell, so the job carries the
+parent's tag and the parent hears the finish — the subagent's own
+turn steers from nothing, and that is by design: the job outlives
+the subagent, the parent owns it. Headless gets the steering path
+only (the one-shot has no idle tick): a job outliving the run is
+the daemon's, visible to the next session only through `job ls`. A
+sandbox session wires no `job` function — its shells run elsewhere
+— and spawns no poller.
+
+**Detection, exactly.** The poller keeps the jobs it saw running,
+first-seen order; a listing that fails to parse or a poll that
+fails to spawn is skipped, never read as empty — an empty read
+would mint a vanish-finish for every running job. A stopped row
+gives the exit code; a job gone from the listing between polls
+finishes with none and reads as "was stopped". A job already
+stopped when first seen mints nothing: the feed announces only
+transitions this process watched.

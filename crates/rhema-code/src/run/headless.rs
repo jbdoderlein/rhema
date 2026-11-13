@@ -200,6 +200,14 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
         agent_config.shell_env.extend(wiring.shell_env.clone());
         agent_config.jobs = Some(wiring.section.to_owned());
     }
+    // The poller is the notification feed: the one turn's driver
+    // steers from it, so a job that dies mid-run is announced at the
+    // next step boundary instead of waiting for a `job ls` that never
+    // comes. The one-shot has no idle path: a job outliving the run is
+    // the daemon's, and a later run sees it only through `job ls`.
+    let jobs = (jobs_wiring.is_some())
+        .then(crate::jobs::JobsHandle::spawn)
+        .flatten();
     let bash_env = jobs_wiring
         .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
         .or_else(|| std::env::var_os("BASH_ENV"));
@@ -245,6 +253,14 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     // not a copy per seam.
     let provider = backend.provider();
     let (mut agent_config, _subagents) = rhema_subagents::wire(provider.clone(), agent_config);
+    // The steering slot takes both feeds: subagent finishes first,
+    // then background jobs', one chained source.
+    if let Some(jobs) = &jobs {
+        let mut sources: Vec<Arc<dyn rhema_coding_agent::Steering>> =
+            agent_config.steering.take().into_iter().collect();
+        sources.push(jobs.steering());
+        agent_config.steering = Some(Arc::new(rhema_coding_agent::SteeringChain::new(sources)));
+    }
     if let Some(assembled) = sandboxed.as_ref() {
         assembled.apply_workspace(&mut agent_config);
     }

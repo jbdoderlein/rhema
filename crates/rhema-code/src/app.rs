@@ -421,6 +421,16 @@ impl App {
             None => rhema_config::Home::discover().ok(),
         };
         let config_root = rhema_home.as_ref().map(|home| home.config.clone());
+        // Jobs are local by construction: a sandbox session's shells
+        // run elsewhere, so there is nothing here to watch (the wiring
+        // in `session_agent_config` is gated the same way). Spawned
+        // before the screen builds, so the first session's config
+        // chains the poller's steering with the subagent registry's.
+        let jobs = setup
+            .sandboxed
+            .is_none()
+            .then(crate::jobs::JobsHandle::spawn)
+            .flatten();
         let screen = if setup.onboard {
             let workspace = crate::args::canonical(&setup.options.workspace);
             let agents = rhema_home.as_ref().map(|home| home.agents_skills());
@@ -467,6 +477,7 @@ impl App {
                             .unwrap_or(rhema_config::DEFAULT_PROFILE),
                         &setup.config.disabled_mcp_servers,
                         setup.secrets.as_ref(),
+                        jobs.as_ref().map(crate::jobs::JobsHandle::steering),
                     );
                     agent = Some(CodingAgent::from_session(
                         provider,
@@ -483,14 +494,6 @@ impl App {
             }
         };
         let config_disabled_mcp = setup.config.disabled_mcp_servers.clone();
-        // Jobs are local by construction: a sandbox session's shells run
-        // elsewhere, so there is nothing here to watch (the wiring in
-        // `session_agent_config` is gated the same way).
-        let jobs = setup
-            .sandboxed
-            .is_none()
-            .then(crate::jobs::JobsHandle::spawn)
-            .flatten();
         Ok(Self {
             secrets: setup.secrets,
             // Read before `options` moves into the struct.
