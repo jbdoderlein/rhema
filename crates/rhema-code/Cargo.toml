@@ -98,5 +98,9 @@ serde_yaml.workspace = true
 rhema-sandbox = { path = "../rhema-sandbox", features = ["mock"] }
 tempfile = "3"
 
+[[test]]
+name = "mcp_wire_turn"
+harness = false
+
 [lints]
 workspace = true
