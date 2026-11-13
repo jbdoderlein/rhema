@@ -179,6 +179,72 @@ pub(crate) fn settings_row(line: Line<'static>, selected: bool, theme: &Theme) -
     }
 }
 
+/// The view's shape: a bar of the block's bytes against the band's,
+/// then the cut and the band as their own rows. The block is drawn at
+/// least one cell wide, so one that is a rounding error still reads as
+/// present; the percentage is what says it is small.
+fn view_shape(
+    stats: &rhema_transcript::TranscriptStats,
+    theme: &Theme,
+    width: usize,
+) -> Vec<Line<'static>> {
+    /// The bar's width in cells: a sliver stays visible, and the line
+    /// still fits the page at its usual 80 columns.
+    const CELLS: usize = 24;
+    if stats.requests == 0 {
+        return settings_field(
+            "View",
+            Span::raw("nothing measured yet".to_owned()).fg(theme.text3),
+            theme,
+            width,
+        );
+    }
+    if stats.block_bytes == 0 {
+        return settings_field(
+            "View",
+            Span::raw(format!(
+                "under budget · {} requests rode the log whole",
+                stats.pass_through
+            ))
+            .fg(theme.text3),
+            theme,
+            width,
+        );
+    }
+    let total = stats.block_bytes + stats.band_bytes;
+    let block_cells = ((CELLS * stats.block_bytes + total / 2) / total).clamp(1, CELLS - 1);
+    let share = stats.block_bytes as f64 / total as f64 * 100.0;
+    let bar = Line::from(vec![
+        Span::raw(format!("{:<18}", "View")).fg(theme.text3),
+        Span::raw("\u{2588}".repeat(block_cells)).fg(theme.accent),
+        Span::raw("\u{2591}".repeat(CELLS - block_cells)).fg(theme.border_strong),
+        Span::raw(format!("  {share:.1}% block")).fg(theme.text3),
+    ]);
+    let mut lines = wrap_line(&bar, width);
+    lines.extend(settings_field(
+        "Cut",
+        Span::raw(format!(
+            "{} of {} messages · {} digests",
+            stats.sectioned_messages, stats.log_messages, stats.sections
+        ))
+        .fg(theme.text),
+        theme,
+        width,
+    ));
+    lines.extend(settings_field(
+        "Band",
+        Span::raw(format!(
+            "{} carried whole · {} this turn",
+            usage_k(stats.band_bytes as u64),
+            usage_k(stats.tail_bytes as u64),
+        ))
+        .fg(theme.text),
+        theme,
+        width,
+    ));
+    lines
+}
+
 /// A settings page: its content lines, its footer hints, and the click
 /// targets of its interactive rows as rendered line indices — the text
 /// is wrapped to the pane's width, so the indices are exact.
@@ -681,9 +747,10 @@ pub(crate) fn settings_page(
             ));
             lines.extend(settings_field("Last Turn", last_turn, theme, width));
             // The compaction benchmark, when the transcript is on: the
-            // cache rate is the providers' own accounting, the rest is
-            // what the stepped view did this session.
+            // view's shape first, so the counters below have something
+            // to point at.
             if let Some(stats) = settings.transcript {
+                lines.extend(view_shape(&stats, theme, width));
                 let cache = match stats.cache_hit_rate() {
                     Some(rate) => format!(
                         "{:.0}% · {} of {} tokens",

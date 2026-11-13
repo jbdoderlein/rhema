@@ -379,6 +379,74 @@ fn the_usage_page_shows_the_detailed_split() {
     );
 }
 
+/// The Usage page's view schema: a bar of the block against the band,
+/// then the cut, the digest count, and what the band holds. Each state
+/// says what it is instead of drawing an empty bar.
+#[test]
+fn the_usage_page_shows_the_views_shape() {
+    let draw = |settings: &crate::screens::SettingsScreen| {
+        let mut hits = Vec::new();
+        let mut terminal = Terminal::new(TestBackend::new(80, 40)).unwrap();
+        terminal
+            .draw(|frame| {
+                render_settings(frame, settings, &DARK, &crate::icons::UNICODE, &mut hits)
+            })
+            .unwrap();
+        (0..40)
+            .map(|y| {
+                (0..80)
+                    .map(|x| terminal.backend().buffer()[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<String>()
+    };
+    let mut settings = crate::screens::SettingsScreen::new();
+    settings.section = SettingsSection::Usage;
+    settings.transcript = Some(rhema_transcript::TranscriptStats {
+        requests: 10,
+        pass_through: 1,
+        viewed: 9,
+        sections: 101,
+        sectioned_messages: 1_397,
+        log_messages: 1_859,
+        block_bytes: 19_400,
+        band_bytes: 2_530_000,
+        tail_bytes: 6_400,
+        ..Default::default()
+    });
+    let text = draw(&settings);
+    // 19.4 KB of a 2.55 MB view is under one percent: the bar keeps a
+    // cell for it and the label carries the figure.
+    assert!(text.contains("0.8% block"), "{text}");
+    assert!(text.contains('\u{2588}'), "the block's cells: {text}");
+    assert!(text.contains('\u{2591}'), "the band's cells: {text}");
+    assert!(
+        text.contains("1397 of 1859 messages · 101 digests"),
+        "{text}"
+    );
+    assert!(
+        text.contains("2.5M carried whole · 6.4k this turn"),
+        "{text}"
+    );
+
+    // Below the budget no block exists, so the page says where the log
+    // went instead of drawing an empty bar.
+    settings.transcript = Some(rhema_transcript::TranscriptStats {
+        requests: 5,
+        pass_through: 5,
+        ..Default::default()
+    });
+    let text = draw(&settings);
+    // The row wraps at the pane's width, so the note is matched in
+    // halves.
+    assert!(text.contains("under budget"), "{text}");
+    assert!(text.contains("5 requests rode the log"), "{text}");
+
+    settings.transcript = Some(rhema_transcript::TranscriptStats::default());
+    let text = draw(&settings);
+    assert!(text.contains("nothing measured yet"), "{text}");
+}
+
 /// The amounts scale: kilo past a thousand, mega past a million.
 #[test]
 fn usage_amounts_scale() {
