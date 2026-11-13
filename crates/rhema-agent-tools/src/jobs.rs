@@ -86,16 +86,10 @@ pub const EXIT_NOT_WIRED: i32 = 4;
 pub const EXIT_NO_BACKEND: i32 = 5;
 
 /// The system-prompt section a wired frontend renders: the macro's whole
-/// documentation. Kept beside the code so prompt and behavior cannot
-/// drift.
-pub const PROMPT_SECTION: &str = "You can start background jobs that outlive a bash call: a server, a watcher, a build. Start one, then carry on \u{2014} you will be notified when it finishes or dies, exit code included, the same way a subagent's finish arrives. Nothing to poll: no `sleep`, no `job ls` rounds, no speculative `job logs`; read the output once, when the notice lands (`job logs <id>`).
-
-    job run \"npm run dev\"     # starts it, prints a job id
-    job ls                    # the jobs this session started
-    job logs <id>             # its output so far
-    job stop <id>             # stop it
-
-Use it for anything long-running. A foreground call that waits on a server times out and wastes the turn.";
+/// documentation, as [`include_str!`] of the file beside this module —
+/// the same crate-root data file the system template ships as. No
+/// trailing newline: the template interpolates the bytes verbatim.
+pub const PROMPT_SECTION: &str = include_str!("../SYSTEM_JOBS.md");
 
 /// The usage text `job` prints when asked, and when given a verb it does
 /// not know.

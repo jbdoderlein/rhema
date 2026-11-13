@@ -73,14 +73,11 @@ pub const MAX_IMAGE_BYTES: usize = 5 * 1024 * 1024;
 const MAX_IMAGES_PER_RESULT: usize = 8;
 
 /// The system-prompt section a wired frontend renders: the macro's
-/// whole documentation. Kept beside the code so prompt and behavior
-/// cannot drift.
-pub const PROMPT_SECTION: &str = "You can view images by piping bytes into `see`, or by passing file paths:
-
-    curl -sL https://example.com/photo.png | see
-    see screenshots/capture.png
-
-Staged images attach to that bash call's result and you see them as images. Formats: png, jpeg, gif, webp; up to 5 MB per image.";
+/// whole documentation, as [`include_str!`] of the file beside this
+/// module — the same crate-root data file the system template ships
+/// as. No trailing newline: the template interpolates the bytes
+/// verbatim.
+pub const PROMPT_SECTION: &str = include_str!("../SYSTEM_SEE.md");
 
 /// Why bytes did not stage. The CLI turns every variant into a stderr
 /// line and an exit code, so the model reads the reason in-band.
