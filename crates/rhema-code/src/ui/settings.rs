@@ -797,46 +797,49 @@ pub(crate) fn settings_page(
                 ));
             }
             // The detailed split: what the session's tokens bought,
-            // each as its share of the total and its own amount. The
-            // numbers ride the transcript's breakdown, so a
-            // transcript-less session has nothing to show.
+            // each as its share of the total and in three counts. The
+            // history rides every request, so a category's billed sum
+            // dwarfs the content it stands for, and the log holds that
+            // content once; the row without the other two reads as if
+            // the session held millions of tokens of tool output.
             lines.push(Line::default());
             lines.push(Line::from(Span::raw("Detailed Session Usage")).bold());
-            // The rows carry two units: the billed input the
-            // providers reported per request — the history rides every
-            // request, so it dwarfs the content — and, where the
-            // category lives in messages, that content counted once in
-            // the log. The note says so where the numbers are read;
-            // without it the tool rows read as if the session held
-            // tens of millions of tokens of tool output.
             match settings.transcript {
                 Some(stats) => {
-                    // The divisor doubles as the guard: no requests,
-                    // no average, no note.
-                    if let Some(avg) = stats.input_tokens.checked_div(stats.requests) {
-                        let cache = match stats.cache_hit_rate() {
-                            Some(rate) => format!("{:.0}% cached", rate * 100.0),
-                            None => "no usage reported yet".to_owned(),
-                        };
-                        lines.extend(settings_hint(
-                            &format!(
-                                "billed input, summed over {} requests — the history rides \
-                                 every one (~{}/request, {}); the log itself holds ~{} tokens, \
-                                 estimated at four bytes to the token",
-                                stats.requests,
-                                usage_k(avg),
-                                cache,
-                                usage_k(stats.log_content.total()),
-                            ),
-                            theme,
-                            width,
-                        ));
-                    }
-                    let total = stats.usage.total();
-                    // The of-log figures line up with the breakdown's
-                    // row order. The system prompt, the skills, and
-                    // the tool definitions ride no message, so their
-                    // rows stay billed-only.
+                    let cache = match stats.cache_hit_rate() {
+                        Some(rate) => format!("{:.0}% cached", rate * 100.0),
+                        None => "no usage reported yet".to_owned(),
+                    };
+                    lines.extend(settings_hint(
+                        &format!(
+                            "sent is what one request carried on average, log is the \
+                             conversation's own content counted once at about four bytes to \
+                             the token, billed is the provider's sum over {} requests; {}",
+                            stats.requests, cache,
+                        ),
+                        theme,
+                        width,
+                    ));
+                    // No requests, no average: the rows would all read
+                    // zero, which is what they say anyway.
+                    let requests = stats.requests.max(1);
+                    let billed = stats.usage.total();
+                    lines.extend(settings_field(
+                        "Total",
+                        Span::raw(format!(
+                            "{} sent \u{b7} ~{} log \u{b7} {} billed",
+                            usage_k(billed / requests),
+                            usage_k(stats.log_content.total()),
+                            usage_k(billed),
+                        ))
+                        .fg(theme.text),
+                        theme,
+                        width,
+                    ));
+                    // The log figures line up with the breakdown's row
+                    // order. The system prompt and the skills ride
+                    // every request but live in no message, so the log
+                    // holds none of them.
                     let of_log = [
                         None,
                         None,
@@ -846,20 +849,20 @@ pub(crate) fn settings_page(
                         Some(stats.log_content.assistant_text),
                     ];
                     for ((label, tokens), once) in stats.usage.labeled().into_iter().zip(of_log) {
-                        let pct = if total > 0 {
-                            tokens as f64 / total as f64 * 100.0
+                        let pct = if billed > 0 {
+                            tokens as f64 / billed as f64 * 100.0
                         } else {
                             0.0
                         };
-                        let value = match once {
-                            Some(estimated) => format!(
-                                "{:.0}% ({} billed \u{b7} ~{} of log)",
-                                pct,
-                                usage_k(tokens),
-                                usage_k(estimated),
-                            ),
-                            None => format!("{:.0}% ({} billed)", pct, usage_k(tokens)),
+                        let once = match once {
+                            Some(log) => format!("~{} log", usage_k(log)),
+                            None => "no log".to_owned(),
                         };
+                        let value = format!(
+                            "{pct:.0}% {} sent \u{b7} {once} \u{b7} {} billed",
+                            usage_k(tokens / requests),
+                            usage_k(tokens),
+                        );
                         lines.extend(settings_field(
                             label,
                             Span::raw(value).fg(theme.text),

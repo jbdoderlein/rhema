@@ -312,8 +312,8 @@ fn the_update_page_shows_the_versions_and_its_two_rows() {
     );
 }
 
-/// The Usage page's detailed split: the subtitle, the six rows as
-/// percentages of the total with their kilo-scaled amounts.
+/// The Usage page's detailed split: the note that names the three
+/// counts, the total, and the six rows as percentages of it.
 #[test]
 fn the_usage_page_shows_the_detailed_split() {
     let mut settings = crate::screens::SettingsScreen::new();
@@ -356,26 +356,41 @@ fn the_usage_page_shows_the_detailed_split() {
         })
         .collect();
     assert!(text.contains("Detailed Session Usage"), "{text}");
-    assert!(text.contains("summed over 10 requests"), "{text}");
-    assert!(text.contains("(~9k/request, 78% cached)"), "{text}");
-    // The size lands on its own wrapped row, in tokens.
-    assert!(text.contains("~94.5k tokens"), "{text}");
-    assert!(text.contains("estimated at four bytes"), "{text}");
-    // Message-backed rows carry the once-counted figure beside the
-    // billed one; the system prompt and skills ride no message.
-    assert!(text.contains("20% (20k billed)"), "{text}");
-    assert!(text.contains("2% (2k billed)"), "{text}");
+    // The note names each of the three counts once, so the rows stay
+    // three figures wide.
     assert!(
-        text.contains("30% (30k billed \u{b7} ~2.5k of log)"),
+        text.contains("what one request carried on average"),
+        "{text}"
+    );
+    assert!(text.contains("counted once at about four"), "{text}");
+    assert!(text.contains("requests; 78% cached"), "{text}");
+    // Every row carries all three counts, the total included.
+    assert!(
+        text.contains("10k sent \u{b7} ~94.5k log \u{b7} 100k billed"),
         "{text}"
     );
     assert!(
-        text.contains("30% (30k billed \u{b7} ~90k of log)"),
+        text.contains("20% 2k sent \u{b7} no log \u{b7} 20k billed"),
         "{text}"
     );
-    assert!(text.contains("8% (8k billed \u{b7} ~800 of log)"), "{text}");
     assert!(
-        text.contains("10% (10k billed \u{b7} ~1.2k of log)"),
+        text.contains("2% 200 sent \u{b7} no log \u{b7} 2k billed"),
+        "{text}"
+    );
+    assert!(
+        text.contains("30% 3k sent \u{b7} ~2.5k log \u{b7} 30k billed"),
+        "{text}"
+    );
+    assert!(
+        text.contains("30% 3k sent \u{b7} ~90k log \u{b7} 30k billed"),
+        "{text}"
+    );
+    assert!(
+        text.contains("8% 800 sent \u{b7} ~800 log \u{b7} 8k billed"),
+        "{text}"
+    );
+    assert!(
+        text.contains("10% 1k sent \u{b7} ~1.2k log \u{b7} 10k billed"),
         "{text}"
     );
 }
