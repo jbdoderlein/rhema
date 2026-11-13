@@ -179,10 +179,10 @@ pub(crate) fn settings_row(line: Line<'static>, selected: bool, theme: &Theme) -
     }
 }
 
-/// The view's shape: a bar of the block's bytes against the band's,
-/// then the cut and the band as their own rows. The block is drawn at
-/// least one cell wide, so one that is a rounding error still reads as
-/// present; the percentage is what says it is small.
+/// The view's shape: a bar of the block's estimated tokens against the
+/// band's, then the cut and the band as their own rows. The block is
+/// drawn at least one cell wide, so one that is a rounding error still
+/// reads as present; the percentage is what says it is small.
 fn view_shape(
     stats: &rhema_transcript::TranscriptStats,
     theme: &Theme,
@@ -211,9 +211,16 @@ fn view_shape(
             width,
         );
     }
-    let total = stats.block_bytes + stats.band_bytes;
-    let block_cells = ((CELLS * stats.block_bytes + total / 2) / total).clamp(1, CELLS - 1);
-    let share = stats.block_bytes as f64 / total as f64 * 100.0;
+    // One cell, at least, for a block that rounds to nothing: the bar
+    // says the block is present, the percentage says it is small.
+    let total = (stats.block_tokens + stats.band_tokens).max(1);
+    let filled = ((CELLS as u64 * stats.block_tokens + total / 2) / total) as usize;
+    let block_cells = if stats.block_tokens == 0 {
+        0
+    } else {
+        filled.clamp(1, CELLS - 1)
+    };
+    let share = stats.block_tokens as f64 / total as f64 * 100.0;
     let bar = Line::from(vec![
         Span::raw(format!("{:<18}", "View")).fg(theme.text3),
         Span::raw("\u{2588}".repeat(block_cells)).fg(theme.accent),
@@ -234,9 +241,9 @@ fn view_shape(
     lines.extend(settings_field(
         "Band",
         Span::raw(format!(
-            "{} carried whole · {} this turn",
-            usage_k(stats.band_bytes as u64),
-            usage_k(stats.tail_bytes as u64),
+            "~{} carried whole · ~{} this turn",
+            usage_k(stats.band_tokens),
+            usage_k(stats.tail_tokens),
         ))
         .fg(theme.text),
         theme,
@@ -775,11 +782,11 @@ pub(crate) fn settings_page(
                     "extractive".to_owned()
                 };
                 let compaction = format!(
-                    "{}/{} requests viewed, {} flushes, block {}, {}",
+                    "{}/{} requests viewed, {} flushes, block ~{} tokens, {}",
                     stats.viewed,
                     stats.requests,
                     stats.flushes,
-                    format_tokens(Some(stats.block_bytes as u64)),
+                    usage_k(stats.block_tokens),
                     worker,
                 );
                 lines.extend(settings_field(
@@ -814,11 +821,12 @@ pub(crate) fn settings_page(
                         lines.extend(settings_hint(
                             &format!(
                                 "billed input, summed over {} requests — the history rides \
-                                 every one (~{}/request, {}); the log itself holds {} bytes",
+                                 every one (~{}/request, {}); the log itself holds ~{} tokens, \
+                                 estimated at four bytes to the token",
                                 stats.requests,
                                 usage_k(avg),
                                 cache,
-                                usage_k(stats.log_bytes as u64),
+                                usage_k(stats.log_content.total()),
                             ),
                             theme,
                             width,
@@ -844,11 +852,11 @@ pub(crate) fn settings_page(
                             0.0
                         };
                         let value = match once {
-                            Some(bytes) => format!(
-                                "{:.0}% ({} billed \u{b7} {} of log)",
+                            Some(estimated) => format!(
+                                "{:.0}% ({} billed \u{b7} ~{} of log)",
                                 pct,
                                 usage_k(tokens),
-                                usage_k(bytes as u64),
+                                usage_k(estimated),
                             ),
                             None => format!("{:.0}% ({} billed)", pct, usage_k(tokens)),
                         };

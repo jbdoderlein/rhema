@@ -358,23 +358,24 @@ fn the_usage_page_shows_the_detailed_split() {
     assert!(text.contains("Detailed Session Usage"), "{text}");
     assert!(text.contains("summed over 10 requests"), "{text}");
     assert!(text.contains("(~9k/request, 78% cached)"), "{text}");
-    // The size lands on its own wrapped row.
-    assert!(text.contains("4.5k bytes"), "{text}");
+    // The size lands on its own wrapped row, in tokens.
+    assert!(text.contains("~94.5k tokens"), "{text}");
+    assert!(text.contains("estimated at four bytes"), "{text}");
     // Message-backed rows carry the once-counted figure beside the
     // billed one; the system prompt and skills ride no message.
     assert!(text.contains("20% (20k billed)"), "{text}");
     assert!(text.contains("2% (2k billed)"), "{text}");
     assert!(
-        text.contains("30% (30k billed \u{b7} 2.5k of log)"),
+        text.contains("30% (30k billed \u{b7} ~2.5k of log)"),
         "{text}"
     );
     assert!(
-        text.contains("30% (30k billed \u{b7} 90k of log)"),
+        text.contains("30% (30k billed \u{b7} ~90k of log)"),
         "{text}"
     );
-    assert!(text.contains("8% (8k billed \u{b7} 800 of log)"), "{text}");
+    assert!(text.contains("8% (8k billed \u{b7} ~800 of log)"), "{text}");
     assert!(
-        text.contains("10% (10k billed \u{b7} 1.2k of log)"),
+        text.contains("10% (10k billed \u{b7} ~1.2k of log)"),
         "{text}"
     );
 }
@@ -410,8 +411,11 @@ fn the_usage_page_shows_the_views_shape() {
         sectioned_messages: 1_397,
         log_messages: 1_859,
         block_bytes: 19_400,
+        block_tokens: 4_850,
         band_bytes: 2_530_000,
+        band_tokens: 632_500,
         tail_bytes: 6_400,
+        tail_tokens: 1_600,
         ..Default::default()
     });
     let text = draw(&settings);
@@ -425,9 +429,12 @@ fn the_usage_page_shows_the_views_shape() {
         "{text}"
     );
     assert!(
-        text.contains("2.5M carried whole · 6.4k this turn"),
+        text.contains("~632.5k carried whole · ~1.6k this turn"),
         "{text}"
     );
+    // The counters spell the block in tokens too; the row wraps
+    // between the word and the figure at this width.
+    assert!(text.contains("~4.8k tokens"), "{text}");
 
     // Below the budget no block exists, so the page says where the log
     // went instead of drawing an empty bar.
