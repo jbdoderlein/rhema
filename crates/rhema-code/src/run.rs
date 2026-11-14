@@ -967,8 +967,9 @@ fn dispatch(
             let (steer, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
             // The status names the prompt until a tool call takes over.
             status.note_prompt(&text);
-            // Auto-approved for now: the Approval seam, and the modal
-            // wired through it, is where command allowlists will land.
+            // Approval is intentionally `AllowAll`: the sandbox, not a
+            // prompt, is the isolation boundary. The modal remains as a
+            // seam for a future policy.
             app.begin_turn(cancel, steer, None);
             spawn_turn(
                 agent,
