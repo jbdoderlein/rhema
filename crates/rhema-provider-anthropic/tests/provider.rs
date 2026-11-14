@@ -67,6 +67,30 @@ fn sse_body() -> String {
 }
 
 #[tokio::test]
+async fn an_oversized_sse_line_fails_the_stream() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string("x".repeat(2 * 1024 * 1024)),
+        )
+        .mount(&server)
+        .await;
+
+    let mut sink = Collector(vec![]);
+    let err = provider(&server)
+        .complete(request(vec![Message::text(Role::User, "hi")]), &mut sink)
+        .await
+        .expect_err("an oversized line must fail the stream");
+    assert!(
+        matches!(err, ProviderError::Network(ref message) if message.contains("without a line break")),
+        "the decoder error is propagated: {err:?}"
+    );
+}
+
+#[tokio::test]
 async fn streams_sse_into_events_and_an_assembled_output() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

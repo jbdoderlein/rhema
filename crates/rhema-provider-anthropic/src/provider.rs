@@ -526,14 +526,19 @@ impl ModelProvider for AnthropicProvider {
         let mut assembler = ChunkAssembler::new();
         while let Some(item) = response.body.next().await {
             let bytes = item.map_err(transport_error)?;
-            for payload in decoder.push(&bytes) {
+            let payloads = decoder.push(&bytes);
+            if let Some(err) = decoder.take_error() {
+                return Err(transport_error(TransportError::Other(err)));
+            }
+            for payload in payloads {
                 feed_chunk(&payload, &mut assembler, sink)?;
-                if let Some(err) = decoder.take_error() {
-                    return Err(transport_error(TransportError::Other(err)));
-                }
             }
         }
-        for payload in decoder.finish() {
+        let payloads = decoder.finish();
+        if let Some(err) = decoder.take_error() {
+            return Err(transport_error(TransportError::Other(err)));
+        }
+        for payload in payloads {
             feed_chunk(&payload, &mut assembler, sink)?;
         }
         Ok(assembler.finish())
