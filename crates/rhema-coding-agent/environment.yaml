@@ -35,12 +35,11 @@ probe:
     advice: >-
       Use `curl` to access APIs (`curl | jq` pattern), raw data pages (.md,.txt, etc.)
       and to download files. The rest of the web will likely not work.
-  # A family, not one binary: the alternatives try in order (order is
-  # preference) and the report names whichever answered. Every text
-  # reads the answers through `executable`: each entry's own name bound
-  # to the command that answered for it, so `{{ executable.chromium }}`
-  # is always a command this machine has. A name with a dash or a dot
-  # takes subscript syntax instead (`executable["google-chrome-stable"]`).
+  - executable: lightpanda
+    advice: >-
+      To read a web page, use `lightpanda fetch <url> --dump markdown --dump-max-bytes 40000`. 
+      It runs JavaScript. If client-rendered content is missing from the dump,
+      add `--wait-selector "<css selector>"`.
   - executable: chromium
     alternatives:
       - chromium-browser

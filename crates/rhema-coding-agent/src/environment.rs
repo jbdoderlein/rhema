@@ -873,7 +873,7 @@ mod tests {
         // the one whose absent line the fixture spelled out.
         assert_eq!(
             tool_line(&with, "Missing tools:"),
-            ["fd", "jq", "yq", "sd", "curl", "chromium"],
+            ["fd", "jq", "yq", "sd", "curl", "lightpanda", "chromium"],
             "{with}"
         );
         assert!(with.contains("Notes:\n- Use `rg`"), "{with}");
@@ -893,7 +893,16 @@ mod tests {
         );
         assert_eq!(
             tool_line(&without, "Missing tools:"),
-            ["rg", "fd", "jq", "yq", "sd", "curl", "chromium"],
+            [
+                "rg",
+                "fd",
+                "jq",
+                "yq",
+                "sd",
+                "curl",
+                "lightpanda",
+                "chromium"
+            ],
             "{without}"
         );
         assert!(!without.contains("Use `rg`"), "{without}");
@@ -915,7 +924,7 @@ mod tests {
             &parse_probe(
                 manifest,
                 "Linux x86_64\nshell: /bin/bash\nrg: absent\nfd: absent\njq: absent\n\
-                 yq: absent\nsd: absent\ncurl: absent\nchromium: absent\nhelium: present\n",
+                 yq: absent\nsd: absent\ncurl: absent\nlightpanda: absent\nchromium: absent\nhelium: present\n",
             ),
         );
         assert_eq!(
@@ -925,7 +934,7 @@ mod tests {
         );
         assert_eq!(
             tool_line(&report, "Missing tools:"),
-            ["rg", "fd", "jq", "yq", "sd", "curl"],
+            ["rg", "fd", "jq", "yq", "sd", "curl", "lightpanda"],
             "{report}"
         );
         assert!(report.contains("helium --headless"), "{report}");
@@ -945,12 +954,12 @@ mod tests {
         let present = parse_probe(
             manifest,
             "Linux x86_64\nshell: /bin/bash\nrg: present\nfd: absent\njq: absent\n\
-             yq: absent\nsd: absent\ncurl: present\n\
-             chromium: absent\nchrome: present\n",
+             yq: absent\nsd: absent\ncurl: present\nlightpanda: absent\
+             \nchromium: absent\nchrome: present\n",
         );
         assert_eq!(
             missing_tools(manifest, &present),
-            vec!["fd", "jq", "yq", "sd"],
+            vec!["fd", "jq", "yq", "sd", "lightpanda"],
             "the answered chromium family and the present rg and curl stay out"
         );
         let bare = parse_probe(manifest, "Linux x86_64\nshell: /bin/bash\n");
