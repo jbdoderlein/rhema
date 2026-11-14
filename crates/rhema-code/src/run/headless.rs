@@ -259,14 +259,14 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     // definition plus whatever the workspace defines.
     // The handle rides to the UI in the wire-up piece; the registry
     // is live either way. The provider factory is the same per-kind
-    // answer the TUI carries: one backend per logged-in kind, built
-    // off this profile, so a cross-provider `model` argument works
-    // headless too.
+    // answer the TUI carries: one backend per logged-in kind, instance
+    // first, so a cross-provider `model` argument reaches the stored
+    // proxy or local endpoint headless too.
     agent_config.subagent_providers = Some({
         let profile = effective.clone();
         let secrets = secrets.clone();
         Arc::new(move |kind: &str| {
-            Backend::named(kind, &profile, Some(&secrets)).map(|backend| backend.provider())
+            Backend::from_kind(kind, &profile, Some(&secrets)).map(|backend| backend.provider())
         }) as rhema_coding_agent::SubagentProviders
     });
     // The prompt's optional sections, the TUI's gate read headless:
@@ -323,8 +323,8 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
         None => Session::default(),
     };
     let mut agent = CodingAgent::from_session(agent_config, session)?;
-    // Auto-approved for now: the Approval seam is where command
-    // allowlists will land.
+    // Approval is intentionally `AllowAll`: commands run inside the
+    // sandbox, and the sandbox is the isolation boundary.
     let approval: Arc<dyn Approval> = Arc::new(rhema_coding_agent::AllowAll);
 
     // The checkpoint, opt-in headless: when `--save` names a file, the

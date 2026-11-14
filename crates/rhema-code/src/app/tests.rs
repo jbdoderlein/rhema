@@ -1134,6 +1134,51 @@ fn a_zai_profile_builds_its_own_backend_from_a_stored_route() {
 }
 
 #[test]
+fn a_cross_provider_backend_keeps_the_stored_route() {
+    let mut profile = keyed_profile("anthropic", "k-a");
+    profile.upsert_instance(
+        "local-openai",
+        rhema_config::ProviderInstance {
+            provider: "openai".into(),
+            api_key: Some("k-o".into()),
+            secret_ref: None,
+            base_url: Some("http://localhost:8000/v1".into()),
+            api: Some(rhema_config::ProviderApi::Chat),
+        },
+    );
+
+    let backend = Backend::from_kind("openai", &profile, None)
+        .expect("the stored OpenAI instance provides a key");
+    assert_eq!(backend.config_name(), "openai");
+    assert!(
+        matches!(
+            backend,
+            Backend::OpenAi { ref api_key, ref base_url, api: Some(rhema_config::ProviderApi::Chat) }
+                if api_key == "k-o"
+                    && base_url.as_deref() == Some("http://localhost:8000/v1")
+        ),
+        "a subagent's cross-provider backend keeps the instance route"
+    );
+}
+
+#[test]
+fn backend_debug_redacts_every_credential() {
+    let backend = Backend::Anthropic {
+        api_key: "sk-do-not-print".into(),
+    };
+    let debug = format!("{backend:?}");
+    assert!(debug.contains("Anthropic"));
+    assert!(!debug.contains("sk-do-not-print"), "{debug}");
+    assert!(debug.contains("redacted"), "{debug}");
+
+    let backend = Backend::ChatGpt {
+        credential: "oauth-json".into(),
+    };
+    let debug = format!("{backend:?}");
+    assert!(!debug.contains("oauth-json"), "{debug}");
+}
+
+#[test]
 fn an_opencode_profile_keeps_its_stored_go_route() {
     let mut profile = keyed_profile("opencode", "k-oc");
     profile.instance = Some("OpenCode Go".into());

@@ -50,7 +50,7 @@ pub struct AppSetup {
 
 /// The model backend a session runs on: which provider, and whatever
 /// credentials or endpoints it needs.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Backend {
     /// Google Gemini, by API key.
     Google {
@@ -126,6 +126,67 @@ pub enum Backend {
         /// The resolved credential (`env` first, stored second).
         credential: String,
     },
+}
+
+/// What a backend's credentials print as: the variant and endpoint
+/// stay visible, the key does not.
+const REDACTED: &str = "[redacted]";
+
+impl std::fmt::Debug for Backend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Google { .. } => f
+                .debug_struct("Google")
+                .field("api_key", &REDACTED)
+                .finish(),
+            Self::LlamaCpp { url, api_key } => f
+                .debug_struct("LlamaCpp")
+                .field("url", url)
+                .field("api_key", &api_key.as_ref().map(|_| REDACTED))
+                .finish(),
+            Self::OpenRouter { .. } => f
+                .debug_struct("OpenRouter")
+                .field("api_key", &REDACTED)
+                .finish(),
+            Self::Anthropic { .. } => f
+                .debug_struct("Anthropic")
+                .field("api_key", &REDACTED)
+                .finish(),
+            Self::OpenAi { base_url, api, .. } => f
+                .debug_struct("OpenAi")
+                .field("api_key", &REDACTED)
+                .field("base_url", base_url)
+                .field("api", api)
+                .finish(),
+            Self::DeepSeek { .. } => f
+                .debug_struct("DeepSeek")
+                .field("api_key", &REDACTED)
+                .finish(),
+            Self::Zai { base_url, .. } => f
+                .debug_struct("Zai")
+                .field("api_key", &REDACTED)
+                .field("base_url", base_url)
+                .finish(),
+            Self::OpenCode {
+                base_url,
+                session_id,
+                ..
+            } => f
+                .debug_struct("OpenCode")
+                .field("api_key", &REDACTED)
+                .field("base_url", base_url)
+                .field("session_id", session_id)
+                .finish(),
+            Self::Copilot { .. } => f
+                .debug_struct("Copilot")
+                .field("api_key", &REDACTED)
+                .finish(),
+            Self::ChatGpt { .. } => f
+                .debug_struct("ChatGpt")
+                .field("credential", &REDACTED)
+                .finish(),
+        }
+    }
 }
 
 impl Backend {
@@ -268,10 +329,24 @@ impl Backend {
                 _ => help.to_owned(),
             }
         };
-        if let Some((_, instance)) = profile.instance_for_provider(&active) {
-            return Self::from_instance(profile, instance, secrets).ok_or_else(missing);
+        Self::from_kind(&active, profile, secrets).ok_or_else(missing)
+    }
+
+    /// The backend one provider kind resolves to, instance first: a
+    /// stored instance carries its endpoint and request shape, the
+    /// environment-alone path fills in defaults. The model picker and
+    /// the subagent factory both read this, so a cross-provider
+    /// subagent reaches the same proxy or local server the session
+    /// would.
+    pub(crate) fn from_kind(
+        kind: &str,
+        profile: &rhema_config::Profile,
+        secrets: Option<&dyn rhema_config::secrets::SecretStore>,
+    ) -> Option<Backend> {
+        if let Some((_, instance)) = profile.instance_for_provider(kind) {
+            return Self::from_instance(profile, instance, secrets);
         }
-        Self::named(&active, profile, secrets).ok_or_else(missing)
+        Self::named(kind, profile, secrets)
     }
 
     /// Builds one backend per logged-in instance of the profile, the
@@ -851,15 +926,17 @@ pub(crate) fn session_agent_config(
     );
     // The subagent tool's cross-provider `model` spellings resolve
     // through the same per-kind answers the model picker's catalog
-    // reads: one backend per kind, built off this profile's stored
-    // keys and the environment. Built here where `Backend::named`
-    // lives; `None` (no keychain) leaves the session's provider the
-    // only one, and the tool's spec says so.
+    // reads: one backend per kind, instance first, so a stored proxy
+    // or local endpoint is not silently replaced by the vendor
+    // default. Built here where `Backend::from_kind` lives; `None` (no
+    // keychain) leaves the session's provider the only one, and the
+    // tool's spec says so.
     config.subagent_providers = secrets.map(|secrets| {
         let profile = profile.clone();
         let secrets = secrets.clone();
         let factory: rhema_coding_agent::SubagentProviders = Arc::new(move |kind: &str| {
-            Backend::named(kind, &profile, Some(secrets.as_ref())).map(|backend| backend.provider())
+            Backend::from_kind(kind, &profile, Some(secrets.as_ref()))
+                .map(|backend| backend.provider())
         });
         factory
     });
