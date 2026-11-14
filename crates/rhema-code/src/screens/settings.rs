@@ -688,17 +688,6 @@ impl SettingsScreen {
             .and_then(|row| (!row.add).then_some(row.name.as_str()))
     }
 
-    /// Whether the highlighted web search row carries a live key or a
-    /// keychain ref: the page's footer hint reads it.
-    pub fn selected_websearch_movable(&self) -> Option<bool> {
-        if self.section != SettingsSection::WebSearch || self.websearch_dialog.is_some() {
-            return None;
-        }
-        self.websearch
-            .get(self.row)
-            .and_then(|row| (!row.add).then_some(row.ordered))
-    }
-
     /// How many interactive rows the page holds; zero means the arrows
     /// have nothing to move through.
     fn row_count(&self) -> usize {
@@ -972,14 +961,16 @@ impl SettingsScreen {
                 }
                 SettingsAction::None
             }
-            KeyCode::Char('[') if self.selected_websearch_movable() == Some(true) => {
+            // j and k move the row under the cursor through the
+            // chain, vim's pair: k lifts it one step up the chain
+            // (an unordered row lifts into the chain, last), j drops
+            // it one step down (never out of it). Arrows keep
+            // navigating, the page's rows stay walked with them.
+            KeyCode::Char('k') if self.selected_websearch().is_some() => {
                 SettingsAction::MoveWebSearchUp
             }
-            KeyCode::Char(']') if self.selected_websearch_movable() == Some(true) => {
+            KeyCode::Char('j') if self.selected_websearch().is_some() => {
                 SettingsAction::MoveWebSearchDown
-            }
-            KeyCode::Char('[') if self.selected_websearch_movable() == Some(false) => {
-                SettingsAction::MoveWebSearchUp
             }
             KeyCode::Char('c') if self.section == SettingsSection::Appearance => {
                 SettingsAction::CyclePalette

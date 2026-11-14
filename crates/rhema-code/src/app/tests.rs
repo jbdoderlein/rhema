@@ -6948,35 +6948,35 @@ fn the_websearch_order_moves_and_persists_without_a_rebuild() {
     let _ = h.store.save(&h.app.config.clone());
     h.app
         .open_settings_at(crate::screens::SettingsSection::WebSearch);
-    // Row 0 is brave-main; ] sends it down one.
-    h.app.on_key(key(KeyCode::Char(']')));
+    // Row 0 is brave-main; j sends it down one.
+    h.app.on_key(key(KeyCode::Char('j')));
     let stored = h.store.load().unwrap().effective(Some("personal"));
     assert_eq!(
         stored.websearch_order,
         vec!["exa-work".to_owned(), "brave-main".to_owned()]
     );
     // The selection rides the rebuilt rows: row 0 is now exa-work,
-    // row 1 brave-main. Down to it, then `[` walks it back up.
+    // row 1 brave-main. Down to it, then k walks it back up.
     h.app.on_key(key(KeyCode::Down));
-    h.app.on_key(key(KeyCode::Char('[')));
+    h.app.on_key(key(KeyCode::Char('k')));
     let stored = h.store.load().unwrap().effective(Some("personal"));
     assert_eq!(
         stored.websearch_order,
         vec!["brave-main".to_owned(), "exa-work".to_owned()]
     );
     // The selection stays at row 1, which now holds exa-work: a
-    // second `[` walks THAT up, the swap toggles under a still
+    // second k walks THAT up, the swap toggles under a still
     // selection.
-    h.app.on_key(key(KeyCode::Char('[')));
+    h.app.on_key(key(KeyCode::Char('k')));
     let stored = h.store.load().unwrap().effective(Some("personal"));
     assert_eq!(
         stored.websearch_order,
         vec!["exa-work".to_owned(), "brave-main".to_owned()]
     );
-    // `[` at the top stays put: the chain never loses a member this
+    // k at the top stays put: the chain never loses a member this
     // way.
     h.app.on_key(key(KeyCode::Up));
-    h.app.on_key(key(KeyCode::Char('[')));
+    h.app.on_key(key(KeyCode::Char('k')));
     let stored = h.store.load().unwrap().effective(Some("personal"));
     assert_eq!(
         stored.websearch_order,

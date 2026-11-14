@@ -759,9 +759,7 @@ pub(crate) fn settings_page(
             lines.push(Line::default());
             (
                 lines,
-                footer(
-                    "[ moves up, ] down \u{b7} d removes \u{b7} [ enrolls a dim row \u{b7} the add row installs one",
-                ),
+                footer("k up \u{b7} j down \u{b7} d removes \u{b7} the add row installs one"),
                 row_hits,
             )
         }

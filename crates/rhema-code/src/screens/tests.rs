@@ -2993,19 +2993,26 @@ fn the_websearch_page_moves_over_the_rows_and_acts() {
         screen.handle_key(key(KeyCode::Char('y'))),
         SettingsAction::RemoveWebSearchProvider
     );
-    // [ and ] on an ordered row reorder; on the add row, nothing.
+    // j and k reorder, vim's pair: k up, j down. The add row does
+    // neither; the inert row carries both actions, the app layer
+    // decides what they mean there.
     screen.row = 0;
     assert_eq!(
-        screen.handle_key(key(KeyCode::Char('['))),
+        screen.handle_key(key(KeyCode::Char('k'))),
         SettingsAction::MoveWebSearchUp
     );
     assert_eq!(
-        screen.handle_key(key(KeyCode::Char(']'))),
+        screen.handle_key(key(KeyCode::Char('j'))),
         SettingsAction::MoveWebSearchDown
     );
     screen.row = 2;
     assert_eq!(
-        screen.handle_key(key(KeyCode::Char('['))),
+        screen.handle_key(key(KeyCode::Char('k'))),
+        SettingsAction::None,
+        "the add row does not reorder"
+    );
+    assert_eq!(
+        screen.handle_key(key(KeyCode::Char('j'))),
         SettingsAction::None,
         "the add row does not reorder"
     );
