@@ -341,13 +341,15 @@ crates/
   rhema-websearch-exa/        -> rhema-websearch
   rhema-websearch-tavily/     -> rhema-websearch
   rhema-websearch-registry/   -> rhema-websearch + the three adapters
-  rhema-agent-tools/          websearch module; -> rhema-websearch (types only,
-                              default-features = false, no transport)
+                              + rhema-config (the profile assembly)
+  rhema-agent-tools/          websearch module; no fleet dependency,
+                              the function is strings
   rhema-config/               WebSearchInstance, the two Profile fields,
                               key-tier resolution
   rhema-coding-agent/         the `websearch` prompt-section field
-  rhema-code/                 __search mode, search_wire.rs (assembly),
-                              setup wiring, the settings screen
+  rhema-code/                 __search mode, search_wire.rs (one wiring
+                              per session key, the gate), setup wiring,
+                              the settings screen
 ```
 
 `rhema-websearch` depends on `tokio` (time, for the budgets) and

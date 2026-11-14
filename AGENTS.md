@@ -69,6 +69,16 @@ Rules:
     turns a rhema-config `PROVIDERS` spelling plus resolved
     credentials into the turn provider and the catalog listing, one
     row per kind (`crates/rhema-provider-registry/`)
+  - `websearch`: the web search seam: the `WebSearchProvider` trait,
+    the query and result vocabulary, the fallback chain, and the
+    markdown renderer (`crates/rhema-websearch/`)
+  - `websearch-brave`: the Brave Search adapter
+    (`crates/rhema-websearch-brave/`)
+  - `websearch-exa`: the Exa adapter (`crates/rhema-websearch-exa/`)
+  - `websearch-tavily`: the Tavily adapter
+    (`crates/rhema-websearch-tavily/`)
+  - `websearch-registry`: the fleet's name-to-adapter wiring and the
+    profile-to-chain assembly (`crates/rhema-websearch-registry/`)
   - `mcp`: the MCP client extension: the protocol subset, the manager,
     the bridge, and the provisioned shell functions
     (`crates/rhema-mcp/`)
@@ -102,8 +112,8 @@ Rules:
     (`crates/rhema-config/`)
   - `agent-tools`: the shared toolkit: the approval-gated shell, the
     `Approval` and `Overlay` seams, skills, paste expansion, revive,
-    the `see` vision macro, the prompt renderer
-    (`crates/rhema-agent-tools/`)
+    the `see` vision macro, the `search` web search macro, the prompt
+    renderer (`crates/rhema-agent-tools/`)
   - `sandbox`: the sandbox seam: the `Sandbox` contract, the
     `ShellSandbox` adapter, the wire protocol, the HTTP client and
     `rhema-sandboxd`, and the local sandbox (`crates/rhema-sandbox/`)
