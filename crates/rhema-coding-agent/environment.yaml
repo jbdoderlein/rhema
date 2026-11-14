@@ -34,6 +34,13 @@ probe:
     advice: >-
       Use `curl` to access APIs (`curl | jq` pattern), raw data pages (.md,.txt, etc.)
       and to download files. The rest of the web will likely not work.
+  - executable: gob
+    advice: >-
+      The `job` macro's backend daemon: `job run` keeps long-lived
+      shells — dev servers, watchers, builds — out of the bash tool's
+      timeout, and `job ls`/`job logs` read them later. Needs 3.x
+      (`gob add --description` is the marker); `go install ...@latest`
+      fetches 1.x.
   # A family, not one binary: the alternatives try in order (order is
   # preference) and the report names whichever answered, so the
   # advice's {{ browser }} is always a command this machine has.

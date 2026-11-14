@@ -738,12 +738,13 @@ mod tests {
         let present = parse_probe(
             manifest,
             "Linux x86_64\nshell: /bin/bash\nrg: present\nfd: absent\njq: absent\n\
-             yq: absent\nsd: absent\ncurl: present\nchromium: absent\nchrome: present\n",
+             yq: absent\nsd: absent\ncurl: present\ngob: present\n\
+             chromium: absent\nchrome: present\n",
         );
         assert_eq!(
             missing_tools(manifest, &present),
             vec!["fd", "jq", "yq", "sd"],
-            "the answered chromium family and the present rg and curl stay out"
+            "the answered chromium family and the present rg, curl and gob stay out"
         );
         let bare = parse_probe(manifest, "Linux x86_64\nshell: /bin/bash\n");
         assert_eq!(
