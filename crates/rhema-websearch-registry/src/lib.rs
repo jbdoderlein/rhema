@@ -13,7 +13,9 @@
 
 use std::sync::Arc;
 
-use rhema_websearch::{MockSearchProvider, WebSearchProvider};
+use rhema_config::secrets::SecretStore;
+use rhema_config::{Profile, websearch_env_names};
+use rhema_websearch::{Chain, MockSearchProvider, WebSearchProvider};
 use rhema_websearch_brave::BraveProvider;
 use rhema_websearch_exa::ExaProvider;
 use rhema_websearch_tavily::TavilyProvider;
@@ -98,5 +100,181 @@ mod tests {
             matches!(build("kagi", None), Err(BuildError::Unknown(kind)) if kind == "kagi"),
             "an unknown kind is unknown before it is keyed"
         );
+    }
+}
+
+/// The profile's chain, assembled: the configured instances in
+/// [`Profile::websearch_order`], each key resolved through the tiers
+/// ([`WebSearchInstance::api_key`]), instances whose key stays
+/// unresolved or whose kind spells nothing in [`KINDS`] skipped, and
+/// over an empty result the env-only tier: one entry per kind whose
+/// environment variable resolves, in the fixed kind order. `None`
+/// when neither tier yields: no providers, no function, no prompt
+/// section (`specs/rhema-websearch.md` §8).
+///
+/// The budgets are the base crate's defaults; per-attempt settings
+/// are v1's deliberate absence. Cheap per call, one map walk and a
+/// few constructor clones, so a mode handler assembles per invocation
+/// and never caches settings.
+pub fn assemble_chain(
+    profile: Option<&Profile>,
+    secrets: Option<&dyn SecretStore>,
+) -> Option<Arc<Chain>> {
+    assemble_chain_with(|name| std::env::var(name).ok(), profile, secrets)
+}
+
+/// [`assemble_chain`] over a caller-supplied environment, the seam
+/// tests drive instead of mutating the process environment.
+pub fn assemble_chain_with(
+    env: impl Fn(&str) -> Option<String>,
+    profile: Option<&Profile>,
+    secrets: Option<&dyn SecretStore>,
+) -> Option<Arc<Chain>> {
+    let mut chain = Chain::new();
+    if let Some(profile) = profile {
+        for (name, instance) in profile.websearch_chain() {
+            let Some(key) = instance.api_key(secrets) else {
+                continue;
+            };
+            let Ok(provider) = build(&instance.provider, Some(key)) else {
+                continue;
+            };
+            chain.push(name, provider);
+        }
+    }
+    if chain.is_empty() {
+        for kind in KINDS {
+            let key = websearch_env_names(kind)
+                .iter()
+                .filter_map(|name| env(name))
+                .map(|value| value.trim().to_owned())
+                .find(|value| !value.is_empty());
+            if let Some(key) = key {
+                // The kind is in KINDS, the build cannot fail.
+                let Ok(provider) = build(kind, Some(key)) else {
+                    continue;
+                };
+                chain.push(kind, provider);
+            }
+        }
+    }
+    if chain.is_empty() {
+        None
+    } else {
+        Some(Arc::new(chain))
+    }
+}
+
+#[cfg(test)]
+mod assembly_tests {
+    use super::*;
+    use rhema_config::WebSearchInstance;
+    use rhema_config::secrets::VolatileSecretStore;
+
+    fn instance(kind: &str, key: Option<&str>) -> WebSearchInstance {
+        WebSearchInstance {
+            provider: kind.into(),
+            api_key: key.map(str::to_owned),
+            secret_ref: None,
+        }
+    }
+
+    #[test]
+    fn the_chain_walks_the_order_with_resolved_keys() {
+        let mut profile = Profile::default();
+        profile
+            .websearch
+            .insert("exa-work".into(), instance("exa", Some("k1")));
+        profile
+            .websearch
+            .insert("brave-main".into(), instance("brave", Some("k2")));
+        profile.websearch_order = vec!["brave-main".into(), "exa-work".into()];
+        let chain = assemble_chain_with(|_| None, Some(&profile), None).unwrap();
+        // The order, not the map's iteration order.
+        assert_eq!(chain.names(), vec!["brave-main", "exa-work"]);
+    }
+
+    #[test]
+    fn keys_resolve_through_the_keychain_tier() {
+        let store = VolatileSecretStore::new();
+        store.set("ws-1", "chain-key").unwrap();
+        let mut profile = Profile::default();
+        let mut brave = instance("brave", None);
+        brave.secret_ref = Some("ws-1".into());
+        profile.websearch.insert("brave-main".into(), brave);
+        profile.websearch_order = vec!["brave-main".into()];
+        // An unreachable-looking chain would fail the run; the built
+        // provider's key lives in the store, the entry survives. The
+        // proof is the chain's existence: an unresolved key drops the
+        // entry (the test above), this one holds.
+        let chain = assemble_chain_with(|_| None, Some(&profile), Some(&store)).unwrap();
+        assert_eq!(chain.names(), vec!["brave-main"]);
+    }
+
+    #[test]
+    fn an_unresolved_key_skips_the_entry() {
+        let mut profile = Profile::default();
+        profile
+            .websearch
+            .insert("brave-main".into(), instance("brave", None));
+        profile.websearch_order = vec!["brave-main".into()];
+        assert!(
+            assemble_chain_with(|_| None, Some(&profile), None).is_none(),
+            "one instance, no key anywhere: no chain"
+        );
+    }
+
+    #[test]
+    fn an_unknown_kind_skips_the_entry_without_killing_the_chain() {
+        let mut profile = Profile::default();
+        profile
+            .websearch
+            .insert("weird".into(), instance("kagi", Some("k")));
+        profile
+            .websearch
+            .insert("exa-work".into(), instance("exa", Some("k")));
+        profile.websearch_order = vec!["weird".into(), "exa-work".into()];
+        let chain = assemble_chain_with(|_| None, Some(&profile), None).unwrap();
+        assert_eq!(chain.names(), vec!["exa-work"]);
+    }
+
+    #[test]
+    fn the_env_only_tier_serves_a_profile_with_no_section() {
+        let env = |name: &str| (name == "EXA_API_KEY").then(|| " from-env ".to_owned());
+        let chain = assemble_chain_with(env, None, None).unwrap();
+        assert_eq!(chain.names(), vec!["exa"]);
+    }
+
+    #[test]
+    fn the_env_only_tier_walks_the_fixed_kind_order() {
+        let env = |name: &str| match name {
+            "TAVILY_API_KEY" => Some("t".to_owned()),
+            "BRAVE_SEARCH_API_KEY" => Some("b".to_owned()),
+            _ => None,
+        };
+        let chain = assemble_chain_with(env, None, None).unwrap();
+        assert_eq!(chain.names(), vec!["brave", "tavily"]);
+    }
+
+    #[test]
+    fn configured_instances_win_over_the_env_only_tier() {
+        let mut profile = Profile::default();
+        profile
+            .websearch
+            .insert("brave-main".into(), instance("brave", Some("stored")));
+        profile.websearch_order = vec!["brave-main".into()];
+        let env = |name: &str| (name == "EXA_API_KEY").then(|| "k".to_owned());
+        let chain = assemble_chain_with(env, Some(&profile), None).unwrap();
+        assert_eq!(
+            chain.names(),
+            vec!["brave-main"],
+            "the env tier does not append to a chain"
+        );
+    }
+
+    #[test]
+    fn neither_tier_yields_no_chain() {
+        assert!(assemble_chain_with(|_| None, None, None).is_none());
+        assert!(assemble_chain_with(|_| None, Some(&Profile::default()), None).is_none());
     }
 }

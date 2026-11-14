@@ -3768,6 +3768,7 @@ dependencies = [
 name = "rhema-websearch-registry"
 version = "0.2.6"
 dependencies = [
+ "rhema-config",
  "rhema-websearch",
  "rhema-websearch-brave",
  "rhema-websearch-exa",

@@ -9,6 +9,9 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+# The Profile the chain assembles from and the SecretStore its keys
+# resolve through
+rhema-config = { path = "../rhema-config", version = "0.2.6" }
 rhema-websearch = { path = "../rhema-websearch", version = "0.2.6", default-features = false }
 rhema-websearch-brave = { path = "../rhema-websearch-brave", version = "0.2.6" }
 rhema-websearch-exa = { path = "../rhema-websearch-exa", version = "0.2.6" }

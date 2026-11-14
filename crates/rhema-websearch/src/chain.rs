@@ -80,6 +80,16 @@ impl Chain {
         self.entries.len()
     }
 
+    /// The chain's instance names, in order: what a frontend's UI
+    /// shows for "search runs through", and what tests read to see
+    /// the order without running it.
+    pub fn names(&self) -> Vec<&str> {
+        self.entries
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect()
+    }
+
     /// Whether the chain holds no provider: `search` on it fails
     /// before any attempt, with the aggregate saying so.
     pub fn is_empty(&self) -> bool {
