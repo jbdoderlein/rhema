@@ -10,7 +10,7 @@
 //! they are in-band `is_error` results. [`run_turn`] is the provided
 //! coding-agent driver, not part of the primitive.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::event::{Event, EventSink};
@@ -382,43 +382,96 @@ impl AgentBuilder {
 /// for every call before the next request is valid. A cancel (the
 /// turn future dropped mid-await, no code of the turn's runs on that
 /// path), a failed commit between the call's durable intent and its
-/// result, or a crash leaves exactly that shape. The repair appends
-/// one synthetic failure per unanswered call, at the tail, where the
-/// interrupted step's results would have sat; returns the call ids it
-/// answered.
+/// result, or a crash leaves exactly that shape. The repair inserts
+/// one synthetic failure per unanswered call directly after the
+/// assistant message that issued it, in call order; returns the call
+/// ids it answered.
 pub fn close_orphaned_calls(history: &mut Vec<Message>) -> Vec<String> {
-    let called: Vec<&String> = history
+    let answered: HashSet<String> = history
         .iter()
         .flat_map(|message| message.content.iter())
         .filter_map(|content| match content {
-            Content::ToolCall(call) => Some(&call.id),
+            Content::ToolResult(result) => Some(result.id.clone()),
             _ => None,
         })
         .collect();
-    let answered: HashSet<&String> = history
-        .iter()
-        .flat_map(|message| message.content.iter())
-        .filter_map(|content| match content {
-            Content::ToolResult(result) => Some(&result.id),
-            _ => None,
-        })
-        .collect();
-    let mut orphans: Vec<String> = Vec::new();
-    for id in called {
-        if !answered.contains(id) && !orphans.contains(id) {
-            orphans.push(id.clone());
+    let mut repaired = Vec::new();
+    let mut repaired_ids: HashSet<String> = HashSet::new();
+    let mut index = 0;
+    while index < history.len() {
+        if history[index].role != Role::Assistant {
+            index += 1;
+            continue;
         }
+        let mut calls = Vec::new();
+        let mut seen = HashSet::new();
+        for content in &history[index].content {
+            if let Content::ToolCall(call) = content
+                && seen.insert(call.id.clone())
+            {
+                calls.push(call.id.clone());
+            }
+        }
+        if calls.is_empty() {
+            index += 1;
+            continue;
+        }
+        let missing: Vec<&String> = calls
+            .iter()
+            .filter(|id| !answered.contains(*id) && !repaired_ids.contains(*id))
+            .collect();
+        if missing.is_empty() {
+            index += 1;
+            continue;
+        }
+        let rank: HashMap<&str, usize> = calls
+            .iter()
+            .enumerate()
+            .map(|(position, id)| (id.as_str(), position))
+            .collect();
+        let mut block_end = index + 1;
+        while block_end < history.len() && history[block_end].role == Role::Tool {
+            block_end += 1;
+        }
+        for id in missing {
+            let call_rank = rank[id.as_str()];
+            let mut insert_at = index + 1;
+            for (offset, message) in history[index + 1..block_end].iter().enumerate() {
+                let position = index + 1 + offset;
+                let mut earlier = false;
+                let mut later = false;
+                for content in &message.content {
+                    if let Content::ToolResult(result) = content
+                        && let Some(other) = rank.get(result.id.as_str())
+                    {
+                        earlier |= *other < call_rank;
+                        later |= *other > call_rank;
+                    }
+                }
+                if earlier {
+                    insert_at = position + 1;
+                }
+                if later {
+                    break;
+                }
+            }
+            history.insert(
+                insert_at,
+                Message {
+                    role: Role::Tool,
+                    content: vec![Content::ToolResult(ToolResult::failure(
+                        id.clone(),
+                        "the turn was interrupted before this call ran; nothing happened",
+                    ))],
+                },
+            );
+            block_end += 1;
+            repaired_ids.insert(id.clone());
+            repaired.push(id.clone());
+        }
+        index = block_end;
     }
-    for id in &orphans {
-        history.push(Message {
-            role: Role::Tool,
-            content: vec![Content::ToolResult(ToolResult::failure(
-                id.clone(),
-                "the turn was interrupted before this call ran; nothing happened",
-            ))],
-        });
-    }
-    orphans
+    repaired
 }
 
 /// The provided coding-agent driver: push the user input, then loop steps
@@ -533,6 +586,90 @@ mod tests {
         let answered = close_orphaned_calls(&mut history);
         assert_eq!(answered, ["dangling"]);
         assert_eq!(history.len(), 5);
+    }
+
+    #[test]
+    fn a_non_tail_orphan_is_answered_before_later_messages() {
+        let call = |id: &str| {
+            Content::ToolCall(ToolCall {
+                id: id.into(),
+                name: "bash".into(),
+                args: serde_json::json!({"command": "echo hi"}),
+                provider_data: serde_json::Value::Null,
+            })
+        };
+        let mut history = vec![
+            Message::text(Role::User, "run it"),
+            Message {
+                role: Role::Assistant,
+                content: vec![call("dangling")],
+            },
+            Message::text(Role::User, "later"),
+            Message::text(Role::Assistant, "done"),
+        ];
+        let answered = close_orphaned_calls(&mut history);
+        assert_eq!(answered, ["dangling"]);
+        assert_eq!(history.len(), 5);
+        let Some(Content::ToolResult(result)) = history[2].content.first() else {
+            panic!("the result sits directly after its assistant message");
+        };
+        assert_eq!(result.id, "dangling");
+        assert_eq!(
+            history[3].role,
+            Role::User,
+            "later messages keep their order"
+        );
+        assert_eq!(history[4].role, Role::Assistant);
+    }
+
+    #[test]
+    fn a_missing_call_keeps_its_place_in_the_result_block() {
+        let call = |id: &str| {
+            Content::ToolCall(ToolCall {
+                id: id.into(),
+                name: "bash".into(),
+                args: serde_json::json!({"command": "echo hi"}),
+                provider_data: serde_json::Value::Null,
+            })
+        };
+        let result = |id: &str| Message {
+            role: Role::Tool,
+            content: vec![Content::ToolResult(ToolResult::failure(id, "ran"))],
+        };
+
+        let mut missing_first = vec![
+            Message {
+                role: Role::Assistant,
+                content: vec![call("missing"), call("answered")],
+            },
+            result("answered"),
+            Message::text(Role::Assistant, "done"),
+        ];
+        assert_eq!(close_orphaned_calls(&mut missing_first), ["missing"]);
+        assert_eq!(missing_first.len(), 4);
+        let Some(Content::ToolResult(first)) = missing_first[1].content.first() else {
+            panic!("the missing call goes before the later result");
+        };
+        assert_eq!(first.id, "missing");
+        let Some(Content::ToolResult(second)) = missing_first[2].content.first() else {
+            panic!("the answered call keeps its result");
+        };
+        assert_eq!(second.id, "answered");
+
+        let mut missing_last = vec![
+            Message {
+                role: Role::Assistant,
+                content: vec![call("answered"), call("missing")],
+            },
+            result("answered"),
+            Message::text(Role::Assistant, "done"),
+        ];
+        assert_eq!(close_orphaned_calls(&mut missing_last), ["missing"]);
+        assert_eq!(missing_last.len(), 4);
+        let Some(Content::ToolResult(second)) = missing_last[2].content.first() else {
+            panic!("the missing call goes after the earlier result");
+        };
+        assert_eq!(second.id, "missing");
     }
 
     #[test]
