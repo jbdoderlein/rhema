@@ -50,7 +50,9 @@ pub struct Probe {
     /// Guidance that joins the report's notes only when the family
     /// answered. Advice about a missing tool would be the stale kind.
     /// The advice is data like the manifest's other texts: a Jinja
-    /// template, with `browser` bound to the executable that answered.
+    /// template over the `executable` map, so it names a family by its
+    /// manifest name (`{{ executable.chromium }}`) and renders the
+    /// command that answered for it.
     #[serde(default)]
     pub advice: Option<String>,
     /// Fallback executables tried after `executable`, first answer
@@ -349,7 +351,7 @@ fn parse_probe<'a>(manifest: &'a Manifest, output: &str) -> ParsedProbe<'a> {
 /// The entries whose whole family is absent, in report order, named as
 /// the report names them, the entry's own executable. The
 /// frontend's startup notice carries these; the prompt carries the
-/// same fact as the presence lines and needs no parallel list.
+/// same fact as its available-tools list and needs no parallel list.
 fn missing_tools(manifest: &Manifest, parsed: &ParsedProbe<'_>) -> Vec<String> {
     manifest
         .probe
@@ -360,9 +362,31 @@ fn missing_tools(manifest: &Manifest, parsed: &ParsedProbe<'_>) -> Vec<String> {
         .collect()
 }
 
+/// The `executable` map the manifest's texts read: every entry's name
+/// bound to the command that answered for it, `null` when the whole
+/// family is absent. An advice template names the family it means
+/// (`{{ executable.chromium }}` renders `helium` where helium
+/// answered), so one map serves every text and no template has to
+/// know which entry is in scope. A name carrying a dash or a dot is
+/// not a valid attribute path, so the template subscripts it instead
+/// (`executable["google-chrome-stable"]`).
+fn executable_map(manifest: &Manifest, parsed: &ParsedProbe<'_>) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    for (entry, answer) in manifest.probe.iter().zip(&parsed.answered) {
+        map.insert(
+            entry.executable.clone(),
+            match answer {
+                Some(name) => json!(name),
+                None => serde_json::Value::Null,
+            },
+        );
+    }
+    serde_json::Value::Object(map)
+}
+
 /// Shapes a parsed probe into the report over the manifest: the OS and
-/// shell lines, one presence line per manifest entry, and every
-/// answered executable with advice earns its note.
+/// shell lines, the names of the tools that answered, and a note for
+/// every answered tool that carries advice.
 fn render_report(
     manifest: &Manifest,
     workspace: &Path,
@@ -373,25 +397,27 @@ fn render_report(
     let shell = parsed.shell.clone();
     let branch = parsed.branch.clone();
     let answered = &parsed.answered;
+    let executable = executable_map(manifest, parsed);
     let tools: Vec<serde_json::Value> = manifest
         .probe
         .iter()
         .zip(answered)
         .map(|(entry, answer)| {
             // The note renders the entry's advice over the answered
-            // name, the family's alternative, so `{{ browser }}` is
-            // always a command this machine has. Absent tools earn
-            // none: guidance about a missing tool is the stale kind.
+            // name, the family's alternative, so
+            // `{{ executable.<entry> }}` is always a command this
+            // machine has. Absent tools earn none: guidance about a
+            // missing tool is the stale kind.
             let note = answer
                 .as_deref()
                 .zip(entry.advice.as_ref())
-                .map(|(name, advice)| {
+                .map(|(_name, advice)| {
                     // The advice renders through the section joiner,
                     // which appends a newline; a note rides inside a
                     // line, so its terminator is the template's.
-                    render_text(advice, &facts.context(manifest, json!({ "browser": name })))
-                        .trim_end()
-                        .to_owned()
+                    let context =
+                        facts.context(manifest, json!({ "executable": executable.clone() }));
+                    render_text(advice, &context).trim_end().to_owned()
                 })
                 .filter(|note| !note.is_empty())
                 .unwrap_or_default();
@@ -410,6 +436,7 @@ fn render_report(
             "workspace": workspace.display().to_string(),
             "branch": branch,
             "tools": tools,
+            "executable": executable,
         }),
     );
     let rendered = render_text(&manifest.report, &context);
@@ -544,6 +571,19 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
 mod tests {
     use super::*;
 
+    /// The names on one of the report's tool lines, trimmed, so an
+    /// assertion names the tools and not the line's alignment padding.
+    fn tool_line<'a>(report: &'a str, label: &str) -> Vec<&'a str> {
+        report
+            .lines()
+            .find_map(|line| line.strip_prefix(label))
+            .unwrap_or_else(|| panic!("no {label} line: {report}"))
+            .split(',')
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .collect()
+    }
+
     /// The baked manifest parses and every text renders over sample
     /// facts, the drift test a hand edit fails: a manifest that stops
     /// parsing falls to the fallback at runtime, so the break belongs
@@ -579,14 +619,15 @@ mod tests {
     }
 
     /// The host report carries its facts, date, model, harness, the OS
-    /// line, one presence line per manifest entry, with no versions
-    /// anywhere. The branch line follows the probe's own rule, present
-    /// on a checkout and absent off one, so both sides get tested: the
-    /// CWD decides which, and a throwaway repo pins the positive side
-    /// wherever the suite happens to run. Runs real bash, like the
-    /// claw's environment tests.
+    /// line, and the two tool lists, with no versions anywhere. Both
+    /// lists name only probed executables, and no name lands in both:
+    /// a tool is present or missing, never the pair. The branch line
+    /// follows the probe's own rule, present on a checkout and absent
+    /// off one, so both sides get tested: the CWD decides which, and a
+    /// throwaway repo pins the positive side wherever the suite happens
+    /// to run. Runs real bash, like the claw's environment tests.
     #[test]
-    fn the_host_report_carries_facts_and_presence_without_versions() {
+    fn the_host_report_carries_facts_and_the_tool_lists_without_versions() {
         let manifest = manifest();
         let report = host_report(Path::new("."), "glm-5.3", "rhema test");
         assert!(report.starts_with("## Environment\n"), "{report}");
@@ -602,12 +643,25 @@ mod tests {
         ] {
             assert!(report.contains(fact), "missing {fact}: {report}");
         }
-        for entry in &manifest.probe {
+        let available = tool_line(&report, "Available tools:");
+        let missing = tool_line(&report, "Missing tools:");
+        let probed: Vec<&str> = manifest
+            .probe
+            .iter()
+            .flat_map(|entry| {
+                std::iter::once(entry.executable.as_str())
+                    .chain(entry.alternatives.iter().map(String::as_str))
+            })
+            .collect();
+        for name in &available {
+            assert!(probed.contains(name), "{name} was never probed: {report}");
             assert!(
-                report.contains(&format!("- {}: ", entry.executable)),
-                "no line for {}: {report}",
-                entry.executable
+                !missing.contains(name),
+                "{name} is present and missing: {report}"
             );
+        }
+        for name in &missing {
+            assert!(probed.contains(name), "{name} was never probed: {report}");
         }
         let on_checkout = Command::new("git")
             .args(["rev-parse", "--is-inside-work-tree"])
@@ -665,6 +719,28 @@ mod tests {
         let _ = std::fs::remove_dir_all(&repo);
     }
 
+    /// The `executable` map binds every entry by its manifest name to
+    /// the command that answered, `null` when the whole family is
+    /// absent: a text names the family it means and an absent family
+    /// renders empty instead of naming a command the host lacks.
+    #[test]
+    fn the_executable_map_binds_each_entry_to_the_name_that_answered() {
+        let manifest = manifest();
+        let parsed = parse_probe(
+            manifest,
+            "Linux x86_64\nshell: /bin/bash\nrg: present\nchromium: absent\nhelium: present\n",
+        );
+        let executable = executable_map(manifest, &parsed);
+        assert_eq!(executable["rg"], json!("rg"));
+        assert_eq!(executable["chromium"], json!("helium"));
+        assert_eq!(executable["fd"], serde_json::Value::Null);
+        assert_eq!(
+            executable.as_object().map(serde_json::Map::len),
+            Some(manifest.probe.len()),
+            "every entry is bound, answered or not"
+        );
+    }
+
     /// The OS line maps the friendly name beside the raw spelling and
     /// keeps unmapped systems raw.
     #[test]
@@ -674,9 +750,9 @@ mod tests {
         assert_eq!(os_label(manifest, "SunOS sun4u"), "SunOS sun4u");
     }
 
-    /// The note rides its tool's line and only when the executable
-    /// answered, the ripgrep note is data like any other entry's.
-    /// Absent tools keep their line: the model should know not to try.
+    /// The notes name only the tools that answered, the ripgrep
+    /// guidance is data like any other entry's, and a host without the
+    /// tool gets neither its name nor its advice.
     #[test]
     fn advice_follows_presence_not_the_tool_name() {
         let manifest = manifest();
@@ -690,8 +766,16 @@ mod tests {
                 "Darwin arm64\nshell: /bin/zsh\nrg: present\nfd: absent\ngit branch: main\n",
             ),
         );
-        assert!(with.contains("- rg: present\n  Use `rg`"), "{with}");
-        assert!(with.contains("- fd: absent"), "{with}");
+        assert_eq!(tool_line(&with, "Available tools:"), ["rg"], "{with}");
+        // Every family the probe left unanswered is missing, not just
+        // the one whose absent line the fixture spelled out.
+        assert_eq!(
+            tool_line(&with, "Missing tools:"),
+            ["fd", "jq", "yq", "sd", "curl", "chromium"],
+            "{with}"
+        );
+        assert!(with.contains("Notes:\n- Use `rg`"), "{with}");
+        assert!(!with.contains("Use `fd`"), "{with}");
         let without = render_report(
             manifest,
             Path::new("/ws"),
@@ -701,14 +785,23 @@ mod tests {
                 "Darwin arm64\nshell: /bin/zsh\nrg: absent\nfd: absent\n",
             ),
         );
+        assert!(
+            tool_line(&without, "Available tools:").is_empty(),
+            "{without}"
+        );
+        assert_eq!(
+            tool_line(&without, "Missing tools:"),
+            ["rg", "fd", "jq", "yq", "sd", "curl", "chromium"],
+            "{without}"
+        );
         assert!(!without.contains("Use `rg`"), "{without}");
-        assert!(without.contains("- rg: absent"), "{without}");
+        assert!(!without.contains("Notes:"), "{without}");
     }
 
     /// An alternatives family answers under the candidate that
-    /// answered: the tools line and the advice's `browser` both carry
-    /// the command the model would type, not the family's canonical
-    /// name.
+    /// answered: the tools line and the advice's `executable` entry
+    /// both carry the command the model would type, not the family's
+    /// canonical name.
     #[test]
     fn alternatives_answer_under_the_candidate_that_answered() {
         let manifest = manifest();
@@ -723,8 +816,16 @@ mod tests {
                  yq: absent\nsd: absent\ncurl: absent\nchromium: absent\nhelium: present\n",
             ),
         );
-        assert!(report.contains("- helium: present"), "{report}");
-        assert!(!report.contains("- chromium:"), "{report}");
+        assert_eq!(
+            tool_line(&report, "Available tools:"),
+            ["helium"],
+            "{report}"
+        );
+        assert_eq!(
+            tool_line(&report, "Missing tools:"),
+            ["rg", "fd", "jq", "yq", "sd", "curl"],
+            "{report}"
+        );
         assert!(report.contains("helium --headless"), "{report}");
         assert!(!report.contains("chromium --headless"), "{report}");
     }
