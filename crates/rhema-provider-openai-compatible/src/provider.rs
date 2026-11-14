@@ -346,17 +346,22 @@ pub async fn drain_chat_stream(
     let mut assembler = ChunkAssembler::new(dialect);
     while let Some(item) = stream.next().await {
         let bytes = item.map_err(network_error)?;
-        for payload in decoder.push(&bytes) {
+        let payloads = decoder.push(&bytes);
+        if let Some(err) = decoder.take_error() {
+            return Err(ProviderError::Network(err));
+        }
+        for payload in payloads {
             if payload.trim() == DONE_SENTINEL {
                 return Ok(assembler.finish());
             }
             feed_chunk(&payload, &mut assembler, sink)?;
-            if let Some(err) = decoder.take_error() {
-                return Err(ProviderError::Network(err));
-            }
         }
     }
-    for payload in decoder.finish() {
+    let payloads = decoder.finish();
+    if let Some(err) = decoder.take_error() {
+        return Err(ProviderError::Network(err));
+    }
+    for payload in payloads {
         if payload.trim() == DONE_SENTINEL {
             break;
         }
@@ -395,17 +400,22 @@ pub async fn drain_responses_stream(
     let mut assembler = ResponsesAssembler::new();
     while let Some(item) = stream.next().await {
         let bytes = item.map_err(network_error)?;
-        for payload in decoder.push(&bytes) {
+        let payloads = decoder.push(&bytes);
+        if let Some(err) = decoder.take_error() {
+            return Err(ProviderError::Network(err));
+        }
+        for payload in payloads {
             if payload.trim() == DONE_SENTINEL {
                 return Ok(assembler.finish());
             }
             feed_event(&payload, &mut assembler, sink)?;
-            if let Some(err) = decoder.take_error() {
-                return Err(ProviderError::Network(err));
-            }
         }
     }
-    for payload in decoder.finish() {
+    let payloads = decoder.finish();
+    if let Some(err) = decoder.take_error() {
+        return Err(ProviderError::Network(err));
+    }
+    for payload in payloads {
         if payload.trim() == DONE_SENTINEL {
             break;
         }

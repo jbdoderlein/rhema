@@ -102,6 +102,34 @@ async fn streams_sse_into_events_and_an_assembled_output() {
     );
 }
 
+#[tokio::test]
+async fn an_oversized_sse_line_fails_the_stream() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string("x".repeat(2 * 1024 * 1024)),
+        )
+        .mount(&server)
+        .await;
+
+    let provider = OpenAiCompatibleProvider::new("secret-key").with_base_url(base(&server));
+    let mut sink = Collector(vec![]);
+    let err = provider
+        .complete(
+            request(vec![Message::text(Role::User, "hi")], vec![]),
+            &mut sink,
+        )
+        .await
+        .expect_err("an oversized line must fail the stream");
+    assert!(
+        matches!(err, ProviderError::Network(ref message) if message.contains("without a line break")),
+        "the decoder error is propagated: {err:?}"
+    );
+}
+
 /// A base carrying its own version path, the way every compatible server is
 /// addressed: the provider must use it verbatim, appending nothing.
 fn base(server: &MockServer) -> String {
