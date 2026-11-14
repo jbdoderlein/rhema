@@ -101,6 +101,10 @@ rhema-websearch-registry = { path = "../rhema-websearch-registry", version = "0.
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 rhema-mcp = { version = "0.2.6", path = "../rhema-mcp" }
 serde_yaml.workspace = true
+# The installer's published `<url>.sha256` is checked before it runs
+sha2 = "0.10"
+# A private, uniquely named file for the fetched install script
+tempfile = "3"
 
 [dev-dependencies]
 # The __search mode tests drive a scripted chain
