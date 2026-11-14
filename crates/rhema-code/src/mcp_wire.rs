@@ -13,7 +13,6 @@
 #![forbid(unsafe_code)]
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use rhema_config::Profile;
@@ -24,10 +23,11 @@ use rhema_config::mcp::McpConfig;
 pub(crate) struct Entry {
     wiring: rhema_mcp::Wiring,
     /// Held for the directory's lifetime, the socket file and the
-    /// CLI's `RHEMA_MCP_TMP` live under it; nothing reads the path
-    /// again.
+    /// CLI's `RHEMA_MCP_TMP` live under it. A `TempDir` creates it
+    /// `0700`, gives it a random name, and removes it on drop, so
+    /// nothing else can pre-create or guess the path.
     #[allow(dead_code)]
-    session_dir: PathBuf,
+    session_dir: tempfile::TempDir,
 }
 
 impl Entry {
@@ -123,13 +123,23 @@ pub(crate) fn wire_for_session(
     // The session dir owns the socket's directory; the init file
     // lives in its own 0700 provision dir inside the system temp dir,
     // not here.
-    let session_dir = std::env::temp_dir().join(format!(
-        "rhema-mcp-session-{}-{session_key}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&session_dir).ok()?;
-    let wiring =
-        rhema_mcp::wire(&merged, all_disabled, &session_dir, session_key, bash_env).ok()?;
+    // A private, random session dir: `tempfile` creates it `0700`
+    // atomically, so another user cannot pre-create a symlink at a
+    // predictable path under the system temp dir. The bridge and the
+    // generated CLI share it through `RHEMA_MCP_TMP`, not through a
+    // fixed name.
+    let session_dir = tempfile::Builder::new()
+        .prefix("rhema-mcp-session-")
+        .tempdir()
+        .ok()?;
+    let wiring = rhema_mcp::wire(
+        &merged,
+        all_disabled,
+        session_dir.path(),
+        session_key,
+        bash_env,
+    )
+    .ok()?;
     for notice in &wiring.notices {
         eprintln!("· {notice}");
     }
