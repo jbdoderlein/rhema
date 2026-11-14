@@ -136,13 +136,15 @@ const POLL_STEP: Duration = Duration::from_millis(10);
 /// expectation.
 const OUTPUT_CAP: usize = 4 * 1024;
 
-/// The probe script: OS, shell, one probe call per manifest entry, an
-/// entry with alternatives tries its executables in order, first
-/// present wins, the entry's own name answers when nothing did.
-/// Versions stay out; presence is the fact that changes how the model
-/// should work, and the workspace's git branch when it is a checkout,
-/// `detached` when HEAD is detached: the shape a PR checkout lands in.
-/// POSIX sh throughout, every executor in the tree runs `bash -c`.
+/// The probe script: OS, shell, the distribution the host names in
+/// /etc/os-release, the sudo password gate, one probe call per
+/// manifest entry, an entry with alternatives tries its executables
+/// in order, first present wins, the entry's own name answers when
+/// nothing did. Versions stay out; presence is the fact that changes
+/// how the model should work, and the workspace's git branch when it
+/// is a checkout, `detached` when HEAD is detached: the shape a PR
+/// checkout lands in. POSIX sh throughout, every executor in the tree
+/// runs `bash -c`.
 fn probe_script(manifest: &Manifest) -> String {
     // One probe call per manifest entry: the family's executables in
     // order, first present wins, the entry's own name answers when
@@ -159,6 +161,25 @@ fn probe_script(manifest: &Manifest) -> String {
         r#"
 uname -sm
 printf 'shell: %s\n' "${{SHELL:-unset}}"
+if [ -r /etc/os-release ]; then
+  # The distribution is the file's PRETTY_NAME, its NAME as the
+  # fallback; the file is read, not sourced: it is data, not script.
+  d=$(sed -n 's/^PRETTY_NAME=//p' /etc/os-release | head -n 1)
+  [ -n "$d" ] || d=$(sed -n 's/^NAME=//p' /etc/os-release | head -n 1)
+  d=$(printf '%s' "$d" | sed -e 's/^"//' -e 's/"$//')
+  [ -n "$d" ] && printf 'distro: %s\n' "$d"
+fi
+# `sudo -n true` answers without a prompt: a prompt would hang past
+# the budget, and a startup cannot ask for a password.
+if command -v sudo >/dev/null 2>&1; then
+  if sudo -n true 2>/dev/null; then
+    printf 'sudo: passwordless\n'
+  else
+    printf 'sudo: requires a password\n'
+  fi
+else
+  printf 'sudo: not installed\n'
+fi
 probe() {{
   for t in "$@"; do
     if command -v "$t" >/dev/null 2>&1; then
@@ -306,6 +327,15 @@ struct ParsedProbe<'a> {
     os: String,
     /// The login shell, `unknown` when the line did not answer.
     shell: String,
+    /// The distribution the host names in /etc/os-release, `None`
+    /// where there is no such file (macOS, the BSDs) or no usable
+    /// name in it.
+    distro: Option<String>,
+    /// The sudo password gate's answer: `passwordless` when root
+    /// commands run without interaction, `requires a password` when
+    /// the gate would prompt, `not installed` without the binary,
+    /// `unknown` when the line never answered.
+    sudo: String,
     /// The workspace's git branch, when the probe ran in a checkout.
     branch: Option<String>,
     /// Per entry, in manifest order, the candidate whose presence
@@ -316,8 +346,9 @@ struct ParsedProbe<'a> {
 }
 
 /// Parses the probe's bounded stdout: the first two lines are the OS
-/// and the shell, the presence lines follow, and every answered
-/// executable earns its report line and note from there.
+/// and the shell, the distribution and sudo lines are matched by
+/// prefix from there, the presence lines follow, and every answered
+/// executable earns its report line and note.
 fn parse_probe<'a>(manifest: &'a Manifest, output: &str) -> ParsedProbe<'a> {
     let mut lines = output.lines().filter(|line| !line.trim().is_empty());
     let os = lines.next().unwrap_or("unknown").to_owned();
@@ -327,6 +358,15 @@ fn parse_probe<'a>(manifest: &'a Manifest, output: &str) -> ParsedProbe<'a> {
         .unwrap_or("unknown")
         .to_owned();
     let rest: Vec<&str> = lines.collect();
+    let distro = rest
+        .iter()
+        .find_map(|l| l.strip_prefix("distro: "))
+        .map(str::to_owned);
+    let sudo = rest
+        .iter()
+        .find_map(|l| l.strip_prefix("sudo: "))
+        .unwrap_or("unknown")
+        .to_owned();
     let branch = rest
         .iter()
         .find_map(|l| l.strip_prefix("git branch: "))
@@ -343,6 +383,8 @@ fn parse_probe<'a>(manifest: &'a Manifest, output: &str) -> ParsedProbe<'a> {
     ParsedProbe {
         os,
         shell,
+        distro,
+        sudo,
         branch,
         answered,
     }
@@ -384,8 +426,9 @@ fn executable_map(manifest: &Manifest, parsed: &ParsedProbe<'_>) -> serde_json::
     serde_json::Value::Object(map)
 }
 
-/// Shapes a parsed probe into the report over the manifest: the OS and
-/// shell lines, the names of the tools that answered, and a note for
+/// Shapes a parsed probe into the report over the manifest: the OS
+/// line with the distribution beside it when the host names one, the
+/// sudo line, the names of the tools that answered, and a note for
 /// every answered tool that carries advice.
 fn render_report(
     manifest: &Manifest,
@@ -395,6 +438,8 @@ fn render_report(
 ) -> String {
     let os = os_label(manifest, &parsed.os);
     let shell = parsed.shell.clone();
+    let distro = parsed.distro.clone();
+    let sudo = parsed.sudo.clone();
     let branch = parsed.branch.clone();
     let answered = &parsed.answered;
     let executable = executable_map(manifest, parsed);
@@ -432,6 +477,8 @@ fn render_report(
         manifest,
         json!({
             "os": os,
+            "distro": distro,
+            "sudo": sudo,
             "shell": shell,
             "workspace": workspace.display().to_string(),
             "branch": branch,
@@ -609,6 +656,7 @@ mod tests {
                 json!({
                     "os": "macOS (Darwin arm64)", "shell": "/bin/zsh",
                     "workspace": "/ws", "branch": "main",
+                    "distro": "Ubuntu 24.04 LTS", "sudo": "passwordless",
                     "tools": [{"name": "rg", "state": true, "note": "n"}],
                     "kind": "k", "reason": "r",
                 }),
@@ -637,6 +685,7 @@ mod tests {
             "- Harness: rhema test",
             "### Machine",
             "- OS: ",
+            "- Sudo: ",
             "### Workspace",
             "- CWD: ",
             "### Command-line tools",
@@ -662,6 +711,19 @@ mod tests {
         }
         for name in &missing {
             assert!(probed.contains(name), "{name} was never probed: {report}");
+        }
+        // On Linux the distribution rides the OS line, from
+        // /etc/os-release; elsewhere the line keeps whatever spelling
+        // the host answers with.
+        if std::path::Path::new("/etc/os-release").is_file() {
+            let os_line = report
+                .lines()
+                .find(|line| line.starts_with("- OS: "))
+                .expect("the OS line renders");
+            assert!(
+                os_line.contains('(') && os_line.ends_with(')'),
+                "the distribution rides the Linux OS line: {os_line}"
+            );
         }
         let on_checkout = Command::new("git")
             .args(["rev-parse", "--is-inside-work-tree"])
@@ -739,6 +801,46 @@ mod tests {
             Some(manifest.probe.len()),
             "every entry is bound, answered or not"
         );
+    }
+
+    /// The machine lines over synthetic feeds, both shapes pinned:
+    /// the distribution rides the OS line in parentheses when the
+    /// host names one and stays off when it does not, and the sudo
+    /// line always speaks, however the password gate stands.
+    #[test]
+    fn the_machine_lines_carry_the_distribution_and_sudo() {
+        let manifest = manifest();
+        let facts = facts("m", "h");
+        let linux = render_report(
+            manifest,
+            Path::new("/ws"),
+            &facts,
+            &parse_probe(
+                manifest,
+                "Linux x86_64\nshell: /bin/bash\ndistro: Ubuntu 24.04 LTS\n\
+                 sudo: passwordless\nrg: present\nfd: absent\njq: absent\n\
+                 yq: absent\nsd: absent\ncurl: absent\nchromium: absent\n",
+            ),
+        );
+        assert!(
+            linux.contains("- OS: Linux x86_64 (Ubuntu 24.04 LTS)"),
+            "{linux}"
+        );
+        assert!(linux.contains("- Sudo: passwordless"), "{linux}");
+        let mac = render_report(
+            manifest,
+            Path::new("/ws"),
+            &facts,
+            &parse_probe(
+                manifest,
+                "Darwin arm64\nshell: /bin/zsh\nsudo: requires a password\nrg: absent\n",
+            ),
+        );
+        assert!(
+            mac.contains("- OS: macOS (Darwin arm64)\n- Sudo: "),
+            "{mac}"
+        );
+        assert!(mac.contains("- Sudo: requires a password"), "{mac}");
     }
 
     /// The OS line maps the friendly name beside the raw spelling and
@@ -863,6 +965,17 @@ mod tests {
             "a failed probe claims no absences: {:?}",
             failed.missing
         );
+    }
+
+    /// The script reads the distribution without executing the file
+    /// and checks sudo non-interactively: a prompt would hang a
+    /// startup past its budget.
+    #[test]
+    fn the_script_reads_os_release_and_checks_sudo_without_a_prompt() {
+        let script = probe_script(manifest());
+        assert!(script.contains("/etc/os-release"), "{script}");
+        assert!(!script.contains(". /etc/os-release"), "{script}");
+        assert!(script.contains("sudo -n true"), "{script}");
     }
 
     /// The script probes a family in one call, order preserved, and

@@ -1,8 +1,9 @@
 # The environment report, data end to end: what the probe looks for,
 # the OS name mapping, and every text the report renders, Jinja
-# templates over the facts the module gathers (os, date, model,
-# harness, workspace, shell, branch, tools, executable, notes, kind,
-# reason). The same renderer and whitespace rules as SYSTEM.md apply.
+# templates over the facts the module gathers (os, distro, sudo,
+# date, model, harness, workspace, shell, branch, tools, executable,
+# notes, kind, reason). The same renderer and whitespace rules as
+# SYSTEM.md apply.
 
 # The friendly name for each `uname -s` system value; a system without
 # a row keeps its raw uname spelling.
@@ -73,7 +74,8 @@ report: |
   {{ facts }}
   ### Machine
 
-  - OS: {{ os }}
+  - OS: {{ os }}{% if distro %} ({{ distro }}){% endif +%}
+  - Sudo: {{ sudo }}
 
   ### Workspace
 
@@ -105,7 +107,8 @@ notice: |
 
   Commands run in the {{ kind }} sandbox, not on the machine {{ harness }}
   launched from, so no host facts are claimed here. Probe the sandbox
-  itself (`uname -sm`, `command -v <tool>`) when a fact matters.
+  itself (`uname -sm`, `cat /etc/os-release`, `sudo -n true`,
+  `command -v <tool>`) when a fact matters.
 
   - Workspace: {{ workspace }}
 
@@ -116,6 +119,7 @@ unavailable: |
   ## Environment
 
   The startup probe did not answer ({{ reason }}); ask the shell
-  directly (`uname -sm`, `command -v <tool>`) when a fact matters.
+  directly (`uname -sm`, `cat /etc/os-release`, `sudo -n true`,
+  `command -v <tool>`) when a fact matters.
 
   {{ facts }}
