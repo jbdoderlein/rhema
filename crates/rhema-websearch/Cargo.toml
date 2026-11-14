@@ -1,0 +1,31 @@
+[package]
+name = "rhema-websearch"
+description = "Web search for rhema agents: the WebSearchProvider seam, the query and result vocabulary, the fallback chain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# dyn WebSearchProvider: the chain holds boxed adapters
+async-trait = { workspace = true }
+# Typed search errors
+thiserror = { workspace = true }
+# The per-attempt and whole-chain budgets are tokio sleeps and timeouts
+tokio = { workspace = true, features = ["time"] }
+
+[features]
+default = []
+# The scripted provider the chain tests and a frontend's offline tests
+# drive. A feature, not a dev-dependency, because downstream consumers
+# (the settings screen's end-to-end, another frontend's tests) need it
+# in their dependency graphs too.
+mock = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints]
+workspace = true
