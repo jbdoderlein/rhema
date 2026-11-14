@@ -5,7 +5,7 @@
 //! prompt's environment section.
 //!
 //! Every text the report carries is data: [`environment.yaml`] at the
-//! crate root — beside SYSTEM.md — holds the OS name mapping, the probe
+//! crate root, beside SYSTEM.md, holds the OS name mapping, the probe
 //! inventory, and the report, notice, and unavailable texts as Jinja
 //! templates over the facts this module gathers. The Rust here is
 //! mechanics alone: run the probe, shape the facts, render the
@@ -13,11 +13,11 @@
 //! runtime: the report must not turn machine-dependent, and the cloud
 //! frontends have no filesystem to read it from anyway.
 //!
-//! The probe is synchronous on purpose — agent construction is sync —
+//! The probe is synchronous on purpose, agent construction is sync,
 //! and best-effort: one `bash -c` under a short budget on a fixed
 //! script, a failure degrading to the `unavailable` text, never a
 //! failed startup. The same parse answers twice over: the report for
-//! the prompt, and — through [`host_environment`] — the structured
+//! the prompt, and, through [`host_environment`], the structured
 //! absence list a frontend may surface to its user. Which package
 //! holds a missing tool stays out of the report on purpose: that is
 //! the package manager's question, answered live when the user asks
@@ -44,7 +44,7 @@ use serde_json::json;
 /// One inventoried tool.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct Probe {
-    /// The executable the probe looks for and the report names — the
+    /// The executable the probe looks for and the report names, the
     /// command the model would type, not the project's name for it.
     pub executable: String,
     /// Guidance that joins the report's notes only when the family
@@ -55,8 +55,8 @@ pub struct Probe {
     pub advice: Option<String>,
     /// Fallback executables tried after `executable`, first answer
     /// winning. One entry stands for a family whose binary name
-    /// varies by install — chromium versus google-chrome versus a
-    /// fork like helium — and the report names the candidate that
+    /// varies by install, chromium versus google-chrome versus a
+    /// fork like helium, and the report names the candidate that
     /// answered: still the command the model would type. The same
     /// shell-safety filter applies.
     #[serde(default)]
@@ -73,7 +73,7 @@ pub struct Manifest {
     pub os_names: BTreeMap<String, String>,
     /// The probed executables, in report order.
     pub probe: Vec<Probe>,
-    /// The session facts every shape places by reference — written
+    /// The session facts every shape places by reference, written
     /// once, never duplicated in the texts.
     pub facts: String,
     /// The report a local session renders.
@@ -102,7 +102,7 @@ pub fn manifest() -> &'static Manifest {
 }
 
 /// An executable name the probe script can carry verbatim: letters,
-/// digits, dots, dashes, underscores — nothing that could close the
+/// digits, dots, dashes, underscores, nothing that could close the
 /// `"$t"` quoting and become shell of its own.
 fn shell_safe(executable: &str) -> bool {
     !executable.is_empty()
@@ -112,7 +112,7 @@ fn shell_safe(executable: &str) -> bool {
 }
 
 /// The executables one entry probes, in order: the entry's own name,
-/// then its alternatives — the shell-unsafe names dropped. Empty when
+/// then its alternatives, the shell-unsafe names dropped. Empty when
 /// nothing safe remains, and the entry never reaches the script.
 fn candidates(entry: &Probe) -> Vec<&str> {
     std::iter::once(&entry.executable)
@@ -134,13 +134,13 @@ const POLL_STEP: Duration = Duration::from_millis(10);
 /// expectation.
 const OUTPUT_CAP: usize = 4 * 1024;
 
-/// The probe script: OS, shell, one probe call per manifest entry — an
+/// The probe script: OS, shell, one probe call per manifest entry, an
 /// entry with alternatives tries its executables in order, first
 /// present wins, the entry's own name answers when nothing did.
 /// Versions stay out; presence is the fact that changes how the model
-/// should work — and the workspace's git branch when it is a checkout,
+/// should work, and the workspace's git branch when it is a checkout,
 /// `detached` when HEAD is detached: the shape a PR checkout lands in.
-/// POSIX sh throughout — every executor in the tree runs `bash -c`.
+/// POSIX sh throughout, every executor in the tree runs `bash -c`.
 fn probe_script(manifest: &Manifest) -> String {
     // One probe call per manifest entry: the family's executables in
     // order, first present wins, the entry's own name answers when
@@ -181,7 +181,7 @@ fi
 
 /// One host probe, both shapes it feeds: the report the prompt
 /// carries and the absence list a frontend surfaces itself. The probe
-/// runs once and parses once — a startup notice that wanted a second
+/// runs once and parses once, a startup notice that wanted a second
 /// run would pay the probe budget twice for the same facts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostEnvironment {
@@ -189,18 +189,18 @@ pub struct HostEnvironment {
     /// carries, byte for byte.
     pub report: String,
     /// The probed entries whose whole family is absent, in report
-    /// order, named as the report names them — the executable the
+    /// order, named as the report names them, the executable the
     /// model would type. Facts for the user's eyes (a startup notice,
     /// an installer's tail), never the prompt's: which package holds
     /// `fd` is the package manager's question, answered when the user
     /// asks for the install, not a fact to memorize up front. A probe
-    /// that cannot run leaves it empty — an unprobed host claims no
+    /// that cannot run leaves it empty, an unprobed host claims no
     /// absences either.
     pub missing: Vec<String>,
 }
 
 /// The host environment: what `bash` on this machine, rooted at
-/// `workspace`, would answer at startup — carrying `model`, the model
+/// `workspace`, would answer at startup, carrying `model`, the model
 /// the session runs, and `harness`, the frontend assembling it. Never
 /// fails: a probe that cannot run renders the unavailable text and
 /// names nothing missing.
@@ -222,7 +222,7 @@ pub fn host_environment(workspace: &Path, model: &str, harness: &str) -> HostEnv
     }
 }
 
-/// The host report alone — the prompt's view of
+/// The host report alone, the prompt's view of
 /// [`host_environment`], for callers that carry no user-facing
 /// surface beside it.
 pub fn host_report(workspace: &Path, model: &str, harness: &str) -> String {
@@ -230,9 +230,9 @@ pub fn host_report(workspace: &Path, model: &str, harness: &str) -> String {
 }
 
 /// The section a sandboxed session renders instead of host facts: the
-/// report's honesty rule — commands run somewhere a host probe cannot
+/// report's honesty rule, commands run somewhere a host probe cannot
 /// see, so it claims none and names the kind. The sandbox-side
-/// `workspace` is carried — where the model's commands run is not a
+/// `workspace` is carried, where the model's commands run is not a
 /// host fact.
 pub fn remote_notice(kind: &str, workspace: &str, model: &str, harness: &str) -> String {
     let manifest = manifest();
@@ -260,7 +260,7 @@ struct Facts {
 
 impl Facts {
     /// The template context every text extends, carrying the composed
-    /// `facts` block — the yaml's one copy of the session facts,
+    /// `facts` block, the yaml's one copy of the session facts,
     /// placed by reference, never re-typed in a text.
     fn context(&self, manifest: &Manifest, extra: serde_json::Value) -> serde_json::Value {
         let serde_json::Value::Object(mut map) = extra else {
@@ -307,7 +307,7 @@ struct ParsedProbe<'a> {
     /// The workspace's git branch, when the probe ran in a checkout.
     branch: Option<String>,
     /// Per entry, in manifest order, the candidate whose presence
-    /// line answered — `None` when the whole family is absent. The
+    /// line answered, `None` when the whole family is absent. The
     /// report names the answerer (the command the model would type),
     /// falling to the entry's own name when nothing did.
     answered: Vec<Option<&'a str>>,
@@ -347,7 +347,7 @@ fn parse_probe<'a>(manifest: &'a Manifest, output: &str) -> ParsedProbe<'a> {
 }
 
 /// The entries whose whole family is absent, in report order, named as
-/// the report names them — the entry's own executable. The
+/// the report names them, the entry's own executable. The
 /// frontend's startup notice carries these; the prompt carries the
 /// same fact as the presence lines and needs no parallel list.
 fn missing_tools(manifest: &Manifest, parsed: &ParsedProbe<'_>) -> Vec<String> {
@@ -379,7 +379,7 @@ fn render_report(
         .zip(answered)
         .map(|(entry, answer)| {
             // The note renders the entry's advice over the answered
-            // name — the family's alternative, so `{{ browser }}` is
+            // name, the family's alternative, so `{{ browser }}` is
             // always a command this machine has. Absent tools earn
             // none: guidance about a missing tool is the stale kind.
             let note = answer
@@ -447,7 +447,7 @@ fn fallback_report(facts: &Facts) -> String {
 }
 
 /// The OS line: the mapping's friendly name with the raw uname spelling
-/// beside it — `macOS (Darwin arm64)` — or the raw spelling alone when
+/// beside it, `macOS (Darwin arm64)`, or the raw spelling alone when
 /// the manifest maps no friendly name.
 fn os_label(manifest: &Manifest, raw: &str) -> String {
     let Some((system, _rest)) = raw.split_once(' ') else {
@@ -455,7 +455,7 @@ fn os_label(manifest: &Manifest, raw: &str) -> String {
     };
     let system = system.to_lowercase();
     // The git-bash family reports itself as MINGW64_NT-10.0-19045 and
-    // kin — a windows host by any prefix spelling, so the family gets
+    // kin, a windows host by any prefix spelling, so the family gets
     // the friendly name without a table row per environment.
     if system.starts_with("mingw") || system.starts_with("msys") || system.starts_with("cygwin") {
         return format!("Windows ({raw})");
@@ -509,7 +509,7 @@ fn run_probe(manifest: &Manifest, workspace: &Path) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-/// The wall-clock UTC stamp, to the minute — the one timestamp shape
+/// The wall-clock UTC stamp, to the minute, the one timestamp shape
 /// the reports carry, stamped once at construction.
 fn utc_now() -> String {
     let secs = SystemTime::now()
@@ -525,7 +525,7 @@ fn utc_now() -> String {
     )
 }
 
-/// Days since the Unix epoch to (year, month, day), UTC — the civil
+/// Days since the Unix epoch to (year, month, day), UTC, the civil
 /// calendar without a clock dependency.
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
@@ -545,7 +545,7 @@ mod tests {
     use super::*;
 
     /// The baked manifest parses and every text renders over sample
-    /// facts — the drift test a hand edit fails: a manifest that stops
+    /// facts, the drift test a hand edit fails: a manifest that stops
     /// parsing falls to the fallback at runtime, so the break belongs
     /// in a test, not a startup.
     #[test]
@@ -578,8 +578,8 @@ mod tests {
         }
     }
 
-    /// The host report carries its facts — date, model, harness, the OS
-    /// line, one presence line per manifest entry — with no versions
+    /// The host report carries its facts, date, model, harness, the OS
+    /// line, one presence line per manifest entry, with no versions
     /// anywhere. The branch line follows the probe's own rule, present
     /// on a checkout and absent off one, so both sides get tested: the
     /// CWD decides which, and a throwaway repo pins the positive side
@@ -675,7 +675,7 @@ mod tests {
     }
 
     /// The note rides its tool's line and only when the executable
-    /// answered — the ripgrep note is data like any other entry's.
+    /// answered, the ripgrep note is data like any other entry's.
     /// Absent tools keep their line: the model should know not to try.
     #[test]
     fn advice_follows_presence_not_the_tool_name() {
@@ -730,11 +730,11 @@ mod tests {
     }
 
     /// The absence list names the entries whose whole family is
-    /// absent, as the report spells them — the family's own name, not
-    /// the alternative that does not exist here — and nothing else. A
+    /// absent, as the report spells them, the family's own name, not
+    /// the alternative that does not exist here, and nothing else. A
     /// bare host lines answers names everything: every `command -v`
     /// spoke, and each said no. A probe that cannot run is the other
-    /// extreme — [`host_environment`] leaves the list empty there,
+    /// extreme, [`host_environment`] leaves the list empty there,
     /// because an unprobed host asserts nothing.
     #[test]
     fn the_missing_list_names_absent_families_as_the_report_does() {

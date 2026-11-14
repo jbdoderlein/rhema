@@ -1,7 +1,7 @@
 //! End-to-end tests over the protocol: an in-memory client speaks ACP
 //! to the served agent through a [`Channel`] pair, and a `MockProvider`
-//! scripts the model side. The whole stack runs — handlers, session
-//! slots, the event bridge, the permission bridge, persistence — with
+//! scripts the model side. The whole stack runs, handlers, session
+//! slots, the event bridge, the permission bridge, persistence, with
 //! zero network and zero editor.
 
 #![cfg(feature = "mock")]
@@ -103,7 +103,7 @@ fn tool_updates(updates: &Updates) -> Vec<(String, String)> {
         .collect()
 }
 
-/// The context-and-cost updates, as `(used, size, cost amount)` — the
+/// The context-and-cost updates, as `(used, size, cost amount)`, the
 /// cost `None` when the model card carries no prices.
 fn usage_updates(updates: &Updates) -> Vec<(u64, u64, Option<f64>)> {
     updates
@@ -881,7 +881,7 @@ async fn the_thinking_select_switches_effort() {
             let session = new_session(&cx, &workspace).await;
 
             // Both selects ship: the model and, current first, the
-            // profile's reasoning effort — medium when nothing stored
+            // profile's reasoning effort, medium when nothing stored
             // names one.
             assert_eq!(session.config_options.as_ref().map(Vec::len), Some(2));
             let current = thinking_current(session.config_options.as_ref().expect("selects"));
@@ -1137,7 +1137,7 @@ async fn the_slot_map_stays_capped_and_a_dropped_session_reloads() {
             .await
             .expect("session/load after eviction");
             // The load answered, and the reloaded session serves a
-            // prompt — the eviction lost nothing that matters.
+            // prompt, the eviction lost nothing that matters.
             cx.send_request(PromptRequest::new(
                 ids[1].clone(),
                 vec![ContentBlock::from("again")],

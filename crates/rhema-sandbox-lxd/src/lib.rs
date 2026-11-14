@@ -2,16 +2,16 @@
 //! CLI (spec §4's "LXD / Incus" row).
 //!
 //! [`LxdSandbox::mounted`] is the fs-sharing family's LXD member: a
-//! container whose `disk` device mirrors the host workspace 1:1 — the
-//! docker bind-mount posture — so the file routes are plain fs through
+//! container whose `disk` device mirrors the host workspace 1:1, the
+//! docker bind-mount posture, so the file routes are plain fs through
 //! [`FsRoot`] and only exec crosses the CLI. [`LxdSandbox::attached`]
 //! is the fs-disjoint one: no mount, files crossing `lxc file push`
 //! and `pull`, the workspace carried in by the seed. That is a
 //! virtual machine's posture (`lxc launch --vm` takes no host-path
 //! mount) and the fallback for any instance left unmounted.
 //!
-//! Containers and `--vm` instances exec identically — `lxc exec`
-//! speaks the same argv to both — which is why the instance type is a
+//! Containers and `--vm` instances exec identically, `lxc exec`
+//! speaks the same argv to both, which is why the instance type is a
 //! launch flag on the assembly, not a split in the choice vocabulary
 //! (spec §9). The adapter never launches: the caller stands the
 //! instance up (`lxc launch [--vm] <image> <name>`) and adds the disk
@@ -21,21 +21,21 @@
 //! <instance> -- timeout --kill-after=5 <secs> bash -c <command>`.
 //! The user flags are the workspace owner's, given by the caller
 //! ([`LxdSandbox::with_user`]): an unprivileged container maps uids,
-//! so commands must run as the uid the host tree belongs to — as
+//! so commands must run as the uid the host tree belongs to, as
 //! root they touch nobody's files and, privileged, they would touch
 //! everyone's. The cwd defaults to the workspace: the exec lands
 //! where the session lives, not in the instance's root. The argv
-//! rides the exec API to the instance's process intact — no shell
+//! rides the exec API to the instance's process intact, no shell
 //! reparse, the ssh lesson inverted (sshd joins argv into one shell
-//! line; LXD does not) — so nothing here is quoted for a middle
+//! line; LXD does not), so nothing here is quoted for a middle
 //! shell. The kill is
-//! the prefix's, as on every backend without a per-command kill —
+//! the prefix's, as on every backend without a per-command kill,
 //! the `timeout` prefix's codes (124 at the budget, an external SIGKILL reads as a plain failure) read through `rhema-sandbox`'s shared `exit_status`. Streams pump live lines through
 //! the shared `run_child` wiring (`exec_util`), caps included.
 //!
 //! Cancelling mid-run kills the local `lxc` process only; the command
 //! keeps running inside the instance, and whatever it wrote through
-//! the mount — or wherever it got in the attached posture — is there
+//! the mount, or wherever it got in the attached posture, is there
 //! afterwards. The local socket is the whole transport: no
 //! `remote:` prefixes, the CLI's remote syntax stays out of the
 //! constructor's contract.
@@ -62,14 +62,14 @@ const SEED_BUDGET: Duration = Duration::from_secs(300);
 /// `write_file` forever without a fixed one.
 const FS_BUDGET: Duration = Duration::from_secs(60);
 
-/// The LXD sandbox a session's commands run in: one instance —
-/// container or virtual machine, the adapter never cares — driven
+/// The LXD sandbox a session's commands run in: one instance,
+/// container or virtual machine, the adapter never cares, driven
 /// through the `lxc` CLI.
 #[derive(Debug, Clone)]
 pub struct LxdSandbox {
     /// The instance's name, used verbatim on every `lxc` command line.
     instance: String,
-    /// The host directory standing in as the sandbox filesystem — the
+    /// The host directory standing in as the sandbox filesystem, the
     /// host side of the instance's `disk` device. `Some` is the
     /// mounted posture (fs-sharing family); `None` is the attached
     /// one, whose file routes cross `lxc file`.
@@ -79,7 +79,7 @@ pub struct LxdSandbox {
     /// host paths agree); attached, it is where the seed carries the
     /// workspace in.
     workspace: String,
-    /// The uid/gid exec runs as — the workspace owner's, so the
+    /// The uid/gid exec runs as, the workspace owner's, so the
     /// instance's commands touch the tree with the host's own
     /// identity. Unset, exec runs as the instance's root.
     user: Option<(u32, u32)>,
@@ -87,7 +87,7 @@ pub struct LxdSandbox {
 
 impl LxdSandbox {
     /// A sandbox in an instance whose `disk` device maps the host root
-    /// `root` at `workspace` inside — the docker bind-mount posture:
+    /// `root` at `workspace` inside, the docker bind-mount posture:
     ///
     /// ```text
     /// lxc launch ubuntu:24.04 rhema-sandbox
@@ -97,7 +97,7 @@ impl LxdSandbox {
     /// let sandbox = LxdSandbox::mounted("rhema-sandbox", root, "/home/me/proj");
     /// ```
     ///
-    /// Sandbox paths are mount-relative or instance-side —
+    /// Sandbox paths are mount-relative or instance-side,
     /// `/src/main.rs` and `<workspace>/src/main.rs` both name
     /// `<root>/src/main.rs` on the host and `<workspace>/src/main.rs`
     /// in the instance, and exec's working directory is the
@@ -115,7 +115,7 @@ impl LxdSandbox {
         }
     }
 
-    /// A sandbox in an instance taken as it stands — no mount, the
+    /// A sandbox in an instance taken as it stands, no mount, the
     /// file routes crossing `lxc file`, the workspace carried in by
     /// the seed. A virtual machine's posture. [`Self::with_workspace`]
     /// names where the seed lands it.
@@ -129,7 +129,7 @@ impl LxdSandbox {
     }
 
     /// Names the instance-side workspace the seed carries the tree
-    /// into. Attached only — the mounted posture's workspace rides the
+    /// into. Attached only, the mounted posture's workspace rides the
     /// constructor.
     pub fn with_workspace(mut self, workspace: impl Into<String>) -> Self {
         self.workspace = workspace.into();
@@ -137,7 +137,7 @@ impl LxdSandbox {
     }
 
     /// Names the uid/gid exec runs as. Mounted, this is the host
-    /// workspace owner's — an unprivileged container's map makes that
+    /// workspace owner's, an unprivileged container's map makes that
     /// the only identity the tree answers to. The assembly stats the
     /// workspace and passes the owner through.
     pub fn with_user(mut self, uid: u32, gid: u32) -> Self {
@@ -178,7 +178,7 @@ impl LxdSandbox {
         Ok(())
     }
 
-    /// Runs one instance-side seed command — attached-only — under the
+    /// Runs one instance-side seed command, attached-only, under the
     /// seed budget: past it the local `lxc` is dropped and the budget
     /// reads as a timeout; a nonzero exit surfaces the stderr tail.
     async fn run_attached_seed(&self, argv: &[String]) -> Result<(), SandboxError> {
@@ -205,10 +205,10 @@ impl LxdSandbox {
     }
 
     /// Spawns one local `lxc` carrying `argv`, answering the stdout
-    /// bytes, the exit code, and the stderr text — the file routes'
+    /// bytes, the exit code, and the stderr text, the file routes'
     /// and the attached seed's one-shot shape.
     /// One lxc call under a wall-clock budget: past it the future
-    /// drops, and with it the local lxc (`kill_on_drop`) — a
+    /// drops, and with it the local lxc (`kill_on_drop`), a
     /// black-holed transport reads as a timeout, not a hang.
     async fn budgeted<T>(
         &self,
@@ -249,12 +249,12 @@ impl LxdSandbox {
 /// The instance-side path of the sandbox cwd. Mounted, sandbox paths
 /// are mount-relative, so the instance path is `workspace` plus the
 /// cwd; attached, the sandbox path is already instance-side. `None`
-/// for the unset cwd (`""`) — `lxc exec` keeps its own default
+/// for the unset cwd (`""`), `lxc exec` keeps its own default
 /// working directory.
 fn instance_cwd(mounted: bool, workspace: &str, cwd: &str) -> Option<String> {
     // An empty cwd is the workspace itself: the exec lands where the
     // session lives, not in the instance's default directory. No
-    // workspace named — the attached sandbox without one — and lxc's
+    // workspace named, the attached sandbox without one, and lxc's
     // own default stands.
     if cwd.is_empty() {
         return if workspace.is_empty() {
@@ -278,7 +278,7 @@ fn instance_cwd(mounted: bool, workspace: &str, cwd: &str) -> Option<String> {
 
 /// The exec argv: `lxc exec [--cwd <instance cwd>] <instance> --
 /// timeout --kill-after=5 <secs> bash -c <command>`. `lxc exec` has
-/// its own `--cwd`, preferred over the shim's `cd` prefix — cleaner,
+/// its own `--cwd`, preferred over the shim's `cd` prefix, cleaner,
 /// and no shell quoting for the directory. Nothing after `--` is
 /// quoted: the argv rides the exec API intact, no shell reparse.
 fn exec_argv(
@@ -310,7 +310,7 @@ fn exec_argv(
 }
 
 /// The exec identity: `--user <uid> --group <gid>`, the workspace
-/// owner's, so instance commands touch the tree as the host user —
+/// owner's, so instance commands touch the tree as the host user,
 /// not as nobody's-root in an unprivileged map, not as everyone's
 /// root in a privileged one.
 fn user_flags(user: Option<(u32, u32)>) -> Vec<String> {
@@ -325,7 +325,7 @@ fn user_flags(user: Option<(u32, u32)>) -> Vec<String> {
     }
 }
 
-/// The read argv, attached: `lxc file pull -- <instance><path> -` —
+/// The read argv, attached: `lxc file pull -- <instance><path> -`,
 /// the `-` destination is the local stdout. Instance and path
 /// concatenate; instance-side paths are absolute, so the seam is
 /// unambiguous.
@@ -341,7 +341,7 @@ fn read_argv(instance: &str, path: &str) -> Vec<String> {
 }
 
 /// The write argv, attached:
-/// `lxc file push --create-dirs -- <staged> <instance><path>` — the
+/// `lxc file push --create-dirs -- <staged> <instance><path>`, the
 /// bytes ride in a host temp file, and `--create-dirs` makes the
 /// instance-side parents, the shim's put semantics.
 fn write_argv(instance: &str, staged: &str, path: &str) -> Vec<String> {
@@ -357,7 +357,7 @@ fn write_argv(instance: &str, staged: &str, path: &str) -> Vec<String> {
 }
 
 /// The attached git-seed argv: `lxc exec <instance> -- git clone
-/// <url> <workspace>` — the repository becomes the instance-side
+/// <url> <workspace>`, the repository becomes the instance-side
 /// workspace, git making the directory. Direct argv, no shell, no
 /// quoting: the pieces ride the exec API intact.
 fn clone_argv(instance: &str, url: &str, workspace: &str) -> Vec<String> {
@@ -550,8 +550,8 @@ impl Sandbox for LxdSandbox {
             }
             None => {
                 check_remote_path(path)?;
-                // The bytes stage in a host temp file — `lxc file
-                // push` takes a path, not a pipe — and the staging
+                // The bytes stage in a host temp file, `lxc file
+                // push` takes a path, not a pipe, and the staging
                 // file's life ends with the push.
                 let staged = tempfile::Builder::new()
                     .prefix("rhema-lxd-")

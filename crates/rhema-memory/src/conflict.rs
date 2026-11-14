@@ -2,7 +2,7 @@
 //!
 //! The engine finds *what may conflict*; it never decides *what
 //! replaces what*. A fuzzy match (tag overlap) alone must not
-//! auto-supersede — a false positive there destroys history silently,
+//! auto-supersede, a false positive there destroys history silently,
 //! which is the one outcome worse than the bug being fixed. The caller
 //! declares the relation for each conflict; only a declared supersession
 //! rewrites the older record.
@@ -29,10 +29,10 @@ pub const TAG_OVERLAP_THRESHOLD: f32 = 0.5;
 /// Finds the active records `subject` / `tags` may collide with, in
 /// `scopes`. A conflict is a shared subject key (exact) or a tag overlap
 /// of at least [`TAG_OVERLAP_THRESHOLD`] of the smaller set (fuzzy).
-/// Records hidden by the default rules — expired horizons, dead status —
+/// Records hidden by the default rules, expired horizons, dead status,
 /// are not conflicts: they no longer answer queries, and `exclude` (the
 /// id being updated, if any) never conflicts with itself. Exact subject
-/// matches first, then most recently touched — the likeliest true
+/// matches first, then most recently touched, the likeliest true
 /// conflict.
 pub fn find_conflicts(
     store: &dyn MemoryStore,

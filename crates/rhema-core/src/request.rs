@@ -32,7 +32,7 @@ impl ToolSpec {
 }
 
 /// How much reasoning the model should do, mapped by each provider onto
-/// its own request parameter — OpenAI-compatible `reasoning_effort`,
+/// its own request parameter, OpenAI-compatible `reasoning_effort`,
 /// OpenRouter's `reasoning.effort`, Anthropic's thinking budget, Gemini's
 /// thinking budget. [`ThinkingEffort::Default`] sends nothing: the
 /// server's own default stands, which keeps strict endpoints happy and
@@ -41,11 +41,11 @@ impl ToolSpec {
 #[serde(rename_all = "lowercase")]
 pub enum ThinkingEffort {
     /// The provider decides; rhema sends no effort parameter. An explicit
-    /// choice (`thinking: default`, `/thinking default`) — the frontends
+    /// choice (`thinking: default`, `/thinking default`), the frontends
     /// resolve an unset level to [`ThinkingEffort::Medium`] instead.
     #[default]
     Default,
-    /// Light reasoning — quick turns, cheap models.
+    /// Light reasoning, quick turns, cheap models.
     Low,
     /// The middle setting.
     Medium,

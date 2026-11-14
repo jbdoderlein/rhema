@@ -47,7 +47,7 @@ fn instance(kind: &str, target: &str) -> rhema_config::SandboxInstance {
 
 #[test]
 fn the_sandbox_page_lists_local_then_the_instances_then_add() {
-    // An empty config: the host's own row and the add row — the
+    // An empty config: the host's own row and the add row, the
     // default view is only local, the ready kinds arriving as
     // instances are stored.
     let settings = sandbox_screen(
@@ -62,7 +62,7 @@ fn the_sandbox_page_lists_local_then_the_instances_then_add() {
         vec!["local", ""],
         "only local until an instance is stored; the add row last"
     );
-    // Stored instances list in name order, whatever their kind —
+    // Stored instances list in name order, whatever their kind,
     // the page shows what is configured; the add dialog decides
     // what can be added.
     let mut stored = rhema_config::Profile::default();
@@ -231,7 +231,7 @@ fn the_sandbox_dialog_picks_a_kind_and_stores_nothing_else() {
     );
     settings.sandbox_dialog = Some(AddSandboxDialog::new());
     // Arrows walk the ready kinds; enter reports the submit with
-    // the kind picked — and no value, ever: the concrete name is
+    // the kind picked, and no value, ever: the concrete name is
     // the workspace's to set, the app's to derive.
     settings.handle_key(key(KeyCode::Down));
     assert_eq!(
@@ -575,7 +575,7 @@ fn settings_subagent_rows_move_and_enter_edits() {
 fn settings_subagent_rows_move_and_space_toggles_while_enter_edits() {
     let mut settings = subagents_screen();
     // Space flips the row's state into an action; enter stays the edit,
-    // and `e` with it — the toggle never steals the editor's keys.
+    // and `e` with it, the toggle never steals the editor's keys.
     assert_eq!(
         settings.handle_key(key(KeyCode::Char(' '))),
         SettingsAction::ToggleSubagent
@@ -917,7 +917,7 @@ fn the_choice_stage_defaults_to_chat_and_esc_returns_to_the_url() {
     assert_eq!(dialog.input_label(), "", "no input line on the choice");
     assert_eq!(dialog.selected_api, 0, "chat completions highlighted");
 
-    // Esc on the choice un-asks it and re-prompts the URL — one step
+    // Esc on the choice un-asks it and re-prompts the URL, one step
     // back, not out.
     settings.handle_key(key(KeyCode::Esc));
     let dialog = settings.dialog.as_ref().unwrap();
@@ -1146,7 +1146,7 @@ fn picker_filter_matches_id_or_display_name_case_insensitively() {
 #[test]
 fn the_filter_matches_the_rendered_provider_slash_id_row() {
     // A vendor slash in the filter names the provider's whole catalog
-    // — `openrouter/` must not collapse to the models whose ids
+    //, `openrouter/` must not collapse to the models whose ids
     // happen to repeat the provider's name.
     let mut picker = PickerScreen::new(
         catalog(
@@ -1418,7 +1418,7 @@ fn chat_enter_submits_the_input_text() {
         submit("fix it")
     );
     // The input box is NOT cleared here: the app clears it only when
-    // it accepts the submit (a rejected submit — empty or mid-turn —
+    // it accepts the submit (a rejected submit, empty or mid-turn,
     // must not lose typed text).
     assert_eq!(chat.input, "fix it");
 }
@@ -1570,7 +1570,7 @@ fn a_pasted_image_mints_a_chip_and_rides_submit_beside_the_text() {
     assert_eq!(chat.chips, vec![Chip::Image(image.clone())]);
 
     // Submit: the anchor drops out of the text and the image rides
-    // beside it — an image has no inline form to embed into.
+    // beside it, an image has no inline form to embed into.
     assert_eq!(
         chat.handle_key(key(KeyCode::Enter), &[], &[], &[], &crate::icons::UNICODE),
         ChatAction::Submit {
@@ -1621,7 +1621,7 @@ fn backspacing_an_image_chip_removes_it_alone() {
     chat.paste("p1\np2\np3\np4");
     assert_eq!(chat.input.chars().count(), 2);
 
-    // The backspace takes the last chip — the paste — and leaves
+    // The backspace takes the last chip, the paste, and leaves
     // the image chip with its anchor.
     chat.handle_key(
         key(KeyCode::Backspace),
@@ -1654,8 +1654,8 @@ fn backspacing_a_chip_removes_its_payload_with_it() {
     chat.paste(second);
     assert_eq!(chat.input.chars().count(), 2, "two anchors");
 
-    // Backspace removes the anchor behind the cursor — the last
-    // chip — and its payload alone.
+    // Backspace removes the anchor behind the cursor, the last
+    // chip, and its payload alone.
     chat.handle_key(
         key(KeyCode::Backspace),
         &[],
@@ -1684,8 +1684,8 @@ fn a_short_paste_joins_the_input_inline() {
 #[test]
 fn an_arriving_anchor_mark_never_mints_a_payloadless_chip() {
     let mut chat = ChatState::new();
-    // A chip glyph copied back out of the box — via a terminal
-    // selection or the clipboard — must not anchor without a
+    // A chip glyph copied back out of the box, via a terminal
+    // selection or the clipboard, must not anchor without a
     // payload: the mark↔payload pairing is what backspace, delete,
     // and submit all index into.
     chat.paste(&format!("a{}b", ChatState::MARK));
@@ -1955,7 +1955,7 @@ fn the_model_palette_narrows_and_tab_fills_the_argument() {
     })
     .collect();
     assert_eq!(ids, ["openrouter/auto"], "openrouter/ stays alive");
-    // Tab completes the argument to the fully-qualified name —
+    // Tab completes the argument to the fully-qualified name,
     // provider prefixed, the only shape `/model` accepts.
     chat.handle_key(key(KeyCode::Tab), &models, &[], &[], &crate::icons::UNICODE);
     assert_eq!(chat.input, "/model openrouter/openrouter/auto");
@@ -2505,7 +2505,7 @@ fn the_mcp_screen_lists_the_active_profile_s_servers() {
     assert!(!settings.mcp[1].disabled);
     assert_eq!(settings.selected_mcp_server(), Some("atlassian"));
     // A broken entry still lists, carrying the notice the assembly
-    // would report — the row text is from_entries' own wording.
+    // would report, the row text is from_entries' own wording.
     let mut broken = entries;
     broken.insert(
         "both".to_owned(),

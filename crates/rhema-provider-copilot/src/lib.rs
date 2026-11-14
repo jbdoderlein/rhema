@@ -1,16 +1,16 @@
-//! `rhema-provider-copilot` — the GitHub Copilot adapter for
+//! `rhema-provider-copilot`, the GitHub Copilot adapter for
 //! rhema-core's [`ModelProvider`](rhema_core::ModelProvider) seam.
 //!
 //! Copilot's chat models sit behind an OpenAI-shaped proxy that takes
-//! no personal token: a long-lived GitHub OAuth token — produced by the
-//! [`login`] module's device flow — is exchanged for a short-lived
+//! no personal token: a long-lived GitHub OAuth token, produced by the
+//! [`login`] module's device flow, is exchanged for a short-lived
 //! Copilot token the provider caches and refreshes ahead of expiry, and
 //! the proxy's `endpoints.api` base serves the chat-completions calls
 //! (`POST {api}/chat/completions`, `GET {api}/models`, decoded through
 //! the shared [`SseDecoder`](rhema_provider::SseDecoder) into
 //! rhema-core [`Event`](rhema_core::Event)s). The wire mapping
-//! constraints — roles, tool-call fragments, stop reasons, the
-//! capabilities-based models filter — are documented in the [`wire`]
+//! constraints, roles, tool-call fragments, stop reasons, the
+//! capabilities-based models filter, are documented in the [`wire`]
 //! module.
 //!
 //! ```
@@ -39,14 +39,14 @@
 //! ```
 //!
 //! Layout:
-//! - [`wire`] — serde wire types plus the pure mapping between
+//! - [`wire`]: serde wire types plus the pure mapping between
 //!   [`rhema_core::ModelRequest`] / SSE chunks and
 //!   [`rhema_core::ModelOutput`] / [`rhema_core::Event`]s, and the
 //!   models listing mapping onto `ModelCard`
-//! - [`provider`] — the HTTP and SSE transport, the short-lived token's
+//! - [`provider`]: the HTTP and SSE transport, the short-lived token's
 //!   exchange and cache, and the
 //!   [`ModelProvider`](rhema_core::ModelProvider) implementation
-//! - [`login`] — the GitHub device flow behind the OAuth token, on the
+//! - [`login`]: the GitHub device flow behind the OAuth token, on the
 //!   shared `InteractiveLogin` seam
 
 #![forbid(unsafe_code)]

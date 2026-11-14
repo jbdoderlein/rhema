@@ -1,7 +1,7 @@
 //! The manager: config to live connections, one slot per server.
 //!
 //! Each configured server gets a slot guarding a [`tokio::sync::Mutex`]
-//! over its connection state — the mutex *is* the single-flight
+//! over its connection state, the mutex *is* the single-flight
 //! connect: the first caller locks, spawns, and handshakes; callers
 //! arriving mid-handshake block on the same lock and find the
 //! connection ready (or the death) instead of spawning a second
@@ -13,7 +13,7 @@
 //! in-band with its stderr tail, the slot cools down for
 //! [`RESPAWN_COOLDOWN`], and the first call after the cooldown
 //! respawns through the same lock. Calls inside the cooldown fail fast
-//! with the recorded tail — a server that died has nothing new to say
+//! with the recorded tail, a server that died has nothing new to say
 //! ninety times a second.
 //!
 //! The catalog is fetched once per connection and cached until death
@@ -37,7 +37,7 @@ pub const RESPAWN_COOLDOWN: Duration = Duration::from_secs(5);
 
 /// Why a manager operation failed: the server is not in config, or
 /// the underlying connection errored (transport, protocol, timeout,
-/// cancellation, RPC error) — the CLI maps [`ClientError`] to exit
+/// cancellation, RPC error), the CLI maps [`ClientError`] to exit
 /// codes, the manager does not decide.
 #[derive(Debug, thiserror::Error)]
 pub enum ManagerError {
@@ -143,7 +143,7 @@ impl McpManager {
         }
     }
 
-    /// Overrides the respawn cooldown — provisioning for tests, which
+    /// Overrides the respawn cooldown, provisioning for tests, which
     /// cannot afford five seconds of wall clock per death.
     pub fn with_respawn_cooldown(mut self, cooldown: Duration) -> Self {
         self.cooldown = cooldown;
@@ -248,7 +248,7 @@ impl McpManager {
     }
 
     /// The per-call budget: config may lower the default, never raise
-    /// it — a longer call is moot while the invoking shell dies first.
+    /// it, a longer call is moot while the invoking shell dies first.
     fn call_budget(&self, config: &McpServer) -> Duration {
         config.timeout.min(rhema_config::mcp::DEFAULT_TIMEOUT)
     }
@@ -268,7 +268,7 @@ impl McpManager {
             }
             SlotState::Connected { client, .. } => {
                 // Dead between calls: record the death and fail this
-                // call in-band with the tail — the respawn belongs to
+                // call in-band with the tail, the respawn belongs to
                 // the first caller after the cooldown, not to whoever
                 // happened to observe the death.
                 let tail = client.stderr_tail();

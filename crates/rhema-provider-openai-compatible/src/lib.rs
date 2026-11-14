@@ -1,4 +1,4 @@
-//! `rhema-provider-openai-compatible` — the generic OpenAI-compatible
+//! `rhema-provider-openai-compatible`, the generic OpenAI-compatible
 //! adapter for rhema-core's [`ModelProvider`](rhema_core::ModelProvider)
 //! seam.
 //!
@@ -8,13 +8,13 @@
 //! rhema-core [`Event`](rhema_core::Event)s and assembled into a
 //! [`ModelOutput`](rhema_core::ModelOutput). `GET {base}/models` lists the
 //! server's models as [`ModelCard`](rhema_provider::ModelCard)
-//! rows — the shared normalized model type, text chat models only. This is
+//! rows, the shared normalized model type, text chat models only. This is
 //! the home for "other
 //! base URLs": any server speaking the dialect (OpenAI itself, vLLM, LM
 //! Studio, a proxy) is addressed by its full versioned base, e.g.
 //! `https://api.openai.com/v1` or a local server's `/v1`. The wire mapping
-//! constraints — roles, tool-call fragments, stop reasons, response shapes
-//! — are documented in the [`wire`] module.
+//! constraints, roles, tool-call fragments, stop reasons, response shapes
+//!, are documented in the [`wire`] module.
 //!
 //! ```
 //! use rhema_core::{ChatParams, Event, EventSink, Message, ModelProvider, Role};
@@ -41,15 +41,15 @@
 //! ```
 //!
 //! Layout:
-//! - [`wire`] — serde wire types plus the pure mapping between
+//! - [`wire`]: serde wire types plus the pure mapping between
 //!   [`rhema_core::ModelRequest`] / SSE chunks and
 //!   [`rhema_core::ModelOutput`] / [`rhema_core::Event`]s, and the models
 //!   listing mapping onto `ModelCard`
-//! - [`responses`] — the Responses-API wire, the second request shape
+//! - [`responses`]: the Responses-API wire, the second request shape
 //!   (`POST {base}/responses`) that DeepSeek, OpenCode's gateway, and
 //!   llama.cpp speak beside chat completions; a tool result's images
 //!   ride its `function_call_output` as content parts there
-//! - [`provider`] — the HTTP transport and the
+//! - [`provider`]: the HTTP transport and the
 //!   [`ModelProvider`](rhema_core::ModelProvider) implementation
 
 #![forbid(unsafe_code)]

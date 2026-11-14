@@ -60,7 +60,7 @@ pub struct McpConfig {
     /// The servers that validated, in file order.
     pub servers: Vec<McpServer>,
     /// Why entries (or the whole file) were skipped, one line each,
-    /// in file order. Debug-notice material; safe to show the user —
+    /// in file order. Debug-notice material; safe to show the user,
     /// secrets never appear in it.
     pub notices: Vec<String>,
 }
@@ -111,7 +111,7 @@ impl McpConfig {
     }
 
     /// Builds from a profile's `mcp_servers` mapping: the same fold
-    /// rules as the file — per-entry validation, a notice per skipped
+    /// rules as the file, per-entry validation, a notice per skipped
     /// entry, never an error. Order is the map's (sorted by name).
     pub fn from_entries(entries: &BTreeMap<String, McpServerEntry>) -> McpConfig {
         let mut config = McpConfig::default();
@@ -233,7 +233,7 @@ impl fmt::Debug for McpTransport {
     }
 }
 
-/// A map whose values print as `[…]` — keys shown, values redacted.
+/// A map whose values print as `[…]`, keys shown, values redacted.
 struct SecretMap<'a>(&'a BTreeMap<String, String>);
 
 impl fmt::Debug for SecretMap<'_> {
@@ -248,13 +248,13 @@ impl fmt::Debug for SecretMap<'_> {
 /// store it: the global `<config dir>/mcp.yaml` `servers` mapping and
 /// a profile's `mcp_servers` mapping. Validation happens at resolve
 /// time, never at deserialize time, so a stored entry round-trips even
-/// while invalid — the frontend can show and fix it.
+/// while invalid, the frontend can show and fix it.
 #[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "snake_case")]
 pub struct McpServerEntry {
     /// The user-written description feeding the prompt disclosure.
-    /// Empty is legal — the fold substitutes a line that names the
-    /// discovery command — because the field is optional knowledge,
+    /// Empty is legal, the fold substitutes a line that names the
+    /// discovery command, because the field is optional knowledge,
     /// not identity: the server's own `--help` is the real
     /// documentation and this is only the reason to run it.
     #[serde(default)]

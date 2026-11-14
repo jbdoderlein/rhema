@@ -5,7 +5,7 @@
 //! through this trait, so that backend reaches any runtime the frontends
 //! live in; the other adapters hold a private `reqwest` client instead.
 //! New adapters should prefer the seam. The contract that matters on the wasm side: JS types never
-//! leak through — a host whose fetch stream is backed by JS objects
+//! leak through, a host whose fetch stream is backed by JS objects
 //! bridges it into plain `Vec<u8>` chunks (its `!Send` handle stays
 //! inside a local task; the channel's receiver is plain data and
 //! therefore `Send` on single-threaded wasm). Non-2xx responses are not
@@ -55,7 +55,7 @@ impl HttpRequest {
     }
 
     /// Serializes `body` as the JSON payload and sets its content type.
-    /// The typed body serializes directly — never through a
+    /// The typed body serializes directly, never through a
     /// `serde_json::Value`, whose f64 widening would corrupt f32 wire
     /// fields (a 0.2 temperature would arrive as
     /// 0.20000000298023224).
@@ -63,8 +63,8 @@ impl HttpRequest {
     /// # Panics
     ///
     /// Panics when `body` fails to serialize. An adapter's request body
-    /// is plain serde data — no map keys that are not strings, nothing
-    /// unserializable — so this is a construction-time invariant, not a
+    /// is plain serde data, no map keys that are not strings, nothing
+    /// unserializable, so this is a construction-time invariant, not a
     /// runtime path.
     pub fn with_json_body<T: serde::Serialize>(mut self, body: &T) -> Self {
         self.headers
@@ -100,7 +100,7 @@ pub struct HttpResponse {
     pub status: u16,
     /// The response headers, name and value in wire order. Names are
     /// lowercase as HTTP/2 spells them; the same name may appear more
-    /// than once. What a consumer reads is its own business — the rate
+    /// than once. What a consumer reads is its own business, the rate
     /// limit's `retry-after` is the one this stack reads today.
     pub headers: Vec<(String, String)>,
     /// The body, chunks in order.
@@ -109,7 +109,7 @@ pub struct HttpResponse {
 
 /// A `Send` stream of body chunks. `Send` is the point: the provider
 /// adapters' futures must be `Send`, so the stream crossing them must
-/// be too — see the module docs for the wasm bridge.
+/// be too, see the module docs for the wasm bridge.
 pub type ByteStream = Box<dyn Stream<Item = Result<Vec<u8>, TransportError>> + Send + Unpin>;
 
 /// Sends HTTP requests for the provider adapters.

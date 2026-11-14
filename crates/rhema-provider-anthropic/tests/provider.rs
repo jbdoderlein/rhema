@@ -100,7 +100,7 @@ async fn streams_sse_into_events_and_an_assembled_output() {
             cached_input_tokens: 0,
         }
     );
-    // The tally streams live — the prompt from message_start, the
+    // The tally streams live, the prompt from message_start, the
     // completion from message_delta; stops and the closing frame emit
     // nothing.
     assert_eq!(
@@ -675,7 +675,7 @@ async fn trailing_slashes_in_the_base_url_are_trimmed() {
 #[tokio::test]
 async fn a_non_zai_base_has_no_allowance_to_report() {
     // The mock server's origin is no Z.ai host: the allowance degrades
-    // to none without a call — no mock is mounted, so any request would
+    // to none without a call, no mock is mounted, so any request would
     // 404 the result into an error instead.
     let server = MockServer::start().await;
     let allowance = provider(&server).allowance().await;

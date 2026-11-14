@@ -1,11 +1,11 @@
 //! Backend resolution: which provider and model serve ACP turns.
 //!
-//! The same startup resolution the headless one-shot performs — a
+//! The same startup resolution the headless one-shot performs, a
 //! provider choice (flag, then `RHEMA_PROVIDER` over the stored
 //! config), a model (flag, then stored, then the kind's fallback), and
 //! whatever credentials the profile holds. `Ok(None)` means no
 //! credential resolved: to the client that is `auth_required`, the one
-//! honest answer. An `Err` names a configuration problem — nothing
+//! honest answer. An `Err` names a configuration problem, nothing
 //! configured, or a stored spelling that names no known kind; nothing
 //! defaults to a provider the user never picked.
 
@@ -35,7 +35,7 @@ pub const PROVIDERS: &[&str] = &[
 ];
 
 /// The [`PROVIDERS`] name a stored or flagged kind reads as; anything
-/// unknown is an error, not a default — see [`resolve`].
+/// unknown is an error, not a default, see [`resolve`].
 fn known_kind(kind: &str) -> Result<&'static str, String> {
     PROVIDERS
         .iter()
@@ -47,7 +47,7 @@ fn known_kind(kind: &str) -> Result<&'static str, String> {
 /// A backend that can serve turns: which provider kind it rides on,
 /// the provider implementation, and the model to run.
 pub struct Resolved {
-    /// The provider kind behind the agent — a [`PROVIDERS`] name, or
+    /// The provider kind behind the agent, a [`PROVIDERS`] name, or
     /// `"mock"` under the mock feature.
     pub kind: &'static str,
     /// The provider implementation behind the agent.
@@ -68,7 +68,7 @@ pub struct CatalogRow {
 }
 
 /// Every logged-in provider's catalog: for each kind in [`PROVIDERS`]
-/// whose credentials resolve — `llama-cpp` always — its text-chat rows
+/// whose credentials resolve, `llama-cpp` always, its text-chat rows
 /// fetched over its API, all kinds concurrently, sorted by provider
 /// then id. The same set the TUI's `/model` picker offers. A kind
 /// without resolvable credentials is silently absent (it was never
@@ -107,7 +107,7 @@ pub async fn catalog(
 }
 
 /// Spawns one kind's catalog fetch; `None` when the kind is not logged
-/// in (its credentials do not resolve) — nothing to fetch, nothing to
+/// in (its credentials do not resolve), nothing to fetch, nothing to
 /// say. The list_models calls are the adapters' own, so each arm
 /// builds its concrete provider here rather than through the seam.
 fn catalog_fetch(
@@ -125,7 +125,7 @@ fn catalog_fetch(
     let built = match kind {
         // The server address is optional to guard with a key; every
         // other kind is keyed, and no credential means nothing to
-        // fetch — `None`, the same answer an unresolvable turn gets.
+        // fetch, `None`, the same answer an unresolvable turn gets.
         "llama-cpp" => build(kind, key.as_deref(), Some(&llama_url), None, None),
         _ => {
             let key = key.as_deref()?;
@@ -173,7 +173,7 @@ fn stored_api(profile: &Profile, kind: &str) -> Option<&'static str> {
 /// the stored server URL. The stored choice reads through
 /// [`Profile::provider_name`], so `RHEMA_PROVIDER` wins over the stored
 /// `provider`, the same env-wins convention the keys follow. `Ok(None)`
-/// when the chosen kind has no usable credentials — `auth_required` to
+/// when the chosen kind has no usable credentials, `auth_required` to
 /// the client. An `Err` names the configuration problem: nothing
 /// configured at all, or a spelling that names no known kind.
 pub fn resolve(
@@ -221,7 +221,7 @@ pub fn provider_for(
     secrets: Option<&dyn SecretStore>,
 ) -> Result<Option<Arc<dyn ModelProvider>>, String> {
     // An unknown spelling is an error naming it, never a silent
-    // `auth_required` — the same gate `resolve` applies. Credential
+    // `auth_required`, the same gate `resolve` applies. Credential
     // resolution stays here, settings vocabulary; the registry's rows
     // are wiring only. A keyed kind with no key is `Ok(None)` (the
     // client reads `auth_required`).
@@ -235,7 +235,7 @@ pub fn provider_for(
         "llama-cpp" => build(kind, key.as_deref(), Some(&llama_url), None, None),
         _ => {
             let Some(key) = key.as_deref() else {
-                // No key, no provider — `auth_required` to the client.
+                // No key, no provider, `auth_required` to the client.
                 return Ok(None);
             };
             build(
@@ -255,7 +255,7 @@ pub fn provider_for(
 
 /// Splits a model select value into the provider kind to ride on and
 /// the model to run. `<kind>/<model>` names the kind, and the rest of
-/// the value is the model id — which may itself carry slashes
+/// the value is the model id, which may itself carry slashes
 /// (OpenRouter's `vendor/model` ids). A bare value stays on the
 /// session's current kind, and so does a `<current kind>/…` prefix
 /// (`mock`, under the mock feature). A slash value whose first segment
@@ -331,7 +331,7 @@ mod tests {
     #[test]
     fn an_explicit_choice_to_a_keyed_kind_can_only_fail() {
         // Without a resolvable key an explicit openrouter choice is
-        // `Ok(None)` — the serve layer answers `auth_required`. A key in
+        // `Ok(None)`, the serve layer answers `auth_required`. A key in
         // the sandbox env would flip this; CI keeps the env bare.
         if std::env::var_os("OPENROUTER_API_KEY").is_some() {
             return;
@@ -423,7 +423,7 @@ mod tests {
         assert_eq!(resolved.kind, "zai");
         // The kind's own fallback model, not the anthropic one.
         assert_eq!(resolved.model, "GLM-5.3");
-        // No key, no provider — `auth_required` to the client.
+        // No key, no provider, `auth_required` to the client.
         let mut keyless = Profile {
             provider: Some("zai".into()),
             ..Profile::default()

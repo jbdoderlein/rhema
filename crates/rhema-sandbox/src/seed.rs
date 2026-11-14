@@ -1,6 +1,6 @@
 //! The shared half of the two `ensure_seeded`s.
 //!
-//! `ensure_seeded` exists twice — a DO meta table and a Postgres marker
+//! `ensure_seeded` exists twice, a DO meta table and a Postgres marker
 //! around the same logic: check the marker, git-clone the seed, write
 //! the skills (spec §1). [`seed_workspace`] is the logic, shared; the
 //! marker stays with the caller, because it lives in each platform's
@@ -11,7 +11,7 @@ use crate::{Sandbox, SandboxError, WorkspaceSeed};
 
 /// Seeds a fresh workspace: the git clone when the session has one,
 /// then every skill body at `{workspace}/.rhema/skills/{name}/SKILL.md`
-/// — the paths the prompt's skill list points the model at. Whether the
+///, the paths the prompt's skill list points the model at. Whether the
 /// workspace needed seeding at all is the caller's marker to check.
 pub async fn seed_workspace(
     sandbox: &dyn Sandbox,

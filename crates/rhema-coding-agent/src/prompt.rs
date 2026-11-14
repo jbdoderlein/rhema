@@ -5,8 +5,8 @@
 //! The template language is Jinja, which prompt templates across the
 //! LLM ecosystem already speak: `{{ workspace }}` names the session's
 //! workspace, `skills` is the discovered skill list, `tools` is the
-//! advertised tool spec list, and the template decides itself where —
-//! and whether — those lists appear. Rendering is fallible on purpose:
+//! advertised tool spec list, and the template decides itself where,
+//! and whether, those lists appear. Rendering is fallible on purpose:
 //! a template error surfaces loudly at agent construction instead of
 //! silently rendering half the prompt, while a misspelled variable
 //! renders empty (minijinja's lenient undefined).
@@ -16,12 +16,12 @@ use std::path::Path;
 use rhema_agent_tools::{ShellTools, render_system};
 
 /// The built-in system prompt, kept as data next to the code and read
-/// in whole — the full prompt, visible and editable in one place,
+/// in whole, the full prompt, visible and editable in one place,
 /// tools included. Template syntax: see [`render_system`].
 pub const DEFAULT_SYSTEM_MD: &str = include_str!("../SYSTEM.md");
 
 /// The built-in prompt for a workspace with no skills: [`DEFAULT_SYSTEM_MD`]
-/// over the built-in tools — the prompt an agent with no user override and
+/// over the built-in tools, the prompt an agent with no user override and
 /// an empty skill list stamps into every request. Infallible: the built-in
 /// template is validated by tests.
 pub fn default_system(workspace: &Path) -> String {
@@ -62,8 +62,8 @@ mod tests {
         )
     }
 
-    // The default-prompt tests below pin the structural contract —
-    // markers resolve, fields reach the model — never the wording: the
+    // The default-prompt tests below pin the structural contract,
+    // markers resolve, fields reach the model, never the wording: the
     // prompt prose is the user's to edit without breaking tests.
 
     #[test]

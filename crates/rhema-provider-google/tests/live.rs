@@ -1,4 +1,4 @@
-//! Live smoke test against the real Gemini API. Ignored by default — CI and
+//! Live smoke test against the real Gemini API. Ignored by default, CI and
 //! plain `cargo test` never hit the network.
 //!
 //! Run with:

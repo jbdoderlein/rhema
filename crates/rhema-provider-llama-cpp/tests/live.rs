@@ -1,4 +1,4 @@
-//! Live smoke test against a running `llama-server`. Ignored by default —
+//! Live smoke test against a running `llama-server`. Ignored by default,
 //! CI and plain `cargo test` never touch the network.
 //!
 //! Run with:

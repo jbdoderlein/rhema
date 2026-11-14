@@ -1,4 +1,4 @@
-//! `rhema-provider-openrouter` — the OpenRouter adapter for rhema-core's
+//! `rhema-provider-openrouter`, the OpenRouter adapter for rhema-core's
 //! [`ModelProvider`](rhema_core::ModelProvider) seam.
 //!
 //! OpenRouter (openrouter.ai) aggregates hosted models behind an
@@ -9,15 +9,15 @@
 //! recommended `HTTP-Referer`/`X-Title` attribution headers), the SSE
 //! events decoded into rhema-core [`Event`](rhema_core::Event)s and
 //! assembled into a [`ModelOutput`](rhema_core::ModelOutput). Their
-//! Responses surface is stateless-only and rejects `store: true` —
+//! Responses surface is stateless-only and rejects `store: true`,
 //! exactly the full-replay, no-server-state rule every rhema adapter
-//! already follows — and a tool result's images ride its
+//! already follows, and a tool result's images ride its
 //! `function_call_output` as content parts, so the chat-wire reroute
 //! is not needed here. Chat completions stays reachable through
 //! [`OpenRouterProvider::with_api`](`rhema_provider_openai_compatible::Api::Chat`).
 //! `GET {base}/models` lists the
-//! public catalog as [`ModelCard`](rhema_provider::ModelCard) rows — the
-//! shared normalized model type — with pricing converted from
+//! public catalog as [`ModelCard`](rhema_provider::ModelCard) rows, the
+//! shared normalized model type, with pricing converted from
 //! OpenRouter's USD-per-token strings to per-MTok; the text chat models
 //! only, since the catalog also aggregates image, audio, and embedding
 //! backends. The wire mapping
@@ -49,9 +49,9 @@
 //! ```
 //!
 //! Layout:
-//! - [`wire`] — OpenRouter's [`Dialect`], the paginated catalog with
+//! - [`wire`]: OpenRouter's [`Dialect`], the paginated catalog with
 //!   per-token pricing, and the credits/auth-key allowance parsing
-//! - [`provider`] — the HTTP transport (catalog, allowance) and the
+//! - [`provider`]: the HTTP transport (catalog, allowance) and the
 //!   [`ModelProvider`](rhema_core::ModelProvider) implementation,
 //!   completing through the shared dialect core
 

@@ -1,4 +1,4 @@
-//! rhema — the frontend for the rhema coding agent: a full-screen
+//! rhema, the frontend for the rhema coding agent: a full-screen
 //! terminal UI when attached to a terminal, a pipeable one-shot runner
 //! when not.
 //!
@@ -14,32 +14,32 @@
 //! argument).
 //!
 //! Layout:
-//! - [`args`] — clap flags (no `--model`, no `--api-key`)
-//! - [`events`] — the UI event protocol and owned event copies
-//! - [`store`] — the config persistence seam
-//! - [`approval`] — the synchronous approval bridge
-//! - [`transcript`] — chat transcript lines from history and events
-//! - [`screens`] — login, model picker, chat input: pure state, plus
+//! - [`args`]: clap flags (no `--model`, no `--api-key`)
+//! - [`events`]: the UI event protocol and owned event copies
+//! - [`store`]: the config persistence seam
+//! - [`approval`]: the synchronous approval bridge
+//! - [`transcript`]: chat transcript lines from history and events
+//! - [`screens`]: login, model picker, chat input: pure state, plus
 //!   the clipboard read the paste keys go through
-//! - [`onboarding`] — the first-run wizard's steps and keys
-//! - [`bundled`] — the skills rhema ships with, seeded on start
-//! - [`sessions`] — saved conversations for /resume, grouped by workspace
-//! - [`status`] — program status over OSC 7501, for the terminal's tabs
-//! - [`app`] — the state machine routing keys and events
-//! - [`turn`] — the tokio tasks (turn, model fetch)
-//! - [`update`] — the self-update seam: the channel's manifest check
+//! - [`onboarding`]: the first-run wizard's steps and keys
+//! - [`bundled`]: the skills rhema ships with, seeded on start
+//! - [`sessions`]: saved conversations for /resume, grouped by workspace
+//! - [`status`]: program status over OSC 7501, for the terminal's tabs
+//! - [`app`]: the state machine routing keys and events
+//! - [`turn`]: the tokio tasks (turn, model fetch)
+//! - [`update`]: the self-update seam: the channel's manifest check
 //!   and the install script run behind the settings' Update page
-//! - [`ui`] — ratatui rendering, with `chrome` as its shared
+//! - [`ui`]: ratatui rendering, with `chrome` as its shared
 //!   panel/marker vocabulary of the menus
-//! - [`term_image`] — the onboarding logo and the prompt bubbles'
+//! - [`term_image`]: the onboarding logo and the prompt bubbles'
 //!   corner arcs through the kitty graphics protocol (kitty, Ghostty,
 //!   WezTerm)
-//! - [`palette`] — color palettes: named token sets in two appearances;
+//! - [`palette`]: color palettes: named token sets in two appearances;
 //!   the private `hct` and `m3` children carry the color math and the
 //!   scheme behind M3 You
-//! - [`sandbox`] — where `bash` runs: the sandbox choice's resolution
+//! - [`sandbox`]: where `bash` runs: the sandbox choice's resolution
 //!   and the assembly behind it
-//! - `run` — terminal setup/teardown and the event loop
+//! - `run`: terminal setup/teardown and the event loop
 
 #![forbid(unsafe_code)]
 

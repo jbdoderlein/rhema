@@ -1,12 +1,12 @@
 //! The memory tools: `memory_search`, `memory_save`, `memory_forget`,
 //! `memory_retract`, `memory_verify`, `memory_due`.
 //!
-//! [`MemoryResolver`] is one [`ToolResolver`] offering all six — the
+//! [`MemoryResolver`] is one [`ToolResolver`] offering all six, the
 //! shape the step engine and a resolver chain compose. Its per-tool
 //! operations also run individually through [`MemoryResolver::execute`],
 //! so the resident tier's registry can shim them into named `Tool`s
 //! without re-implementing argument handling. Every failure comes back
-//! in-band — a missing argument, an unknown id — because the model reacts
+//! in-band, a missing argument, an unknown id, because the model reacts
 //! to results; nothing here aborts a turn.
 //!
 //! Retrieval carries the doubt to the consumer: every rendered record
@@ -17,7 +17,7 @@
 //! whose subject or tags overlap an active record succeeds, and the
 //! result lists the candidates with a request to declare each relation
 //! (`supersedes`, `refines`, `unrelated`). Only a declared supersession
-//! retires the older record — the engine never auto-supersedes on a
+//! retires the older record, the engine never auto-supersedes on a
 //! fuzzy match.
 //!
 //! This crate ships no prompt text: the consumer's system prompt carries
@@ -41,7 +41,7 @@ use crate::record::{
 use crate::search::MemoryQuery;
 use crate::store::{MemoryError, MemoryStore};
 
-/// The search tool's name — allowlists reference these.
+/// The search tool's name, allowlists reference these.
 pub const MEMORY_SEARCH: &str = "memory_search";
 /// The save tool's name.
 pub const MEMORY_SAVE: &str = "memory_save";
@@ -55,7 +55,7 @@ pub const MEMORY_VERIFY: &str = "memory_verify";
 pub const MEMORY_DUE: &str = "memory_due";
 
 /// Why a memory tool call failed: the message the model reads. Every
-/// failure comes back in-band — a missing argument, an unknown id —
+/// failure comes back in-band, a missing argument, an unknown id,
 /// because the model reacts to results; nothing here aborts a turn.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
@@ -92,8 +92,8 @@ impl From<&str> for MemoryToolError {
 }
 
 /// The memory tools over one store, acting in one scope. The scope
-/// is fixed at construction — the coding agent's workspace, the claw's
-/// watched checkout — and is the only scope saves land in; searches span
+/// is fixed at construction, the coding agent's workspace, the claw's
+/// watched checkout, and is the only scope saves land in; searches span
 /// it plus global.
 pub struct MemoryResolver {
     store: Arc<dyn MemoryStore>,
@@ -103,7 +103,7 @@ pub struct MemoryResolver {
 impl MemoryResolver {
     /// Tools over `store` acting in `scope`; a `Workspace` path is
     /// canonicalized, falling back to the input when it does not exist
-    /// yet — the same handling as the coding agent's workspace.
+    /// yet, the same handling as the coding agent's workspace.
     pub fn new(store: Arc<dyn MemoryStore>, scope: Scope) -> Self {
         Self {
             store,
@@ -116,7 +116,7 @@ impl MemoryResolver {
         &self.scope
     }
 
-    /// The scopes a search spans: the active one, plus global — never
+    /// The scopes a search spans: the active one, plus global, never
     /// another workspace's.
     fn search_scopes(&self) -> Vec<Scope> {
         match &self.scope {
@@ -158,7 +158,7 @@ impl MemoryResolver {
         if flag(args, "fresh_only") {
             query = query.fresh_only();
         }
-        // The instant the annotations are computed at — as_of makes the
+        // The instant the annotations are computed at, as_of makes the
         // whole reply a pure function of (query, t).
         let t = query.as_of.unwrap_or_else(now_millis);
         let found = self.store.search(query)?;
@@ -318,7 +318,7 @@ impl MemoryResolver {
 /// succeeded; the relations stay with the caller.
 fn conflict_report(saved: &str, undeclared: &[&crate::conflict::Conflict]) -> String {
     let mut out =
-        String::from("\n\npossible conflicts — active records that may be about the same thing:\n");
+        String::from("\n\npossible conflicts, active records that may be about the same thing:\n");
     for conflict in undeclared {
         let record = &conflict.record;
         let about = record
@@ -347,8 +347,8 @@ fn first_line(body: &str) -> &str {
 }
 
 /// One record as the model sees it: header line, then the body. The id
-/// is what makes every other tool usable; the annotations — age, status,
-/// horizon, subject, provenance, staleness — carry the doubt through, so
+/// is what makes every other tool usable; the annotations, age, status,
+/// horizon, subject, provenance, staleness, carry the doubt through, so
 /// a stale fact never looks as good as a fresh one.
 fn render(record: &MemoryRecord, t: u64) -> String {
     let status = if record.is_active_at(t) {
@@ -509,7 +509,7 @@ fn search_spec() -> ToolSpec {
     ToolSpec::new(
         MEMORY_SEARCH,
         "Search durable memory that persists across sessions. Returns matching \
-         records with their id, scope, tags, age, status, and body — stale \
+         records with their id, scope, tags, age, status, and body, stale \
          records are marked STALE, so weigh them accordingly. An empty query \
          returns the most recent records. Search here before saving so \
          corrections supersede instead of duplicating.",
@@ -550,10 +550,10 @@ fn search_spec() -> ToolSpec {
 fn save_spec() -> ToolSpec {
     ToolSpec::new(
         MEMORY_SAVE,
-        "Save one durable fact to memory — a preference, a fact about the \
+        "Save one durable fact to memory, a preference, a fact about the \
          environment, a decision and its why. One record is one fact. To \
          correct an existing record, save a new one and pass the old ids in \
-         `supersedes` — the old records stay, marked replaced. When a save \
+         `supersedes`, the old records stay, marked replaced. When a save \
          reports possible conflicts, declare each relation on a follow-up \
          save (`supersedes`, `refines`, or `unrelated`). Give `verify_hint` \
          whenever there is a way to re-check the fact without asking a \
@@ -645,7 +645,7 @@ fn retract_spec() -> ToolSpec {
     ToolSpec::new(
         MEMORY_RETRACT,
         "Mark a memory record as no longer true, with the reason. The record \
-         stays readable — marked retracted — so the history of what was \
+         stays readable, marked retracted, so the history of what was \
          believed survives. Use this when a fact was simply wrong, not \
          replaced by a newer fact (then memory_save with `supersedes`).",
         json!({
@@ -888,7 +888,7 @@ mod tests {
         let old = first.strip_prefix("saved ").unwrap().to_owned();
 
         // The newer fact about the same subject saves, and the conflict
-        // comes back as a warning — nothing was retired behind the
+        // comes back as a warning, nothing was retired behind the
         // caller's back.
         let second = resolver
             .execute(
@@ -1118,7 +1118,7 @@ mod tests {
             .unwrap();
         assert_eq!(later, "no records matched");
 
-        // The sweep is the way back: a passed horizon is due, not dead —
+        // The sweep is the way back: a passed horizon is due, not dead,
         // the lapsed quote at the tool's now, both at a later instant.
         let due_now = resolver.execute(MEMORY_DUE, &json!({})).unwrap();
         assert!(due_now.contains("the quote has lapsed"), "{due_now}");
@@ -1150,7 +1150,7 @@ mod tests {
                 }),
             )
             .unwrap();
-        // Not due yet — travel past the 30-day tag decay.
+        // Not due yet, travel past the 30-day tag decay.
         let stale_view = resolver
             .execute(
                 MEMORY_SEARCH,

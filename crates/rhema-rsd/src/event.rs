@@ -8,7 +8,7 @@ use crate::key::ResourceKey;
 /// One unit of "something happened", produced by a source (a poller or a
 /// webhook receiver).
 ///
-/// `id` is the dedup id within `source` — a webhook delivery id, a
+/// `id` is the dedup id within `source`, a webhook delivery id, a
 /// notification thread id. `payload` is JSON so the event round-trips
 /// through the store with the rest of the dispatch state.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

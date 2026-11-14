@@ -1,7 +1,7 @@
 //! Offline integration tests: the kinds whose endpoints speak the
 //! Responses API default to it, and an openai route override keeps the
 //! conservative chat-completions dialect. Every provider runs against
-//! an in-process wiremock server — the request path landing there is
+//! an in-process wiremock server, the request path landing there is
 //! the assertion.
 
 use rhema_core::{ChatParams, Content, Event, EventSink, Message, ModelRequest, Role, StopReason};

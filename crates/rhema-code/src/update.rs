@@ -1,6 +1,6 @@
 //! The self-update seam: the version check against the distribution
 //! channel's manifest, and the install script run behind the settings'
-//! Update page. Everything shells out to `curl` (else `wget`) — the same
+//! Update page. Everything shells out to `curl` (else `wget`), the same
 //! tools and host the published installer uses; this crate carries no
 //! HTTP client of its own.
 
@@ -8,7 +8,7 @@ use std::io::ErrorKind;
 use std::process::{Command, Stdio};
 
 /// The distribution host the manifest and the install script live on.
-/// `RHEMA_DIST_BASE` overrides it (mirrors, tests, airgapped caches) —
+/// `RHEMA_DIST_BASE` overrides it (mirrors, tests, airgapped caches),
 /// the same override the installer script honors, and the value the
 /// spawned script inherits on its own fetches.
 const DIST_BASE: &str = "https://get.rhema.rs";
@@ -31,7 +31,7 @@ pub async fn fetch_latest_version() -> Result<String, String> {
     parse_stable(&body)
 }
 
-/// Runs the install script — the published `get.rhema.rs/code` one
+/// Runs the install script, the published `get.rhema.rs/code` one
 /// through `sh` on unix, the `code.ps1` twin on windows, where `sh`
 /// has no interpreter and every host ships powershell. Returns the
 /// script's output tail (its last line names what landed where), or
@@ -58,7 +58,7 @@ pub async fn run_installer() -> Result<String, String> {
 }
 
 /// The windows twin: the published `code.ps1` fetched to a temp file
-/// and run with `-File` — a param-carrying script cannot ride inside
+/// and run with `-File`, a param-carrying script cannot ride inside
 /// `-Command`, and a file run keeps the fetch's nonzero exit from
 /// reading as an empty-input success. The script also serves
 /// `irm | iex`, which cannot exit nonzero, so its output is the
@@ -126,7 +126,7 @@ mod windows_tests {
     }
 }
 
-/// One fetch through curl, else wget — the installer's own fallback
+/// One fetch through curl, else wget, the installer's own fallback
 /// order. The tools carry their own time bounds so a dead link cannot
 /// park a blocking-pool thread forever.
 async fn fetch_url(url: &str) -> Result<String, String> {
@@ -178,7 +178,7 @@ fn fetch_url_blocking(url: &str) -> Result<String, String> {
 fn run_installer_blocking(url: &str) -> Result<String, String> {
     // The URL rides as a positional parameter, never spliced into the
     // shell text. The script lands in a temp file rather than piping
-    // straight into `sh` so curl's exit code reaches us — a `curl | sh`
+    // straight into `sh` so curl's exit code reaches us, a `curl | sh`
     // swallows a failed fetch behind an empty-input shell that exits 0.
     let child = Command::new("sh")
         .arg("-c")
@@ -219,7 +219,7 @@ fn run_installer_blocking(url: &str) -> Result<String, String> {
 }
 
 /// How much of the installer's output a result carries: the progress
-/// lines and their last line — what landed where — not a whole log.
+/// lines and their last line, what landed where, not a whole log.
 const OUTPUT_TAIL_BYTES: usize = 2048;
 
 /// The manifest's `stable` field: the channel's version pointer. The
@@ -260,7 +260,7 @@ fn tail(text: &str, max: usize) -> String {
 
 /// Whether `latest` is a release above `current`: dotted numeric
 /// segments compared part by part. Non-numeric tails of a segment (a
-/// `-rc1`, an `+sha`) count for nothing — a prerelease of the same
+/// `-rc1`, an `+sha`) count for nothing, a prerelease of the same
 /// numbers reads equal, and equal is not newer; neither is a current
 /// build already ahead of the channel.
 pub fn is_newer(latest: &str, current: &str) -> bool {

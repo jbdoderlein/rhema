@@ -1,4 +1,4 @@
-//! Wire: the frontend's one call — turn config into a live bridge, a
+//! Wire: the frontend's one call, turn config into a live bridge, a
 //! provisioned env map, and prompt lines, all filtered by the stored
 //! off switch before anything spawns.
 //!
@@ -6,12 +6,12 @@
 //! `rhema-coding-agent` dependency (the only place that dep is
 //! allowed): the shell_env map it produces merges into
 //! `CodingAgentConfig::shell_env` and the lines into the prompt's
-//! `mcp` section. A sandboxed frontend wires nothing — it calls
+//! `mcp` section. A sandboxed frontend wires nothing, it calls
 //! nothing here, so nothing advertises what cannot run.
 //!
 //! The bridge rides a dedicated thread with its own runtime, so
 //! [`wire`] is synchronous and safe to call from frontend code that
-//! never touches an async context — and the manager's MCP work never
+//! never touches an async context, and the manager's MCP work never
 //! borrows the frontend's runtime, whose lifetime is the UI's, not
 //! the servers'. The manager's spawned children are stateful by
 //! design: they outlive any single call, and rewiring (a profile
@@ -125,7 +125,7 @@ pub fn wire(
     )
 }
 
-/// [`wire`] over an explicit exec target — the process-level test
+/// [`wire`] over an explicit exec target, the process-level test
 /// seam (see `provision_with_bin`). `#[doc(hidden)]` because nothing
 /// in production has a reason to call it.
 ///

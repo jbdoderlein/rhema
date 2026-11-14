@@ -6,7 +6,7 @@ use super::*;
 
 impl App {
     /// Opens the settings screen on `section`. `/settings` and `/login`
-    /// both land on Providers — the login flow lives there now. The
+    /// both land on Providers, the login flow lives there now. The
     /// Providers page edits the session's profile live; the other pages
     /// read snapshots of this moment. Openable mid-turn: only the
     /// instance actions wait for an idle session.
@@ -174,7 +174,7 @@ impl App {
     /// `disabled_mcp_servers` set flips with the session's live copy
     /// (the `skills_disabled` twin, now a config field), the change
     /// persists through save_config, and the running agent rebuilds
-    /// carrying the conversation over — the prompt carries the MCP
+    /// carrying the conversation over, the prompt carries the MCP
     /// section, so the very next turn sees it. The open row follows.
     pub(crate) fn toggle_mcp_server(&mut self, name: &str) {
         let muted = !self.disabled_mcp_servers.contains(name);
@@ -196,9 +196,9 @@ impl App {
             }
         }
         let notice = if muted {
-            format!("the {name} server is muted — saved and applied to new turns")
+            format!("the {name} server is muted, saved and applied to new turns")
         } else {
-            format!("the {name} server is unmuted — saved and applied to new turns")
+            format!("the {name} server is unmuted, saved and applied to new turns")
         };
         self.transcript.push_notice(&notice);
         if self.save_config() {
@@ -240,12 +240,12 @@ impl App {
         self.refresh_mcp_page();
         // The tool surface changed, so the cached wiring is stale:
         // drop it and rebuild, and the very next turn's prompt lists
-        // the new server. Same shape as the mute toggle's rebuild —
+        // the new server. Same shape as the mute toggle's rebuild,
         // the conversation rides over.
         crate::mcp_wire::rewire(self.mcp_session_key().as_str());
         let _ = self.rebuild_live_agent(false);
         self.transcript.push_notice(&format!(
-            "added the {name} server to this profile — the agent rebuilt with it"
+            "added the {name} server to this profile, the agent rebuilt with it"
         ));
         Vec::new()
     }
@@ -260,7 +260,7 @@ impl App {
 
     /// `y` on the removal confirm: the entry leaves the profile's map
     /// and the config persists, the way the sandbox instance removal
-    /// writes. A muted name dies with its server — nothing left to
+    /// writes. A muted name dies with its server, nothing left to
     /// mute.
     pub(crate) fn remove_mcp_server(&mut self) -> Vec<Effect> {
         let Some(name) = (match &self.screen {
@@ -294,8 +294,8 @@ impl App {
     /// Opens the selected subagent definition in `$EDITOR`. The built-in
     /// has no file: the first edit copies it into the global directory,
     /// where a definition of the same name shadows the built-in from
-    /// then on. The editor itself runs in the runner — the TUI must be
-    /// suspended around it — and the rows refresh when it returns.
+    /// then on. The editor itself runs in the runner, the TUI must be
+    /// suspended around it, and the rows refresh when it returns.
     pub(crate) fn edit_subagent(&mut self) -> Vec<Effect> {
         let Screen::Settings(settings) = &self.screen else {
             return Vec::new();
@@ -377,8 +377,8 @@ impl App {
         self.set_palette(all[(current + 1) % all.len()]);
     }
 
-    /// Applies one palette live — the frame this call renders already
-    /// wears it — and persists the choice. The wizard's Colors step and
+    /// Applies one palette live, the frame this call renders already
+    /// wears it, and persists the choice. The wizard's Colors step and
     /// the settings' Appearance page both land here; the open screen
     /// follows, so the rows keep telling the truth.
     pub(crate) fn set_palette(&mut self, palette: crate::palette::Palette) {
@@ -412,7 +412,7 @@ impl App {
     /// Flips a skill's on/off state: the disabled set in the config
     /// flips, a bundled skill being switched back on is re-seeded when
     /// its folder is gone, and the running agent rebuilds carrying the
-    /// conversation over — the system prompt carries the skills list,
+    /// conversation over, the system prompt carries the skills list,
     /// so the very next turn sees the change. The open screen's row
     /// follows (settings page or wizard step); a running turn defers
     /// the rebuild to its end, the toggle itself lands immediately.
@@ -423,7 +423,7 @@ impl App {
         } else {
             self.config.skills_disabled.insert(name.to_owned());
         }
-        // A bundled skill switched back on must exist on disk again —
+        // A bundled skill switched back on must exist on disk again,
         // seeding skips disabled names, so its folder may be gone.
         if turning_on && let Some(root) = self.config_root.clone() {
             let _ = crate::bundled::seed_one(&root.join("skills"), name);
@@ -461,7 +461,7 @@ impl App {
 
     /// Flips a subagent definition's on/off state: the config's
     /// `disabled_subagents` set flips, the change persists, and the
-    /// running agent rebuilds carrying the conversation over — the
+    /// running agent rebuilds carrying the conversation over, the
     /// `subagent` tool's catalog is in the system prompt, so the very
     /// next turn sees the change. A set left holding every name (the
     /// built-in included) drops the tool whole. The open screen's row

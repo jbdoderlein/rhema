@@ -5,7 +5,7 @@
 use super::*;
 
 /// The name the seeding marker file carries, under the workspace's
-/// `.rhema` directory — the sandbox-side twin of the cloud frontends'
+/// `.rhema` directory, the sandbox-side twin of the cloud frontends'
 /// `workspace:seeded` meta row.
 const SEED_MARKER: &str = ".seeded";
 
@@ -18,7 +18,7 @@ fn guest_path(workspace: &str, relative: &str) -> String {
         .to_string()
 }
 
-/// The user's global skills directory, when it exists on disk — the
+/// The user's global skills directory, when it exists on disk, the
 /// read-only `skills` mount's source. Absent, nothing is mounted and
 /// discovery sees workspace skills only, as it always has.
 pub(crate) fn global_skills_dir() -> Option<PathBuf> {
@@ -29,7 +29,7 @@ pub(crate) fn global_skills_dir() -> Option<PathBuf> {
 }
 
 /// The cross-agent skills tree (`~/.agents/skills`), when it exists on
-/// disk — the read-only `agents` mount's source, the same 1:1 posture
+/// disk, the read-only `agents` mount's source, the same 1:1 posture
 /// the rhema skills bind takes.
 pub(crate) fn agents_skills_dir() -> Option<PathBuf> {
     let dir = rhema_config::Home::discover()
@@ -38,7 +38,7 @@ pub(crate) fn agents_skills_dir() -> Option<PathBuf> {
     dir.is_dir().then_some(dir)
 }
 
-/// Seeds a fresh sandbox workspace once: the skills (no git seed —
+/// Seeds a fresh sandbox workspace once: the skills (no git seed,
 /// rhema-code has no repository to clone), then the user's SYSTEM.md
 /// when one exists on disk, each written through the sandbox the way
 /// the cloud frontends seed. The marker is written last, after a
@@ -73,21 +73,21 @@ pub(crate) async fn ensure_seeded(
     Ok(())
 }
 
-/// The same discovery the local path's prompt renders — the
+/// The same discovery the local path's prompt renders, the
 /// cross-agent `~/.agents/skills` under rhema's global config
 /// directory under the workspace's `.rhema/skills`, a higher tier
-/// shadowing a lower by name — paired with each body read host-side
+/// shadowing a lower by name, paired with each body read host-side
 /// now. The seeded postures' returned list names the rewritten,
 /// sandbox-side paths and carries the bodies `seed_workspace` writes; a
 /// body that cannot be read here would be unreadable there too, so it
-/// drops from both. Mounted, paths stand as discovered — the
+/// drops from both. Mounted, paths stand as discovered, the
 /// workspace's and the two global trees' 1:1 mounts put them at their
 /// own paths inside the instance, the mounts are the delivery, nothing
 /// is copied, and a skill edited mid-session is simply the new text
 /// the next read sees. Only a skill outside all three trees rides the
 /// seed, which on the mountless postures is the whole list anyway. The
-/// two global directories arrive resolved — `Home::agents_skills` and
-/// `Home::skills` at the call site — so a test points them
+/// two global directories arrive resolved, `Home::agents_skills` and
+/// `Home::skills` at the call site, so a test points them
 /// at scratch paths instead of the machine's own.
 pub(crate) fn discovered_skills(
     agents: Option<&Path>,

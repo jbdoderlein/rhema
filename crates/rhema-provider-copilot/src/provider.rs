@@ -3,18 +3,18 @@
 //!
 //! Copilot's chat endpoint does not take a personal token. The caller
 //! hands the constructor a long-lived GitHub OAuth token (the device
-//! flow's output — see [`crate::login`]); the provider exchanges it at
-//! `{api}/copilot_internal/v2/token` — the internal endpoints answer on
+//! flow's output, see [`crate::login`]); the provider exchanges it at
+//! `{api}/copilot_internal/v2/token`, the internal endpoints answer on
 //! GitHub's REST API host ([`DEFAULT_GITHUB_API_URL`], not github.com,
-//! which serves only the device flow) — for a Copilot token that lives
-//! minutes, and re-exchanges ahead of expiry — a small margin before
+//! which serves only the device flow), for a Copilot token that lives
+//! minutes, and re-exchanges ahead of expiry, a small margin before
 //! `expires_at`, and once more immediately when the chat endpoint
 //! answers 401, because a cached token can expire mid-turn. The chat
 //! base for every call the token serves comes from the token itself
 //! (its `proxy-ep` claim names the per-plan proxy host), falling back
 //! to the exchange response's `endpoints.api`, then [`DEFAULT_API_BASE`].
 //!
-//! The chat and models calls speak the OpenAI dialect — the wire
+//! The chat and models calls speak the OpenAI dialect, the wire
 //! constraints are [`crate::wire`]'s. The proxy rejects requests that
 //! do not look like an editor integration, so every call carries the
 //! editor headers (`Copilot-Integration-Id`, `Editor-Version`, the
@@ -22,7 +22,7 @@
 //! token.
 //!
 //! Timeouts follow the sibling adapters: connect capped (10s), stream
-//! reads stall-guarded (90s — a stall guard, not a duration cap), and
+//! reads stall-guarded (90s, a stall guard, not a duration cap), and
 //! the non-streaming calls (token exchange, models list) under a 20s
 //! overall timeout. Streaming calls get no total timeout.
 
@@ -63,7 +63,7 @@ pub const DEFAULT_API_BASE: &str = "https://api.githubcopilot.com";
 const EXPIRY_MARGIN: u64 = 300;
 
 /// The editor identity the proxy expects on every call, kept current
-/// with the official Copilot Chat extension — the proxy classifies
+/// with the official Copilot Chat extension, the proxy classifies
 /// clients by these headers, and a stale-looking version invites the
 /// rejection third-party clients have no recourse against.
 const EDITOR_VERSION: &str = "vscode/1.107.0";
@@ -129,7 +129,7 @@ pub struct CopilotProvider {
     github_token: String,
     http: reqwest::Client,
     /// The cached Copilot token, shared across calls: exchanges are
-    /// serialized on it — the lock is held across the exchange — so a
+    /// serialized on it, the lock is held across the exchange, so a
     /// burst of steps cannot stampede the endpoint.
     cached: AsyncMutex<Option<CopilotToken>>,
 }
@@ -149,8 +149,8 @@ impl std::fmt::Debug for CopilotProvider {
 }
 
 impl CopilotProvider {
-    /// A provider exchanging `github_token` — the device flow's
-    /// long-lived output — against [`DEFAULT_GITHUB_API_URL`].
+    /// A provider exchanging `github_token`, the device flow's
+    /// long-lived output, against [`DEFAULT_GITHUB_API_URL`].
     pub fn new(github_token: impl Into<String>) -> Self {
         Self {
             github_api_url: DEFAULT_GITHUB_API_URL.to_owned(),
@@ -243,7 +243,7 @@ impl CopilotProvider {
 
     /// The seat's premium-request allowance (`GET
     /// {api}/copilot_internal/user`, authenticated with the OAuth
-    /// token — no Copilot-token exchange needed). The endpoint is
+    /// token, no Copilot-token exchange needed). The endpoint is
     /// GitHub's internal one, outside any contract; a drifted shape
     /// maps to an error and the badge simply never shows.
     pub async fn allowance(&self) -> Result<Allowance, ProviderError> {
@@ -298,7 +298,7 @@ impl EditorHeaders for reqwest::RequestBuilder {
 /// its semicolon-separated body carries:
 /// `proxy.<plan>.githubcopilot.com` serves at
 /// `https://api.<plan>.githubcopilot.com`. Only GitHub's own hosts are
-/// honored — the claim is meaningless for any other host, and honoring
+/// honored, the claim is meaningless for any other host, and honoring
 /// it would let a malformed token point the chat calls somewhere else.
 /// `None` when the token carries no usable claim, falling back to the
 /// exchange response's `endpoints.api`.
@@ -349,7 +349,7 @@ fn now_epoch() -> u64 {
 #[async_trait]
 impl ModelListing for CopilotProvider {
     /// The models the seat's Copilot subscription serves (`GET
-    /// {api}/models`), chat-capable rows only — see
+    /// {api}/models`), chat-capable rows only, see
     /// [`crate::wire::normalize_models`].
     async fn list_models(&self) -> Result<Vec<ModelCard>, ProviderError> {
         let token = self.copilot_token().await?;
@@ -396,7 +396,7 @@ impl ModelProvider for CopilotProvider {
         let mut response = self.post_chat(&token, &body).await?;
 
         // A 401 mid-turn means the cached token died between the margin
-        // check and the call: one forced refresh and retry — a second
+        // check and the call: one forced refresh and retry, a second
         // failure is the server's answer, not a refresh problem.
         if response.status() == reqwest::StatusCode::UNAUTHORIZED {
             *self.cached.lock().await = None;
@@ -477,7 +477,7 @@ mod tests {
     #[test]
     fn a_claim_off_githubs_hosts_is_ignored() {
         // Honoring a foreign claim would point the chat calls wherever
-        // the token says — the claim is only meaningful for GitHub's
+        // the token says, the claim is only meaningful for GitHub's
         // own hosts.
         assert_eq!(
             api_base_from_token("tid=abc;proxy-ep=proxy.evil.example.com"),

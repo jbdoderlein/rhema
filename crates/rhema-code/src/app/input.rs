@@ -20,7 +20,7 @@ impl App {
         self.transcript.push_notice(text);
     }
 
-    /// A bracketed paste landed: into the input, newlines included —
+    /// A bracketed paste landed: into the input, newlines included,
     /// pasting multi-line text must not fire submits. The add-instance
     /// dialog's credential line takes its own, single-line shape. A
     /// paste past `MAX_PASTE_BYTES` is cut there and noticed: the
@@ -124,9 +124,9 @@ impl App {
         true
     }
 
-    /// A left click landed. The settings menu answers clicks — sidebar
+    /// A left click landed. The settings menu answers clicks, sidebar
     /// rows switch sections, page rows select-and-act, the add dialog's
-    /// provider rows pick — everywhere else the keyboard rules. The hit
+    /// provider rows pick, everywhere else the keyboard rules. The hit
     /// rects are re-registered by every frame's render, so a click can
     /// only land on what was last drawn.
     pub fn on_click(&mut self, x: u16, y: u16) -> Vec<Effect> {
@@ -349,7 +349,7 @@ impl App {
             SettingsAction::CloseDialog => {
                 // The dialog is already gone from the screen; dropping
                 // the handle ends the flow task (the watch receiver
-                // errors out) — what Esc and a completed flow both want.
+                // errors out), what Esc and a completed flow both want.
                 self.login_cancel = None;
                 Vec::new()
             }
@@ -563,9 +563,8 @@ impl App {
                 self.config.onboarded = Some(true);
                 self.save_config();
                 self.screen = Screen::Chat;
-                self.transcript.push_notice(
-                    "setup complete — /settings any time; rhema onboard runs it again",
-                );
+                self.transcript
+                    .push_notice("setup complete, /settings any time; rhema onboard runs it again");
                 Vec::new()
             }
             OnboardingAction::Quit => {
@@ -577,7 +576,7 @@ impl App {
 
     /// Chat keys that are the app's, not the input box's.
     pub(crate) fn on_chat_key(&mut self, key: KeyEvent, action: ChatAction) -> Vec<Effect> {
-        // Esc during a running turn cancels the turn, from anywhere —
+        // Esc during a running turn cancels the turn, from anywhere,
         // approval modal included: the pending answer is released, the
         // rest declined, and the task drops the turn at its next await.
         // The y/N modal keys keep answering single calls.
@@ -642,11 +641,11 @@ impl App {
                 } else if self.turn.running {
                     // The box stays live while the turn runs: the text
                     // steers. `/settings` opens the snapshot screens over
-                    // the chat instead — the turn keeps working in the
+                    // the chat instead, the turn keeps working in the
                     // background, and their instance actions still wait
                     // for idle on their own. Every other command stays
-                    // idle-only — it acts on app state the running turn
-                    // also touches — and keeps the input, as before.
+                    // idle-only, it acts on app state the running turn
+                    // also touches, and keeps the input, as before.
                     if text.split_whitespace().next() == Some("/settings") {
                         self.chat.input.clear();
                         self.chat.cursor = 0;
@@ -664,7 +663,7 @@ impl App {
                     // Commands read plain text: a paste embedded in the
                     // line expands for them, as it would for the model. A
                     // submission carrying images is a prompt, never a
-                    // command — a command is a sentence, not a screenshot.
+                    // command, a command is a sentence, not a screenshot.
                     crate::commands::dispatch(self, rhema_core::paste::expand(&text).trim())
                 } else if self.provider.is_none() {
                     // The text stays: it is the prompt for once the
@@ -692,8 +691,8 @@ impl App {
                     self.transcript.push_user(&text, images.clone());
                     // Queued nudges keep their transcript order ahead of
                     // a text-only line: the new line waits its turn
-                    // behind them. A line carrying images runs now —
-                    // images ride the first turn only — and the chain
+                    // behind them. A line carrying images runs now,
+                    // images ride the first turn only, and the chain
                     // follows it through this turn's finish.
                     let text = if images.is_empty() && !self.pending_prompts.is_empty() {
                         self.pending_prompts.push_back(text);
@@ -719,7 +718,7 @@ impl App {
     /// and rides the steer channel to the turn task, which drops the
     /// in-flight step at its current await and runs the text as the next
     /// turn on the same agent. A send can only fail once the task has
-    /// exited — the finishing race — and the receiver it returned holds
+    /// exited, the finishing race, and the receiver it returned holds
     /// the message buffered for the turn-end handler to run.
     /// A submit while a turn runs: the text queues on the steer
     /// channel, the task drops the in-flight step at its current await

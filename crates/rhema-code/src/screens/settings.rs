@@ -5,7 +5,7 @@ use super::*;
 /// A section of the settings screen, in sidebar order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsSection {
-    /// The profile's provider, model, and logged-in instances — the
+    /// The profile's provider, model, and logged-in instances, the
     /// login flow lives here now.
     Providers,
     /// The named profiles: add, remove, switch, and their name colors.
@@ -113,7 +113,7 @@ pub enum SettingsAction {
     /// Toggle the icon flavor.
     ToggleIcons,
     /// Enter or `e` on a subagent row: open the definition in `$EDITOR`.
-    /// The built-in has no file — the app copies it into the global
+    /// The built-in has no file, the app copies it into the global
     /// directory first, where it shadows the built-in from then on.
     EditSubagent,
     /// Space on a subagent row: flip the definition's on/off state
@@ -155,8 +155,8 @@ pub enum SettingsAction {
 }
 
 /// The Update page's snapshot: what the last version check and the
-/// last install run reported. The app holds the truth — the states
-/// survive closing the settings — and the opener and every result
+/// last install run reported. The app holds the truth, the states
+/// survive closing the settings, and the opener and every result
 /// sync it in here.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UpdatePage {
@@ -227,19 +227,19 @@ pub struct SkillRow {
     pub name: String,
     /// The frontmatter description the model triggers on.
     pub description: String,
-    /// The frontmatter license, when the skill declares one — shown
+    /// The frontmatter license, when the skill declares one, shown
     /// under the description, dimmer than it.
     pub license: Option<String>,
     /// Where the skill lives.
     pub source: SkillSource,
-    /// Whether the skill's trigger reaches the system prompt — the
+    /// Whether the skill's trigger reaches the system prompt, the
     /// config's `skills_disabled` set, inverted. Off rows still list,
     /// dimmed; only the prompt filters them out.
     pub enabled: bool,
 }
 
 /// Where a skill lives: shipped with rhema, in the config directory,
-/// in the workspace, or in the cross-agent `~/.agents/skills` — the
+/// in the workspace, or in the cross-agent `~/.agents/skills`, the
 /// same shadowing order discovery reads, workspace highest and
 /// `.agents` lowest, so a row never names a hidden copy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -268,7 +268,7 @@ impl SkillSource {
 
 /// Where a subagent definition lives. The same discovery rules as the
 /// skills': the global directory, the workspace, project shadowing
-/// global — and one definition that is not on disk.
+/// global, and one definition that is not on disk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubagentSource {
     /// The built-in `general-purpose`, present without any file.
@@ -293,7 +293,7 @@ impl SubagentSource {
 /// One discovered subagent row of the Subagents page.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubagentRow {
-    /// Whether the definition reaches the subagent wire's catalog —
+    /// Whether the definition reaches the subagent wire's catalog,
     /// the config's `disabled_subagents` set, inverted. Off rows still
     /// list, dimmed; only discovery filters them.
     pub enabled: bool,
@@ -314,7 +314,7 @@ pub struct SubagentRow {
 }
 
 /// The settings screen: a sidebar of sections on the left, the selected
-/// section's page on the right, and — over the Providers page — the
+/// section's page on the right, and, over the Providers page, the
 /// pop-in dialog that adds a login. The Providers page is live (its
 /// instance list mirrors the config as it edits it); the other pages
 /// read snapshots taken at open time. The appearance toggles write both
@@ -333,9 +333,9 @@ pub struct SettingsScreen {
     /// Appearance: whether the icons are the Nerd Font set.
     pub icons_nerd: bool,
     /// Appearance: whether the terminal's own background is the one on
-    /// screen — no painted page fills.
+    /// screen, no painted page fills.
     pub background_native: bool,
-    // The Providers page — live.
+    // The Providers page, live.
     /// The profile this screen edits: the session's.
     pub profile: String,
     /// The profile's stored settings, synced from the config whenever
@@ -359,7 +359,7 @@ pub struct SettingsScreen {
     pub mcp: Vec<McpServerRow>,
     /// The add-server dialog, when it is up.
     pub mcp_dialog: Option<AddMcpServerDialog>,
-    /// The server name awaiting its removal confirmation — the `d`
+    /// The server name awaiting its removal confirmation, the `d`
     /// key arms it, `y` confirms, `n` and esc leave the row alone.
     pub mcp_confirm: Option<String>,
     // The Profiles page's snapshot.
@@ -408,7 +408,7 @@ pub struct SettingsScreen {
 
 impl Default for SettingsScreen {
     /// A settings screen on the Providers page: dark theme, nerd
-    /// icons, native background, empty snapshots — the opener fills
+    /// icons, native background, empty snapshots, the opener fills
     /// the rest.
     fn default() -> Self {
         Self::new()
@@ -417,7 +417,7 @@ impl Default for SettingsScreen {
 
 impl SettingsScreen {
     /// A settings screen on the Providers page: dark theme, plain
-    /// icons, empty snapshots — the opener fills the rest.
+    /// icons, empty snapshots, the opener fills the rest.
     pub fn new() -> Self {
         Self {
             section: SettingsSection::Providers,
@@ -574,7 +574,7 @@ impl SettingsScreen {
         self.profiles.get(self.row).map(|row| row.name.as_str())
     }
 
-    /// The highlighted local row; `Some` only there — instance rows
+    /// The highlighted local row; `Some` only there, instance rows
     /// answer [`Self::selected_sandbox_instance`] instead, and the add
     /// row answers neither.
     pub fn selected_sandbox(&self) -> Option<crate::args::SandboxChoice> {

@@ -49,7 +49,7 @@ fn provider(server_uri: &str) -> CopilotProvider {
 }
 
 fn sse_body() -> String {
-    // One event per line, blank-line separated — consecutive `data:`
+    // One event per line, blank-line separated, consecutive `data:`
     // lines without the separator are one event with joined data.
     [
         r#"data: {"choices":[{"delta":{"role":"assistant","content":"Hel"}}]}"#,

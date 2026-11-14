@@ -1,9 +1,9 @@
 //! A second frontend, end to end: `GodCode`, a terminal UI of its own,
 //! built on the rhema framework. It owns its settings the way a
-//! frontend must —
+//! frontend must,
 //!
 //! - its own directory (`~/.godcode`), not the rhema one;
-//! - its own format (JSON, here — anything serde speaks would do);
+//! - its own format (JSON, here, anything serde speaks would do);
 //! - its own keychain namespace (`godcode`), so its credentials never
 //!   mix with the rhema frontend's;
 //! - the framework's [`Settings`] as one embedded section, so profiles
@@ -23,7 +23,7 @@ use std::path::PathBuf;
 /// framework's section, in its own format.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 struct GodCodeConfig {
-    /// The framework section, verbatim — one field, one round trip.
+    /// The framework section, verbatim, one field, one round trip.
     #[serde(default)]
     rhema: Settings,
     /// GodCode's own stuff; the framework never hears of it.
@@ -111,7 +111,7 @@ fn main() -> Result<(), ConfigError> {
     Ok(())
 }
 
-/// `~/.godcode` under the user's home — no external directories crate,
+/// `~/.godcode` under the user's home, no external directories crate,
 /// this is the whole of it.
 fn dirs_home_dot_godcode() -> Result<PathBuf, ConfigError> {
     let home = std::env::var_os("HOME")

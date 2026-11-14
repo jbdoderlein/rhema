@@ -7,7 +7,7 @@
 //! splits each answer in two. Running rows feed the status strip. A
 //! row that was running at the last poll and is not running now is a
 //! finish, minted once into a feed with two readers: the transcript's
-//! notice, and the driver's steering — the subagent registry's
+//! notice, and the driver's steering, the subagent registry's
 //! delivery shape over a listing instead of a registry, so a job the
 //! model started reaches it without a poll of its own.
 //!
@@ -15,14 +15,14 @@
 //! events (`gob events`), but the shim's listing is the whole
 //! interface the frontend reads, and a subscription would tie the
 //! frontend to the backend's name and line format. The poll keeps the
-//! backend swappable at one short process per tick — fast while
+//! backend swappable at one short process per tick, fast while
 //! something is running, slow when nothing is. Detection latency is
 //! one live tick; delivery, once detected, is the registry's and
 //! instant.
 //!
 //! One delivery per finish, like a subagent's: steering mid-turn or
 //! the idle prompt, never both. The registry earns that with its
-//! fetch — the model fetching the report retires everything — so
+//! fetch, the model fetching the report retires everything, so
 //! here the delivery itself retires: the drain consumes the line,
 //! because the exit code was the whole message. The divergence is
 //! the point where the mirror ends, and it is the registry's own
@@ -57,7 +57,7 @@ pub struct JobEntry {
 }
 
 /// One finished job, as the finish feed delivers it: the transcript
-/// notice a frontend pushes the moment a job ends, and — in `line` —
+/// notice a frontend pushes the moment a job ends, and, in `line`,
 /// the same announcement the driver steers with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobFinished {
@@ -66,7 +66,7 @@ pub struct JobFinished {
     /// The shell line as the model wrote it.
     pub command: String,
     /// The process's exit code, when the backend reported one. `None`
-    /// means a stop that came with no code — a signal, or a job gone
+    /// means a stop that came with no code, a signal, or a job gone
     /// from the listing under us.
     pub exit_code: Option<i32>,
     /// The notification line: the notice's text and the steering's.
@@ -94,7 +94,7 @@ struct Feed {
 
 impl Feed {
     /// Mints one finish: the row as it was last seen running, plus the
-    /// exit code the listing reports now — `None` when it reports none
+    /// exit code the listing reports now, `None` when it reports none
     /// or the job vanished.
     fn mint(&mut self, seen: JobRow, exit_code: Option<i32>) {
         let line = announcement(&seen.id, &seen.command, exit_code);
@@ -110,7 +110,7 @@ impl Feed {
         });
     }
 
-    /// The pending notification lines, oldest first — a pure query:
+    /// The pending notification lines, oldest first, a pure query:
     /// the same lines come back until a take retires them.
     fn lines(&self) -> Vec<String> {
         self.pending
@@ -121,7 +121,7 @@ impl Feed {
     }
 }
 
-/// The notification line for one finished job — the driver's steering
+/// The notification line for one finished job, the driver's steering
 /// vocabulary and the finish notice's text, in the registry's shape:
 /// what ended, and how.
 fn announcement(id: &str, command: &str, exit_code: Option<i32>) -> String {
@@ -205,7 +205,7 @@ impl JobsHandle {
             .unwrap_or_default()
     }
 
-    /// Takes the finish events out, oldest first — one per job,
+    /// Takes the finish events out, oldest first, one per job,
     /// exactly once. The transcript notice feed: a frontend pushes
     /// each event's `line` the moment the job ends, whatever turn is
     /// running. Taking a notice retires nothing else: the line stays
@@ -250,7 +250,7 @@ impl JobsHandle {
     }
 
     /// The driver's steering source over this feed: one notification
-    /// line per finished-but-undelivered job, and the drain consumes —
+    /// line per finished-but-undelivered job, and the drain consumes,
     /// a steered line never comes back, so a finish the driver
     /// announced mid-turn does not re-deliver as the idle session's
     /// prompt. A frontend with both feeds chains this with the
@@ -263,7 +263,7 @@ impl JobsHandle {
 }
 
 /// The steering source over one feed. Unlike the subagent registry's,
-/// the drain retires what it returns: a steered line is delivered —
+/// the drain retires what it returns: a steered line is delivered,
 /// its whole payload, the exit code, rode inside it, and the card
 /// entered the transcript when the finish was detected. The registry
 /// re-announces because an unfetched report is expensive work that
@@ -282,7 +282,7 @@ impl Steering for JobSteering {
         // A finish both noticed and announced is fully delivered. One
         // announced but never noticed (headless: no transcript exists
         // to notice it) stays in the feed, inert, until the handle
-        // drops — bounded by the job count, never re-delivered.
+        // drops, bounded by the job count, never re-delivered.
         feed.pending
             .retain(|pending| !(pending.noticed && pending.announced));
         lines
@@ -513,7 +513,7 @@ mod tests {
         // The notice: once.
         assert_eq!(handle.take_finished().len(), 1);
         assert!(handle.take_finished().is_empty());
-        // The steering delivers the line — and consumes it. A steered
+        // The steering delivers the line, and consumes it. A steered
         // finish never re-delivers as the idle prompt: the exit code
         // rode inside the line, there is nothing left to fetch.
         assert_eq!(handle.steering().drain(), vec![line.clone()]);

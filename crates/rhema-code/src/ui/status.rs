@@ -15,7 +15,7 @@ pub(crate) fn render_status(frame: &mut Frame, app: &App, area: Rect, theme: &Th
             .collect()
     } else if app.turn.running {
         // Braille dots cycling through the classic spinner, animated off
-        // the running turn's clock — no timer machinery of its own.
+        // the running turn's clock, no timer machinery of its own.
         let spinner = spinner_frame(
             app.turn
                 .started_at
@@ -23,7 +23,7 @@ pub(crate) fn render_status(frame: &mut Frame, app: &App, area: Rect, theme: &Th
                 .unwrap_or_default(),
         );
         // The phase slot, three states: a retry the ladder is counting
-        // down (the error in the strip's alarm color, the wait local —
+        // down (the error in the strip's alarm color, the wait local,
         // one event announced it, the strip ticks the clock), a command
         // executing, the model streaming.
         let phase = if let Some(wait) = &app.turn.retry_wait {
@@ -79,7 +79,7 @@ pub(crate) fn render_status(frame: &mut Frame, app: &App, area: Rect, theme: &Th
     }
     // Every live subagent job pins its own line right below the
     // spinner: the robot badge, its phase, spend, and age. The registry
-    // is the single source — a job's line lives while it works; when it
+    // is the single source, a job's line lives while it works; when it
     // finishes the line leaves and the transcript carries the outcome
     // as the finish notice.
     for subagent in subagent_lines(app, theme) {
@@ -92,8 +92,8 @@ pub(crate) fn render_status(frame: &mut Frame, app: &App, area: Rect, theme: &Th
     for job in job_lines(app, theme) {
         lines.push(job);
     }
-    // The live preview rides under the spinner — the reasoning trace's
-    // tail, or a running command's earned output — at most three dim
+    // The live preview rides under the spinner, the reasoning trace's
+    // tail, or a running command's earned output, at most three dim
     // rows. The reasoning half is gone the moment real output starts,
     // because the buffer clears then.
     if app.turn.running && app.error.is_none() {
@@ -128,14 +128,14 @@ pub(crate) fn spinner_frame(elapsed: std::time::Duration) -> usize {
     (elapsed.as_millis() / 80) as usize % SPINNER.len()
 }
 
-/// The spinner's current character for an elapsed time — the frame the
+/// The spinner's current character for an elapsed time, the frame the
 /// status strip and the flow dialog both draw.
 pub(crate) fn spinner_char(elapsed: std::time::Duration) -> char {
     SPINNER[spinner_frame(elapsed)]
 }
 
 /// An elapsed time as a clock reads it: seconds under the minute,
-/// minutes and seconds under the hour, hours and minutes beyond —
+/// minutes and seconds under the hour, hours and minutes beyond,
 /// `2055s` is unreadable where `34min 15s` reads at a glance.
 pub(crate) fn elapsed_text(elapsed: std::time::Duration) -> String {
     let secs = elapsed.as_secs();
@@ -158,9 +158,9 @@ pub(crate) fn cost_text(cost: f64) -> String {
     }
 }
 
-/// The pinned live lines, oldest job first: one per working job —
-/// queued or running — on the wire's registry, read fresh every redraw
-/// — the strip's layout counts them and its drawing renders them, so
+/// The pinned live lines, oldest job first: one per working job,
+/// queued or running, on the wire's registry, read fresh every redraw
+///, the strip's layout counts them and its drawing renders them, so
 /// the reserve matches what is on screen.
 pub(crate) fn subagent_lines(app: &App, theme: &Theme) -> Vec<Line<'static>> {
     app.subagent_jobs()
@@ -201,7 +201,7 @@ fn job_line(app: &App, entry: &crate::jobs::JobEntry, theme: &Theme) -> Line<'st
 /// reported, the context its current model call carries against its
 /// model's window, the cost its cumulative spend prices to, and its
 /// age. A figure the catalog cannot price or size degrades to what is
-/// known — tokens alone, no cost.
+/// known, tokens alone, no cost.
 pub(crate) fn subagent_line(
     app: &App,
     subagent: &rhema_subagents::JobStatus,
@@ -262,7 +262,7 @@ const THINKING_PREVIEW_ROWS: usize = 3;
 const TOOL_PREVIEW_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// Whether the tool preview shows: a second of runtime or a second
-/// completed line — an instant command never flashes its output.
+/// completed line, an instant command never flashes its output.
 pub(crate) fn tool_preview_ready(app: &App) -> bool {
     let Some(started) = app.turn.tool_output_at else {
         return false;
@@ -291,7 +291,7 @@ pub(crate) fn thinking_preview_rows(app: &App, width: usize) -> Vec<Line<'static
 
 /// The buffer's completed lines: everything it holds before the line
 /// still streaming. The preview reveals a line at a time, never a word
-/// at a time. Blank lines drop out — the preview has three rows to
+/// at a time. Blank lines drop out, the preview has three rows to
 /// spend and a blank one carries nothing.
 pub(crate) fn completed_thinking(thinking: &str) -> impl Iterator<Item = &str> {
     let complete = match thinking.rfind('\n') {
@@ -311,7 +311,7 @@ pub(crate) fn thinking_preview(app: &App, width: usize, theme: &Theme) -> Vec<Li
         .collect()
 }
 
-/// How many rows the preview occupies at `width` — the same wrap the
+/// How many rows the preview occupies at `width`, the same wrap the
 /// render applies, so the strip reserves exactly what it draws.
 pub(crate) fn thinking_rows(app: &App, width: usize) -> u16 {
     thinking_preview_rows(app, width).len() as u16

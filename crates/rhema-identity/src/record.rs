@@ -1,11 +1,11 @@
-//! The account data: records, drafts, secrets — and the small shared
+//! The account data: records, drafts, secrets, and the small shared
 //! pieces every store composes (validation, service normalization, id
 //! assignment).
 //!
 //! Timestamps are milliseconds since the Unix epoch, the framework's
 //! convention (`rhema-rsd`'s `Clock`).
 //!
-//! The id borrows `rhema-memory`'s shape — `{UTC second}-{counter:08x}` —
+//! The id borrows `rhema-memory`'s shape, `{UTC second}-{counter:08x}`,
 //! because both stores read the same way: creation order is id order.
 
 use std::fmt;
@@ -29,7 +29,7 @@ pub const FIELD_LIMIT: usize = 256;
 /// What kind of credential the account holds. Drives policy at the
 /// consumers: a [`SecretKind::Token`] is working material a tool may act
 /// through; a [`SecretKind::Password`] is stored for explicit,
-/// user-approved login actions only — never model-accessible in v1.
+/// user-approved login actions only, never model-accessible in v1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SecretKind {
@@ -93,7 +93,7 @@ impl fmt::Debug for Secret {
 }
 
 /// One identity the deployment holds on one service, as the store hands
-/// it out: **redacted by construction** — the struct has no secret field,
+/// it out: **redacted by construction**, the struct has no secret field,
 /// so no caller can leak what it cannot reach. The credential is reached
 /// only through [`crate::IdentityStore::secret`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -120,7 +120,7 @@ pub struct Account {
 }
 
 /// What a caller supplies to [`crate::IdentityStore::put`]. `id: None`
-/// creates; `Some` replaces that account's metadata *and* secret —
+/// creates; `Some` replaces that account's metadata *and* secret,
 /// `created_at` preserved.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AccountDraft {
@@ -291,7 +291,7 @@ fn stamp_compact(unix_millis: u64) -> String {
     )
 }
 
-/// Days since the Unix epoch to `(year, month, day)` — Howard Hinnant's
+/// Days since the Unix epoch to `(year, month, day)`, Howard Hinnant's
 /// `civil_from_days`, proleptic Gregorian.
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;

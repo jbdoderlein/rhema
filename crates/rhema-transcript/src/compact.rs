@@ -2,13 +2,13 @@
 //! prefix, and who writes it.
 //!
 //! Compaction is *stepped*, not rolling. The log's aged prefix is
-//! covered by **sections** — ranges tiling `[0, cut)` without gaps,
+//! covered by **sections**, ranges tiling `[0, cut)` without gaps,
 //! each carrying one dense text. Between flushes nothing left of the
 //! cut changes: the block is append-only, so the request prefix
 //! (system prompt, then block, then whole band) is stable for long
 //! stretches and a prompt cache holds it. A flush moves the cut only
 //! when the budget is actually breached, and overshoots to half the
-//! allowance, so the next break is a whole hysteresis of growth away —
+//! allowance, so the next break is a whole hysteresis of growth away,
 //! never the next step.
 //!
 //! Two writers fill a section's text. The **extractive** fill is the
@@ -17,7 +17,7 @@
 //! is the fallback and the default. The
 //! **model** fill is a [`Summarizer`]: a cheap worker call that
 //! rewrites the same range densely. A worker failure never blocks the
-//! request — the extractive digest stands in and the section keeps the
+//! request, the extractive digest stands in and the section keeps the
 //! address it already committed.
 //!
 //! Sections are ranges of the log, so [`crate::zoom`] reaches every
@@ -53,7 +53,7 @@ pub enum SectionOrigin {
 /// One committed piece of the block: the log range it covers and the
 /// text standing in for it. Sections tile their span of the log
 /// without gaps or overlap, and once committed a section never moves
-/// or changes range — the block only grows by appending.
+/// or changes range, the block only grows by appending.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Section {
     /// The covered log range.
@@ -62,7 +62,7 @@ pub struct Section {
     pub text: String,
     /// Who wrote `text`.
     pub origin: SectionOrigin,
-    /// The skills whose whole bodies this section carries verbatim —
+    /// The skills whose whole bodies this section carries verbatim,
     /// the skill pin. Empty for digests. The pin survives the model
     /// fill and consolidation: a body may move sections, but it never
     /// drops out of the block.
@@ -99,7 +99,7 @@ pub struct PendingSummary {
 /// the messages beyond the call.
 #[async_trait]
 pub trait Summarizer: Send + Sync {
-    /// A dense markdown digest of `messages` — one range of the log,
+    /// A dense markdown digest of `messages`, one range of the log,
     /// in order. `context` is the digest of the immediately preceding
     /// range, when there is one: it exists to resolve references
     /// ("that file", "run it again") and is never part of the summary.
@@ -119,8 +119,8 @@ pub trait Summarizer: Send + Sync {
 /// The worker's system prompt: the structural contract the block's
 /// readers depend on.
 const WORKER_SYSTEM: &str = "You are the session-memory compactor of a coding agent. You receive \
-one contiguous range of an agent's past interactions — user instructions, assistant turns, tool \
-calls, and their outputs — and you write the single dense markdown block that the agent's future \
+one contiguous range of an agent's past interactions, user instructions, assistant turns, tool \
+calls, and their outputs, and you write the single dense markdown block that the agent's future \
 prompts will carry as the record of that range. The agent can zoom back to any original message, \
 so completeness matters less than not losing a fact that changes what it does next.\n\
 \n\
@@ -200,7 +200,7 @@ impl std::fmt::Debug for ModelSummarizer {
 
 /// The worker's user message: the preceding range's digest inside
 /// `<context>` when there is one, then the range's messages rendered
-/// whole and numbered inside `<input>`. Uncapped — the range is
+/// whole and numbered inside `<input>`. Uncapped, the range is
 /// already bounded by the section step, and the worker must see the
 /// real bytes to condense them.
 fn worker_task(messages: &[Message], context: Option<&str>) -> String {
@@ -307,7 +307,7 @@ impl Summarizer for ModelSummarizer {
         let mut history = vec![Message::text(Role::User, worker_task(messages, context))];
         let mut answer = self.ask(history.clone()).await?;
         // The stated budget only helps so much: one re-ask on
-        // overshoot, keeping the shorter answer — then the hard cap,
+        // overshoot, keeping the shorter answer, then the hard cap,
         // so a worker that never fits still cannot inflate the block.
         if answer.len() > SUMMARY_MAX_BYTES {
             history.push(Message::text(Role::Assistant, answer.clone()));
@@ -332,7 +332,7 @@ impl Summarizer for ModelSummarizer {
 }
 
 /// The extractive fill for one section: the aggregate digest of its
-/// messages — who spoke, what the tools were, what failed. Mechanical,
+/// messages, who spoke, what the tools were, what failed. Mechanical,
 /// deterministic, a few hundred bytes at any section size.
 pub(crate) fn section_digest(messages: &[Message]) -> String {
     let range = Range {
@@ -562,7 +562,7 @@ mod tests {
             .await
             .expect("the worker answers");
         assert_eq!(text, "## Goals Met\n- cut to size");
-        // Two calls: the task, then the re-ask — input, the oversized
+        // Two calls: the task, then the re-ask, input, the oversized
         // answer, and the feedback naming the overshoot.
         let log = flows.0.lock().unwrap().clone();
         assert_eq!(log.len(), 2, "{log:?}");

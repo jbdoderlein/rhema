@@ -7,7 +7,7 @@ use super::*;
 /// the graphics placements move the terminal cursor to their anchors,
 /// and the runner puts it back here.
 pub(crate) fn render_input(frame: &mut Frame, app: &App, area: Rect, theme: &Theme) -> Position {
-    // The input is the one interactive element, so it earns the accent —
+    // The input is the one interactive element, so it earns the accent,
     // while a turn runs too, because the box stays live: typing steers
     // the running turn, and the border must not suggest otherwise.
     let border = theme.accent;
@@ -55,7 +55,7 @@ pub(crate) fn render_input(frame: &mut Frame, app: &App, area: Rect, theme: &The
     // The cursor stays during a turn: the box takes input the whole
     // time. The prompt and the continuation indent are both two cells,
     // and only rows carrying one shift the cursor by them. A cursor
-    // past a full row's last cell clamps onto it — there is no
+    // past a full row's last cell clamps onto it, there is no
     // column beyond the box.
     let marker = u16::from(layout[cursor_row].marker);
     let at = Position {
@@ -75,7 +75,7 @@ const INPUT_MAX_CONTENT_ROWS: usize = 8;
 #[derive(Debug, Clone)]
 pub(crate) struct InputRow {
     pub(crate) line: Line<'static>,
-    /// Source characters of `input` this row accounts for — a chip
+    /// Source characters of `input` this row accounts for, a chip
     /// accounts for its single anchor character.
     pub(crate) source_chars: usize,
     /// Placed chips as `(source offset, display column, display width)`
@@ -84,7 +84,7 @@ pub(crate) struct InputRow {
     pub(crate) chips: Vec<(usize, usize, usize)>,
     /// Whether the row carries the two-cell logical-line marker.
     marker: bool,
-    /// Whether the row ends its logical line — the newline character is
+    /// Whether the row ends its logical line, the newline character is
     /// one cursor step the cursor mapping must account for.
     newline: bool,
 }
@@ -94,7 +94,7 @@ pub(crate) struct InputRow {
 pub(crate) enum Segment {
     /// A word or whitespace run of the typed text.
     Text(Span<'static>),
-    /// One attachment chip: its boxed label, atomic — one source
+    /// One attachment chip: its boxed label, atomic, one source
     /// character, one step, never split across rows.
     Chip(Vec<Span<'static>>),
 }
@@ -108,7 +108,7 @@ impl Segment {
         }
     }
 
-    /// The segment's source characters — a chip is one.
+    /// The segment's source characters, a chip is one.
     fn source(&self) -> usize {
         match self {
             Segment::Text(span) => span.content.chars().count(),
@@ -220,13 +220,13 @@ pub(crate) fn wrap_segments(segments: Vec<Segment>, width: usize) -> Vec<RowSegs
     rows
 }
 
-/// A paste chip's inline label: `▣1 5L` — the anchor's one-based id
+/// A paste chip's inline label: `▣1 5L`, the anchor's one-based id
 /// and the payload's line count.
 pub(crate) fn chip_label(paste: &str, index: usize) -> String {
     format!("▣{} {}L", index + 1, paste.lines().count())
 }
 
-/// An image chip's inline label: `▣1 PNG 12.3 KB` — the anchor's id,
+/// An image chip's inline label: `▣1 PNG 12.3 KB`, the anchor's id,
 /// the format, and the decoded size.
 pub(crate) fn image_chip_label(image: &Image, index: usize) -> String {
     format!(
@@ -248,7 +248,7 @@ pub(crate) fn media_type_label(media_type: rhema_core::ImageMediaType) -> &'stat
 }
 
 /// A decoded byte count as a size label: bytes under a kibibyte, else
-/// KB or MB with one decimal — the precision a screenshot's size reads
+/// KB or MB with one decimal, the precision a screenshot's size reads
 /// at.
 pub(crate) fn format_bytes(bytes: usize) -> String {
     const KIB: usize = 1024;
@@ -263,7 +263,7 @@ pub(crate) fn format_bytes(bytes: usize) -> String {
 }
 
 /// One chip's span: the label padded one cell each side on a
-/// surface-colored card — a thing apart from the typed text around it,
+/// surface-colored card, a thing apart from the typed text around it,
 /// no border glyphs needed.
 pub(crate) fn chip_spans(label: String, theme: &Theme) -> Vec<Span<'static>> {
     vec![Span::styled(
@@ -273,7 +273,7 @@ pub(crate) fn chip_spans(label: String, theme: &Theme) -> Vec<Span<'static>> {
 }
 
 /// Maps the cursor's source index onto (row, column) of the layout.
-/// Columns are display columns of the row's text — the render adds the
+/// Columns are display columns of the row's text, the render adds the
 /// marker's two cells. Chips passed on the way widen the column; a
 /// cursor sitting at a chip's source position lands on its first cell,
 /// so the whole label crosses in one step.
@@ -299,7 +299,7 @@ pub(crate) fn cursor_at_rows(layout: &[InputRow], cursor: usize) -> Option<(usiz
 }
 
 /// The input box's visual rows: every logical line wraps as before, and
-/// each attachment anchor renders as its inline chip — id and size —
+/// each attachment anchor renders as its inline chip, id and size,
 /// exactly where the paste landed. A chip is one character to the
 /// cursor, wrapping, and backspace alike, whatever its label's width.
 /// Shared by the render and the height math so both always agree.

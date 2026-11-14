@@ -36,7 +36,7 @@ impl EventSink for ChannelSink {
 }
 
 /// Resolves once the cancel flag flips; a dropped sender (the UI is gone
-/// or the turn already ended) means never — the turn's own completion is
+/// or the turn already ended) means never, the turn's own completion is
 /// what finishes the select below then.
 async fn cancelled(mut rx: watch::Receiver<bool>) {
     loop {
@@ -49,8 +49,8 @@ async fn cancelled(mut rx: watch::Receiver<bool>) {
     }
 }
 
-/// The steered message channel, read forever: a closed channel — the UI
-/// dropped the sender mid-chain, so nothing more can arrive — parks this
+/// The steered message channel, read forever: a closed channel, the UI
+/// dropped the sender mid-chain, so nothing more can arrive, parks this
 /// future instead of resolving `None`, so the select's steer arm goes
 /// silent rather than spinning on an immediately-ready receive.
 async fn next_steer(steer: &mut Receiver<String>) -> Option<String> {
@@ -62,8 +62,8 @@ async fn next_steer(steer: &mut Receiver<String>) -> Option<String> {
     }
 }
 
-/// What a turn chain starts from. Every later turn of the chain — a
-/// steered nudge — is a text-only user message either way.
+/// What a turn chain starts from. Every later turn of the chain, a
+/// steered nudge, is a text-only user message either way.
 #[derive(Debug)]
 pub enum Prompt {
     /// A fresh prompt: the text and the images beside it, in submission
@@ -74,14 +74,14 @@ pub enum Prompt {
         /// The images beside the text.
         images: Vec<Image>,
     },
-    /// The failed request again: no new message — the turn re-issues
+    /// The failed request again: no new message, the turn re-issues
     /// the step loop on the history as the failed turn left it (see
     /// `CodingAgent::retry_turn_with_cancel`). `/retry` starts this.
     Retry,
 }
 
 impl Prompt {
-    /// A text-only prompt — every steered nudge's shape.
+    /// A text-only prompt, every steered nudge's shape.
     pub fn text(text: impl Into<String>) -> Self {
         Self::User {
             text: text.into(),
@@ -93,7 +93,7 @@ impl Prompt {
 /// Spawns a turn chain on a tokio task: runs the prompt through the
 /// agent with the given approval hook, checkpoints the session at every
 /// stream boundary and again after the final turn (when `save` is set),
-/// and hands the agent back via [`UiEvent::TurnFinished`] — or, when the
+/// and hands the agent back via [`UiEvent::TurnFinished`], or, when the
 /// cancel flag flips, drops the turn future at its current await and
 /// hands the agent back via [`UiEvent::TurnCancelled`]. A
 /// message on `steer` drops the turn future the same way, but the task
@@ -115,8 +115,8 @@ pub fn spawn_turn(
     // file, the engine hands it over before each request (the prompt
     // durable before tokens are spent), after the assistant message
     // lands and before the first tool runs (a crash mid-call leaves a
-    // committed intent — the next turn's revive closes it), and after
-    // each step's results — a death mid-turn, mid-first-stream
+    // committed intent, the next turn's revive closes it), and after
+    // each step's results, a death mid-turn, mid-first-stream
     // included, leaves a resumable file instead of no record at all.
     if let Some(path) = save.clone() {
         agent.set_commit_hook(Some(Box::new(move |session: &Session| {
@@ -125,7 +125,7 @@ pub fn spawn_turn(
         })));
     }
     // The cancel flag the executor polls is an atomic, the UI's is a
-    // watch: a mirror task keeps the two honest — a flip asks in-flight
+    // watch: a mirror task keeps the two honest, a flip asks in-flight
     // tools to stop, not only drops the turn at its next await. The
     // task ends when the watch does (the turn chain finished or the UI
     // is gone).
@@ -155,7 +155,7 @@ pub fn spawn_turn(
         };
         // The chain's outcome: `None` once the cancel flag ended it, the
         // final turn's result otherwise. A steered interruption leaves it
-        // alone — the chain just turns another round. An intermediate
+        // alone, the chain just turns another round. An intermediate
         // turn's error is carried no further than this task: the steered
         // turn proceeds, and only the final result is reported.
         let mut outcome = None;
@@ -189,7 +189,7 @@ pub fn spawn_turn(
                 _ = cancelled(cancel.clone()) => break,
                 Some(nudge) = next_steer(&mut steer) => {
                     // The pinned future drops here, at its current await
-                    // — a streaming request or a running tool. The next
+                    //, a streaming request or a running tool. The next
                     // turn revives whatever committed before the drop
                     // (see `revive_dangling_calls`), so the history
                     // stays load-bearing without a repair step here.
@@ -210,7 +210,7 @@ pub fn spawn_turn(
             Some(result) => {
                 // Checkpoint after a completed turn: the file's freshest
                 // complete state. A crash can leave a committed intent (a
-                // call without its result) in the file — the next turn's
+                // call without its result) in the file, the next turn's
                 // revive closes exactly that, so it is a resume input now,
                 // not a half-finished write.
                 if result.is_ok()
@@ -239,8 +239,8 @@ pub fn spawn_turn(
 }
 
 /// Spawns the sandbox assembly a picker choice asked for on a tokio
-/// task: the shared `assemble` — container stand-up or connection,
-/// workspace seeding included — runs off the UI thread and reports as
+/// task: the shared `assemble`, container stand-up or connection,
+/// workspace seeding included, runs off the UI thread and reports as
 /// [`UiEvent::SandboxAssembled`]. A failure lands as the error text;
 /// the session's current tools keep running either way.
 pub fn spawn_sandbox_assemble(
@@ -289,7 +289,7 @@ pub fn spawn_model_fetch(
                 {
                     Ok(result) => result,
                     Err(_) => Err(format!(
-                        "no answer within {} s — is the server up?",
+                        "no answer within {} s, is the server up?",
                         CATALOG_FETCH_TIMEOUT.as_secs()
                     )),
                 };
@@ -382,7 +382,7 @@ pub fn spawn_update_check(events: UnboundedSender<UiEvent>) -> JoinHandle<()> {
 }
 
 /// Spawns the Update page's install run on a tokio task: the published
-/// install script — a download of the whole release behind it — runs
+/// install script, a download of the whole release behind it, runs
 /// off the UI thread with no time bound and reports as
 /// [`UiEvent::UpdateInstalled`]. The running binary stays the old one
 /// until a restart either way.
@@ -480,8 +480,8 @@ mod mock_tests {
         }
     }
 
-    /// The first call signals the test and hangs — the generation a steer
-    /// interrupts — and every later call answers, standing in for the turn
+    /// The first call signals the test and hangs, the generation a steer
+    /// interrupts, and every later call answers, standing in for the turn
     /// the steer starts.
     struct HangsThenAnswers {
         /// Signalled when the first generation enters `complete`, so the
@@ -554,7 +554,7 @@ mod mock_tests {
         assert!(result.is_ok());
         // The interrupted generation left nothing behind: the history is
         // the first prompt, the steered message, and the steered turn's
-        // reply — consecutive user messages are valid.
+        // reply, consecutive user messages are valid.
         let texts: Vec<String> = agent
             .session()
             .history
@@ -671,7 +671,7 @@ mod mock_tests {
         let (agent, result) = drive_turn_for_test(&mut rx, &mut transcript).await;
         assert!(result.is_ok(), "the retried request answers");
         assert_eq!(provider.calls.load(std::sync::atomic::Ordering::SeqCst), 2);
-        // The retry added the answer only — the failed turn's prompt is
+        // The retry added the answer only, the failed turn's prompt is
         // not in the history twice.
         let history = &agent.session().history;
         assert_eq!(history.len(), 2);
@@ -782,7 +782,7 @@ mod mock_tests {
         loop {
             match rx.recv().await.expect("turn task still alive") {
                 UiEvent::TurnCancelled { agent, .. } => {
-                    // At most the prompt committed — zero when the flag
+                    // At most the prompt committed, zero when the flag
                     // won the race against the task's first poll. Either
                     // way the history is clean for the next turn.
                     assert!(agent.session().history.len() <= 1);
@@ -832,7 +832,7 @@ mod mock_tests {
         // The hook writes the intent before the tool hangs; wait until
         // the intent is on disk so the cancel cannot race ahead of the
         // commit. (The per-stream commits create the file earlier still
-        // — the prompt alone — so existence alone proves nothing.)
+        //, the prompt alone, so existence alone proves nothing.)
         tokio::time::timeout(Duration::from_secs(5), async {
             while !std::fs::read_to_string(&save)
                 .map(|raw| raw.contains("call_1"))
@@ -849,7 +849,7 @@ mod mock_tests {
             match rx.recv().await.expect("turn task still alive") {
                 UiEvent::TurnCancelled { .. } => {
                     // The file holds the committed intent: the user input
-                    // and the assistant call, no result — exactly what a
+                    // and the assistant call, no result, exactly what a
                     // resumed session's revive closes.
                     let raw = std::fs::read_to_string(&save).unwrap();
                     let doc: serde_json::Value = serde_json::from_str(&raw).unwrap();

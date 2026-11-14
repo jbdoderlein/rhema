@@ -78,8 +78,8 @@ async fn the_default_system_prompt_names_the_canonical_workspace() {
 
     let systems = provider.systems();
     assert_eq!(systems.len(), 1);
-    // The skills section may follow the base prompt — the machine's own
-    // skills — but the base, with the canonical workspace, always leads.
+    // The skills section may follow the base prompt, the machine's own
+    // skills, but the base, with the canonical workspace, always leads.
     let system = systems[0].as_deref().expect("one system prompt recorded");
     assert!(
         system.starts_with(default_system(&workspace).as_str()),

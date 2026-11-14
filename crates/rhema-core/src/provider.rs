@@ -47,14 +47,14 @@ pub enum ProviderError {
 impl ProviderError {
     /// Whether re-issuing the same request could succeed: a transport
     /// timeout, a network failure, or a server-side status worth asking
-    /// again (408 request timeout, any 5xx) — read from the status the
+    /// again (408 request timeout, any 5xx), read from the status the
     /// adapter carries on [`ProviderError::Api`], never from the message
     /// text. An `Api` without a status is a malformed body or a
     /// mid-stream protocol error, and the other variants are request
     /// defects: none of those a retry fixes.
     ///
     /// A 429 rate limit is deliberately absent: its wall is a quota
-    /// window, not a hiccup, and the retry ladder waits seconds — a
+    /// window, not a hiccup, and the retry ladder waits seconds, a
     /// 5-hour usage limit does not clear inside it, so the retries only
     /// burn turns and tokens. The caller sees the error at once (with
     /// the provider's own reset time, where the adapter could read one)

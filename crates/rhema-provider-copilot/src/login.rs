@@ -4,7 +4,7 @@
 //!
 //! The flow is GitHub's OAuth device grant, run with the public client
 //! id of Copilot's official editor integration (`Iv1.b507a08c87ecfe98`)
-//! — the device grant requires a registered client, and Copilot seats
+//!, the device grant requires a registered client, and Copilot seats
 //! authorize through that one. Steps: register a device code, show the
 //! user the verification URL and user code, then poll the token
 //! endpoint at the server-issued interval until the user finishes,
@@ -18,7 +18,7 @@ use std::time::Duration;
 use rhema_core::provider::ProviderError;
 use rhema_provider::{LoginInstruction, LoginSink, LoginUpdate};
 
-/// The public OAuth client id of GitHub Copilot's editor integration —
+/// The public OAuth client id of GitHub Copilot's editor integration,
 /// the registered client Copilot seats authorize through.
 pub const DEFAULT_CLIENT_ID: &str = "Iv1.b507a08c87ecfe98";
 

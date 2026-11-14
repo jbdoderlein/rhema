@@ -1,4 +1,4 @@
-//! The memory data: records, scopes, drafts — and the small shared pieces
+//! The memory data: records, scopes, drafts, and the small shared pieces
 //! every store composes (validation, tag normalization, id assignment,
 //! UTC rendering).
 //!
@@ -25,7 +25,7 @@ use crate::store::MemoryError;
 /// A record body is cut at this many bytes.
 pub const BODY_LIMIT: usize = 4 * 1024;
 
-/// One day in milliseconds — the unit decay intervals are written in.
+/// One day in milliseconds, the unit decay intervals are written in.
 pub const DAY_MILLIS: u64 = 86_400_000;
 
 /// The review interval of [`Decay::Long`], in days.
@@ -69,7 +69,7 @@ const VOLATILE_TAGS: [&str; 4] = ["infrastructure", "setup", "environment", "mig
 
 /// Derives the decay from a record's normalized tags, so records written
 /// without an explicit decay still get a review interval. When tags from
-/// several classes mix, the most volatile class wins — doubt over
+/// several classes mix, the most volatile class wins, doubt over
 /// silence; anything unclassified degrades to [`Decay::Long`].
 pub fn decay_from_tags(tags: &[String]) -> Decay {
     let has = |names: &[&str]| tags.iter().any(|tag| names.contains(&tag.as_str()));
@@ -84,8 +84,8 @@ pub fn decay_from_tags(tags: &[String]) -> Decay {
     }
 }
 
-/// Where a record applies. The layering mirrors skills — global plus
-/// per-workspace — minus shadowing: search returns both, labeled, because
+/// Where a record applies. The layering mirrors skills, global plus
+/// per-workspace, minus shadowing: search returns both, labeled, because
 /// for recall the model should *see* that a workspace fact overrides a
 /// global one, not have the global one silently hidden.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -108,7 +108,7 @@ impl Scope {
 }
 
 /// Who or what produced a fact. Provenance shapes doubt; it is not a
-/// truth value — a told fact can be shaky, an observed one wrong.
+/// truth value, a told fact can be shaky, an observed one wrong.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Source {
@@ -156,12 +156,12 @@ impl Source {
 }
 
 /// Whether a record still holds. Only supersession or retraction moves a
-/// record out of [`Status::Active`]; time never does — a past horizon
+/// record out of [`Status::Active`]; time never does, a past horizon
 /// makes a record due and hides it, but does not kill it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Status {
-    /// Believed — not superseded, not retracted.
+    /// Believed, not superseded, not retracted.
     Active,
     /// Replaced by a newer record about the same subject. The body stays;
     /// what was believed, and therefore done, stays readable.
@@ -191,7 +191,7 @@ impl Status {
 
 /// How to re-check a fact without asking a human. This is the difference
 /// between a hygiene system and a nag: a sweep with hints re-checks most
-/// records itself, and only [`VerifyHint::Manual`] reaches a person —
+/// records itself, and only [`VerifyHint::Manual`] reaches a person,
 /// batched, not streamed.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -229,7 +229,7 @@ impl VerifyHint {
 }
 
 /// One thing worth remembering: a preference, a fact about an
-/// environment, a decision and its why. Atomic by design — search ranks
+/// environment, a decision and its why. Atomic by design, search ranks
 /// records, and a document-sized record is either a needle lost in hay or
 /// hay burying the needle.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -239,7 +239,7 @@ pub struct MemoryRecord {
     pub id: String,
     /// Where the record applies.
     pub scope: Scope,
-    /// Normalized tags: trimmed, lowercased, deduplicated — the model's
+    /// Normalized tags: trimmed, lowercased, deduplicated, the model's
     /// case and spacing must not split one tag in two.
     pub tags: Vec<String>,
     /// The fact, as markdown, capped at [`BODY_LIMIT`].
@@ -251,7 +251,7 @@ pub struct MemoryRecord {
     /// When the fact started to hold; defaults to `created_at`, and may
     /// name the past ("moved in last month") or the future.
     pub valid_from: u64,
-    /// When the fact is *planned* to stop holding — a horizon, not a
+    /// When the fact is *planned* to stop holding, a horizon, not a
     /// verdict. Passing it makes the record due and hides it from default
     /// search; only supersession or retraction kills it.
     pub valid_until: Option<u64>,
@@ -260,7 +260,7 @@ pub struct MemoryRecord {
     /// Where the fact came from.
     pub source: Source,
     /// What the record is about, as a namespaced key
-    /// (`home/accommodation`) — the overlap key contradiction detection
+    /// (`home/accommodation`), the overlap key contradiction detection
     /// matches on, exactly.
     pub subject: Option<String>,
     /// Whether the record still holds.
@@ -329,11 +329,11 @@ impl MemoryRecord {
 }
 
 /// What a caller supplies to [`crate::MemoryStore::put`]. `id: None`
-/// creates; `Some` replaces that record — `created_at` preserved, scope
+/// creates; `Some` replaces that record, `created_at` preserved, scope
 /// re-aimed.
 ///
 /// On an update, every temporal field follows one rule: an explicit value
-/// replaces, an absent one carries over — except `decay`, re-derived from
+/// replaces, an absent one carries over, except `decay`, re-derived from
 /// the tags unless declared, and `verified_at`, voided when the body
 /// changes, because the new wording has not been checked by anyone. The
 /// status never changes through `put`: an edit does not resurrect a dead
@@ -591,7 +591,7 @@ fn validate_subject(subject: &str) -> Result<(), MemoryError> {
 }
 
 /// Ids are `{UTC second}-{counter:08x}`; this shape check keeps a
-/// model-supplied id from naming a path outside the store — in the file
+/// model-supplied id from naming a path outside the store, in the file
 /// store the id *is* the filename.
 pub(crate) fn check_id(id: &str) -> Result<(), MemoryError> {
     let ok = !id.is_empty()
@@ -605,7 +605,7 @@ pub(crate) fn check_id(id: &str) -> Result<(), MemoryError> {
 }
 
 /// UTC text of `unix_millis`, to the second (`1970-01-01T00:00:00Z`).
-/// Display-edge only — records carry millis, and this is what renders
+/// Display-edge only, records carry millis, and this is what renders
 /// them for humans.
 pub fn format_utc(unix_millis: u64) -> String {
     let secs = (unix_millis / 1000) as i64;
@@ -632,7 +632,7 @@ fn stamp_compact(unix_millis: u64) -> String {
     )
 }
 
-/// Days since the Unix epoch to `(year, month, day)` — Howard Hinnant's
+/// Days since the Unix epoch to `(year, month, day)`, Howard Hinnant's
 /// `civil_from_days`, proleptic Gregorian.
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
@@ -650,7 +650,7 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
 /// The counter half of store-assigned ids: process-global and monotonic,
 /// so fresh ids differ even when the clock's granularity would not. A
 /// collision (counter wrap, or a second process lifetime in the same
-/// second) lands on the store, which retries — stores refuse duplicate
+/// second) lands on the store, which retries, stores refuse duplicate
 /// ids.
 #[derive(Debug, Default)]
 pub(crate) struct IdCounter(AtomicU32);

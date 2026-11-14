@@ -9,7 +9,7 @@
 
 /// The most bytes one unterminated line, or one event's data, may
 /// hold. No rhema event comes near it; the cap turns a server gone
-/// wrong — gigabytes with no line break — into a stream error instead
+/// wrong, gigabytes with no line break, into a stream error instead
 /// of unbounded memory.
 const MAX_EVENT_BYTES: usize = 1024 * 1024;
 
@@ -42,7 +42,7 @@ impl SseDecoder {
         {
             self.error = Some(format!(
                 "the stream sent more than {MAX_EVENT_BYTES} bytes without a \
-                 line break — not an SSE event; aborting"
+                 line break, not an SSE event; aborting"
             ));
             self.buffer.clear();
             return Vec::new();
@@ -98,7 +98,7 @@ impl SseDecoder {
             let total: usize = self.data.iter().map(|s| s.len()).sum();
             if self.error.is_none() && total > MAX_EVENT_BYTES {
                 self.error = Some(format!(
-                    "the stream built an SSE event over {MAX_EVENT_BYTES} bytes — \
+                    "the stream built an SSE event over {MAX_EVENT_BYTES} bytes, \
                      not a rhema chunk; aborting"
                 ));
                 self.data.clear();

@@ -1,12 +1,12 @@
 //! The `rhema system` utilities and their renderer: the prompt
 //! preview's markdown-to-ANSI path, the theme it picks from config,
-//! and the edit/restore/show actions — all model-free, no provider
+//! and the edit/restore/show actions, all model-free, no provider
 //! or credential touched.
 
 use super::*;
 
 /// The `rhema system` utilities: they shape what turns would send and
-/// run no model — no provider, profile, or credential is touched.
+/// run no model, no provider, profile, or credential is touched.
 pub(crate) fn system_command(
     action: SystemCommand,
     workspace: &std::path::Path,
@@ -57,7 +57,7 @@ pub(crate) fn system_command(
 /// session runs in, with its version.
 pub(crate) const HARNESS: &str = concat!("rhema ", env!("CARGO_PKG_VERSION"));
 
-/// The stored look's theme — the same resolution the TUI makes, for the
+/// The stored look's theme, the same resolution the TUI makes, for the
 /// one off-TUI surface that prints styled markdown.
 pub(crate) fn theme_from_config(config: &Config) -> crate::palette::Theme {
     let colors = crate::palette::Palette::from_stored(config.colors.as_deref()).unwrap_or_default();
@@ -118,7 +118,7 @@ pub(crate) fn markdown_ansi(source: &str, theme: &crate::palette::Theme, width: 
 }
 
 /// Maps a ratatui color onto the crossterm one of the same terminal
-/// slot — the two crates disagree on which half of each pair is the
+/// slot, the two crates disagree on which half of each pair is the
 /// plain name, so the mapping is spelled out.
 pub(crate) fn crossterm_color(color: ratatui::style::Color) -> crossterm::style::Color {
     use crossterm::style::Color as Ansi;
@@ -147,8 +147,8 @@ pub(crate) fn crossterm_color(color: ratatui::style::Color) -> crossterm::style:
 }
 
 /// `rhema system edit`: seeds the config's SYSTEM.md with the built-in
-/// default when missing, then opens the editor on it. `editor` — the
-/// tests' seam — overrides `$EDITOR`/`$VISUAL`.
+/// default when missing, then opens the editor on it. `editor`, the
+/// tests' seam, overrides `$EDITOR`/`$VISUAL`.
 pub(crate) fn system_edit_at(path: &std::path::Path, editor: Option<&str>) -> anyhow::Result<()> {
     if !path.exists() {
         seed_system_file(path)?;
@@ -167,7 +167,7 @@ pub(crate) fn system_restore_at(path: &std::path::Path) -> anyhow::Result<()> {
 
 /// The prompt the next turn in `workspace` would send: the config's
 /// SYSTEM.md when present, the built-in default otherwise, through the
-/// same assembly the agent stamps — rendered over the workspace, its
+/// same assembly the agent stamps, rendered over the workspace, its
 /// skills, the tools, and the two optional sections. The sandbox kind
 /// resolves from the stored profile the way startup does, so the
 /// preview and the first turn agree on host facts versus the notice.
@@ -180,7 +180,7 @@ pub(crate) fn system_show_at(
     system_show_at_with_mcp(path, workspace, profile, mcp)
 }
 
-/// The preview over explicit mcp lines — the test seam. Production
+/// The preview over explicit mcp lines, the test seam. Production
 /// derives them from config ([`mcp_preview_lines`]); a test injects
 /// its own rather than reading the machine's real `mcp.yaml`.
 pub(crate) fn system_show_at_with_mcp(
@@ -224,7 +224,7 @@ pub(crate) fn system_show_at_with_mcp(
         .map(|effective| effective.model.clone())
         .unwrap_or_default();
     // The preview has no assembly to name the sandbox-side path, so
-    // the host path stands in — the mount postures share it, and the
+    // the host path stands in, the mount postures share it, and the
     // http kind differs only in its constant prefix.
     let (environment, user, _) = prompt_sections(
         &workspace,
@@ -233,7 +233,7 @@ pub(crate) fn system_show_at_with_mcp(
         model.as_deref().unwrap_or(""),
         HARNESS,
     );
-    // The mcp lines come from config alone — the same fold the wire
+    // The mcp lines come from config alone, the same fold the wire
     // step runs, minus the runtime: no bridge, no spawns. A preview
     // must never have side effects, so the lines are what the
     // session WOULD disclose, not what it has.
@@ -260,7 +260,7 @@ pub(crate) fn system_show_at_with_mcp(
 /// The prompt's mcp lines as config would produce them: global file
 /// plus the profile's own entries, profile winning by name, the
 /// muted set filtered out, invalid entries skipped as the wire step
-/// skips them. No bridge, no spawns — a preview, not a wiring.
+/// skips them. No bridge, no spawns, a preview, not a wiring.
 fn mcp_preview_lines(profile: Option<&str>) -> Vec<rhema_agent_tools::prompt::McpServerLine> {
     let config = match Config::load() {
         Ok(config) => config,

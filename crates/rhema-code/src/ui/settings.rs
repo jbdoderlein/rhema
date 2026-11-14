@@ -10,10 +10,10 @@ use super::*;
 /// The settings screen: the sidebar of sections on the left, the selected
 /// section's page on the right, its key hints pinned to the bottom row.
 /// The settings screen: the sidebar of sections on the left, the
-/// selected section's page — titled, ruled, padded — on the right, its
+/// selected section's page, titled, ruled, padded, on the right, its
 /// key hints pinned to the bottom row, and the add-instance dialog
 /// popped over it all. Sidebar rows and interactive page rows register
-/// click targets — the rects are what a click is matched against, so
+/// click targets, the rects are what a click is matched against, so
 /// only what was drawn is clickable.
 pub(crate) fn render_settings(
     frame: &mut Frame,
@@ -79,7 +79,7 @@ pub(crate) fn render_settings(
         Paragraph::new(page).block(Block::default().padding(Padding::new(2, 2, 1, 0))),
         content_area,
     );
-    // The interactive rows sit at their rendered line indices — every
+    // The interactive rows sit at their rendered line indices, every
     // line the page builder produced is already wrapped to the pane's
     // text width, and the top padding offsets them one row down.
     for (line_index, hit) in row_hits {
@@ -253,7 +253,7 @@ fn view_shape(
 }
 
 /// A settings page: its content lines, its footer hints, and the click
-/// targets of its interactive rows as rendered line indices — the text
+/// targets of its interactive rows as rendered line indices, the text
 /// is wrapped to the pane's width, so the indices are exact.
 pub(crate) fn settings_page(
     settings: &crate::screens::SettingsScreen,
@@ -330,7 +330,7 @@ pub(crate) fn settings_page(
             for (index, row) in settings.profiles.iter().enumerate() {
                 let selected = index == settings.row;
                 row_hits.push((lines.len(), SettingsHit::PageRow(index)));
-                // The dot wears the profile's color — the stored hex,
+                // The dot wears the profile's color, the stored hex,
                 // else the theme's tone for the name.
                 let color = row
                     .color
@@ -500,7 +500,7 @@ pub(crate) fn settings_page(
                 let selected = index == settings.row;
                 row_hits.push((lines.len(), SettingsHit::PageRow(index)));
                 // The dot is the on/off state: filled and ok-green on,
-                // hollow and dim off — the same pair the skills step of
+                // hollow and dim off, the same pair the skills step of
                 // the onboarding wizard draws.
                 let dot = if skill.enabled { "●" } else { "○" };
                 let dot_color = if skill.enabled { theme.ok } else { theme.text3 };
@@ -516,7 +516,7 @@ pub(crate) fn settings_page(
                     Span::raw(format!(" · {}", skill.source.label())).fg(theme.text3),
                 ]);
                 lines.push(settings_row(line, selected, theme));
-                // The description, at most two rows — the same cap the
+                // The description, at most two rows, the same cap the
                 // Subagents page applies, so both catalogs scan alike.
                 lines.extend(crate::ui::wrap_clamped(
                     &skill.description,
@@ -526,7 +526,7 @@ pub(crate) fn settings_page(
                     Style::default().fg(theme.text3),
                 ));
                 // The license sits a step dimmer than the description:
-                // same tone, dim modifier — attribution that reads only
+                // same tone, dim modifier, attribution that reads only
                 // when looked for, and never cut: a clipped copyright
                 // line fails its one job.
                 if let Some(license) = &skill.license {
@@ -572,7 +572,7 @@ pub(crate) fn settings_page(
                 row_hits.push((lines.len(), SettingsHit::PageRow(index)));
                 let marker = Span::raw(if selected { "❯ " } else { "  " }).fg(theme.accent_text);
                 // The dot is the on/off state: filled and ok-green on,
-                // hollow and dim off — the Skills page's pair.
+                // hollow and dim off, the Skills page's pair.
                 let dot = if subagent.enabled { "●" } else { "○" };
                 let dot_color = if subagent.enabled {
                     theme.ok
@@ -601,7 +601,7 @@ pub(crate) fn settings_page(
                     Style::default().fg(theme.text3),
                 ));
                 // Overrides only: a definition that changes nothing
-                // renders no meta line — the session's model and the
+                // renders no meta line, the session's model and the
                 // default step budget are the norm, and a number that
                 // looks configured when it is a default reads wrong.
                 let mut meta = Vec::new();
@@ -645,7 +645,7 @@ pub(crate) fn settings_page(
                 row_hits.push((lines.len(), SettingsHit::PageRow(index)));
                 // The dot is the muted state: filled for a server the
                 // manager starts, hollow and dim for one the session
-                // mutes — the skills page's pair, meanings swapped.
+                // mutes, the skills page's pair, meanings swapped.
                 let dot = if server.disabled { "○" } else { "●" };
                 let dot_color = if server.disabled {
                     theme.text3
@@ -899,7 +899,7 @@ pub(crate) fn settings_page(
                     // restart would bring.
                     let newer = crate::update::is_newer(latest, current);
                     Span::raw(format!(
-                        "{latest} — {}",
+                        "{latest}, {}",
                         if newer {
                             "update available"
                         } else {
@@ -915,7 +915,7 @@ pub(crate) fn settings_page(
             lines.extend(settings_field("Latest", latest, theme, width));
             lines.push(Line::default());
             // The two rows. The install row lists dim until a check
-            // earned it — a row that would refuse every enter must
+            // earned it, a row that would refuse every enter must
             // say so before the enter.
             let rows = [
                 ("Check for updates...", true),
@@ -944,7 +944,7 @@ pub(crate) fn settings_page(
             match &settings.update.install {
                 crate::screens::UpdateInstall::Idle => {}
                 crate::screens::UpdateInstall::Running => lines.extend(settings_hint(
-                    "downloading and installing — this can take a minute",
+                    "downloading and installing, this can take a minute",
                     theme,
                     width,
                 )),

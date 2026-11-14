@@ -1,10 +1,10 @@
 //! The execution seam behind the `bash` tool: where commands actually run.
 //!
-//! [`crate::shell::ShellTools`] owns the tool's contract — the spec, the
-//! approval gate, the output caps, the timeout, the error shaping — and
+//! [`crate::shell::ShellTools`] owns the tool's contract, the spec, the
+//! approval gate, the output caps, the timeout, the error shaping, and
 //! delegates the run itself to a [`ShellExecutor`]. The local executor
 //! spawns `bash -c` child processes (feature `local-shell`, default on);
-//! hosts whose shell lives elsewhere bring their own executor — the cloud
+//! hosts whose shell lives elsewhere bring their own executor, the cloud
 //! deployment runs every command in a remote sandbox through this same
 //! seam. The trait's futures are `Send` like every seam in this tree, so
 //! the executor object crosses await points freely.
@@ -21,8 +21,8 @@ use async_trait::async_trait;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 /// What one command left behind: the captured streams and the exit code.
-/// The streams carry whatever the executor captured; the tool — not the
-/// executor — applies the display caps to them.
+/// The streams carry whatever the executor captured; the tool, not the
+/// executor, applies the display caps to them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Executed {
     /// Everything the command wrote to stdout.
@@ -44,18 +44,18 @@ pub enum ShellError {
     /// flag flipped before the command finished.
     #[error("cancelled")]
     Cancelled,
-    /// The command never started — spawning failed, or the executor's
+    /// The command never started, spawning failed, or the executor's
     /// transport to its host failed.
     #[error("failed to run bash: {0}")]
     Failed(String),
 }
 
 /// The bash executable the shell tool and the startup probe run under.
-/// `RHEMA_SHELL` answers first, everywhere — a frontend provisioning a
+/// `RHEMA_SHELL` answers first, everywhere, a frontend provisioning a
 /// known bash, a container, a nonstandard layout. Windows has no bash
 /// of its own, so the resolution goes for Git Bash: the one bash most
 /// windows dev boxes have, and what keeps the agent's unix vocabulary
-/// true — the Git for Windows layouts first, then `bash` on PATH (a
+/// true, the Git for Windows layouts first, then `bash` on PATH (a
 /// git bash that put itself there, MSYS2, cygwin). Everywhere else,
 /// plain `bash` on PATH.
 pub fn bash_executable() -> PathBuf {
@@ -82,11 +82,11 @@ pub fn bash_executable() -> PathBuf {
 /// this into an error the model reads.
 pub fn bash_missing_message() -> String {
     if cfg!(windows) {
-        "bash was not found on this windows host — install Git for \
+        "bash was not found on this windows host, install Git for \
          Windows (https://git-scm.com/download/win), or point \
          RHEMA_SHELL at a bash.exe"
     } else {
-        "bash was not found on this host — install bash, or point \
+        "bash was not found on this host, install bash, or point \
          RHEMA_SHELL at the bash executable"
     }
     .to_owned()
@@ -125,14 +125,14 @@ pub trait ShellExecutor: Send + Sync {
 }
 
 /// How often the cancelled flag is sampled while a command's output is
-/// quiet — an `AtomicBool` carries no wakeup, so a silent command would
+/// quiet, an `AtomicBool` carries no wakeup, so a silent command would
 /// otherwise never observe a flip until its deadline.
 #[cfg(feature = "local-shell")]
 const CANCEL_TICK: Duration = Duration::from_millis(100);
 
 /// One stream's capture window: everything the result renderer can
 /// show (`BASH_OUTPUT_LIMIT` of bytes, or the last `BASH_OUTPUT_LINES`
-/// rows — whichever cuts later) plus slack for line alignment, so the
+/// rows, whichever cuts later) plus slack for line alignment, so the
 /// truncation the model sees matches an uncaptured run's. Bounds the
 /// memory a chatty command can pin: without it, `yes` streams through
 /// the channel into these buffers until the deadline.
@@ -153,7 +153,7 @@ const CAPTURE_EVICT: usize = 256 * 1024;
 #[derive(Debug, Clone)]
 pub struct LocalShell {
     /// Extra environment every command runs with, layered over the
-    /// inherited one — how a frontend provisions its agent's tools (a
+    /// inherited one, how a frontend provisions its agent's tools (a
     /// daemon URL, a scoped token, a PATH addition) without touching
     /// the process environment.
     env: Arc<[(String, String)]>,
@@ -243,7 +243,7 @@ impl ShellExecutor for LocalShell {
                 // The cancelled flag carries no wakeup: without this tick
                 // a command that streams nothing would not observe a flip
                 // until its deadline. The tick is the cancellation check,
-                // not a timer kill — the budget belongs to the deadline.
+                // not a timer kill, the budget belongs to the deadline.
                 _ = tokio::time::sleep(CANCEL_TICK) => {
                     if cancelled.load(Ordering::Relaxed) {
                         let _ = child.start_kill();
@@ -273,7 +273,7 @@ impl ShellExecutor for LocalShell {
 }
 
 /// Reads `stream` line by line into `tx`, tagged with its stream, until
-/// EOF — the live side of the command's output. Detached: it ends with
+/// EOF, the live side of the command's output. Detached: it ends with
 /// the pipe, whether the command finishes, times out, or is killed.
 #[cfg(feature = "local-shell")]
 fn pump<R>(
@@ -295,7 +295,7 @@ where
 }
 
 /// The no-shell placeholder: every command fails in-band. What
-/// `ShellTools::new` installs when the build carries no local shell —
+/// `ShellTools::new` installs when the build carries no local shell,
 /// the model sees the failure, the operator sees the missing setup.
 #[cfg(not(feature = "local-shell"))]
 #[derive(Debug, Clone, Copy, Default)]
@@ -328,7 +328,7 @@ pub fn default_executor() -> std::sync::Arc<dyn ShellExecutor> {
 }
 
 /// The default executor with `env` layered over every command's
-/// environment — the provisioning seam a frontend's agent tools ride
+/// environment, the provisioning seam a frontend's agent tools ride
 /// in on. A build without the `local-shell` feature has no commands to
 /// provision; the stub ignores `env`.
 #[cfg(feature = "local-shell")]
@@ -368,7 +368,7 @@ mod tests {
         let shell = LocalShell::default();
         let cancelled = Arc::new(AtomicBool::new(false));
         // ~1.8 MB of stdout: far past the capture window, far under
-        // the deadline, so the cap — not the timeout — is what held.
+        // the deadline, so the cap, not the timeout, is what held.
         let executed = shell
             .run(
                 "seq 1 300000",

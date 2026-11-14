@@ -38,8 +38,8 @@ rhema-subagents = { path = "../rhema-subagents", version = "0.2.6" }
 rhema-transcript = { path = "../rhema-transcript", version = "0.2.6" }
 # The `rhema acp` subcommand: the Agent Client Protocol server
 rhema-acp = { path = "../rhema-acp", version = "0.2.6" }
-# Where bash runs: the sandbox seam and its backends — docker, lxd,
-# ecrou, ssh, http — behind the stored choice; the seam itself brings
+# Where bash runs: the sandbox seam and its backends, docker, lxd,
+# ecrou, ssh, http, behind the stored choice; the seam itself brings
 # `FsRoot` (feature `spawn`)
 rhema-sandbox = { path = "../rhema-sandbox", version = "0.2.6", features = [
     "spawn",

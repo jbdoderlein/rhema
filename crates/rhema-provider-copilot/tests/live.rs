@@ -1,4 +1,4 @@
-//! Live smoke test against the real endpoints. Ignored by default — CI
+//! Live smoke test against the real endpoints. Ignored by default, CI
 //! and plain `cargo test` never hit the network.
 //!
 //! Run with:

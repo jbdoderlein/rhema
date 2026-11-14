@@ -3,7 +3,7 @@
 //! dance.
 //!
 //! Stdio: the child's stdout is newline-delimited JSON-RPC read under
-//! a hard line cap — a garbage line or an oversized one kills the
+//! a hard line cap, a garbage line or an oversized one kills the
 //! connection, never this process. The child's stderr drains into an
 //! 8 KiB ring so a death carries its own last words. Requests
 //! multiplex freely; answers route by id.

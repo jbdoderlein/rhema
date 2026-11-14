@@ -74,7 +74,7 @@ pub enum DispatchError {
     /// The lease is dead: TTL lapsed or superseded.
     #[error(transparent)]
     Expired(#[from] Expired),
-    /// Concurrency caps are full — globally, or for the named source. Wait
+    /// Concurrency caps are full, globally, or for the named source. Wait
     /// and go through [`crate::Dispatcher::admit`] again.
     #[error("concurrency cap reached")]
     AtCapacity {

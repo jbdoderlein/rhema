@@ -1,5 +1,5 @@
 //! OpenAI-compatible wire types and the pure mapping between them and
-//! rhema-core's model. No I/O here — [`crate::provider`] drives these
+//! rhema-core's model. No I/O here, [`crate::provider`] drives these
 //! functions.
 //!
 //! This is the generic dialect: the same shape OpenAI's API speaks and the
@@ -16,7 +16,7 @@
 //!   map to their like-named roles; text blocks of one message are joined by
 //!   a blank line into the single `content` string.
 //! - A user turn carrying [`Content::Image`] blocks maps to a content parts
-//!   array — one part per content block in order, each text block a `text`
+//!   array, one part per content block in order, each text block a `text`
 //!   part and each image an `image_url` part whose url is a
 //!   `data:{media type};base64,…` URI. A turn with no images keeps the bare
 //!   joined string: text-only traffic stays byte-identical on the wire, and
@@ -27,9 +27,9 @@
 //!   no calls. Servers reject assistant messages with neither, so an empty
 //!   assistant turn is dropped from history.
 //! - Tool results become `{role: "tool", tool_call_id, content}` messages,
-//!   one per result block, matched by id — whichever rhema message carries
+//!   one per result block, matched by id, whichever rhema message carries
 //!   them. A result's images (`ToolResult::images`) have no wire home
-//!   — tool messages accept text parts only — so each is named in a
+//!   because tool messages accept text parts only, so each is named in a
 //!   trailing note. `ToolResult::is_error` has no wire representation;
 //!   the content text alone must tell the model the call failed.
 //! - `ToolCall::provider_data` carries only the reasoning the call claims
@@ -38,11 +38,11 @@
 //! - Tool specs map to `[{type: "function", function: {name, description,
 //!   parameters}}]`, with `parameters` passed through verbatim.
 //! - Every call streams (`stream: true`) with
-//!   `stream_options: {include_usage: true}` — without the flag OpenAI and
+//!   `stream_options: {include_usage: true}`, without the flag OpenAI and
 //!   most compatible servers send no usage at all in a streamed response.
 //!   Servers that ignore `stream_options` simply omit the usage chunk; the
 //!   mapping then degrades to zero usage, never an error.
-//! - The output token ceiling rides in `max_tokens` — the field the sibling
+//! - The output token ceiling rides in `max_tokens`, the field the sibling
 //!   adapters send and the one every compatible server accepts. OpenAI's
 //!   newer `max_completion_tokens` is deliberately not used: generic
 //!   servers predate it.
@@ -55,17 +55,17 @@
 //!   `function.arguments` fragment emits `ToolCallArgsDelta`. Id and name
 //!   arrive on the first fragment of an index and argument text in pieces;
 //!   the assembler never assumes both arrived together.
-//! - The assembled message carries the streamed text as one part — chunk
+//! - The assembled message carries the streamed text as one part, chunk
 //!   boundaries are transport artifacts, and per-chunk parts would be
 //!   replayed next request joined by blank lines, teaching the model to
-//!   emit `token\n\ntoken` prose — then tool calls
+//!   emit `token\n\ntoken` prose, then tool calls
 //!   in ascending index order. A call's arguments are the concatenated
 //!   fragments parsed as JSON; an unparseable payload wraps as
-//!   `{"_openai_args_text": <raw>}` — a malformed call must not fail the
+//!   `{"_openai_args_text": <raw>}`, a malformed call must not fail the
 //!   turn. Empty arguments become `{}`.
 //! - `finish_reason` maps onto rhema-core's stop reason, with any tool call
 //!   in the assembled message winning as
-//!   [`StopReason::ToolUse`](rhema_core::StopReason::ToolUse) — the same
+//!   [`StopReason::ToolUse`](rhema_core::StopReason::ToolUse), the same
 //!   rule as the sibling adapters. The legacy `"function"` reason maps to
 //!   `ToolUse` beside `"tool_calls"`.
 //! - `delta.reasoning_content` becomes one `ThinkingDelta` per non-empty
@@ -81,7 +81,7 @@
 //! - Models: `GET {base}/models` returns `{"data": [{...}]}`. The generic
 //!   listing guarantees only `data[].id`; `name`, `description`, and
 //!   `context_length` are read when present and everything else is
-//!   defaulted — no field is invented.
+//!   defaulted, no field is invented.
 
 use std::collections::BTreeMap;
 
@@ -99,7 +99,7 @@ use serde_json::Value;
 /// call still round-trips through history.
 /// The wire's per-dialect knobs: the name each server family spells its
 /// deviations under. The chat-completions vocabulary is shared; these
-/// keys — and only these keys — differ between the crates that speak it.
+/// keys, and only these keys, differ between the crates that speak it.
 /// `rhema-provider-openrouter`, `…-copilot`, and `…-llama-cpp` build
 /// their own [`Dialect`] from these fields and reuse everything else in
 /// this module.
@@ -132,7 +132,7 @@ pub fn no_effort(_thinking: ThinkingEffort) -> Option<Value> {
 }
 
 /// The dialect this crate implements: the OpenAI-shaped chat
-/// completions API — OpenAI itself, DeepSeek-style servers, and the
+/// completions API, OpenAI itself, DeepSeek-style servers, and the
 /// generic proxies that copy them.
 pub const OPENAI_COMPATIBLE: Dialect = Dialect {
     args_key: "_openai_args_text",
@@ -168,7 +168,7 @@ pub struct ChatCompletionRequest {
     /// Output token ceiling, when set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
-    /// The dialect's effort field — one entry under the server family's
+    /// The dialect's effort field, one entry under the server family's
     /// own key. Flattened so the wire sees `{"…effort_key": …}` at the
     /// top level, exactly where each family looks for it.
     #[serde(flatten)]
@@ -187,7 +187,7 @@ pub struct WireStreamOptions {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum WireContent {
-    /// The bare joined text — the shape every compatible server accepts,
+    /// The bare joined text, the shape every compatible server accepts,
     /// including ones predating content parts.
     Text(String),
     /// One part per content block, in order.
@@ -204,7 +204,7 @@ pub enum WirePart {
         text: String,
     },
     /// An inline image. The url is a `data:{media type};base64,{bytes}`
-    /// URI — the dialect also accepts remote `http(s)` urls, but core
+    /// URI, the dialect also accepts remote `http(s)` urls, but core
     /// carries images inline, so rhema only ever sends data URIs.
     ImageUrl {
         /// The image location, wrapped in the dialect's `image_url` object.
@@ -222,13 +222,13 @@ pub struct WireImageUrl {
 /// One message on the wire. A single wire message carries either a
 /// `content` (a joined text string, or a parts array for a user turn with
 /// images), or an assistant's `tool_calls`, or a tool result's
-/// `tool_call_id` — exactly one of the three is set by the mapper.
+/// `tool_call_id`, exactly one of the three is set by the mapper.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct WireMessage {
     /// `"system"`, `"user"`, `"assistant"`, or `"tool"`.
     pub role: String,
-    /// The turn's content: the joined text as a bare string, or — only
-    /// when a user turn carries images — one part per content block.
+    /// The turn's content: the joined text as a bare string, or, only
+    /// when a user turn carries images, one part per content block.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<WireContent>,
     /// The assistant's requested tool calls, when any.
@@ -347,7 +347,7 @@ pub struct WireDelta {
 
 /// One tool-call fragment of a [`WireDelta`]. The first fragment of an
 /// index carries `id` and the function `name`; continuation fragments carry
-/// only argument text — never assume both arrive together.
+/// only argument text, never assume both arrive together.
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 pub struct WireToolCallDelta {
     /// Which call of the message this fragment belongs to.
@@ -482,7 +482,7 @@ pub fn normalize_models(page: &serde_json::Value) -> Vec<ModelCard> {
 
 // --- Allowance: the DeepSeek balance endpoint -> normalized ---
 
-/// The `GET /user/balance` response of DeepSeek — the one account
+/// The `GET /user/balance` response of DeepSeek, the one account
 /// endpoint this adapter knows.
 #[derive(Debug, Default, Deserialize)]
 pub struct WireBalance {
@@ -502,7 +502,7 @@ pub struct WireBalanceInfo {
     pub total_balance: String,
 }
 
-/// The account's prepaid balance, the first currency entry winning —
+/// The account's prepaid balance, the first currency entry winning,
 /// the account charges in one. `None` when the body lists no parseable
 /// balance.
 pub fn allowance(balance: &WireBalance) -> Option<Allowance> {
@@ -520,8 +520,8 @@ pub fn allowance(balance: &WireBalance) -> Option<Allowance> {
 }
 
 /// Whether the model is a text chat model. A generic server serves
-/// whatever is loaded into it — embedding, reranking, and speech models
-/// behind the same `/models` page as the chat models — and only the ids
+/// whatever is loaded into it, embedding, reranking, and speech models
+/// behind the same `/models` page as the chat models, and only the ids
 /// tell them apart; those are excluded.
 pub fn is_text(model: &ModelCard) -> bool {
     const NON_TEXT: [&str; 8] = [
@@ -602,7 +602,7 @@ pub fn request_body(req: &ModelRequest, dialect: &Dialect) -> ChatCompletionRequ
                     .collect();
                 // The reasoning that led to the calls, replayed in order:
                 // the blocks must match what the model generated. The key
-                // it rides on is dialect property — servers that reject
+                // it rides on is dialect property, servers that reject
                 // the field get nothing.
                 let replay = || -> Option<String> {
                     let reasoning = message
@@ -699,8 +699,8 @@ pub(crate) fn reasoning_effort_value(thinking: ThinkingEffort) -> Option<Value> 
     }
 }
 
-/// The user turn's content: a parts array — one part per content block in
-/// order — when the turn carries any [`Content::Image`], else the bare
+/// The user turn's content: a parts array, one part per content block in
+/// order, when the turn carries any [`Content::Image`], else the bare
 /// joined text. Text-only turns must stay byte-identical on the wire:
 /// strict servers predate the parts shape. Tool blocks keep their own wire
 /// messages and never become parts.
@@ -744,7 +744,7 @@ pub(crate) fn joined_texts(message: &Message) -> String {
 }
 
 /// One result block's wire messages: the `role: "tool"` message the API
-/// requires, then — when the result carries images — one `role: "user"`
+/// requires, then, when the result carries images, one `role: "user"`
 /// turn delivering them, since a tool message accepts text parts only
 /// and the images must not vanish. The turn's text names the call the
 /// images answer, so the model reads the pair as one result; every
@@ -834,7 +834,7 @@ struct PartialCall {
 pub struct ChunkAssembler {
     /// The assistant text streamed so far. One buffer, not one entry per
     /// chunk: a chunk boundary is a transport artifact, and a per-chunk
-    /// part list would be replayed next turn as `token\n\ntoken` — the
+    /// part list would be replayed next turn as `token\n\ntoken`, the
     /// model then mimics that shredded format in its own replies.
     text: String,
     /// The reasoning streamed since the last tool call began; claimed by
@@ -935,7 +935,7 @@ impl ChunkAssembler {
     /// the call, every fragment with argument text feeds the args deltas.
     fn push_fragment(&mut self, fragment: WireToolCallDelta, sink: &mut dyn EventSink) {
         let index = fragment.index;
-        // Reasoning streamed since the last fragment led to this call —
+        // Reasoning streamed since the last fragment led to this call,
         // claimed by its first fragment, appended when interleaved.
         let pending_reasoning = std::mem::take(&mut self.reasoning);
         let partial = self.calls.entry(index).or_default();
@@ -1026,7 +1026,7 @@ pub(crate) fn parse_args(raw: &str, args_key: &'static str) -> Value {
 }
 
 /// Maps the wire `finish_reason` onto rhema-core's stop reason; any tool
-/// call in the assembled message wins as [`StopReason::ToolUse`] — the same
+/// call in the assembled message wins as [`StopReason::ToolUse`], the same
 /// rule as the sibling adapters.
 fn stop_reason(finish_reason: Option<&str>, has_calls: bool) -> StopReason {
     if has_calls {
@@ -1340,7 +1340,7 @@ mod tests {
         assert_eq!(messages[0]["tool_call_id"], "call_0");
         assert_eq!(messages[0]["content"], "out");
         // The images follow in a user turn that names the call, as
-        // image_url data-URI parts — the shape a pasted image rides.
+        // image_url data-URI parts, the shape a pasted image rides.
         assert_eq!(messages[1]["role"], "user");
         let parts = messages[1]["content"].as_array().expect("parts array");
         assert_eq!(parts.len(), 3, "{parts:?}");
@@ -1524,7 +1524,7 @@ mod tests {
 
     #[test]
     fn a_stream_without_a_usage_chunk_degrades_to_zero_usage() {
-        // A server that ignores stream_options sends no usage at all —
+        // A server that ignores stream_options sends no usage at all,
         // that is a degenerate but valid stream, not an error.
         let mut assembler = ChunkAssembler::new(&OPENAI_COMPATIBLE);
         let mut sink = Collector::new();

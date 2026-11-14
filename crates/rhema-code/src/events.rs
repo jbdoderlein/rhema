@@ -3,7 +3,7 @@
 //! The turn task never touches the terminal: everything it wants the user
 //! to see travels as a [`UiEvent`] over an unbounded tokio mpsc channel.
 //! Unbounded because [`rhema_core::EventSink::emit`] is synchronous and
-//! cannot await — a bounded, back-pressuring channel would deadlock the
+//! cannot await, a bounded, back-pressuring channel would deadlock the
 //! stream mid-turn.
 
 use rhema_coding_agent::CodingAgent;
@@ -15,7 +15,7 @@ use rhema_provider::ModelCard;
 pub enum FetchWhy {
     /// The login screen validated a new instance's input; the fetch is
     /// the validation (`Login` carries the backend the screen assembled
-    /// — key or server URL — and the instance name it will persist the
+    ///, key or server URL, and the instance name it will persist the
     /// credential under; nothing else stores them mid-flight).
     Login {
         /// The backend being validated.
@@ -37,7 +37,7 @@ pub struct CatalogFetch {
     /// The backend's provider config name.
     pub provider: &'static str,
     /// The profile instance the backend was built from, when it has a
-    /// name — every stored instance does; only an environment-only
+    /// name, every stored instance does; only an environment-only
     /// fetch is unnamed.
     pub instance: Option<String>,
     /// The models, or the provider's error text.
@@ -221,8 +221,8 @@ pub enum UiEvent {
         /// The final output, or the error text of the failed turn.
         result: Result<ModelOutput, String>,
         /// The steering channel's receiver, returned so a message sent in
-        /// the finishing race — after the task's last poll, before the UI
-        /// saw this event — sits buffered here instead of vanishing. The
+        /// the finishing race, after the task's last poll, before the UI
+        /// saw this event, sits buffered here instead of vanishing. The
         /// app drains it and runs what it holds as the next turn.
         steer: tokio::sync::mpsc::Receiver<String>,
     },
@@ -262,7 +262,7 @@ pub enum UiEvent {
     },
     /// A `/resume` pick finished loading off-thread. The session file
     /// is a JSON read plus a parse, and the usage accounting it derives
-    /// is more of the same — neither belongs on the UI thread, which
+    /// is more of the same, neither belongs on the UI thread, which
     /// the apply path (agent rebuild, transcript re-derivation) keeps.
     SessionResumed {
         /// The file the pick named, so the apply re-checks the path it

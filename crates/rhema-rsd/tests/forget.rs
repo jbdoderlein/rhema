@@ -77,7 +77,7 @@ fn a_live_lease_refuses_the_delete_and_the_record_survives() {
         other => panic!("expected LeaseHeld, got {other:?}"),
     }
     // Untouched: still leased, still stored, and the turn's own write still
-    // lands — the reason the refusal exists.
+    // lands, the reason the refusal exists.
     assert_eq!(dispatcher.status(&key).unwrap().state, KeyState::Leased);
     assert_eq!(store.keys().unwrap(), vec![key.clone()]);
     dispatcher

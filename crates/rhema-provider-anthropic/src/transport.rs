@@ -1,7 +1,7 @@
 //! The reqwest transport: the native [`Transport`] behind
 //! [`AnthropicProvider`](crate::provider::AnthropicProvider)'s default
 //! constructor. Owns the two knobs reqwest has and the seam cannot
-//! carry — the connect timeout and the per-read stall guard — and the
+//! carry, the connect timeout and the per-read stall guard, and the
 //! mapping of reqwest's error type onto [`TransportError`], the shape
 //! the adapters translate into `ProviderError` (a non-timeout becomes
 //! `ProviderError::Network` there, the retryable variant).
@@ -22,8 +22,8 @@ pub struct ReqwestTransport {
 
 impl ReqwestTransport {
     /// A client with the transport knobs the adapters rely on: one
-    /// connect attempt bounded at 10 s — a dead network fails fast
-    /// instead of hanging the agent step — and a 90 s per-read stall
+    /// connect attempt bounded at 10 s, a dead network fails fast
+    /// instead of hanging the agent step, and a 90 s per-read stall
     /// guard for streams. The stall guard bounds the silence between
     /// chunks, never the total generation time.
     pub fn new() -> Self {
@@ -83,7 +83,7 @@ impl Transport for ReqwestTransport {
             .collect();
         // The chunk stream stays `Send` here: reqwest's native stream
         // items are plain bytes. (On wasm reqwest's stream is JS-backed
-        // and `!Send` — which is exactly why this transport is a
+        // and `!Send`, which is exactly why this transport is a
         // native-only feature and the wasm host bridges its own.)
         let stream = response
             .bytes_stream()

@@ -15,8 +15,8 @@ every integration reinventing session-concurrency by hand.*
 
 ## 1. Problem statement
 
-Any "watch X and react" workflow — GitHub notifications, Gitea, Linear, an email
-thread, a Slack channel — has the same shape once you look past the surface API:
+Any "watch X and react" workflow, GitHub notifications, Gitea, Linear, an email
+thread, a Slack channel, has the same shape once you look past the surface API:
 
 1. Events arrive from an external source, either pushed (webhook) or pulled (poller).
 2. Events refer to some **external resource** (an issue, a PR, a thread) that
@@ -24,7 +24,7 @@ thread, a Slack channel — has the same shape once you look past the surface AP
 3. More than one event can refer to the same resource before the first one has
    been fully handled (a user comments again while the agent is mid-review).
 4. Handling an event usually means spawning an agent/subagent session that
-   *reasons* about the resource — which is slow (seconds to minutes) relative
+   *reasons* about the resource, which is slow (seconds to minutes) relative
    to how fast new events can arrive (milliseconds to seconds).
 
 Every framework that doesn't solve this generically pushes the problem onto
@@ -35,8 +35,8 @@ same bespoke state machine rebuilt from scratch per integration. That's the
 signal that it's a missing core primitive, not a missing skill.
 
 **Goal:** give every trigger adapter (GitHub, Gitea, Telegram inbound, email,
-whatever) a shared guarantee — *at most one live handler per resource key, ever*
-— so adapter authors write a key extractor and a classifier, not a lock.
+whatever) a shared guarantee of *at most one live handler per resource key,
+ever*, so adapter authors write a key extractor and a classifier, not a lock.
 
 ## 2. Design goals
 
@@ -47,7 +47,7 @@ whatever) a shared guarantee — *at most one live handler per resource key, eve
 - **No stuck resources.** A crashed or hung handler must not permanently wedge
   a resource key.
 - **No wasted LLM calls.** Detection (is there a new event, does it matter) is
-  fully separate from response (spawn a handler) — consistent with the
+  fully separate from response (spawn a handler), consistent with the
   gate-before-LLM principle from earlier: dispatch decisions are deterministic
   code, only the handler invokes the model.
 - **Adapter-agnostic core, adapter-specific edges.** The primitive doesn't know
@@ -72,10 +72,10 @@ whatever) a shared guarantee — *at most one live handler per resource key, eve
 ## 4. State machine (per ResourceKey)
 
 The key insight in v1.1: **exclusivity and visibility are separate axes.**
-Only one Handler may ever be *acting* on a key at once (exclusivity — this
+Only one Handler may ever be *acting* on a key at once (exclusivity, this
 part of v1 was right). But information about the key should reach whoever is
 currently working on it *immediately*, regardless of whether a Lease is held
-(visibility — this part of v1 was wrong).
+(visibility, this part of v1 was wrong).
 
 ```
                  event arrives, no lease held
@@ -95,19 +95,19 @@ currently working on it *immediately*, regardless of whether a Lease is held
         │   │ (debounce  │◀─────────────────────────────────────────────────┘
         │   │  window)   │
         │   └─────┬──────┘
-        │         │ acquire() — SAME Session resumed, new revision
+        │         │ acquire(), SAME Session resumed, new revision
         └─────────┴──────────────────────────────────▶ back to LEASED
 
    event arrives while LEASED:
      └──▶ appended directly to the Session's Inbox (no state transition,
-          no debounce — the running Handler will see it at its next
+          no debounce, the running Handler will see it at its next
           poll_inbox() call, typically between tool calls)
 ```
 
 Key properties:
 
 - A ResourceKey is in exactly one of `IDLE`, `LEASED`, `RE-ACQUIRE` at any
-  time — that part is unchanged from v1.
+  time, that part is unchanged from v1.
 - `acquire()` is still the only way to move IDLE → LEASED and still atomically
   bumps the revision counter (same optimistic-concurrency shape as before).
   **What's new:** `acquire()` now returns `(Lease, Session)`, where `Session`
@@ -116,18 +116,18 @@ Key properties:
   current plan, and pointers to physical state (git worktree, branch, files
   touched so far) all live on the Session, not the Lease, so they survive
   across every re-acquisition.
-- Events arriving during `LEASED` no longer wait invisibly — they're appended
+- Events arriving during `LEASED` no longer wait invisibly, they're appended
   to the Session's Inbox the instant they're ingested. It is the Handler's
   responsibility to call `poll_inbox()` at reasoning-step boundaries (a cheap,
   non-LLM check) and fold any new items into its next turn exactly as if the
   user had spoken up mid-conversation. **The dispatcher never decides whether
-  new information should change the plan — it only guarantees delivery.**
+  new information should change the plan, it only guarantees delivery.**
   That judgment call stays with the model, consistent with keeping detection
   mechanical and response agentic.
 - Debouncing only applies at the IDLE→LEASED transition (coalescing a burst
   of events into one fresh dispatch when nobody is currently working) and at
   RE-ACQUIRE after a release with a non-empty inbox. It never applies to
-  events landing on an already-`LEASED` key — those are delivered immediately
+  events landing on an already-`LEASED` key, those are delivered immediately
   because the cost of delivery is just an append, not a dispatch.
 - Lease TTL + required periodic `renew()` calls still guard against a
   crashed/hung Handler wedging the key forever, unchanged from v1.
@@ -186,7 +186,7 @@ trait Dispatcher {
   // Called periodically by a long-running Handler to prove liveness.
   fn renew(lease: Lease) -> Result<Lease, Expired>
 
-  // Called by the Handler's control loop between reasoning steps — cheap,
+  // Called by the Handler's control loop between reasoning steps, cheap,
   // no LLM involved. Returns any InboxItems delivered since the last poll.
   fn poll_inbox(lease: Lease) -> Vec<InboxItem>
 
@@ -214,7 +214,7 @@ enum Conflict { RevisionMismatch(expected: Revision, actual: Revision) }
 stale-handler-rejection case: a Handler operating against revision N whose
 lease has since expired and been reacquired by someone else (revision N+1)
 must abort rather than finalize side effects or overwrite a newer Session
-state — same 409-style optimistic concurrency as v1, just now guarding
+state, same 409-style optimistic concurrency as v1, just now guarding
 Session writes too, not only lease ownership.
 
 ## 6. Concurrency limits (orthogonal axis)
@@ -239,7 +239,7 @@ bespoke dispatchers, but as a config knob instead of hand-rolled logic.
 
 **Admission queue eviction rule (v1.1 addition):** an unbounded wait here
 just relocates the "acted on stale state" failure mode from the per-key
-level to the global level — a PR comment handler that finally runs after
+level to the global level, a PR comment handler that finally runs after
 sitting in the admission queue for ten minutes may be acting against a PR
 that's since changed underneath it. Each admission-queue entry therefore
 carries its own bound (`admission_ttl`, config, default proportional to
@@ -297,7 +297,7 @@ append, not a new dispatch.
 ```
 key_fn      = |event| format!("telegram:task:{}", event.task_id)
 source      = webhook, receiving only narrow, signed trigger payloads
-              ("spawn_background_task", "approve", "cancel") — never open
+              ("spawn_background_task", "approve", "cancel"), never open
               conversation, consistent with treating Telegram as an actuator
               rather than a session-owning channel.
 ```
@@ -318,8 +318,8 @@ Walking through your scenario against v1.1:
 2. **"No PR yet? What is happening?" arrives mid-implementation.** Key is
    `LEASED` → the event is appended straight to the Session's Inbox, no
    dispatch, no debounce. At its next step boundary the Handler calls
-   `poll_inbox()`, sees the new comment, and — because it has the *actual
-   current Session state*, not a cold re-read of the issue — can answer from
+   `poll_inbox()`, sees the new comment, and, because it has the *actual
+   current Session state*, not a cold re-read of the issue, can answer from
    what it already knows: "Still in progress, implementing against library
    X, ETA ~20 min" and post that as a comment. No replanning needed, because
    nothing about the plan changed; the agent just has continuity to answer
@@ -329,7 +329,7 @@ Walking through your scenario against v1.1:
    mechanism: appended to Inbox, picked up at the next `poll_inbox()`. This
    time the content *does* bear on the plan. The Handler (i.e. the model,
    not the dispatcher) decides whether to incorporate it now or after the
-   current tool call finishes — that judgment is explicitly out of scope for
+   current tool call finishes, that judgment is explicitly out of scope for
    the primitive. What the primitive guarantees is that the information
    arrived in time to matter, as a turn appended to the *same* ongoing
    Session, not as a fresh, context-free re-dispatch after the bug was
@@ -339,26 +339,26 @@ Walking through your scenario against v1.1:
    were already consumed live) → key returns to `IDLE` cleanly. If a third
    comment had landed in the gap between the last `poll_inbox()` and
    `release()`, the non-empty inbox would trigger `RE-ACQUIRE`, and the
-   *same* Session — same history, same artifact_ref, same plan — would be
+   *same* Session, same history, same artifact_ref, same plan, would be
    resumed, not recreated.
 
 The failure mode you described (re-reading the issue cold and reimplementing
 from scratch) specifically required both v1 gaps at once: invisible-until-
 release delivery, and no persistent Session across dispatches. Fixing either
-one alone wouldn't have been enough — visibility without session continuity
+one alone wouldn't have been enough, visibility without session continuity
 would let the agent see the comment in time but still forget its own
 progress; session continuity without live visibility would preserve progress
 but still deliver the bug warning too late.
 
 ## 9. What this deliberately does *not* solve
 
-- **Classification/priority logic** — stays 100% adapter-specific (`ClassifyFn`),
+- **Classification/priority logic**, stays 100% adapter-specific (`ClassifyFn`),
   not a core concern.
-- **What a Handler is allowed to do once it has a lease** — that's the
+- **What a Handler is allowed to do once it has a lease**, that's the
   existing tool/skill/plugin policy layer, unchanged.
-- **Cross-key dependencies** (e.g. "don't touch PR #142 until #140 merges") —
+- **Cross-key dependencies** (e.g. "don't touch PR #142 until #140 merges"),
   out of scope for v1; would be a scheduling layer built on top, not baked in.
-- **Distributed/multi-node dispatch** — v1 assumes a single Dispatcher process
+- **Distributed/multi-node dispatch**, v1 assumes a single Dispatcher process
   per deployment, matching the single-gateway assumption the rest of these
   frameworks already make.
 
@@ -367,15 +367,15 @@ but still deliver the bug warning too late.
 **Clarification (v1.1):** "belongs in core" needs to be split into two claims,
 because they have different answers.
 
-The *domain-specific* half — Source adapters (GitHub poller, Gitea poller,
+The *domain-specific* half, Source adapters (GitHub poller, Gitea poller,
 Telegram webhook receiver), `KeyFn`/`ClassifyFn` per domain, and the skill
-teaching the model how to configure a watch — is correctly plugin-shaped.
+teaching the model how to configure a watch, is correctly plugin-shaped.
 Ship it as a package: a code plugin plus a bundled skill, the same pattern
 OpenClaw uses for tools/skills/plugins generally. Someone who never installs
 the "watch external resources" package pays nothing for it.
 
-The *mechanism* half — `Session`, `Lease`, `Inbox`, revision-guarded
-acquire/renew/checkpoint/release — is not actually about polling at all. It's
+The *mechanism* half, `Session`, `Lease`, `Inbox`, revision-guarded
+acquire/renew/checkpoint/release, is not actually about polling at all. It's
 the general answer to "many possible inputs racing into one ongoing unit of
 work, which must survive a crash and must not be duplicated." The core's own
 interactive loop is an instance of that same problem (a user's follow-up
@@ -389,7 +389,7 @@ inside the polling package:
 - core re-derives an equivalent-but-different mechanism for its own purposes,
 
 and either way you end up with more than one notion of "session" in the same
-system — the exact fragmentation (heartbeat vs. cron vs. automations vs.
+system, the exact fragmentation (heartbeat vs. cron vs. automations vs.
 webhooks vs. hooks, five uncoordinated mechanisms) that made OpenClaw's
 scheduling story hard to reason about in the first place.
 
@@ -400,7 +400,7 @@ scheduling story hard to reason about in the first place.
   The core agent loop is its first, permanent consumer, using a fixed key
   for the single interactive session.
 - The "watch external resources" package is a plugin + skill bundle that
-  calls into the core `SessionManager` rather than reimplementing it —
+  calls into the core `SessionManager` rather than reimplementing it,
   Sources, `KeyFn`, `ClassifyFn`, and the skill are the entire package.
 - Nothing about this requires the reference implementation to be
   unswappable; it can be a trait with a default backing store, the way

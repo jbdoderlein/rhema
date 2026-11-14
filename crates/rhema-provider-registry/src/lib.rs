@@ -1,8 +1,8 @@
 //! The provider fleet's name-to-adapter wiring.
 //!
-//! Every frontend spells the same recipes — the deepseek kind is the
+//! Every frontend spells the same recipes, the deepseek kind is the
 //! generic adapter at [`DEEPSEEK_BASE_URL`], the zai kind is the
-//! Anthropic adapter at Z.ai's route under bearer auth — and each
+//! Anthropic adapter at Z.ai's route under bearer auth, and each
 //! spelled them in its own backend assembly, so a recipe change meant
 //! three edits that had already drifted apart. This crate is the one
 //! spelling: [`build`] takes the kind as rhema-config's `PROVIDERS`
@@ -10,7 +10,7 @@
 //! llama.cpp server address, a stored route override), and returns
 //! the turn provider and the catalog listing as trait objects. What
 //! stays with the caller is policy: the retry wrapper, the default
-//! model, the credential resolution itself — a registry row here is
+//! model, the credential resolution itself, a registry row here is
 //! wiring, not settings.
 #![forbid(unsafe_code)]
 
@@ -44,8 +44,8 @@ pub enum BuildError {
 
 /// One kind's adapters: what turns ride and what the catalog lists.
 pub struct Built {
-    /// The raw turn provider. Callers wrap their own retry policy —
-    /// [`rhema_provider::Retrying`] or none — on top.
+    /// The raw turn provider. Callers wrap their own retry policy,
+    /// [`rhema_provider::Retrying`] or none, on top.
     pub provider: Arc<dyn ModelProvider>,
     /// The live model catalog. The listing stays off the retry on
     /// purpose: it answers or it fails, no ladder.
@@ -76,17 +76,17 @@ where
 /// deepseek, opencode, and openrouter always (all three are one
 /// endpoint whose documented API includes `POST {base}/responses`;
 /// openrouter's flip lives in its adapter, the other two here), and
-/// openai when speaking to OpenAI itself — a stored route override
+/// openai when speaking to OpenAI itself, a stored route override
 /// points at an arbitrary OpenAI-compatible server, and that one gets
 /// the conservative chat completions dialect, the one every such
 /// server answers. An explicit `api` (`"chat"` or `"responses"`,
 /// straight from the stored instance) overrides the route rule for the
-/// kinds that honor it — `openai` — because a user who knows their
+/// kinds that honor it, `openai`, because a user who knows their
 /// endpoint speaks Responses should not be told otherwise; any other
 /// spelling falls back to the rule. llama.cpp stays on chat completions too: its
 /// server's `/responses` route is newer than its tool handling and its
 /// default dialect is the one every build serves. ChatGPT needs no
-/// choice — the Codex backend it drives is Responses-only.
+/// choice, the Codex backend it drives is Responses-only.
 pub fn build(
     name: &str,
     api_key: Option<&str>,
@@ -151,7 +151,7 @@ pub fn build(
 
 /// The OpenCode row, with the conversation id a caller keeping one
 /// across rebuilds or resumes supplies. `None` lets the adapter mint a
-/// fresh id — right for a new conversation, and for every frontend that
+/// fresh id, right for a new conversation, and for every frontend that
 /// hands the provider to one session only. `base_url` chooses
 /// pay-as-you-go or Go.
 pub fn build_opencode(api_key: &str, base_url: Option<&str>, session_id: Option<&str>) -> Built {
@@ -169,7 +169,7 @@ pub fn build_opencode(api_key: &str, base_url: Option<&str>, session_id: Option<
     assembled(provider)
 }
 
-/// A route override that is present and not whitespace — blank means
+/// A route override that is present and not whitespace, blank means
 /// unset, the same reading every frontend applies to stored strings.
 fn non_blank(base_url: Option<&str>) -> Option<&str> {
     base_url.map(str::trim).filter(|url| !url.is_empty())
@@ -177,7 +177,7 @@ fn non_blank(base_url: Option<&str>) -> Option<&str> {
 
 /// Which dialect the `openai` kind speaks. An explicit stored choice
 /// (`"chat"` / `"responses"`) wins; otherwise the Responses API at
-/// OpenAI itself — the home route serves `POST /v1/responses` — and
+/// OpenAI itself, the home route serves `POST /v1/responses`, and
 /// the conservative chat-completions dialect anywhere a stored
 /// override routes, since an override names an arbitrary
 /// OpenAI-compatible server whose one guaranteed surface is chat

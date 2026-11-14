@@ -1,10 +1,10 @@
-# rhema-subagents — the subagent extension
+# rhema-subagents, the subagent extension
 
 > **Status:** v1, 2026-10-17 (decisions in §8).
 > **Grounding:** SPEC.md §1 (the second-consumer discipline) and
 > `specs/rhema-memory.md` (the crate-shape precedent: contract plus tools
 > over `rhema-core` only).
-> **One-line promise:** delegation as one tool — a subagent is a fresh
+> **One-line promise:** delegation as one tool, a subagent is a fresh
 > `Agent` on a fresh `Session` whose final text comes back as the tool
 > result.
 
@@ -18,18 +18,18 @@ the feature builds without it and the rest builds without it.
 
 **In v1:**
 
-- `SubagentDef` — one discovered subagent: a folder with a `SUBAGENT.md`
+- `SubagentDef`: one discovered subagent: a folder with a `SUBAGENT.md`
   whose frontmatter carries the trigger and whose body is the subagent's
   system prompt. Discovery mirrors skills: global directory plus the
   workspace's `.rhema/subagents`, project shadowing global by folder name.
-- `SubagentTools` — a `ToolResolver` advertising one tool, `subagent`,
+- `SubagentTools`: a `ToolResolver` advertising one tool, `subagent`,
   whose spec description carries the catalog (each subagent's name and
   trigger) and whose `name` field repeats it as an `enum`, so the model
   learns when to delegate without a renderer change and a provider that
   validates enums refuses a typo before the call. The start and fetch
   argument sets share one schema: the portable schema subset has no
   `oneOf`, so the field prose states the exclusivity.
-- `wire` — the explicit frontend helper: discover, and when anything was
+- `wire`: the explicit frontend helper: discover, and when anything was
   found, attach a `SubagentTools` to a `CodingAgentConfig`.
 
 **OUT of v1** (each deliberately out, with the reason):
@@ -43,7 +43,7 @@ the feature builds without it and the rest builds without it.
   tool call. The parent's committed tool call is the durable record; a
   crashed subagent is an error result and the parent re-delegates.
 - ❌ ~~**Per-subagent providers.**~~ Resolved since v1 (§8, and §4's
-  *Where a run rides*): one provider instance — the session's — by
+  *Where a run rides*): one provider instance, the session's, by
   default, with a frontend-installed provider factory behind the
   `<provider>/<model>` spelling for the runs that name another
   provider. The factory is a value the frontend carries, not a
@@ -61,7 +61,7 @@ name against the discovered definitions, builds a fresh `Agent` with the
 definition's body as system prompt, runs a bounded step loop over a fresh
 `Session` whose first message is `prompt`, and returns the final
 assistant text as the `ToolResult`. The parent never sees the subagent's
-history, only the report — and the report lands in the parent's history
+history, only the report, and the report lands in the parent's history
 like any tool result, so commit-before-execute, revive-on-resume, and
 cancel-path repair keep working unchanged.
 
@@ -103,17 +103,17 @@ max_steps: 128
 You are a code reviewer. ...full system prompt...
 ```
 
-- `description` (required, non-empty) — the trigger, shown to the parent
+- `description` (required, non-empty), the trigger, shown to the parent
   in the `subagent` tool's catalog.
-- `model` (optional) — the model identifier the subagent's requests
+- `model` (optional), the model identifier the subagent's requests
   carry, spelled `<provider>/<model>` to ride another logged-in
   provider (the first `/`'s head must name a provider kind; anything
-  else reads as one bare id on the session's provider — an
+  else reads as one bare id on the session's provider, an
   OpenRouter-style id, say) or a bare model id on the session's own;
   without it, the call's `model` argument, then the session's model.
-- `max_steps` (optional, ≥ 1) — the subagent's step budget; without it,
+- `max_steps` (optional, ≥ 1), the subagent's step budget; without it,
   the crate default (256).
-- The body (required, non-empty) — plain text, never rendered: it is
+- The body (required, non-empty), plain text, never rendered: it is
   appended verbatim under the subagent's stamped system prompt, so a
   definition written for another harness behaves as written.
 
@@ -124,7 +124,7 @@ the user preferences, and the tool list the subagent actually carries
 (the shell). The definition's body lands after it, separated by a
 blank line. `config.system`, the total-replacement escape hatch,
 replaces the stamp whole, exactly as it replaces the parent's; a
-stamp that cannot render warns and leaves the bodies bare — the
+stamp that cannot render warns and leaves the bodies bare, the
 parent's own construction fails on the same template.
 
 Discovery reads `<config dir>/subagents` and
@@ -137,11 +137,11 @@ run on, so the body is as mandatory as the trigger.
 One definition is never read from disk at runtime: the built-in
 `general-purpose`, the delegation every agent gets, lives in the crate
 at `definitions/general-purpose/SUBAGENT.md` and is embedded at build
-time, parsed by the same frontmatter code, ahead of both directories —
+time, parsed by the same frontmatter code, ahead of both directories,
 so the catalog, and with it the `subagent` tool, always exist,
 filesystem or none. Its frontmatter carries no `model` (the parent's)
-and no `max_steps` (the default), and a definition of the same name —
-global or project — shadows it, exactly like project shadows global.
+and no `max_steps` (the default), and a definition of the same name,
+global or project, shadows it, exactly like project shadows global.
 Being a real `SUBAGENT.md`, it keeps the format honest: the built-in
 cannot drift into a shape a user could not have written.
 
@@ -174,7 +174,7 @@ resolve(call, ctx):
   provider and model. The spelling splits on its first `/`: a head
   naming a provider kind resolves through the frontend's factory (the
   `subagent_providers` config field, one `Backend` per logged-in kind);
-  a head naming no kind stays whole — a bare id on the session's own
+  a head naming no kind stays whole, a bare id on the session's own
   provider. A kind whose credentials do not resolve fails the call
   naming what is available, never a silent ride on the session's
   provider; the taught list in the spec description is the factory's
@@ -195,7 +195,7 @@ resolve(call, ctx):
   `ToolResult::failure` with the reason; the parent reacts in-band
   (SPEC.md §4). The tool never panics and never aborts the parent's turn.
 - **The report is capped** at the shell's output limit (50 KiB), tail
-  kept — the conclusion of a report sits at its end, as an error sits at
+  kept, the conclusion of a report sits at its end, as an error sits at
   the end of a command's output.
 - **Depth is bounded.** A `SubagentTools` is built with a remaining
   nesting budget (default 1: no subagent spawns another). A nested level
@@ -219,14 +219,14 @@ subagents on its own.
    (`None` is today's behavior byte for byte). When set, the agent runs
    `Overlay::new(shell, extra)` and `stamped_system` renders the merged
    spec list, so the prompt and the tools array cannot drift.
-3. **`wire(provider, config) -> config`** — discover (the built-in
+3. **`wire(provider, config) -> config`**, discover (the built-in
    `general-purpose` plus the folders), drop the config's
    `disabled_subagents` names (the persisted off switch; the built-in
    answers to its folder name like any definition, and a set holding
    every name leaves the config unwired), then stamp the subagents'
    base prompt off the config (the parent's own sections, the shell's
-   workspace), build the shell and the `SubagentTools` — installing the
-   config's `subagent_providers` factory when the frontend carries one —
+   workspace), build the shell and the `SubagentTools`, installing the
+   config's `subagent_providers` factory when the frontend carries one,
    set both fields, return. The frontends apply the prompt sections before the
    wire, so the stamp carries them. Each frontend calls it at
    its agent-construction sites (TUI, headless one-shot; the claw and
@@ -268,20 +268,20 @@ subagents on its own.
 
 ## 8. Decisions
 
-- **Separate crate, pure extension** — `rhema-subagents` exists; nothing
+- **Separate crate, pure extension**, `rhema-subagents` exists; nothing
   depends on it; `rhema-core` is untouched.
-- **One tool, named `subagent`** — `task` read as too generic; the tool
+- **One tool, named `subagent`**, `task` read as too generic; the tool
   takes `name` and `prompt`.
-- **Approval: inherit the parent turn's hook** — read from the parent's
+- **Approval: inherit the parent turn's hook**, read from the parent's
   `ShellTools` at resolve time, never a blanket `AllowAll`.
-- **Explicit wiring** — frontends call `wire`; the driver stays
+- **Explicit wiring**, frontends call `wire`; the driver stays
   subagent-agnostic, the honest reading of "pure extension".
-- **A built-in `general-purpose` definition** — the tool's `name`
+- **A built-in `general-purpose` definition**, the tool's `name`
   argument needs a catalog to name into; the built-in guarantees one,
   and a definition of the same name shadows it. A generic delegation is
   always useful; a definition is only a system prompt with a trigger.
-- **Cross-provider rides resolve through a frontend-installed factory**
-  — the `<provider>/<model>` spelling (the model picker's own
+- **Cross-provider rides resolve through a frontend-installed factory.**
+  The `<provider>/<model>` spelling (the model picker's own
   convention) names the provider, the crate builds nothing itself: the
   `subagent_providers` config field carries the credential answers, and
   with none installed the session's provider is the only one, named as

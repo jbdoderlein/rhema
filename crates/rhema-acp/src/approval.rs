@@ -3,7 +3,7 @@
 //!
 //! DEADLOCK CONSTRAINT: [`Approval::approve`] is synchronous and runs on
 //! the prompt task inside the ACP connection's runtime, while the client's
-//! answer arrives through the SDK's dispatch loop — a separate task. The
+//! answer arrives through the SDK's dispatch loop, a separate task. The
 //! bridge therefore parks the prompt task with `block_in_place`
 //! (`serve` builds a multi-thread runtime; that is the invariant) and
 //! awaits the request response through [`tokio::runtime::Handle`], the
@@ -12,7 +12,7 @@
 //!
 //! Fail-safety: a failed send (connection gone) or a failed/cancelled
 //! response declines. `allow always` and `reject always` remember the
-//! exact command for the rest of the session — for `bash`, the command
+//! exact command for the rest of the session, for `bash`, the command
 //! string, mirroring the allowlist semantics a shell tool can honor.
 
 use std::collections::HashSet;
@@ -30,7 +30,7 @@ use rhema_core::ToolCall;
 
 /// How long one permission request may sit unanswered before the call
 /// declines and the turn moves on. A modal nobody answers otherwise
-/// parks the slot's worker forever — `session/cancel` cannot reach a
+/// parks the slot's worker forever, `session/cancel` cannot reach a
 /// blocked future.
 const APPROVAL_BUDGET: Duration = Duration::from_secs(300);
 
@@ -165,9 +165,9 @@ impl Approval for AcpApproval {
         }
         // Parks the prompt task's worker; the answer comes from the
         // SDK's dispatch task, which keeps running. Panics outside a
-        // multi-thread runtime — `serve` builds the only runtime this
+        // multi-thread runtime, `serve` builds the only runtime this
         // hook ever runs under. The park is bounded: a client that
-        // opens the modal and never answers must not wedge the slot —
+        // opens the modal and never answers must not wedge the slot,
         // past the budget the call declines, and the turn carries the
         // in-band failure to the model.
         tokio::task::block_in_place(|| {

@@ -2,7 +2,7 @@
 //! discovers subagents on its own.
 //!
 //! [`wire`] discovers definitions and attaches a [`SubagentTools`] to
-//! a `CodingAgentConfig` — the shared shell, the extra resolver the
+//! a `CodingAgentConfig`, the shared shell, the extra resolver the
 //! driver merges through its `Overlay`, and the steering: the tool's
 //! registry is the driver's notification source, so a finished job is
 //! announced to the model by the very instance that started it. The
@@ -12,7 +12,7 @@
 //! disabled set says so: the built-in `general-purpose` definition is
 //! always discovered, discovered ones beside or shadowing it, and the
 //! config's `disabled_subagents` names drop before the catalog
-//! builds — a set holding every name leaves no catalog, and the
+//! builds, a set holding every name leaves no catalog, and the
 //! config keeps its default wiring. [`extra_specs`] feeds the same
 //! filtered discovery to a prompt preview, so what is previewed is
 //! what turns send.
@@ -30,7 +30,7 @@ use crate::tools::SubagentTools;
 
 /// The registry-backed handle `wire` returns beside the config: the
 /// UI's status subscription, the finish notice feed, the idle
-/// notification take, and the driver's steering — all reading the one
+/// notification take, and the driver's steering, all reading the one
 /// registry the `subagent` tool starts jobs into. Cloneable; a clone
 /// reads the same jobs.
 #[derive(Clone)]
@@ -64,7 +64,7 @@ impl SubagentHandle {
         }
     }
 
-    /// The jobs' screen-facing state: one entry per working job —
+    /// The jobs' screen-facing state: one entry per working job,
     /// queued or running, oldest first. A finished job left at once;
     /// its outcome arrived on [`Self::take_finished`]. Empty when the
     /// session wired no subagents.
@@ -72,7 +72,7 @@ impl SubagentHandle {
         self.registry.status()
     }
 
-    /// The finish events, oldest first — one per job, exactly once per
+    /// The finish events, oldest first, one per job, exactly once per
     /// job. The transcript notice feed: a frontend pushes each event's
     /// `line` the moment the job ends, whatever turn is running.
     pub fn take_finished(&self) -> Vec<crate::registry::JobFinished> {
@@ -81,8 +81,8 @@ impl SubagentHandle {
 
     /// Takes the pending notification lines out, oldest first, marking
     /// them announced. The idle-session path: a frontend with no
-    /// running turn runs the lines as the next turn's prompt — the
-    /// regular-prompt delivery — and this take keeps the driver's
+    /// running turn runs the lines as the next turn's prompt, the
+    /// regular-prompt delivery, and this take keeps the driver's
     /// turn-start drain from repeating what the prompt already said.
     /// While a turn runs, leave these for the driver's steering.
     pub fn take_notifications(&self) -> Vec<String> {
@@ -91,21 +91,21 @@ impl SubagentHandle {
 
     /// The registry as the driver's steering source: one notification
     /// line per finished-but-untaken job, per drain. Set this on
-    /// `CodingAgentConfig::steering` — it is already set by [`wire`];
+    /// `CodingAgentConfig::steering`, it is already set by [`wire`];
     /// a frontend rebuilding configs by hand carries it over.
     pub fn steering(&self) -> Arc<dyn rhema_coding_agent::Steering> {
         Arc::clone(&self.registry) as Arc<dyn rhema_coding_agent::Steering>
     }
 
-    /// Restarts every transient-failed job in place — the retry
+    /// Restarts every transient-failed job in place, the retry
     /// command's subagent half. A transient failure names the
     /// infrastructure (a dead link, a struggling server): the job
     /// carried everything it needs to run again, so it re-runs under
     /// its own id, from its start, with a fresh cancel flag. The
     /// restarts come back so a frontend can notice them; each re-run
     /// announces itself when it finishes, into the id the model
-    /// already knows. Permanent failures — no report, a spent step
-    /// budget — stay failed.
+    /// already knows. Permanent failures, no report, a spent step
+    /// budget, stay failed.
     pub fn restart_failed_jobs(&self) -> Vec<crate::registry::Restarted> {
         match self.tools.upgrade() {
             Some(tools) => tools.restart_failed_jobs(),
@@ -126,7 +126,7 @@ pub fn wire(
 }
 
 /// [`wire`] over an explicit global directory: the testable form.
-/// Attaches the tool, the steering, and returns the status handle —
+/// Attaches the tool, the steering, and returns the status handle,
 /// all backed by the one registry.
 pub fn wire_at(
     global: Option<&Path>,
@@ -140,14 +140,14 @@ pub fn wire_at(
     // any other definition.
     defs.retain(|def| !config.disabled_subagents.contains(&def.name));
     if defs.is_empty() {
-        // Reachable only when every name — the built-in included —
+        // Reachable only when every name, the built-in included,
         // sits in the disabled set; the config stays untouched rather
         // than advertising an empty catalog.
         return SubagentHandle::from_registry(Arc::new(Registry::new(
             crate::registry::DEFAULT_MAX_RUNNING,
         )));
     }
-    // The shared shell carries the config's env — the wiring's
+    // The shared shell carries the config's env, the wiring's
     // provisioned BASH_ENV and socket ride it. Building `ShellTools::new`
     // here instead would strand the env in a config field nothing reads:
     // agent.rs's own `with_env` fallback never runs once `tools` is
@@ -177,9 +177,9 @@ pub fn wire_at(
     handle
 }
 
-/// The system prompt a subagent runs under: the parent's full stamp —
+/// The system prompt a subagent runs under: the parent's full stamp,
 /// the base template rendered over `workspace`, its skills (the
-/// disabled dropped), the environment facts, the user preferences —
+/// disabled dropped), the environment facts, the user preferences,
 /// with the tool list the subagent actually carries (the shell; a
 /// nested `subagent` tool arrives only by depth and rides the
 /// request's tools array). `config.system`, the total-replacement
@@ -230,12 +230,12 @@ fn subagent_base_system(config: &CodingAgentConfig, workspace: &Path) -> String 
     })
 }
 
-/// The specs discovered for `workspace` minus the disabled names —
+/// The specs discovered for `workspace` minus the disabled names,
 /// empty when none survive. A prompt preview passes this to
 /// `stamped_system` so the preview matches what turns send; `disabled`
 /// is the config's persisted off switch, the same set the wire filters
 /// by, and `provider_kinds` the providers a `model` argument can
-/// reach — the factory's wire-time answers. A preview that touches no
+/// reach, the factory's wire-time answers. A preview that touches no
 /// credentials (the `system show` path) passes an empty slice and its
 /// spec names no providers.
 pub fn extra_specs(
@@ -317,7 +317,7 @@ mod tests {
             spec.description
         );
         // And a start whose kind the factory cannot resolve fails
-        // in-band naming it — never a silent ride on the session's
+        // in-band naming it, never a silent ride on the session's
         // provider.
         let ctx = rhema_core::ToolContext {
             cwd: workspace.path().to_path_buf(),
@@ -365,7 +365,7 @@ mod tests {
         // provisioned BASH_ENV and socket among it) must reach the bash
         // tool's children. wire_at used to rebuild the shell without it,
         // and agent.rs's own with_env fallback never ran because tools
-        // was already Some — the prompt advertised functions the shell
+        // was already Some, the prompt advertised functions the shell
         // had never heard of.
         let empty = tempfile::tempdir().unwrap();
         let workspace = tempfile::tempdir().unwrap();

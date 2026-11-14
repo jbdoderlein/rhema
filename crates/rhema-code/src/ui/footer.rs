@@ -12,13 +12,13 @@ pub(crate) fn footer_model(model: &str) -> &str {
     model.rsplit('/').next().unwrap_or(model)
 }
 
-/// Parents the footer's folder may show beside the folder itself —
+/// Parents the footer's folder may show beside the folder itself,
 /// three folders in all.
 const FOOTER_FOLDER_PARENTS: usize = 2;
 
 /// The workspace as the footer shows it: `(prefix, parents, folder)`.
-/// The home prefix is trimmed away — and the home's `Documents` with
-/// it, where projects live, the word carries nothing — then at most
+/// The home prefix is trimmed away, and the home's `Documents` with
+/// it, where projects live, the word carries nothing, then at most
 /// [`FOOTER_FOLDER_PARENTS`] parents ride beside the folder itself so a
 /// deep path stays small. `prefix` is `/` for a whole absolute path,
 /// `…/` when parents fell off. A path with nothing left after the trim
@@ -42,7 +42,7 @@ pub(crate) fn footer_folder(
     }
     let text = rel.to_string_lossy();
     // Absolute by either spelling: a leading separator, or a drive
-    // letter — the windows shape a unix host still renders.
+    // letter, the windows shape a unix host still renders.
     let absolute = text.starts_with('/') || text.chars().nth(1) == Some(':');
     let names: Vec<&str> = text
         .split('/')
@@ -75,7 +75,7 @@ pub(crate) fn footer_folder(
 }
 
 /// The terminal window title: the mark, then the workspace folder as
-/// the footer spells it — the home trim and the capped parents — so
+/// the footer spells it, the home trim and the capped parents, so
 /// the tab reads like the bar's own start. The folder badge glyph
 /// stays out: title bars draw plain text, and a badge that renders on
 /// the screen arrives as tofu in a macOS tab. Color and the folder's
@@ -107,7 +107,7 @@ pub(crate) fn effort_letter(effort: rhema_core::request::ThinkingEffort) -> &'st
 
 /// The startup tools strip: one dim row above the footer naming the
 /// probed tools this machine misses, and the ask that installs them.
-/// Rendered while the conversation has not started — the prompt's
+/// Rendered while the conversation has not started, the prompt's
 /// environment section carries the same facts once it has, and a strip
 /// over a running transcript would be an echo. Passive by design: the
 /// install goes through the agent and its approval gate, where a
@@ -120,7 +120,7 @@ pub(crate) fn render_missing_tools(frame: &mut Frame, app: &App, area: Rect, the
         }
         line.push_span(Span::raw(tool.clone()).fg(theme.text2));
     }
-    line.push_span(Span::raw(" — ask the agent to install them").fg(theme.text3));
+    line.push_span(Span::raw(", ask the agent to install them").fg(theme.text3));
     frame.render_widget(Paragraph::new(line), area);
 }
 
@@ -134,7 +134,7 @@ pub(crate) fn render_footer(frame: &mut Frame, app: &App, area: Rect, theme: &Th
     // The mark, then always the same facts: profile, where the session
     // sits, model, where bash runs, context footprint against the
     // model's window, the session's accumulated cost.
-    // Every segment owns its leading separator — a trailing one on the
+    // Every segment owns its leading separator, a trailing one on the
     // previous segment doubles as soon as an optional segment (folder,
     // allowance) sits between two others.
     let effective = app.effective();
@@ -168,7 +168,7 @@ pub(crate) fn render_footer(frame: &mut Frame, app: &App, area: Rect, theme: &Th
     }
     // Where bash runs: the sandbox kind, or the running instance's
     // name when the profile's active pointer names it. Local reads as
-    // a fact too — the fast path is a choice, not an absence.
+    // a fact too, the fast path is a choice, not an absence.
     parts.push(
         Span::raw(format!(" · {} {}", app.icons.sandbox, app.sandbox_badge())).fg(theme.text3),
     );

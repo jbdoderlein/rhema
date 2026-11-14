@@ -5,7 +5,7 @@ use super::*;
 
 /// The wall-clock bound on one `docker info` probe: the CLI answers in
 /// well under a second when the daemon is up, and hangs or retries on
-/// its own when it is not — a few seconds is the whole patience the
+/// its own when it is not, a few seconds is the whole patience the
 /// startup path can afford.
 const DOCKER_PROBE_BUDGET: Duration = Duration::from_secs(3);
 
@@ -22,8 +22,8 @@ const ECROU_PROBE_BUDGET: Duration = Duration::from_secs(5);
 /// The machine half of the availability probe: the profile-independent
 /// facts. Probed once at startup and carried by the app, because a
 /// profile switch must re-derive the offered set for the profile
-/// moving in — `ssh` and `http` answer on the section's facts, not the
-/// machine's alone — without paying for the CLI probes again.
+/// moving in, `ssh` and `http` answer on the section's facts, not the
+/// machine's alone, without paying for the CLI probes again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SandboxMachines {
     /// `docker info` answered within the budget.
@@ -39,8 +39,8 @@ pub struct SandboxMachines {
 
 impl SandboxMachines {
     /// Probes this machine: one `docker info` run, one `lxc info` run,
-    /// one `ecrou probe` run, one `PATH` scan for `ssh`. Bounded work —
-    /// each CLI probe at most its budget — so startup waits seconds,
+    /// one `ecrou probe` run, one `PATH` scan for `ssh`. Bounded work,
+    /// each CLI probe at most its budget, so startup waits seconds,
     /// never minutes.
     pub fn probe() -> Self {
         Self {
@@ -81,7 +81,7 @@ pub struct SandboxAvailability {
 }
 
 impl SandboxAvailability {
-    /// The offered set from injected machine facts — the testable seam
+    /// The offered set from injected machine facts, the testable seam
     /// the probe path goes through. `ssh` is offered only when the binary
     /// exists AND the profile names a host; `http` only when a URL is
     /// set (`RHEMA_SANDBOX_URL` included).
@@ -114,7 +114,7 @@ impl SandboxAvailability {
         }
     }
 
-    /// The offered kinds, in the spec's canonical order — the picker's
+    /// The offered kinds, in the spec's canonical order, the picker's
     /// row order.
     pub fn offered(self) -> Vec<SandboxChoice> {
         [
@@ -132,7 +132,7 @@ impl SandboxAvailability {
 }
 
 /// Whether `lxc` answers at all: `lxc info` exiting zero within the
-/// budget. A missing binary is the common "no" — treated exactly like
+/// budget. A missing binary is the common "no", treated exactly like
 /// a refusing daemon.
 pub(crate) fn lxd_info_answers() -> bool {
     let Ok(mut child) = std::process::Command::new("lxc")
@@ -161,7 +161,7 @@ pub(crate) fn lxd_info_answers() -> bool {
 }
 
 /// Whether `ecrou` answers at all: `ecrou probe` exiting zero within
-/// the budget. A missing binary is the common "no" — the host cannot
+/// the budget. A missing binary is the common "no", the host cannot
 /// boot machines, and the picker says so.
 pub(crate) fn ecrou_probe_answers() -> bool {
     let Ok(mut child) = std::process::Command::new("ecrou")
@@ -191,7 +191,7 @@ pub(crate) fn ecrou_probe_answers() -> bool {
 }
 
 /// Whether `docker` answers at all: `docker info` exiting zero within
-/// the budget. A missing binary is the common "no" — treated exactly
+/// the budget. A missing binary is the common "no", treated exactly
 /// like a refusing daemon.
 pub(crate) fn docker_info_answers() -> bool {
     let Ok(mut child) = std::process::Command::new("docker")
@@ -217,7 +217,7 @@ pub(crate) fn docker_info_answers() -> bool {
     }
 }
 
-/// Whether a binary of this name sits on `PATH` — the ssh probe, which
+/// Whether a binary of this name sits on `PATH`, the ssh probe, which
 /// must not spawn a process to learn the spawn would work. Both
 /// spellings Windows installs answer.
 pub(crate) fn binary_on_path(name: &str) -> bool {

@@ -5,7 +5,7 @@
 //! itself (the historical shape, still the fallback) or an opaque
 //! `secret_ref` naming a keychain entry. The [`SecretStore`] trait is
 //! the seam between the two: get, set, and delete of one opaque value
-//! per id, nothing more — no accounts, no metadata, no model-facing
+//! per id, nothing more, no accounts, no metadata, no model-facing
 //! surface. The OS keychain backend ([`KeyringSecretStore`], the
 //! `keyring` crate over macOS Keychain, Windows Credential Manager,
 //! and the Linux Secret Service) is the point; [`VolatileSecretStore`]
@@ -15,7 +15,7 @@
 //! with no keychain (a container, a headless box) reports errors from
 //! every call, and the resolution tiers in [`crate::Profile`] treat
 //! that as "not in the store", falling through to the literal. A save
-//! that could not reach the store keeps the key in the file — the
+//! that could not reach the store keeps the key in the file, the
 //! pre-keychain behavior, never a lost credential.
 
 #![forbid(unsafe_code)]
@@ -27,7 +27,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The reference frontend's keychain service name: the namespace the
 /// rhema frontend's credentials live under. Another frontend names
-/// its own — two frontends sharing a namespace would share
+/// its own, two frontends sharing a namespace would share
 /// credentials by accident, and the OS keeps its per-binary access
 /// lists either way.
 pub const RHEMA_SERVICE: &str = "rhema";
@@ -48,7 +48,7 @@ pub enum SecretError {
 }
 
 /// The secret-store contract: put, read, and remove one opaque value
-/// per id. Sync and `Send + Sync`, like the crate's other seams —
+/// per id. Sync and `Send + Sync`, like the crate's other seams,
 /// operations are short local calls, serialized by the implementation.
 pub trait SecretStore: Send + Sync {
     /// The value stored under `id`, `None` when absent. A store that
@@ -65,7 +65,7 @@ pub trait SecretStore: Send + Sync {
     /// Whether the store answers at all, probed honestly: one write of
     /// a throwaway entry and its removal. A read of a fresh id cannot
     /// tell a locked keyring from an absent key, so the write is what
-    /// gets probed — a locked or missing store refuses it. Frontends
+    /// gets probed, a locked or missing store refuses it. Frontends
     /// run this before blaming a missing key on the config. Stores
     /// that cannot fail answer yes; the default serves them.
     fn reachable(&self) -> bool {
@@ -74,7 +74,7 @@ pub trait SecretStore: Send + Sync {
 }
 
 /// The OS keychain backend: every id is an entry under the service
-/// name the store was built with — [`RHEMA_SERVICE`] for the
+/// name the store was built with, [`RHEMA_SERVICE`] for the
 /// reference frontend, the frontend's own name otherwise, so two
 /// frontends keep separate credential namespaces. Availability is
 /// decided per operation by the platform, so one value serves a whole
@@ -120,7 +120,7 @@ impl SecretStore for KeyringSecretStore {
         // The write decides: a locked collection and an unreachable
         // store both refuse it. A store that took the write but
         // fumbled the delete reads as unreachable, leaving the probe
-        // entry behind — its id is unique to this call and its value
+        // entry behind, its id is unique to this call and its value
         // is not a secret.
         let id = fresh_id();
         if self.set(&id, "reachability probe").is_err() {
@@ -177,7 +177,7 @@ impl SecretStore for VolatileSecretStore {
 
 /// A fresh keychain-entry id: wall-clock millis, the clock's sub-milli
 /// nanos, and a process counter in hex. The id is a handle, not a
-/// secret — it only has to be unique within one machine's config, and
+/// secret, it only has to be unique within one machine's config, and
 /// stable once stored in the file.
 pub fn fresh_id() -> String {
     static COUNTER: AtomicU32 = AtomicU32::new(0);

@@ -6,7 +6,7 @@
 //! workspace path with every byte outside `[-._0-9A-Za-z]` percent-encoded.
 //! The encoding is reversible, so distinct workspaces can never collide
 //! the way a truncated hash could. The file itself is a bare `Session`
-//! in the same JSON `--resume` and `--save` take — one format, every
+//! in the same JSON `--resume` and `--save` take, one format, every
 //! reader.
 
 use std::io;
@@ -39,9 +39,9 @@ pub struct SavedSession {
 pub fn base_dir() -> io::Result<PathBuf> {
     let cache = match std::env::var("XDG_CACHE_HOME") {
         Ok(dir) if !dir.trim().is_empty() => PathBuf::from(dir),
-        // The home is rhema-config's resolution — HOME, then
+        // The home is rhema-config's resolution, HOME, then
         // USERPROFILE for windows, where HOME is unset outside git
-        // bash — so the sessions land where the rest of the state
+        // bash, so the sessions land where the rest of the state
         // does.
         _ => match rhema_config::user_home() {
             Ok(home) => home.join(".cache"),
@@ -58,8 +58,8 @@ pub fn base_dir() -> io::Result<PathBuf> {
 
 /// The usage accounting a saved session carries: what the Usage page
 /// needs to keep reading as one run after a resume. It rides the
-/// session as the opaque `usage_stats` JSON blob — the engine and the
-/// other session readers never touch it — and this type owns the
+/// session as the opaque `usage_stats` JSON blob, the engine and the
+/// other session readers never touch it, and this type owns the
 /// blob's shape.
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UsageStats {
@@ -83,7 +83,7 @@ pub struct UsageStats {
 
 impl UsageStats {
     /// Reads the accounting off a session; `None` when it carries
-    /// none — a file from before the field existed, or a blob that no
+    /// none, a file from before the field existed, or a blob that no
     /// longer parses. Stats are decoration: a bad blob costs the page
     /// its numbers, never the resume.
     pub fn from_session(session: &Session) -> Option<Self> {
@@ -93,7 +93,7 @@ impl UsageStats {
         serde_json::from_value(session.usage_stats.clone()).ok()
     }
 
-    /// Stamps the accounting onto `session` — the save path, so the
+    /// Stamps the accounting onto `session`, the save path, so the
     /// file carries what this run measured.
     pub fn write_into(self, session: &mut Session) {
         session.usage_stats = serde_json::to_value(&self).unwrap_or_default();
@@ -112,8 +112,8 @@ pub fn now_millis() -> u64 {
 /// Picks the file a workspace's next session lands in: the base and the
 /// workspace directory are created (`0700`), and the name carries the
 /// current time with the same-millisecond suffix scheme the saves use.
-/// Naming a file writes nothing — a run that never speaks leaves no husk
-/// behind — so a checkpoint target can be allocated before the first
+/// Naming a file writes nothing, a run that never speaks leaves no husk
+/// behind, so a checkpoint target can be allocated before the first
 /// turn and used by whatever turn speaks first.
 pub fn next_session_path(base: &Path, workspace: &Path) -> io::Result<PathBuf> {
     // Conversation content: the base and the workspace directory are
@@ -150,7 +150,7 @@ pub fn save_session(
     Ok(Some(path))
 }
 
-/// Writes `session` to `path` — the in-place update a resumed session
+/// Writes `session` to `path`, the in-place update a resumed session
 /// gets on exit, so continuing it never grows a second entry. The file
 /// is written `0600` and an existing wider file tightens again. The
 /// write lands through a sibling temporary file and a rename: the
@@ -164,7 +164,7 @@ pub fn write_session(path: &Path, session: &Session) -> io::Result<()> {
 }
 
 /// The saved sessions for `workspace`, newest first. A missing directory
-/// is an empty list — nothing saved yet, not an error. A file whose JSON
+/// is an empty list, nothing saved yet, not an error. A file whose JSON
 /// no longer parses still lists (with no snippet): the resume attempt
 /// surfaces the corruption, the listing does not hide it. The timestamp
 /// is the file's modification time, so an updated session's row moves to
@@ -303,7 +303,7 @@ mod tests {
 
         // A second pick never lands on a name that is taken on disk:
         // once the first file is written (the run spoke), the next
-        // allocation — a /clear'd conversation's fresh start — takes
+        // allocation, a /clear'd conversation's fresh start, takes
         // the next suffix.
         write_session(&path, &session_with("hello")).unwrap();
         let second = next_session_path(&base, workspace).unwrap();

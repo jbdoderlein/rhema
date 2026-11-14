@@ -333,7 +333,7 @@ async fn a_streaming_tool_rides_the_sink_as_deltas_before_its_result() {
     agent.step(&mut session, &mut sink, &ctx).await.unwrap();
 
     // The engine stamps the call's id on the progress lines, and the
-    // result follows them — never the other way around. (StepStart,
+    // result follows them, never the other way around. (StepStart,
     // ToolCallStart, and the mock's args delta come first.)
     assert_eq!(
         sink.events[3..6],
@@ -503,8 +503,8 @@ async fn a_failing_commit_before_a_tool_fails_the_step_with_nothing_run() {
         .resolver(Arc::new(LoggingResolver { log: log.clone() }))
         .commit_hook(Box::new(|session: &Session| {
             // The boundaries decide one by one: the stream's input
-            // commits, the call intent — the fire that guards side
-            // effects — fails.
+            // commits, the call intent, the fire that guards side
+            // effects, fails.
             if session.history.len() >= 2 {
                 Err(CommitError("disk full".into()))
             } else {

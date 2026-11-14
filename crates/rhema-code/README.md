@@ -14,7 +14,7 @@ Rhema Code is a terminal-based coding agent, built on the Rhema agent framework.
 
 ### Onboarding
 
-The first start (no config yet, or a wizard left unfinished) runs a setup wizard: a welcome step introduces it, and the rhema logo sits on a progress rail beside the steps, with a check on the ones passed, a filled dot on the current one, and a hollow dot on the ones ahead. After the welcome the wizard asks for the default profile, listing the config's profiles (`personal` and `work` on a fresh setup) with an add row for a new name; the pick becomes the profile the rest of the wizard writes to. Then come a provider login, a model pick from that login's catalog, the color palette (previewed live as the rows move), and the bundled skills' on/off switches. `rhema onboard` runs it again any time. Nothing else gates the session: a config without a model or a login still opens the chat — the footer names what is missing in red, and `/model` or `/login` is one keystroke away.
+The first start (no config yet, or a wizard left unfinished) runs a setup wizard: a welcome step introduces it, and the rhema logo sits on a progress rail beside the steps, with a check on the ones passed, a filled dot on the current one, and a hollow dot on the ones ahead. After the welcome the wizard asks for the default profile, listing the config's profiles (`personal` and `work` on a fresh setup) with an add row for a new name; the pick becomes the profile the rest of the wizard writes to. Then come a provider login, a model pick from that login's catalog, the color palette (previewed live as the rows move), and the bundled skills' on/off switches. `rhema onboard` runs it again any time. Nothing else gates the session: a config without a model or a login still opens the chat, the footer names what is missing in red, and `/model` or `/login` is one keystroke away.
 
 On terminals that speak the kitty graphics protocol (kitty, Ghostty) the wizard draws the logo as an image; everywhere else it falls back to the wordmark. Set `RHEMA_NO_IMAGES` to keep it text.
 
@@ -24,7 +24,7 @@ Drag with the left button over the transcript to select the text between the cel
 
 ### Prompts
 
-What you send sits on the right in a rounded bubble, capped at three quarters of the transcript's width. A multi-line prompt keeps its breaks, and a paste or an image stays a chip inside the bubble. The bubble is a hairline frame on the page's own ground — nothing bleeds around it, and `background: native` keeps your theme's background inside it — so every terminal draws the same bubble. Where the terminal speaks the kitty graphics protocol *and* honors the text layer above a below-text image (kitty and Ghostty; WezTerm composites images over the glyphs, so there the bubble stays ink-only), the frame is backed by a card: a translucent accent tint with the same rounded corners, composited under the glyphs and the text through `z=-1` placements — the tint fills only the inner half of each frame cell, so the card is tangent to the hairline on all four sides and never overhangs it. The tint rides at the card's opacity over any ground, so it works in both background modes. `RHEMA_NO_IMAGES` forces the ink-only frame.
+What you send sits on the right in a rounded bubble, capped at three quarters of the transcript's width. A multi-line prompt keeps its breaks, and a paste or an image stays a chip inside the bubble. The bubble is a hairline frame on the page's own ground, nothing bleeds around it, and `background: native` keeps your theme's background inside it, so every terminal draws the same bubble. Where the terminal speaks the kitty graphics protocol *and* honors the text layer above a below-text image (kitty and Ghostty; WezTerm composites images over the glyphs, so there the bubble stays ink-only), the frame is backed by a card: a translucent accent tint with the same rounded corners, composited under the glyphs and the text through `z=-1` placements. The tint fills only the inner half of each frame cell, so the card is tangent to the hairline on all four sides and never overhangs it. The tint rides at the card's opacity over any ground, so it works in both background modes. `RHEMA_NO_IMAGES` forces the ink-only frame.
 
 ### Rich settings
 
@@ -32,13 +32,13 @@ What you send sits on the right in a rounded bubble, capped at three quarters of
 
 ### Colors
 
-The look and feel is machine-owned: it lives in `config.yaml`, not in flags. The `colors` key picks the palette — the setting defaults to `rhema` and cycles live from the Appearance page of `/settings`:
+The look and feel is machine-owned: it lives in `config.yaml`, not in flags. The `colors` key picks the palette, the setting defaults to `rhema` and cycles live from the Appearance page of `/settings`:
 
 ```yaml
 colors: rhema          # rhema | aquamarine | black-and-white | dracula | catppuccin-* | nord | gruvbox | solarized | m3-you | custom
-theme: dark            # dark | light — the palette's appearance
-background: rhema      # rhema | native — the palette's fills, or the terminal's own background
-icons: unicode         # unicode | nerd — the footer's icon flavor
+theme: dark            # dark | light, the palette's appearance
+background: rhema      # rhema | native, the palette's fills, or the terminal's own background
+icons: unicode         # unicode | nerd, the footer's icon flavor
 m3_source: "#6750A4"   # the m3-you seed color (#RRGGBB), optional
 custom:                # the custom palette's tokens (#RRGGBB), optional
   dark:
@@ -49,11 +49,11 @@ custom:                # the custom palette's tokens (#RRGGBB), optional
     ground: "#EFF1F5"
 ```
 
-`background: native` hands the page's fills back to the terminal: panes, dialogs, and the transcript well paint nothing, so your theme's own background shows through and rhema colors only the ink (text, borders, accents, code-block markers) and the prompt bubbles' frames — the protocol card still backs the bubbles there, its translucent tint compositing over whatever ground the terminal keeps, but the page's own panels stay ink-only. The default `background: rhema` paints the palette's fills — the design the palettes were drawn for. The toggle is live from the Appearance page of `/settings` (the `b` key), like the theme and icons ones.
+`background: native` hands the page's fills back to the terminal: panes, dialogs, and the transcript well paint nothing, so your theme's own background shows through and rhema colors only the ink (text, borders, accents, code-block markers) and the prompt bubbles' frames, the protocol card still backs the bubbles there, its translucent tint compositing over whatever ground the terminal keeps, but the page's own panels stay ink-only. The default `background: rhema` paints the palette's fills, the design the palettes were drawn for. The toggle is live from the Appearance page of `/settings` (the `b` key), like the theme and icons ones.
 
-Every palette ships both appearances. Rhema is the design the TUI was drawn against; Aquamarine and Black-and-white restyle the same slots; Dracula maps the official colors onto them (its light side is derived, since Dracula ships no official light variant). The Catppuccin flavors (`catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha`) use the official hexes in the roles their [style guide](https://github.com/catppuccin/catppuccin/blob/main/docs/style-guide.md) defines; `theme: light` reads Latte, the set's only light flavor, since the guide forbids blending flavors inside one theme. Nord, Gruvbox, and Solarized map the canonical hexes the same way (Gruvbox and Solarized ship official light sides; Nord's light side is derived, as it ships dark only). M3 You generates a [Material 3](https://m3.material.io/styles/color/system/overview) tonal-spot scheme from a seed color: set `m3_source` to a color picked from your wallpaper (a terminal cannot see it), and the whole UI — grounds, text, accent, status colors — derives from it. Without a seed it uses Material's baseline purple.
+Every palette ships both appearances. Rhema is the design the TUI was drawn against; Aquamarine and Black-and-white restyle the same slots; Dracula maps the official colors onto them (its light side is derived, since Dracula ships no official light variant). The Catppuccin flavors (`catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha`) use the official hexes in the roles their [style guide](https://github.com/catppuccin/catppuccin/blob/main/docs/style-guide.md) defines; `theme: light` reads Latte, the set's only light flavor, since the guide forbids blending flavors inside one theme. Nord, Gruvbox, and Solarized map the canonical hexes the same way (Gruvbox and Solarized ship official light sides; Nord's light side is derived, as it ships dark only). M3 You generates a [Material 3](https://m3.material.io/styles/color/system/overview) tonal-spot scheme from a seed color: set `m3_source` to a color picked from your wallpaper (a terminal cannot see it), and the whole UI, grounds, text, accent, status colors, derives from it. Without a seed it uses Material's baseline purple.
 
-`custom` reads every color from the config, which is the hook for external generators: a wallpaper watcher or scheme tool (pywal, [matugen](https://github.com/InioX/matugen), a shell one-liner) computes a scheme and writes the `custom` block, and rhema picks it up on the next start. Tokens are named after the design slots (`ground`, `surface`, `text`, `accent`, ... — all seventeen); anything left out, or written in a form that is not a `#RRGGBB` color, reads as the rhema default for that slot, so a file overriding two tokens is still a valid palette. An appearance the file does not give reads as the other one's full scheme, so a generator writing only `dark` still paints on light terminals.
+`custom` reads every color from the config, which is the hook for external generators: a wallpaper watcher or scheme tool (pywal, [matugen](https://github.com/InioX/matugen), a shell one-liner) computes a scheme and writes the `custom` block, and rhema picks it up on the next start. Tokens are named after the design slots (`ground`, `surface`, `text`, `accent`, ..., all seventeen); anything left out, or written in a form that is not a `#RRGGBB` color, reads as the rhema default for that slot, so a file overriding two tokens is still a valid palette. An appearance the file does not give reads as the other one's full scheme, so a generator writing only `dark` still paints on light terminals.
 
 ### Customizable, scriptable system-prompt
 
@@ -61,17 +61,17 @@ Every palette ships both appearances. Rhema is the design the TUI was drawn agai
 rhema system edit
 ```
 
-The above command allows you to edit the system prompt in your `$EDITOR`. It uses a Jinja template (`minijinja`), so you can customize the skills part, the tool part, etc.
+The above command lets you edit the system prompt in your `$EDITOR`. It uses a Jinja template (`minijinja`), so you can customize the skills part, the tool part, etc.
 
-`rhema system show` prints the exact prompt the next turn in this workspace would send — sections included (the environment report, your `USER.md`), resolved against the stored profile's sandbox kind — rendered as styled markdown on a terminal, byte-exact when piped.
+`rhema system show` prints the exact prompt the next turn in this workspace would send, sections included (the environment report, your `USER.md`), resolved against the stored profile's sandbox kind, rendered as styled markdown on a terminal, byte-exact when piped.
 
 ### Environment report & USER.md
 
-Every session's system prompt carries an environment report: the OS, date, model, harness, shell, the workspace's git branch, and which of the coding tools are installed (defined in `crates/rhema-coding-agent/environment.yaml` — the file holds every text the report renders, as templates). When ripgrep answers, the report says so — search with `rg` (it respects `.gitignore`; `-uu` also searches ignored files). In a sandbox session (`docker`, `ssh`, `http`) the report claims no host facts; it names the sandbox kind and its workspace, and tells the agent to probe the machine itself. The report is stamped once **at conversation start** and carried in the session — resumes, model-less rebuilds, and thinking changes reuse the same bytes, so the prompt prefix stays byte-identical and the provider's prompt cache holds; a sandbox or model switch re-reports, because the machine or the model is a fact that changed.
+Every session's system prompt carries an environment report: the OS, date, model, harness, shell, the workspace's git branch, and which of the coding tools are installed (defined in `crates/rhema-coding-agent/environment.yaml`, the file holds every text the report renders, as templates). When ripgrep answers, the report says so. Search with `rg` (it respects `.gitignore`; `-uu` also searches ignored files). In a sandbox session (`docker`, `ssh`, `http`) the report claims no host facts; it names the sandbox kind and its workspace, and tells the agent to probe the machine itself. The report is stamped once **at conversation start** and carried in the session. Resumes, model-less rebuilds, and thinking changes reuse the same bytes, so the prompt prefix stays byte-identical and the provider's prompt cache holds; a sandbox or model switch re-reports, because the machine or the model is a fact that changed.
 
-What the probe finds missing surfaces to you, not the prompt: the terminal UI shows a dim `missing tools: fd, jq — ask the agent to install them` strip above the footer until the conversation starts, and `rhema run` prints the same note on stderr. The install itself stays conversational — ask the agent, and it detects your package manager and installs through the approval gate, where a password-prompting `sudo` is a conversation rather than a keystroke. No install commands ride the prompt: which package holds a tool is the package manager's question, answered live when you ask, not a machine-dependent claim to memorize up front.
+What the probe finds missing shows up for you, not in the prompt: the terminal UI shows a dim `missing tools: fd, jq, ask the agent to install them` strip above the footer until the conversation starts, and `rhema run` prints the same note on stderr. The install itself stays conversational, ask the agent, and it detects your package manager and installs through the approval gate, where a password-prompting `sudo` is a conversation rather than a keystroke. No install commands ride the prompt: which package holds a tool is the package manager's question, answered live when you ask, not a machine-dependent claim to memorize up front.
 
-Your own preferences ride the same prompt: create `USER.md` in the config directory (`~/.config/rhema/USER.md`) and its contents render verbatim into every session's system prompt — tone, conventions, anything you want the agent to always know about you. A missing or blank file renders nothing.
+Your own preferences ride the same prompt: create `USER.md` in the config directory (`~/.config/rhema/USER.md`) and its contents render verbatim into every session's system prompt, tone, conventions, anything you want the agent to always know about you. A missing or blank file renders nothing.
 
 ### ACP (Agent Client Protocol) support
 
@@ -85,11 +85,11 @@ An editor launches the above command and directly talks ACP with Rhema Code.
 
 ### Profiles
 
-Rhema Code ships with two default profiles `work` and `personal` that allows you to manage your different subscription contexts. Each profile can store any amount of subscription instances.
+Rhema Code ships with two default profiles `work` and `personal` that let you manage your different subscription contexts. Each profile can store any amount of subscription instances.
 
 The add dialog opens on three groups: Subscriptions, API / Pay-as-you-go, and Local/Custom. Each group lists only its providers, so the subscriptions stay apart from metered keys and a local server. The API and Local/Custom groups both offer a Custom OpenAI-compatible API row, which asks for the endpoint's base URL and a key; hosted providers use their own fixed routes and ask only for the key.
 
-Login keys are stored in your system keychain (macOS Keychain, Windows Credential Manager, or the freedesktop Secret Service) whenever one is reachable — the config file then holds only an opaque reference to the entry — and fall back to the file itself on machines without one (containers, headless boxes). Logging in again replaces the keychain entry; forgetting the instance deletes it. Environment variables still outrank everything stored.
+Login keys are stored in your system keychain (macOS Keychain, Windows Credential Manager, or the freedesktop Secret Service) whenever one is reachable, the config file then holds only an opaque reference to the entry, and fall back to the file itself on machines without one (containers, headless boxes). Logging in again replaces the keychain entry; forgetting the instance deletes it. Environment variables still outrank everything stored.
 
 ### ChatGPT subscriptions
 
@@ -103,9 +103,9 @@ Turns run on the Codex Responses backend (`chatgpt.com/backend-api/codex`), and 
 
 Skills are folders holding a `SKILL.md` whose frontmatter `description` is the trigger the agent sees; an optional `license` line is shown (dimmed, under the description) in the Skills page of `/settings` and in the onboarding wizard. Drop one into `.rhema/skills/` in your workspace or `~/.config/rhema/skills/` for every workspace; project shadows global.
 
-Rhema bundles two skills — `commit-message` and `unslop` — and seeds them into the global skills directory on start. A bundled skill you have edited is left alone, and a folder of the same name shadows it like any other. Toggle skills on and off from the Skills page (`enter`/`space`) or at onboarding; a switched-off skill's trigger leaves the system prompt but keeps its row, greyed, in the lists.
+Rhema bundles two skills, `commit-message` and `unslop`, and seeds them into the global skills directory on start. A bundled skill you have edited is left alone, and a folder of the same name shadows it like any other. Toggle skills on and off from the Skills page (`enter`/`space`) or at onboarding; a switched-off skill's trigger leaves the system prompt but keeps its row, greyed, in the lists.
 
-Regular coding agent features are supported, while maintaining a simplicity balance. MCP servers wire through bash: the global `~/.config/rhema/mcp.yaml` (or the profile's `mcp_servers`) names them, the prompt's `mcp` section discloses what survived, and the generated `atlassian create_issue --project ENG`-shaped commands call the bridge (`rhema mcp servers/tools/schema/call` is the same surface from your own shell; `specs/rhema-mcp.md` is the design).
+Regular coding agent features are supported, and the tool stays simple. MCP servers wire through bash: the global `~/.config/rhema/mcp.yaml` (or the profile's `mcp_servers`) names them, the prompt's `mcp` section discloses what survived, and the generated `atlassian create_issue --project ENG`-shaped commands call the bridge (`rhema mcp servers/tools/schema/call` runs the same calls from your own shell; `specs/rhema-mcp.md` is the design).
 
 ### Subagents
 
@@ -121,11 +121,11 @@ max_steps: 128
 You are a code reviewer. ...
 ```
 
-The agent always has one subagent with nothing defined: `general-purpose`, a fresh agent for one self-contained task, on the parent's model and step budget. A definition folder named `general-purpose` shadows it — project over global, like any other name.
+The agent always has one subagent with nothing defined: `general-purpose`, a fresh agent for one self-contained task, on the parent's model and step budget. A definition folder named `general-purpose` shadows it, project over global, like any other name.
 
-When the agent delegates, the subagent runs its own conversation with the same workspace tools in the same workspace, its report lands in the conversation as the tool's result, and the status strip pins one live line for it while it works. Inner commands ask for approval exactly like the main agent's do, and the subagent's requests are bounded by the same transcript the main session uses — a long call folds its old history into the compaction block instead of re-sending a growing prompt. A subagent never spawns further subagents.
+When the agent delegates, the subagent runs its own conversation with the same workspace tools in the same workspace, its report lands in the conversation as the tool's result, and the status strip pins one live line for it while it works. Inner commands ask for approval exactly like the main agent's do, and the subagent's requests are bounded by the same transcript the main session uses. A long call folds its old history into the compaction block instead of re-sending a growing prompt. A subagent never spawns further subagents.
 
-While a subagent works, the status strip pins a live line under the spinner — the robot badge, the subagent's name, its phase (`thinking`, `running`, `writing output`), the context its current model call carries against its model's window, the cost of everything its calls have spent so far, and its age. Its transcript row reads as delegation too: the robot badge, then the subagent and the task's first line. With the Nerd Font icon flavor the badge is the robot glyph; the plain flavor marks it with `@`.
+While a subagent works, the status strip pins a live line under the spinner, the robot badge, the subagent's name, its phase (`thinking`, `running`, `writing output`), the context its current model call carries against its model's window, the cost of everything its calls have spent so far, and its age. Its transcript row reads as delegation too: the robot badge, then the subagent and the task's first line. With the Nerd Font icon flavor the badge is the robot glyph; the plain flavor marks it with `@`.
 
 ### Where bash runs
 
@@ -133,21 +133,21 @@ The `bash` tool can run somewhere other than your host. The profile's `sandbox.k
 
 - `local` (the default): commands run as your processes in the workspace, exactly as they always have.
 - `docker`: commands run in a container with the workspace bind-mounted at its own path. rhema stands the container up on first use and keeps it between runs.
-- `lxd`: commands run in an LXD instance — a container with the workspace disk-mounted 1:1, or a `--vm` with the tree attached — named by `sandbox.instance`, stood up on first use and kept between runs.
-- `ecrou`: commands run in a microVM that boots for the length of the command and dies after it, the workspace shared in at its own path. One machine per command — nothing persists between them, and the isolation is a real kernel per command.
+- `lxd`: commands run in an LXD instance, a container with the workspace disk-mounted 1:1, or a `--vm` with the tree attached, named by `sandbox.instance`, stood up on first use and kept between runs.
+- `ecrou`: commands run in a microVM that boots for the length of the command and dies after it, the workspace shared in at its own path. One machine per command, nothing persists between them, and the isolation is a real kernel per command.
 - `ssh`: commands run on a remote box named by `sandbox.host`, with nothing installed on the far end.
 - `http`: commands run behind a `rhema-sandboxd` daemon named by `sandbox.url`, with an optional token.
 
-Your `SYSTEM.md` is copied into the sandbox at startup, and in the mount postures (`docker`, `lxd` containers) the discovered skills ride read-only mounts — the global skills directory alongside the workspace — so a skill you edit mid-session is the new text the next read sees; the seeded postures (`ssh`, `http`, `lxd` vms, `ecrou`) copy the skills in instead. Your keys, profiles, and session history stay on your host in every mode. On safety, plainly: `local` and the mount postures are process hygiene, not security boundaries. When the last rhema session using a rhema-created sandbox instance exits, the instance is stopped; an instance you named yourself in the profile is never stopped out from under you.
+Your `SYSTEM.md` is copied into the sandbox at startup, and in the mount postures (`docker`, `lxd` containers) the discovered skills ride read-only mounts, the global skills directory alongside the workspace, so a skill you edit mid-session is the new text the next read sees; the seeded postures (`ssh`, `http`, `lxd` vms, `ecrou`) copy the skills in instead. Your keys, profiles, and session history stay on your host in every mode. On safety, plainly: `local` and the mount postures are process hygiene, not security boundaries. When the last rhema session using a rhema-created sandbox instance exits, the instance is stopped; an instance you named yourself in the profile is never stopped out from under you.
 
 ### Program status (OSC 7501)
 
-Rhema Code reports what it is doing to the terminal, following [Mitchell Hashimoto's program status protocol](https://mitchellh.com/writing/program-status-osc7501): `working` (with step progress and the current tool) while a turn runs, `blocked` (permission or auth) when it needs you, `idle` at the prompt, and `done` or `error` when a `rhema run` one-shot finishes — so supporting terminals (Ghostty, and terminal UIs built on libghostty) can mark tab headers, session pickers, and agentic inboxes without scraping the screen. Terminals without support ignore the sequence; piped output stays byte-exact.
+Rhema Code reports what it is doing to the terminal, following [Mitchell Hashimoto's program status protocol](https://mitchellh.com/writing/program-status-osc7501): `working` (with step progress and the current tool) while a turn runs, `blocked` (permission or auth) when it needs you, `idle` at the prompt, and `done` or `error` when a `rhema run` one-shot finishes, so supporting terminals (Ghostty, and terminal UIs built on libghostty) can mark tab headers, session pickers, and agentic inboxes without scraping the screen. Terminals without support ignore the sequence; piped output stays byte-exact.
 
 ## Documentation
 
-- `rhema onboard` — re-run the first-run wizard (profile, provider, model, colors, skills).
-- `/settings` — everything the wizard sets, plus profiles, appearance, subagents, usage, and about; the Profiles page adds, removes, and switches profiles and cycles each one's name color; the Skills page toggles skills on and off and shows each one's license.
+- `rhema onboard`: re-run the first-run wizard (profile, provider, model, colors, skills).
+- `/settings`: everything the wizard sets, plus profiles, appearance, subagents, usage, and about; the Profiles page adds, removes, and switches profiles and cycles each one's name color; the Skills page toggles skills on and off and shows each one's license.
 
 ## About
 

@@ -4,8 +4,8 @@
 //!
 //! An adapter declares a flow by implementing [`InteractiveLogin`]; the
 //! frontend renders the [`LoginUpdate`]s it reports and persists the
-//! resulting credential. Everything protocol-specific — codes, polling
-//! intervals, expiry — stays inside the flow; the credential comes out
+//! resulting credential. Everything protocol-specific, codes, polling
+//! intervals, expiry, stays inside the flow; the credential comes out
 //! as one opaque string, the same shape a static API key takes, so it
 //! stores in a profile field like any other key. A flow needing a
 //! richer credential than one string is a later decision, not an
@@ -46,7 +46,7 @@ pub trait LoginSink: Send {
 }
 
 /// A login flow one adapter declares. Cancellation is dropping the task
-/// `run` runs in — the flow needs no cancel API, and a dropped flow
+/// `run` runs in, the flow needs no cancel API, and a dropped flow
 /// leaves no state behind that the next attempt would trip over.
 #[async_trait::async_trait]
 pub trait InteractiveLogin: Send + Sync {

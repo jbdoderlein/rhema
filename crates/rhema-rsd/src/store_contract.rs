@@ -166,7 +166,7 @@ pub fn keys_lists_all_recorded_keys(store: &dyn Store) {
 
 /// A delete removes the record whole: an absent key answers `Ok(false)`, a
 /// saved-then-deleted key is gone from `load` and off `keys`, and the key is
-/// absent again for the create precondition — a fresh session under the same
+/// absent again for the create precondition, a fresh session under the same
 /// name starts empty.
 pub fn delete_removes_the_record(store: &dyn Store) {
     let key = ResourceKey::from("contract/delete");

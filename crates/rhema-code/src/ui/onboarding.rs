@@ -4,7 +4,7 @@
 use super::*;
 
 /// The logo's height in cell rows; the width doubles it because cells
-/// are roughly twice as tall as wide — the image stays square.
+/// are roughly twice as tall as wide, the image stays square.
 const ONBOARDING_LOGO_ROWS: u16 = 10;
 
 /// The wizard's rail width: wide enough for the logo and the step
@@ -147,7 +147,7 @@ fn stored_provider(stored: &rhema_config::Profile) -> Option<String> {
 }
 
 /// The "currently configured" block the wizard shows on the Welcome
-/// and Login steps when a config already exists — a `rhema onboard`
+/// and Login steps when a config already exists, a `rhema onboard`
 /// rerun must show what is connected, not start from a blank slate.
 pub(crate) fn connected_lines(
     stored: &rhema_config::Profile,
@@ -184,7 +184,7 @@ pub(crate) fn connected_lines(
 }
 
 /// The step's body lines and the footer hints. The dialog, while the
-/// login step runs one, renders inline — the same stages the settings'
+/// login step runs one, renders inline, the same stages the settings'
 /// modal shows, in the wizard's own pane.
 pub(crate) fn onboarding_body(
     wizard: &crate::onboarding::OnboardingScreen,
@@ -314,7 +314,7 @@ pub(crate) fn onboarding_body(
                 footer("esc back")
             } else {
                 title("A provider to serve the turns", &mut lines);
-                // The logins this profile already holds — a rerun
+                // The logins this profile already holds, a rerun
                 // shows what is connected before offering another.
                 // Owned copies: the rows must not borrow the snapshot
                 // the loop reads.
@@ -500,7 +500,7 @@ pub(crate) fn onboarding_body(
                 } else {
                     line
                 });
-                // The description, at most two rows — the same cap the
+                // The description, at most two rows, the same cap the
                 // settings Skills page applies.
                 lines.extend(crate::ui::wrap_clamped(
                     &skill.description,
@@ -509,7 +509,7 @@ pub(crate) fn onboarding_body(
                     2,
                     Style::default().fg(theme.text3),
                 ));
-                // The license, a step dimmer than the description — the
+                // The license, a step dimmer than the description, the
                 // same treatment the settings Skills page gives it.
                 if let Some(license) = &skill.license {
                     lines.extend(crate::ui::wrap_clamped(

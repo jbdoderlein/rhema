@@ -15,8 +15,8 @@ cargo test --workspace --all-features   # keep green when touching behavior
 
 The crate compiles with `#![forbid(unsafe_code)]` and
 `#![deny(missing_docs)]`, so a build fails on any undocumented public
-item — do not weaken the attributes to make it pass. `cargo fmt` may
-amend files you did not touch — include those changes in the commit
+item. Do not weaken the attributes to make it pass. `cargo fmt` may
+amend files you did not touch. Include those changes in the commit
 (or in a separate `chore:` commit) rather than leaving the tree dirty.
 
 ## Commit messages
@@ -31,102 +31,102 @@ Rules:
 
 - Types: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`,
   `ci`, `chore`.
-- Scopes match the component touched — the module name under
+- Scopes match the component touched, the module name under
   `crates/rhema-core/src/`:
-  - `message` — `Role`, `Content`, `Message` (`src/message.rs`)
-  - `session` — the caller-owned `Session` (`src/session.rs`)
-  - `request` — `ModelRequest`, `ChatParams`, `ToolSpec`
+  - `message`: `Role`, `Content`, `Message` (`src/message.rs`)
+  - `session`: the caller-owned `Session` (`src/session.rs`)
+  - `request`: `ModelRequest`, `ChatParams`, `ToolSpec`
     (`src/request.rs`)
-  - `output` — `ModelOutput`, `StopReason`, `Usage`, `Step`
+  - `output`: `ModelOutput`, `StopReason`, `Usage`, `Step`
     (`src/output.rs`)
-  - `provider` — the `ModelProvider` seam (`src/provider.rs`)
-  - `tool` — the `ToolResolver` seam (`src/tool.rs`)
-  - `workspace` — the checkout's directory conventions: `.rhema` and
+  - `provider`: the `ModelProvider` seam (`src/provider.rs`)
+  - `tool`: the `ToolResolver` seam (`src/tool.rs`)
+  - `workspace`: the checkout's directory conventions: `.rhema` and
     the tiers under it (`src/workspace.rs`)
-  - `event` — `Event`, `EventSink` (`src/event.rs`)
-  - `engine` — the `Agent` step engine and `run_turn`
+  - `event`: `Event`, `EventSink` (`src/event.rs`)
+  - `engine`: the `Agent` step engine and `run_turn`
     (`src/engine.rs`)
-  - `mock` — `MockProvider` (`src/mock.rs`, `mock` feature)
-  - `tests` — integration suites under `crates/rhema-core/tests/`
-  - `rhema-provider` — the adapter-family base: the `ModelCard` catalog
+  - `mock`: `MockProvider` (`src/mock.rs`, `mock` feature)
+  - `tests`: integration suites under `crates/rhema-core/tests/`
+  - `rhema-provider`: the adapter-family base: the `ModelCard` catalog
     row, the `ModelListing` catalog seam, `Pricing`, the SSE decoder,
     and the `InteractiveLogin` login-flow seam
     (`crates/rhema-provider/`)
-  - `google` — the Gemini provider adapter (`crates/rhema-provider-google/`)
-  - `llama-cpp` — the llama.cpp server adapter (`crates/rhema-provider-llama-cpp/`)
-  - `openrouter` — the OpenRouter adapter (`crates/rhema-provider-openrouter/`)
-  - `anthropic` — the Anthropic Messages adapter
+  - `google`: the Gemini provider adapter (`crates/rhema-provider-google/`)
+  - `llama-cpp`: the llama.cpp server adapter (`crates/rhema-provider-llama-cpp/`)
+  - `openrouter`: the OpenRouter adapter (`crates/rhema-provider-openrouter/`)
+  - `anthropic`: the Anthropic Messages adapter
     (`crates/rhema-provider-anthropic/`)
-  - `openai-compatible` — the generic OpenAI-compatible adapter
+  - `openai-compatible`: the generic OpenAI-compatible adapter
     (`crates/rhema-provider-openai-compatible/`)
-  - `opencode` — the OpenCode Console and Go adapter
+  - `opencode`: the OpenCode Console and Go adapter
     (`crates/rhema-provider-opencode/`)
-  - `copilot` — the GitHub Copilot adapter
+  - `copilot`: the GitHub Copilot adapter
     (`crates/rhema-provider-copilot/`)
   - `chatgpt`: the ChatGPT subscription adapter
     (`crates/rhema-provider-chatgpt/`)
-  - `provider-registry` — the fleet's name-to-adapter wiring: `build`
+  - `provider-registry`: the fleet's name-to-adapter wiring: `build`
     turns a rhema-config `PROVIDERS` spelling plus resolved
     credentials into the turn provider and the catalog listing, one
     row per kind (`crates/rhema-provider-registry/`)
-  - `mcp` — the MCP client extension: the protocol subset, the manager,
+  - `mcp`: the MCP client extension: the protocol subset, the manager,
     the bridge, and the provisioned shell functions
     (`crates/rhema-mcp/`)
-  - `mcp-to-cli` — the schema-to-CLI mapping crate: MCP tool catalogs
+  - `mcp-to-cli`: the schema-to-CLI mapping crate: MCP tool catalogs
     to clap commands, argv matches to JSON (its own repository,
     `git.vhaudiquet.fr/vhaudiquet/mcp-to-cli`; zero rhema deps)
-  - `memory` — the agent memory layer: the `MemoryStore` contract, its
+  - `memory`: the agent memory layer: the `MemoryStore` contract, its
     stores, and the memory tools (`crates/rhema-memory/`)
-  - `identity` — the agent accounts layer: the `IdentityStore`
+  - `identity`: the agent accounts layer: the `IdentityStore`
     contract, its stores, and the use-never-read secret rule
     (`crates/rhema-identity/`)
-  - `rsd` — resource-scoped dispatch: the dispatcher and its stores
+  - `rsd`: resource-scoped dispatch: the dispatcher and its stores
     (`crates/rhema-rsd/`)
-  - `forge` — the forge integration: GitHub/Gitea/GitLab clients, the
+  - `forge`: the forge integration: GitHub/Gitea/GitLab clients, the
     normalized event vocabulary, the notification triage, and the RSD
     ingest path (`rhema-claw` repository, `integrations/rhema-forge-integration/`)
-  - `calendar` — the calendar integration: the `Calendar` client
+  - `calendar`: the calendar integration: the `Calendar` client
     contract, the ICS, CalDAV, and Google feed adapters, the
     normalized occurrence vocabulary, and the default reminder source
     (`rhema-claw` repository, `integrations/rhema-calendar-integration/`)
-  - `autonomous-agent` — the resident-agent core tier: sources, the
+  - `autonomous-agent`: the resident-agent core tier: sources, the
     lease-driven driver, and the tool registry
     (`crates/rhema-autonomous-agent/`)
-  - `claw` — the resident agent daemon: the first autonomous-agent
+  - `claw`: the resident agent daemon: the first autonomous-agent
     consumer (`rhema-claw` repository)
-  - `acp` — the Agent Client Protocol adapter and the `rhema acp`
+  - `acp`: the Agent Client Protocol adapter and the `rhema acp`
     subcommand (`crates/rhema-acp/`)
-  - `config` — the framework's stored section (profiles, the
+  - `config`: the framework's stored section (profiles, the
     credentials rule, the persisted off switches), the directory
     conventions (`Home`), and the `Store` seam a frontend implements
     (`crates/rhema-config/`)
-  - `agent-tools` — the shared toolkit: the approval-gated shell, the
+  - `agent-tools`: the shared toolkit: the approval-gated shell, the
     `Approval` and `Overlay` seams, skills, paste expansion, revive,
     the `see` vision macro, the prompt renderer
     (`crates/rhema-agent-tools/`)
-  - `sandbox` — the sandbox seam: the `Sandbox` contract, the
+  - `sandbox`: the sandbox seam: the `Sandbox` contract, the
     `ShellSandbox` adapter, the wire protocol, the HTTP client and
     `rhema-sandboxd`, and the local sandbox (`crates/rhema-sandbox/`)
-  - `subagents` — the subagent extension: definition discovery and the
+  - `subagents`: the subagent extension: definition discovery and the
     `subagent` tool (`crates/rhema-subagents/`)
-  - `transcript` — the bounded view over an unbounded session: the
+  - `transcript`: the bounded view over an unbounded session: the
     request view decorator, the slot algebra, the `zoom` tool
     (`crates/rhema-transcript/`)
-  - `agent` — the coding-agent driver and tools (`crates/rhema-coding-agent/`)
-  - `rhema-code` — the frontend crate: terminal UI and headless
+  - `agent`: the coding-agent driver and tools (`crates/rhema-coding-agent/`)
+  - `rhema-code`: the frontend crate: terminal UI and headless
     one-shot (`crates/rhema-code/`); its binary is `rhema`
-  - `cloud-agent` — the cloud harness the frontends share: the
+  - `cloud-agent`: the cloud harness the frontends share: the
     filesystem-less assembly, the client approval gate, the per-session
-    config, and the offline end-to-end — no platform dependency enters
+    config, and the offline end-to-end. No platform dependency enters
     this crate (`crates/rhema-cloud-agent/`)
-  - `cloudflare-code` — the cloud frontend: the coding agent as a
-    Cloudflare Durable Object — the workers-rs glue over the shared
+  - `cloudflare-code`: the cloud frontend: the coding agent as a
+    Cloudflare Durable Object, the workers-rs glue over the shared
     harness, and the sandbox daemon image
     (its own repository, `rhema-cloudflare-code`)
-  - `claw-web` — the claw's Nuxt UI (`rhema-claw` repository, `web/claw/`)
-  - `claw-android` — the claw's phone client: chat, status source,
+  - `claw-web`: the claw's Nuxt UI (`rhema-claw` repository, `web/claw/`)
+  - `claw-android`: the claw's phone client: chat, status source,
     notifications (`rhema-claw` repository, `android/`)
-  - `deps` — dependency additions/bumps (manifests, lockfile)
+  - `deps`: dependency additions/bumps (manifests, lockfile)
 - Omit the scope entirely for repo-wide changes that do not belong to
   a single component (root config, README.md, SPEC.md).
 - Summary: imperative mood ("add", never "added" or "adds"), lowercase
@@ -156,12 +156,12 @@ chore: apply cargo fmt
 
 - The crate denies missing docs (`#![deny(missing_docs)]` in
   `crates/rhema-core/src/lib.rs`): every public item carries a doc
-  comment, and the module list there is the layout map — keep it in
+  comment, and the module list there is the layout map. Keep it in
   sync when adding a module.
 - The step engine has exactly two intended consumers (coding agent,
   RSD agent); the second is a falsification test on the seams, never a
   feature. Anything that smells like dispatch, leases, or persistence
-  belongs to a later crate — see SPEC.md §1 and §7 test 5.
+  belongs to a later crate. See SPEC.md §1 and §7 test 5.
 - Comments state constraints the code cannot show; no narration.
 - Anything user-facing (public API, feature flags) is reflected in
   README.md before commit.

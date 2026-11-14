@@ -1,7 +1,7 @@
 //! The slot algebra: how ranges of the log are named and split.
 //!
 //! A range `(id, n)` is the `n` messages of the log from index `id` on.
-//! Larger ranges split into halves that always cover them — the tree a
+//! Larger ranges split into halves that always cover them, the tree a
 //! later compactor will grow is binary, but the algebra does not need
 //! it. This module is the contract every fill policy keeps: the lines
 //! change, the addresses never.

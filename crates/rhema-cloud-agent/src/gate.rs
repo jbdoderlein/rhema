@@ -1,7 +1,7 @@
 //! The approval gate for a runtime with one thread.
 //!
 //! [`Approval::approve`] is synchronous by contract, and the existing
-//! frontends block inside it — the ACP adapter parks a worker thread
+//! frontends block inside it, the ACP adapter parks a worker thread
 //! until the editor answers. workerd has no second thread to park: a
 //! native block there would stall the isolate and deadlock the very
 //! socket the answer arrives on. So the cloud gate asks *before* the
@@ -10,7 +10,7 @@
 //! obtains a decision (static policy first, the connected client
 //! second, deny last), and only then delegates to the inner
 //! [`ShellTools`] with a per-call hook. The spec, the caps, and the
-//! rejection message stay [`ShellTools`]' — nothing forks.
+//! rejection message stay [`ShellTools`]', nothing forks.
 #![forbid(unsafe_code)]
 
 use std::sync::Arc;
@@ -22,7 +22,7 @@ use rhema_core::{ToolCall, ToolContext, ToolResolver, ToolResult, ToolSpec};
 use crate::assembly::ApprovalPolicy;
 
 /// Asks the connected client about one call. `None` means nobody is
-/// connected or the answer never came — read as a denial. The
+/// connected or the answer never came, read as a denial. The
 /// implementation owns its own timeout.
 #[async_trait]
 pub trait ApprovalChannel: Send + Sync {
@@ -32,7 +32,7 @@ pub trait ApprovalChannel: Send + Sync {
 
 /// The gate every gated call passes: static policy, then the client
 /// channel, then the denial. Install it as the extension resolver over
-/// the agent's [`ShellTools`] — it shadows `bash` with the same spec,
+/// the agent's [`ShellTools`], it shadows `bash` with the same spec,
 /// so prompt and tools array still cannot drift.
 pub struct ClientGate {
     inner: Arc<ShellTools>,
@@ -41,7 +41,7 @@ pub struct ClientGate {
 }
 
 impl ClientGate {
-    /// A gate over `inner` — the agent's own [`ShellTools`] — answering
+    /// A gate over `inner`, the agent's own [`ShellTools`], answering
     /// from `policy`, consulting `channel` for the calls the policy
     /// hands to the client (`AskClient`).
     pub fn new(
@@ -82,7 +82,7 @@ impl ClientGate {
         self.inner.install_approval(Arc::new(AllowAll));
         let result = self.inner.resolve_streaming(call, ctx, progress).await;
         // Back to the fail-safe: with the per-call hook cleared, the
-        // turn-level hook — deny on this frontend — governs anything
+        // turn-level hook, deny on this frontend, governs anything
         // that bypasses this gate.
         self.inner.clear_approval();
         result

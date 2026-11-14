@@ -3,8 +3,8 @@
 //! A tool is a folder holding a `TOOL.yaml`: the name the model calls,
 //! the description it picks the tool by, the argument schema, the
 //! replay classification, and a `run` binding. This module supports one
-//! binding, `run: { builtin: <id> }` — the operation is compiled code
-//! the consumer registers under that id — so a tool's static data stops
+//! binding, `run: { builtin: <id> }`, the operation is compiled code
+//! the consumer registers under that id, so a tool's static data stops
 //! living next to it in Rust string literals, and one folder names one
 //! tool. The same format takes other `run` kinds later (a command to
 //! spawn, for user-written script tools) without a migration: the spec
@@ -134,8 +134,8 @@ impl Tool for ManifestTool {
     }
 }
 
-/// Loads `manifests` — `(source, text)` pairs, `source` naming the
-/// manifest in skip reports — against the registered `builtins`. A
+/// Loads `manifests`: `(source, text)` pairs, `source` naming the
+/// manifest in skip reports, against the registered `builtins`. A
 /// manifest that does not parse, or whose `run.builtin` id has no
 /// operation, is skipped and reported; the survivors are ready to
 /// register.

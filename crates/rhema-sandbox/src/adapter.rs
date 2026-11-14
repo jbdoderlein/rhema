@@ -2,7 +2,7 @@
 //!
 //! [`ShellSandbox`] adapts the [`Sandbox`] seam onto
 //! [`ShellExecutor`](rhema_agent_tools::ShellExecutor), so the tool the
-//! model sees is exactly the built-in one —
+//! model sees is exactly the built-in one,
 //! [`ShellTools::builtin_specs`] is the single source of truth for the
 //! spec, and the approval gate, the output caps, and the error shaping
 //! all stay in [`ShellTools`]. Nothing about the spec text says where

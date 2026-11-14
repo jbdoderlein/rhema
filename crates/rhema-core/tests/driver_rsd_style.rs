@@ -67,8 +67,8 @@ impl EventSink for NullSink {
     fn emit(&mut self, _event: Event<'_>) {}
 }
 
-// The crate-2 dispatcher shape — acquire, step, poll_inbox, checkpoint,
-// release — built only on the public seams. If this needed a new type in
+// The crate-2 dispatcher shape, acquire, step, poll_inbox, checkpoint,
+// release, built only on the public seams. If this needed a new type in
 // crate 1, the boundary would be wrong (SPEC.md §1, §7 test 5).
 struct FakeRsdDriver {
     agent: Agent,

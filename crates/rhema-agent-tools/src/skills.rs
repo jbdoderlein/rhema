@@ -1,7 +1,7 @@
 //! Skills: markdown instruction files the model loads on demand.
 //!
 //! A skill is a folder holding a `SKILL.md` whose YAML frontmatter
-//! carries a `description` — the trigger. Only name, trigger, and file
+//! carries a `description`, the trigger. Only name, trigger, and file
 //! reach the system prompt, as the [`crate::prompt`] template's
 //! `skills` list; the model reads a skill's body itself with the
 //! bash tool (`cat`) when a trigger applies, so skills need no tool of
@@ -21,9 +21,9 @@ use serde::{Deserialize, Serialize};
 pub struct Skill {
     /// The folder's name.
     pub name: String,
-    /// The frontmatter description — the trigger shown to the model.
+    /// The frontmatter description, the trigger shown to the model.
     pub description: String,
-    /// The frontmatter license, when the skill declares one — a short
+    /// The frontmatter license, when the skill declares one, a short
     /// SPDX name or a name-and-copyright line the UIs show under the
     /// description. Absent on skills authored into their repository.
     pub license: Option<String>,
@@ -95,7 +95,7 @@ fn collect_into(dir: &Path, by_name: &mut BTreeMap<String, Skill>) {
     }
 }
 
-/// The `description` out of a leading `---` frontmatter block — and the
+/// The `description` out of a leading `---` frontmatter block, and the
 /// optional `license`; `None` for the description when there is no
 /// block or no field, which makes the folder not a skill at all.
 fn parse_description(raw: &str) -> Option<(String, Option<String>)> {
@@ -263,7 +263,7 @@ mod tests {
         assert_eq!(skills.len(), 1, "one name, one skill");
         assert_eq!(skills[0].description, "workspace trigger");
 
-        // Without the workspace copy, rhema's global still wins — the
+        // Without the workspace copy, rhema's global still wins, the
         // .agents folder only serves names nothing above it claims.
         let skills = discover(
             Some(&home.path().join(".agents").join("skills")),

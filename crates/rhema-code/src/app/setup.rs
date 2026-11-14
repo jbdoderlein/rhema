@@ -29,14 +29,14 @@ pub struct AppSetup {
     /// runner that opted out).
     pub secrets: Option<Arc<dyn rhema_config::secrets::SecretStore>>,
     /// The session's assembled sandbox, when the startup choice was
-    /// non-local — built and seeded before the app existed; `None` is
+    /// non-local, built and seeded before the app existed; `None` is
     /// the local fast path, the agent's own tools.
     pub sandboxed: Option<crate::sandbox::Sandboxed>,
     /// The machine half of the sandbox availability probe, probed once
     /// before the app existed: the offered set re-derives from these
-    /// facts per profile — at startup, and at every profile switch.
+    /// facts per profile, at startup, and at every profile switch.
     pub sandbox_machines: crate::sandbox::SandboxMachines,
-    /// The home the app resolves machine-global paths under — the
+    /// The home the app resolves machine-global paths under, the
     /// isolation seam a test points at a scratch directory so the
     /// machine's own global definitions and skills never leak into a
     /// page. `None` reads the environment (`XDG_CONFIG_HOME`, then
@@ -143,7 +143,7 @@ impl Backend {
     }
 
     /// Keeps this conversation's OpenCode id when a rebuild lands on the
-    /// same kind — a model pick, a settings change — so Console keeps
+    /// same kind, a model pick, a settings change, so Console keeps
     /// routing and caching one conversation consistently. A rebuild onto
     /// another provider, or from one, is a different route and keeps its
     /// own id.
@@ -167,7 +167,7 @@ impl Backend {
         Arc::new(rhema_provider::Retrying::new(self.wired().provider))
     }
 
-    /// The kind's adapters, from the variant's own credentials — the
+    /// The kind's adapters, from the variant's own credentials, the
     /// enum's job is holding the credential shape, construction is the
     /// registry's. A build failure would mean a variant whose shape
     /// lies (a keyed backend without a key), which the enum cannot
@@ -229,7 +229,7 @@ impl Backend {
 
     /// Builds the backend a profile's settings call for; `None` when the
     /// profile names no provider (or a spelling no provider answers to,
-    /// or has no usable credentials for the one it names) — the login
+    /// or has no usable credentials for the one it names), the login
     /// flow runs, no default backend substitutes. `RHEMA_PROVIDER` wins
     /// over the stored `provider`, the same env-wins convention the keys
     /// follow. The active instance serves; a profile without instances
@@ -262,7 +262,7 @@ impl Backend {
                 // store": say so, or a locked keychain reads as a key
                 // the user never stored.
                 Some(store) if !store.reachable() => format!(
-                    "{help} — the system keychain is locked or unreachable, \
+                    "{help}, the system keychain is locked or unreachable, \
                      so the stored keys were unreadable"
                 ),
                 _ => help.to_owned(),
@@ -274,8 +274,8 @@ impl Backend {
         Self::named(&active, profile, secrets).ok_or_else(missing)
     }
 
-    /// Builds one backend per logged-in instance of the profile — the
-    /// active one first, then the rest in name order — so the picker
+    /// Builds one backend per logged-in instance of the profile, the
+    /// active one first, then the rest in name order, so the picker
     /// spans every llama.cpp server, OpenAI-compatible endpoint, and
     /// Copilot sub the profile holds. A profile without instances falls
     /// back to the environment alone (llama.cpp only when active: a
@@ -336,7 +336,7 @@ impl Backend {
 
     /// Builds the backend one stored instance calls for; `None` when its
     /// provider needs a key and neither the environment nor the instance
-    /// carries one. A kind no provider answers to builds nothing — an
+    /// carries one. A kind no provider answers to builds nothing, an
     /// unknown spelling never reads as google.
     fn from_instance(
         profile: &rhema_config::Profile,
@@ -386,7 +386,7 @@ impl Backend {
             "google" => profile
                 .instance_api_key(instance, secrets)
                 .map(|api_key| Backend::Google { api_key }),
-            // A kind no row answers to builds nothing — an unknown
+            // A kind no row answers to builds nothing, an unknown
             // spelling never reads as google.
             _ => None,
         }
@@ -446,7 +446,7 @@ impl Backend {
     /// one: prepaid credit on OpenRouter and DeepSeek, the seat's
     /// premium requests on Copilot, the Coding Plan's 5-hour and weekly
     /// windows on Z.ai. `Ok(None)` for the providers with no such
-    /// endpoint — the footer just never shows their badge.
+    /// endpoint, the footer just never shows their badge.
     pub async fn subscription_usage(&self) -> Result<Option<Allowance>, String> {
         match self {
             Backend::OpenRouter { api_key } => {
@@ -559,7 +559,7 @@ pub struct RunOptions {
 
 impl RunOptions {
     /// The resolved design tokens: the palette's appearance with the
-    /// background choice painted on — the one theme the screens read.
+    /// background choice painted on, the one theme the screens read.
     /// Every resolution site (startup, the live toggles) lands here, so
     /// a background flip and a palette flip can never disagree.
     pub(crate) fn resolved_theme(&self) -> crate::palette::Theme {
@@ -580,7 +580,7 @@ impl RunOptions {
 /// The current screen. The settings screen is boxed: its live providers
 /// page plus its snapshots outweigh the hot keypath's taste for a small
 /// `Screen` (the same reason the login it absorbed was boxed once). The
-/// onboarding wizard is boxed for the same reason — its dialog, model
+/// onboarding wizard is boxed for the same reason, its dialog, model
 /// rows, and skills snapshot together.
 pub enum Screen {
     /// The first-run wizard: logo rail, steps, and the finish that
@@ -646,7 +646,7 @@ pub enum Effect {
         /// The images beside the text.
         images: Vec<Image>,
     },
-    /// Re-run the failed turn: no new prompt — the same request goes
+    /// Re-run the failed turn: no new prompt, the same request goes
     /// back out (`Prompt::Retry`). The app marks the turn running and
     /// clears the error strip before this fires.
     RetryTurn,
@@ -657,8 +657,8 @@ pub enum Effect {
     /// stage is already `Flow`); updates arrive as
     /// `UiEvent::LoginUpdate`.
     StartLoginFlow,
-    /// Stand the sandbox picker's choice up — container, connection,
-    /// seeding — through the shared assembly. Reports back as
+    /// Stand the sandbox picker's choice up, container, connection,
+    /// seeding, through the shared assembly. Reports back as
     /// `UiEvent::SandboxAssembled`; the session keeps its current tools
     /// until then.
     AssembleSandbox(SandboxChoice),
@@ -667,7 +667,7 @@ pub enum Effect {
     ResumeSession(PathBuf),
     /// Open this `SUBAGENT.md` in `$EDITOR`: the runner suspends the
     /// TUI around the blocking editor and re-enters after, and the
-    /// Subagents page's rows refresh then — the edit happened behind
+    /// Subagents page's rows refresh then, the edit happened behind
     /// the app's back.
     EditSubagent(PathBuf),
     /// Fetch the distribution channel's latest version off-thread;
@@ -680,7 +680,7 @@ pub enum Effect {
 
 /// The Subagents page's rows: every discovered definition with its
 /// provenance and the file an edit opens. The source is the file check
-/// discovery shadows by — a workspace definition outranks a global one
+/// discovery shadows by, a workspace definition outranks a global one
 /// of the same name, and a definition of the built-in's name replaces
 /// the built-in wholesale. `disabled` is the config's off switch: off
 /// rows still list, with `enabled` false; only discovery filters them.
@@ -719,10 +719,10 @@ pub(crate) fn subagent_rows(
 }
 
 /// The skills page's rows (and the wizard's skills step's): every
-/// discovered skill with its source — bundled skills seeded into the
+/// discovered skill with its source, bundled skills seeded into the
 /// global directory read as bundled, a workspace folder as workspace,
 /// a folder under the cross-agent `~/.agents/skills` as agents, and
-/// everything else global — and its on/off state from the config's
+/// everything else global, and its on/off state from the config's
 /// disabled set.
 pub(crate) fn skill_rows(
     agents: Option<&Path>,
@@ -801,10 +801,10 @@ fn agent_config(
 /// The coding-agent config a session runs on: the base config, the
 /// session's assembled sandbox applied when it runs on one, and the
 /// subagent wire. The application order is the shared assembly's: the
-/// sandbox tools and seeded skills land BEFORE the wire — the
+/// sandbox tools and seeded skills land BEFORE the wire, the
 /// subagents' inner shell inherits the executor
 /// (`ShellTools::executor()`), their definition discovery stays
-/// host-side — and the sandbox-side workspace path lands AFTER it.
+/// host-side, and the sandbox-side workspace path lands AFTER it.
 /// The prompt sections land before the wire too: the subagents stamp
 /// the config's system-prompt ingredients at wire time, so they run
 /// under the same environment facts and user preferences the parent
@@ -815,11 +815,11 @@ fn agent_config(
 /// `jobs_steering` is the background-shell poller's finish feed, when
 /// the process spawned one: the config has one `steering` slot and two
 /// feeds reach for it, so the wire's registry and this chain through
-/// `SteeringChain` — subagent finishes first, job finishes second, one
+/// `SteeringChain`, subagent finishes first, job finishes second, one
 /// message either way.
 ///
 /// The third return element is the probed tools this machine misses,
-/// for the UI's startup notice — the user's view of the same probe
+/// for the UI's startup notice, the user's view of the same probe
 /// that stamped the prompt's environment section. Re-derives per
 /// assembly, so a profile switch that changes nothing still re-answers
 /// the same truth; a sandboxed session answers empty.
@@ -887,7 +887,7 @@ pub(crate) fn session_agent_config(
     let bash_env = vision_wiring
         .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
         .or(bash_env);
-    // MCP: the local-only wire, gated on the sandbox — a session
+    // MCP: the local-only wire, gated on the sandbox, a session
     // whose bash runs elsewhere never sees the section, because its
     // executor could not reach the socket or the provisioned env.
     if let Some(entry) =
@@ -918,13 +918,13 @@ pub(crate) fn session_agent_config(
 }
 
 /// The prompt's two optional sections, through the one gate the
-/// `system show` preview also reads — so what is previewed is what
+/// `system show` preview also reads, so what is previewed is what
 /// turns send. The sandboxed session carries its kind's notice; a
 /// local one probes the host. Runs BEFORE the subagent wire, so the
 /// subagents stamp the same sections into their own prompts: the
 /// sandbox-side path reads off the assembly, not the config, whose
 /// workspace only becomes that path after the wire. Returns the
-/// probe's absence list for the UI to surface — the user's view of
+/// probe's absence list for the UI to surface, the user's view of
 /// the same run, empty for a sandbox, whose host's gaps it does not
 /// inherit.
 fn apply_prompt_sections(
@@ -950,8 +950,8 @@ fn apply_prompt_sections(
 
 /// The context a reported usage stands for: the whole prompt plus the
 /// reply, the shape of the next request. The adapters normalize
-/// `input_tokens` to the inclusive convention — the cached subset
-/// included — so the prompt total describes the conversation, never
+/// `input_tokens` to the inclusive convention, the cached subset
+/// included, so the prompt total describes the conversation, never
 /// just the tokens a cache miss had to re-read.
 pub(crate) fn context_tokens(usage: &Usage) -> u64 {
     u64::from(usage.input_tokens) + u64::from(usage.output_tokens)
@@ -986,7 +986,7 @@ pub(crate) fn estimate_history_tokens(history: &[Message]) -> u64 {
 /// The profile a session runs on when no `--profile` names one: the
 /// profile this workspace last served a turn under while it still can,
 /// else the default profile while it can serve turns, otherwise the
-/// first stored profile that can (the registry's order) — a logged-in
+/// first stored profile that can (the registry's order), a logged-in
 /// profile must not open the login screen. Isolation still holds: this
 /// only picks the section up front, and nothing reads across profiles
 /// afterwards. An explicit flag never reaches here.
@@ -1018,7 +1018,7 @@ pub(crate) fn startup_profile(
 }
 
 /// The sandbox a session runs `bash` on when nothing was picked yet:
-/// the kind the profile stores (or `RHEMA_SANDBOX` names — the same
+/// the kind the profile stores (or `RHEMA_SANDBOX` names, the same
 /// env-wins layering [`crate::sandbox::resolve_choice`] reads) while
 /// this machine offers it, else the kind this workspace last ran while
 /// it is still offered, else `local`. The machine gates every tier: a
@@ -1052,7 +1052,7 @@ pub(crate) fn startup_sandbox(
 }
 
 /// The sandbox the profile itself runs `bash` on: its own stored kind
-/// (`RHEMA_SANDBOX` included — [`crate::sandbox::resolve_choice`]'s
+/// (`RHEMA_SANDBOX` included, [`crate::sandbox::resolve_choice`]'s
 /// env-wins layering), gated by what this machine offers the profile,
 /// else local. The workspace's remembered kind is deliberately not a
 /// tier here: a profile's sandbox is the profile's, never another

@@ -1,4 +1,4 @@
-//! rhema-mcp — the MCP client extension: configured MCP servers become
+//! rhema-mcp, the MCP client extension: configured MCP servers become
 //! bash commands, not advertised tools.
 //!
 //! The protocol subset (`initialize`, `tools/list`, `tools/call`)
@@ -14,9 +14,9 @@
 //! unbounded reader), and secrets never appear in error strings.
 //!
 //! Layout:
-//! - [`protocol`] — the wire types: JSON-RPC envelopes and the MCP
+//! - [`protocol`]: the wire types: JSON-RPC envelopes and the MCP
 //!   subset, tolerant of unknown fields
-//! - [`client`] — one connection over one transport: handshake,
+//! - [`client`]: one connection over one transport: handshake,
 //!   pending map, per-request timeouts, cancellation, the HTTP
 //!   session dance
 //!

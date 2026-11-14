@@ -13,7 +13,7 @@
 //!   advisory scheduling (it may offer a key to more than one caller, and
 //!   `acquire` arbitrates).
 //! - Sweeping is lazy: expired leases and expired admission entries are
-//!   transitioned by whichever call touches the key — no background sweep.
+//!   transitioned by whichever call touches the key, no background sweep.
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -72,7 +72,7 @@ impl Dispatcher {
 
     /// Records an arriving event: dedup by `(source, id)`, resolve the key
     /// through the source's key function, append to the key's inbox, then
-    /// schedule per the state machine — open the debounce window at an
+    /// schedule per the state machine, open the debounce window at an
     /// idle key, deliver live (no state change) at a leased key, reset the
     /// debounce timer at a re-acquire key. Never dispatches.
     pub fn ingest(&self, event: Event) -> Result<IngestResult, DispatchError> {
@@ -117,7 +117,7 @@ impl Dispatcher {
 
     /// Grants a lease on `key` (create-or-resume): sweeps an expired lease
     /// first, then atomically bumps the revision, marks the key leased, and
-    /// returns the lease plus the key's persistent session — the very same
+    /// returns the lease plus the key's persistent session, the very same
     /// session across re-acquisitions, or a fresh one on first acquire.
     ///
     /// Fails with [`Conflict::LeaseHeld`] while a live lease exists and
@@ -188,7 +188,7 @@ impl Dispatcher {
 
     /// Proves liveness: pushes the lease deadline to `now + lease_ttl`.
     /// Fails with [`Expired`] once the TTL lapsed or a newer lease
-    /// superseded this one — a lapsed lease is never resurrectable.
+    /// superseded this one, a lapsed lease is never resurrectable.
     pub fn renew(&self, lease: &Lease) -> Result<Lease, DispatchError> {
         let now = self.clock.now_millis();
         self.mutate(&lease.key, true, |mut record| {
@@ -226,7 +226,7 @@ impl Dispatcher {
     }
 
     /// Drains the key's inbox: every item delivered since the caller's last
-    /// poll. Only the current, unexpired lease is authorized — a lapsed or
+    /// poll. Only the current, unexpired lease is authorized, a lapsed or
     /// superseded lease drains nothing, so items stay for the handler that
     /// actually holds the key.
     pub fn poll_inbox(&self, lease: &Lease) -> Result<Vec<InboxItem>, DispatchError> {
@@ -306,11 +306,11 @@ impl Dispatcher {
     }
 
     /// The lazy dispatch step. Sweeps expired leases and admission entries,
-    /// then returns the keys that are due — debounce elapsed with pending
-    /// inbox items — up to the free global and per-source slots, in FIFO
+    /// then returns the keys that are due, debounce elapsed with pending
+    /// inbox items, up to the free global and per-source slots, in FIFO
     /// order of becoming due. Keys that stay blocked enter (or remain in)
     /// the FIFO admission queue, from which they re-enter the debounce path
-    /// when their admission TTL lapses — queued work is never dropped.
+    /// when their admission TTL lapses, queued work is never dropped.
     ///
     /// Advisory: acquire enforces the caps, so a key offered here may still
     /// report [`DispatchError::AtCapacity`] if another caller took the slot.
@@ -384,9 +384,9 @@ impl Dispatcher {
         Ok(admitted)
     }
 
-    /// Startup sweep: resets every abandoned key — a lease past its TTL
+    /// Startup sweep: resets every abandoned key, a lease past its TTL
     /// goes back to idle, or to re-acquire with a fresh debounce window
-    /// when its inbox holds undelivered items — and expires admission
+    /// when its inbox holds undelivered items, and expires admission
     /// entries back into the debounce path. Idempotent; the owner calls it
     /// once before ingesting (or any time it wants a full sweep).
     pub fn recover(&self) -> Result<(), DispatchError> {
@@ -394,7 +394,7 @@ impl Dispatcher {
     }
 
     /// Startup recovery in its strict form: every lease in the store is
-    /// swept now, expired or not — idle on an empty inbox, re-acquire
+    /// swept now, expired or not, idle on an empty inbox, re-acquire
     /// with a fresh debounce window when events are waiting. The caller
     /// asserts this process is the only live dispatcher over the store
     /// (the single-node deployment): the leases present were held by
@@ -435,8 +435,8 @@ impl Dispatcher {
     /// Deletes `key`'s record: `Ok(true)` when one existed and is gone,
     /// `Ok(false)` when there was none.
     ///
-    /// Gated like every other transition — load → decide → delete runs under
-    /// the one mutex — because a delete that read the state outside it would
+    /// Gated like every other transition, load → decide → delete runs under
+    /// the one mutex, because a delete that read the state outside it would
     /// race: a lease landing between the read and the delete leaves a live
     /// turn's `checkpoint`/`release` writing to a vanished record, and an
     /// `ingest` after the delete recreates the record the caller was told
@@ -444,13 +444,13 @@ impl Dispatcher {
     ///
     /// Not a compare-and-swap write: the caller asserts the key's absence,
     /// not a revision, so no revision precondition applies and no save
-    /// follows — the record is about to go, and persisting the sweep first
+    /// follows, the record is about to go, and persisting the sweep first
     /// would only write a record the next statement deletes.
     ///
     /// A lapsed lease does not block the delete: the sweep runs first, as in
     /// [`Self::acquire`], so a crashed daemon's leftover lease cannot keep a
     /// key undeletable until somebody else touches it. A record a live turn
-    /// still holds is refused with [`Conflict::LeaseHeld`] — the turn would
+    /// still holds is refused with [`Conflict::LeaseHeld`], the turn would
     /// otherwise find its record gone mid-turn.
     pub fn forget(&self, key: &ResourceKey) -> Result<bool, DispatchError> {
         let _gate = self.gate.lock().unwrap_or_else(PoisonError::into_inner);
@@ -459,7 +459,7 @@ impl Dispatcher {
             return Ok(false);
         };
         // Swept, not saved: a lapsed lease ends in the copy we are about to
-        // delete. `false` — the running system's view, only leases past
+        // delete. `false`, the running system's view, only leases past
         // their TTL are dead.
         let record = sweep_record(record, now, &self.config, false);
         if record.state == KeyState::Leased
@@ -501,7 +501,7 @@ impl Dispatcher {
 
     /// Applies `f` to the record for `key` under the gate: loads (or
     /// starts from a fresh record), optionally sweeps, applies, and saves
-    /// only when the record actually changed — stamped and CAS-guarded on
+    /// only when the record actually changed, stamped and CAS-guarded on
     /// the revision that was read. Errors from `f` persist nothing.
     fn mutate<T>(
         &self,

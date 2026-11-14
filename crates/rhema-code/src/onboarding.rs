@@ -1,5 +1,5 @@
 //! The first-run wizard: a left rail with the logo and the steps, a
-//! body with the current step, one footer of hints — the same chrome
+//! body with the current step, one footer of hints, the same chrome
 //! the settings screen wears.
 //!
 //! The steps: welcome, the default profile (the config's existing
@@ -7,8 +7,8 @@
 //! add-instance dialog reused inline), a model pick from the fresh
 //! login's catalog, the color palette (applied live as the rows move),
 //! the bundled skills' on/off toggles, and a finish step that points at
-//! `/settings`. Steps that need the app — creating or selecting a
-//! profile, validating a credential, persisting a model choice —
+//! `/settings`. Steps that need the app, creating or selecting a
+//! profile, validating a credential, persisting a model choice,
 //! return [`OnboardingAction`]s and wait; the screen never touches the
 //! store itself. Esc walks back one step; at the welcome step it quits,
 //! and an unfinished wizard reopens on the next start (the config's
@@ -87,7 +87,7 @@ pub enum OnboardingAction {
     CopyFlowUrl,
     /// A model row was picked: persist it as the profile's model and
     /// build the agent, then the step advances. The provider is the
-    /// config name — a catalog row's is `&'static`, the keep-current
+    /// config name, a catalog row's is `&'static`, the keep-current
     /// row's comes from the stored profile.
     ChooseModel {
         /// The provider's config name.
@@ -201,8 +201,8 @@ impl OnboardingScreen {
         self.go(OnboardingStep::Login);
     }
 
-    /// Moves to `step`, resetting the row selection — the rows move
-    /// with the step — and dropping the last step's error with it.
+    /// Moves to `step`, resetting the row selection, the rows move
+    /// with the step, and dropping the last step's error with it.
     pub fn go(&mut self, step: OnboardingStep) {
         self.step = step;
         self.row = 0;
@@ -378,7 +378,7 @@ impl OnboardingScreen {
     }
 
     /// The keep-current row of the Model step: the profile's stored
-    /// model, when the catalog carries no fresh login's rows — the
+    /// model, when the catalog carries no fresh login's rows, the
     /// rerun path, where keeping is the common answer. `None` once a
     /// login populated the catalog: those rows are the real choices.
     pub fn keep_current_model(&self) -> Option<(String, Option<String>, String)> {

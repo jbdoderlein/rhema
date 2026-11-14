@@ -19,7 +19,7 @@ store-contract = []
 
 [dependencies]
 # Event payloads cross nothing here: the store is plain data. Secrets are
-# never serialized by this crate — `Account` is redacted by construction.
+# never serialized by this crate, `Account` is redacted by construction.
 serde = { workspace = true }
 # Typed public errors
 thiserror = { workspace = true }

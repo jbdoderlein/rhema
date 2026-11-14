@@ -140,7 +140,7 @@ fn an_expired_lease_may_still_release_cleanly() {
     let (dispatcher, clock, key, lease) = leased();
     clock.advance(TTL + 1);
     // No sweep has run yet: the lease record still stands, so a zombie
-    // handler cleaning up is still the lease's identity — allowed.
+    // handler cleaning up is still the lease's identity, allowed.
     dispatcher
         .release(&lease, Outcome::Failed("overslept".into()))
         .unwrap();

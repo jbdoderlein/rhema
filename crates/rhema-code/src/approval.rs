@@ -14,7 +14,7 @@
 //!
 //! 1. The UI thread NEVER blocks on the turn task. It drains its event
 //!    channel with `try_recv` (or an async recv with timeout) every loop
-//!    iteration and answers through a non-blocking `Sender::send` — and it
+//!    iteration and answers through a non-blocking `Sender::send`, and it
 //!    keeps draining while a modal is up, which it does anyway because the
 //!    modal lives in the same loop.
 //! 2. Only the turn task uses the answer receiver. One turn = one approval
@@ -27,7 +27,7 @@
 //! too.
 //!
 //! Blocking a tokio worker thread on the std receiver is safe here because
-//! the answer always comes from the UI thread — a separate OS thread that
+//! the answer always comes from the UI thread, a separate OS thread that
 //! does not depend on the runtime making progress.
 
 /// The UI-side half of the bridge: sends the user's answer for the request

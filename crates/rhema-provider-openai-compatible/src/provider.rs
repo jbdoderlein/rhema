@@ -1,12 +1,12 @@
 //! The [`OpenAiCompatibleProvider`]: HTTP and SSE transport for any
 //! OpenAI-compatible chat-completions API.
 //!
-//! The base URL is the full versioned base — e.g. `https://api.openai.com/v1`
-//! or a local server's `/v1` — and is used verbatim: the endpoints are
+//! The base URL is the full versioned base, e.g. `https://api.openai.com/v1`
+//! or a local server's `/v1`, and is used verbatim: the endpoints are
 //! `{base}/chat/completions` and `{base}/models`, with nothing appended.
 //! Trailing slashes are trimmed, so either spelling of a base works.
 //!
-//! Auth is by API key in the `Authorization: Bearer` header — never a query
+//! Auth is by API key in the `Authorization: Bearer` header, never a query
 //! parameter, so the key never lands in URLs or access logs. An empty key
 //! omits the header entirely, for local servers that need no auth.
 //! Transport failures map onto [`ProviderError`]: timeouts to
@@ -16,9 +16,9 @@
 //! stream chunks and mid-stream error chunks to [`ProviderError::Api`] too.
 //!
 //! Timeouts are layered: the client bounds connection setup (10s) and each
-//! stream read (90s — a stall guard, not a duration cap, because a long
+//! stream read (90s, a stall guard, not a duration cap, because a long
 //! generation is legitimate), and non-streaming calls (the models list)
-//! additionally carry a 20s overall request timeout. Streaming calls get no
+//! also carry a 20s overall request timeout. Streaming calls get no
 //! total timeout for the same reason.
 
 use std::time::Duration;
@@ -54,7 +54,7 @@ pub fn http_client() -> reqwest::Client {
         .expect("a client builder with only timeouts cannot fail")
 }
 
-/// DeepSeek's OpenAI-compatible endpoint — the base the `deepseek`
+/// DeepSeek's OpenAI-compatible endpoint, the base the `deepseek`
 /// kind speaks by default, over the generic adapter.
 pub const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/v1";
 
@@ -63,11 +63,11 @@ pub const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/v1";
 /// stream vocabulary differ.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Api {
-    /// `POST {base}/chat/completions` — the default, the dialect every
+    /// `POST {base}/chat/completions`, the default, the dialect every
     /// OpenAI-compatible server speaks.
     #[default]
     Chat,
-    /// `POST {base}/responses` — the Responses API, spoken by OpenAI,
+    /// `POST {base}/responses`, the Responses API, spoken by OpenAI,
     /// DeepSeek, OpenCode's gateway, and llama.cpp's server. A tool
     /// result's images ride its `function_call_output` as content parts
     /// there, with no follow-up turn.
@@ -87,7 +87,7 @@ pub struct OpenAiCompatibleProvider {
     /// Which request shape `complete` speaks; the default is chat
     /// completions.
     api: Api,
-    /// Extra headers every request carries — routing metadata,
+    /// Extra headers every request carries, routing metadata,
     /// editor identification, whatever the service demands.
     extra_headers: reqwest::header::HeaderMap,
 }
@@ -120,7 +120,7 @@ impl OpenAiCompatibleProvider {
         }
     }
 
-    /// Targets `base_url` — the FULL versioned base (e.g.
+    /// Targets `base_url`, the FULL versioned base (e.g.
     /// `https://api.openai.com/v1`, `http://localhost:8080/v1`), used
     /// verbatim with the endpoint paths appended; trailing slashes are
     /// trimmed. This is the constructor for every compatible server that is
@@ -130,7 +130,7 @@ impl OpenAiCompatibleProvider {
         self
     }
 
-    /// Speaks another [`Dialect`] — another server family's spelling of
+    /// Speaks another [`Dialect`], another server family's spelling of
     /// the same chat-completions vocabulary. This is how
     /// `rhema-provider-openrouter` and `…-llama-cpp` reuse this
     /// transport: their providers hold one of these, dialed to their
@@ -140,7 +140,7 @@ impl OpenAiCompatibleProvider {
         self
     }
 
-    /// Speaks the Responses API instead of chat completions — same base
+    /// Speaks the Responses API instead of chat completions, same base
     /// URL, same key; the endpoint, the body, and the stream vocabulary
     /// change. Address a server that serves `{base}/responses` (OpenAI,
     /// DeepSeek, OpenCode's gateway, llama.cpp's server).
@@ -158,7 +158,7 @@ impl OpenAiCompatibleProvider {
 
     /// Posts a streaming request and hands back the live response: the
     /// key and extra headers attached, non-2xx mapped onto
-    /// [`ProviderError::Api`]. No overall timeout — a long generation
+    /// [`ProviderError::Api`]. No overall timeout, a long generation
     /// is legitimate, and the client's read timeout already bounds
     /// stalls between chunks.
     async fn post_stream<T: serde::Serialize>(
@@ -213,12 +213,12 @@ impl OpenAiCompatibleProvider {
     }
 }
 
-/// The api.deepseek.com host — the one endpoint this adapter decorates
+/// The api.deepseek.com host, the one endpoint this adapter decorates
 /// with a published catalog, because their `/models` serves ids alone.
 const DEEPSEEK_HOST: &str = "api.deepseek.com";
 
 /// One row of DeepSeek's published catalog: context window, output
-/// ceiling, and the standard per-MTok rates — cached input, uncached
+/// ceiling, and the standard per-MTok rates, cached input, uncached
 /// input, output; off-peak halves every rate. The numbers move with
 /// DeepSeek's price list (api-docs.deepseek.com/quick_start/pricing,
 /// fetched 2026-10-10); the endpoint serves none of them.
@@ -261,7 +261,7 @@ const DEEPSEEK_CATALOG: &[DeepSeekFacts] = &[
 
 /// Fills DeepSeek's published facts into a listing: ids naming a catalog
 /// row gain their context window and pricing, everything else passes
-/// through untouched — unknown models simply show no facts.
+/// through untouched, unknown models simply show no facts.
 fn decorate_deepseek(models: &mut [ModelCard]) {
     for model in models {
         if let Some(row) = DEEPSEEK_CATALOG.iter().find(|row| row.id == model.id) {
@@ -539,7 +539,7 @@ mod tests {
         assert_eq!(pro.supports_vision, Some(false));
 
         // The server's own facts win: a decorated listing leaves unknown
-        // models exactly as the endpoint described them — modality
+        // models exactly as the endpoint described them, modality
         // included, since the generic listing carries none.
         assert_eq!(models[2].input_token_limit, Some(8192));
         assert!(models[2].pricing.is_none());

@@ -3,7 +3,7 @@
 //!
 //! The [`Driver`] closes the dispatcher's guarantees around an embedder's
 //! [`Handler`]: every admitted key is acquired, the handler runs against
-//! a [`SessionContext`] — the resumable session and the live inbox — and
+//! a [`SessionContext`], the resumable session and the live inbox, and
 //! the run ends checkpointed and released with the handler's outcome.
 //! One handler per key at a time is the dispatcher's lease, not the
 //! driver's word.
@@ -11,12 +11,12 @@
 //! Two disciplines keep a run inside its lease:
 //!
 //! - **Poll to live.** [`SessionContext::poll_inbox`] renews the lease
-//!   before draining — every poll is the §4 heartbeat of the *lease*, an
+//!   before draining, every poll is the §4 heartbeat of the *lease*, an
 //!   entirely different thing from the forbidden model-invoking timer.
 //!   The batch comes back whole: fold it into one reasoning step (spec
 //!   §3's batching decision), never one step per item.
 //! - **The model is never the detector.** The handler's deterministic
-//!   setup — classification, allowlist resolution — happens before its
+//!   setup, classification, allowlist resolution, happens before its
 //!   first model call; this loop never reaches the provider itself.
 
 use std::sync::Arc;
@@ -55,7 +55,7 @@ pub struct SessionContext {
 
 impl SessionContext {
     /// Renews the lease and drains the inbox: every undelivered event
-    /// since the last poll, oldest first — the trigger included, on the
+    /// since the last poll, oldest first, the trigger included, on the
     /// first call. Fold the returned batch into one reasoning step.
     pub async fn poll_inbox(&mut self) -> Result<Vec<InboxItem>, DispatchError> {
         self.lease = self.dispatcher.renew(&self.lease)?;
@@ -75,7 +75,7 @@ impl SessionContext {
     /// lease. A driver installs it on its engine
     /// ([`rhema_core::Agent::set_commit_hook`]) so a crash inside a tool
     /// call leaves the committed intent in the store instead of no record
-    /// at all. A checkpoint that fails here — an expired lease above all —
+    /// at all. A checkpoint that fails here, an expired lease above all,
     /// fails the step before any side effect: the engine never runs a
     /// tool against a lease it cannot commit under.
     pub fn commit_hook(&self) -> CommitHook {
@@ -97,11 +97,11 @@ pub struct Driver {
     dispatcher: Arc<Dispatcher>,
     handler: Arc<dyn Handler>,
     holder: String,
-    /// Which keys this driver answers: `None` — everything — when it is
+    /// Which keys this driver answers: `None`, everything, when it is
     /// the only driver over the store; a predicate when two drivers
     /// share one. The split is load-bearing there: admission reads the
     /// shared table, not a per-driver queue, so an unfiltered driver
-    /// would run — and fail, and consume — events addressed to the
+    /// would run, and fail, and consume, events addressed to the
     /// other driver's handler.
     owns: Option<Arc<OwnsKey>>,
 }
@@ -123,7 +123,7 @@ impl Driver {
         self
     }
 
-    /// Restricts [`Self::run_once`] to the keys `owns` answers — the
+    /// Restricts [`Self::run_once`] to the keys `owns` answers, the
     /// ownership split when two drivers share one store. Admission is a
     /// read, so a key left for the other driver costs this pass nothing:
     /// the next pass of the driver that owns it offers it again.
@@ -141,7 +141,7 @@ impl Driver {
     /// Admits the keys whose debounce has elapsed and drives each to
     /// completion, concurrently. One outcome per key that became a run;
     /// a key lost to a race or parked at capacity is simply not in the
-    /// list. A handler that panics fails its own run — its lease is left
+    /// list. A handler that panics fails its own run, its lease is left
     /// for the TTL sweep, which re-dispatches against current state.
     pub async fn run_once(&self) -> Result<Vec<Outcome>, DispatchError> {
         let keys = self.dispatcher.admit()?;

@@ -1,12 +1,12 @@
 //! Gemini wire types and the pure mapping between them and rhema-core's
-//! model. No I/O here — [`crate::provider`] drives these functions.
+//! model. No I/O here, [`crate::provider`] drives these functions.
 //!
 //! Mapping constraints (Gemini has no notion of rhema-core's richer roles):
 //! - Only `user` and `model` roles exist on the wire. `Role::Assistant` maps
 //!   to `model`; `Role::User` and `Role::Tool` map to `user`, with tool
 //!   results carried as `functionResponse` parts (matched by tool *name*,
 //!   never by id). A result's images (`ToolResult::images`) have no wire
-//!   home in a function response — it is text — so each is named in a
+//!   home in a function response, it is text, so each is named in a
 //!   trailing note.
 //! - `Role::System` messages and `ModelRequest.system` fold together into a
 //!   single `systemInstruction` text, joined by a blank line.
@@ -14,7 +14,7 @@
 //!   it is used verbatim, otherwise a deterministic `call_{index}` is
 //!   synthesized from the position of the call among the function calls of
 //!   the assembled message. Synthesized ids exist only to satisfy
-//!   rhema-core's `ToolCall.id`/`ToolResult.id` round-trip — Gemini ignores
+//!   rhema-core's `ToolCall.id`/`ToolResult.id` round-trip, Gemini ignores
 //!   them and matches responses by name.
 //! - Thinking models emit `thought` parts (thought summaries) ahead of the
 //!   `functionCall` parts they produced, and the API requires the calls'
@@ -28,7 +28,7 @@
 //! - `functionResponse.response` must be a JSON object; a successful
 //!   `ToolResult` maps to `{"output": <content>}`,
 //!   a failed one to `{"error": <content>}`.
-//! - Images in a user turn ride one `inlineData` part per image — the
+//! - Images in a user turn ride one `inlineData` part per image, the
 //!   media type and the bare base64 bytes, beside the text parts in the
 //!   order the user arranged them. The model never emits images, so the
 //!   response side of the mapping is untouched.
@@ -100,7 +100,7 @@ pub struct WirePart {
     pub inline_data: Option<WireInlineData>,
     /// `true` on internal thought parts: they stream as
     /// [`Event::ThinkingDelta`], and only the thought that led to a
-    /// function call also maps into the message — riding the call's
+    /// function call also maps into the message, riding the call's
     /// `provider_data` so replay can put it back ahead of the call.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thought: Option<bool>,
@@ -124,7 +124,7 @@ pub struct WireInlineData {
     /// The image's IANA media type (e.g. `image/png`).
     #[serde(default)]
     pub mime_type: String,
-    /// The image bytes, bare base64 — no `data:` prefix, no newlines.
+    /// The image bytes, bare base64, no `data:` prefix, no newlines.
     #[serde(default)]
     pub data: String,
 }
@@ -149,7 +149,7 @@ pub struct WireFunctionCall {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct WireFunctionResponse {
-    /// Name of the answered tool — Gemini matches by name, not by id.
+    /// Name of the answered tool, Gemini matches by name, not by id.
     #[serde(default)]
     pub name: String,
     /// Structured payload; must be a JSON object.
@@ -219,7 +219,7 @@ fn thinking_budget(thinking: ThinkingEffort) -> Option<u32> {
 
 // --- Response wire types (deserialize) ---
 
-/// One `GenerateContentResponse`: a full response, or one SSE chunk — or,
+/// One `GenerateContentResponse`: a full response, or one SSE chunk, or,
 /// on a stream aborted by a failure, the error object the API sends in
 /// place of one.
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
@@ -395,7 +395,7 @@ pub fn request_body(req: &ModelRequest) -> Result<GenerateContentRequest, Provid
                     });
                     // The result's images follow in the same user turn as
                     // inline parts: a function response's JSON is text
-                    // only, and Gemini takes `inlineData` on a user turn —
+                    // only, and Gemini takes `inlineData` on a user turn,
                     // the shape a pasted image already rides.
                     for image in &result.images {
                         parts.push(WirePart {
@@ -527,7 +527,7 @@ fn object_args(args: &Value) -> Value {
 
 /// `functionResponse.response` must be a JSON object; the content rides
 /// under `output` on success and `error` on failure. A result's images
-/// have no wire home there — a function response is text — so they ride
+/// have no wire home there, a function response is text, so they ride
 /// the same user turn as inline parts, right after the response part.
 fn response_object(result: &ToolResult) -> Value {
     let content = result.content.clone();
@@ -553,7 +553,7 @@ pub enum NormalizedPart {
 impl NormalizedPart {
     /// Emits the streaming events this part owes the sink: one `TextDelta`
     /// per text part, one `ToolCallStart` plus one `ToolCallArgsDelta` (the
-    /// full args serialized) per call — the same contract as
+    /// full args serialized) per call, the same contract as
     /// `rhema_core::MockProvider`.
     pub fn emit(&self, sink: &mut dyn EventSink) {
         match self {
@@ -636,7 +636,7 @@ impl PartNormalizer {
 /// `finishReason` and `usageMetadata` may arrive on any chunk (typically the
 /// last non-empty one); the last value seen wins. When the assembled message
 /// contains function calls, the effective stop reason is
-/// [`StopReason::ToolUse`] regardless of the wire value — Gemini reports
+/// [`StopReason::ToolUse`] regardless of the wire value, Gemini reports
 /// `STOP` for tool-call turns.
 #[derive(Debug, Default)]
 pub struct ChunkAssembler {
@@ -818,8 +818,8 @@ pub struct WireModel {
 impl From<WireModel> for ModelCard {
     /// Every chat model this listing keeps accepts image input, so the row
     /// states `Some(true)`: the ListModels response carries no modality
-    /// field to read, but the rows that would disagree — image generation,
-    /// video, speech, and the other non-chat families — are already
+    /// field to read, but the rows that would disagree, image generation,
+    /// video, speech, and the other non-chat families, are already
     /// excluded by id (`is_text`) before a picker sees them.
     fn from(wire: WireModel) -> Self {
         Self {
@@ -842,8 +842,8 @@ impl From<WireModel> for ModelCard {
 }
 
 /// Whether the model is a text chat model. `generateContent` alone does not
-/// discriminate — video (veo), image (nano-banana), speech (tts, audio),
-/// realtime (live), and specialty models expose it too — so non-chat
+/// discriminate, video (veo), image (nano-banana), speech (tts, audio),
+/// realtime (live), and specialty models expose it too, so non-chat
 /// families are excluded by id. This is Gemini-catalog knowledge, which is
 /// why it lives here and not on the shared [`ModelCard`].
 pub fn is_text(model: &ModelCard) -> bool {
@@ -891,7 +891,7 @@ mod tests {
         assert_eq!(call.provider_data, json!({ "thoughtSignature": "sig1" }));
 
         // Replaying the call through history must put the signature back on
-        // the wire part — the API rejects the replay otherwise.
+        // the wire part, the API rejects the replay otherwise.
         let request = rhema_core::request::ModelRequest {
             system: None,
             messages: vec![
@@ -941,8 +941,8 @@ mod tests {
             .expect("body serializes");
         let parts = json["contents"][0]["parts"].as_array().expect("parts");
 
-        // Thought part first, then the call — matching what the model
-        // generated — and the signature still on the call part.
+        // Thought part first, then the call, matching what the model
+        // generated, and the signature still on the call part.
         assert_eq!(parts.len(), 2);
         assert_eq!(
             parts[0],
@@ -1317,7 +1317,7 @@ mod tests {
         let parts = body["contents"][0]["parts"]
             .as_array()
             .expect("parts array");
-        // The function response keeps its bare text output — no note.
+        // The function response keeps its bare text output, no note.
         let text = parts[0]["functionResponse"]["response"]["output"]
             .as_str()
             .expect("output is text");

@@ -2,12 +2,12 @@
 //!
 //! `subagent(name, prompt)` **starts** a job: [`SubagentTools`] mints a
 //! job id in its [`Registry`], spawns the inner turn as a tokio task,
-//! and returns in-band at once — the result names the id and the
+//! and returns in-band at once, the result names the id and the
 //! notification that will follow. `subagent(id)` **fetches**: a
 //! finished job's cached report (a double-fetch returns the cache,
 //! never a re-run), a failed job's reason as an `is_error`, a running
 //! job's "still running", an unknown id's "gone". Both shapes share one
-//! honest [`ReplaySafety::Unsafe`](rhema_core::ReplaySafety) — a fetch
+//! honest [`ReplaySafety::Unsafe`](rhema_core::ReplaySafety), a fetch
 //! must not launder the start's classification.
 //!
 //! The spawned task runs the same inner path a synchronous call always
@@ -17,23 +17,23 @@
 //! fresh [`Session`](rhema_core::Session) whose first message is the
 //! `prompt`, reading its history through the bounded transcript view.
 //! The inner turn inherits five things and nothing else: where it
-//! rides — the call's optional `model` argument over the definition's
+//! rides, the call's optional `model` argument over the definition's
 //! frontmatter over the parent's provider and model, the first two
-//! free to move to another provider the frontend is logged into — the
+//! free to move to another provider the frontend is logged into, the
 //! approval hook (captured at spawn off the parent's
-//! [`ShellTools`], held for the job's lifetime — a gate firing after
+//! [`ShellTools`], held for the job's lifetime, a gate firing after
 //! the parent turn's end still consults the turn's policy), the job's
 //! own cancel flag (escape stops the main session, never the job), the
 //! thinking effort, and the stamped system prompt every inner agent
-//! runs under — the parent's own prompt (base template, skills,
+//! runs under, the parent's own prompt (base template, skills,
 //! environment, user preferences) with the definition's body appended
 //! verbatim. Its inner lifecycle streams into the registry
-//! as the job's status — the UI's pinned line — and never into the
+//! as the job's status, the UI's pinned line, and never into the
 //! call's result.
 //!
 //! A background job's own `subagent` tool keeps the synchronous shape:
-//! the notification path has exactly one steering consumer — the
-//! parent driver's turn loop — and a nested job would have none. A
+//! the notification path has exactly one steering consumer, the
+//! parent driver's turn loop, and a nested job would have none. A
 //! nested call runs to its report inside the job's step loop.
 
 use std::path::Path;
@@ -59,15 +59,15 @@ use rhema_provider::Retrying;
 use crate::def::SubagentDef;
 use crate::registry::{Fetched, JobFailure, JobRerun, Registry, RestartJob};
 
-/// The report is cut at this size — in bytes and in char boundaries,
-/// whichever is hit first — keeping the tail: the conclusion of a report
+/// The report is cut at this size, in bytes and in char boundaries,
+/// whichever is hit first, keeping the tail: the conclusion of a report
 /// sits at its end, as an error sits at the end of a command's output.
 const REPORT_LIMIT: usize = 50 * 1024;
 
 /// The waits between a background job's retries of a dead link. The
 /// frontend's own ladder (~6½ minutes) rides underneath, so each of
 /// these attempts re-walks it: an outage that outlasts the turn
-/// ladder — minutes to hours — waits out under the job instead of
+/// ladder, minutes to hours, waits out under the job instead of
 /// killing it, because a background job's caller is not sitting
 /// behind the wait, while a dead job loses every step it finished.
 /// The ladder runs 46 minutes of waits all told; only an outage past
@@ -92,7 +92,7 @@ const JOB_SERVER_LADDER: &[Duration] = &[Duration::from_secs(30), Duration::from
 #[derive(Clone)]
 struct Inner {
     /// The provider the inner agents run on by default: the parent's,
-    /// wrapped once per run in a background-tuned [`Retrying`] — the
+    /// wrapped once per run in a background-tuned [`Retrying`], the
     /// frontend already rides its own turn ladder underneath, and the
     /// two compose into the job's tolerance (see
     /// [`JOB_NETWORK_LADDER`]). A `model` argument naming another
@@ -101,7 +101,7 @@ struct Inner {
     /// Resolves a provider kind to a turn provider: the frontend's
     /// credential policy behind the `<provider>/<model>` spelling in
     /// the call's `model` argument and a definition's frontmatter.
-    /// `None` means the session's provider is the only one — a
+    /// `None` means the session's provider is the only one, a
     /// cross-provider spelling fails with that named.
     providers: Option<SubagentProviders>,
     /// The kinds [`Inner::providers`] resolved when it was installed,
@@ -122,7 +122,7 @@ struct Inner {
     /// `model` run on: the parent's.
     default_model: String,
     /// The thinking effort the inner requests carry. The default,
-    /// [`ThinkingEffort::Default`], lets the provider decide — and on a
+    /// [`ThinkingEffort::Default`], lets the provider decide, and on a
     /// thinking-by-default backend with a bounded reply budget, that
     /// decision can spend the whole budget on reasoning and leave the
     /// report empty. The parent's posture is the safe inheritance.
@@ -131,15 +131,15 @@ struct Inner {
     /// gets no `subagent` tool of its own. Zero advertises nothing.
     max_depth: u32,
     /// The stamped system prompt every inner agent runs under: the
-    /// parent's full prompt — base template, skills, environment
-    /// facts, user preferences, the subagent's own tool list —
+    /// parent's full prompt, base template, skills, environment
+    /// facts, user preferences, the subagent's own tool list,
     /// computed once at wire time off the config. Empty on direct
     /// constructions (tests): the body runs alone.
     base: String,
 }
 
 /// Where one run rides: the provider its requests turn on and the
-/// model id they carry — the resolved form of the call's `model`
+/// model id they carry, the resolved form of the call's `model`
 /// argument over the definition's frontmatter over the session's own.
 #[derive(Clone)]
 struct Ride {
@@ -148,8 +148,8 @@ struct Ride {
 }
 
 impl Inner {
-    /// The inner shell for one run: fresh, with `hook` — captured off
-    /// the parent shell at spawn — installed. `None` means the inner
+    /// The inner shell for one run: fresh, with `hook`, captured off
+    /// the parent shell at spawn, installed. `None` means the inner
     /// tools reject: the fail-safe default, never the case mid-turn.
     fn inner_shell(
         &self,
@@ -194,8 +194,8 @@ impl Inner {
     /// over the definition's frontmatter, which wins over the parent's
     /// provider and model. The spelling splits on its first `/`: a
     /// first component naming a provider kind resolves through the
-    /// factory — unresolvable is an error naming what is available,
-    /// never a silent ride on the session's provider — while an
+    /// factory, unresolvable is an error naming what is available,
+    /// never a silent ride on the session's provider, while an
     /// unknown first component (an OpenRouter-style id, say) stays
     /// whole and rides the parent's provider. An explicit `<kind>/`
     /// with an empty tail names no model.
@@ -245,7 +245,7 @@ impl Inner {
     }
 
     /// Runs one definition to its report, or to the reason it failed.
-    /// `ride` is the caller's resolution — this never consults the
+    /// `ride` is the caller's resolution, this never consults the
     /// frontmatter or the default itself.
     async fn run(
         &self,
@@ -258,7 +258,7 @@ impl Inner {
     ) -> Result<String, JobFailure> {
         // The inner system prompt: the stamp with this definition's
         // body appended verbatim. A body is plain text, never
-        // rendered — template syntax in it reaches the model as the
+        // rendered, template syntax in it reaches the model as the
         // author wrote it, so a definition written for another
         // harness behaves as written. An empty stamp (direct
         // constructions, tests) runs the body alone.
@@ -272,8 +272,8 @@ impl Inner {
         // fresh retry and transcript: the wrapper holds no state
         // across requests, so a per-run instance is the shared one's
         // exact equal, and the inner history lives and dies with the
-        // run — no mirror to share, no per-definition settings to
-        // plumb. The `zoom` half of `attach` is dropped on purpose —
+        // run, no mirror to share, no per-definition settings to
+        // plumb. The `zoom` half of `attach` is dropped on purpose,
         // the subagent's tool surface stays the shell alone.
         let retrying = Arc::new(Retrying::with_ladders(
             ride.provider.clone(),
@@ -396,7 +396,7 @@ impl SubagentTools {
         }
     }
 
-    /// Replaces the retry ladders a run's wrapper walks — the
+    /// Replaces the retry ladders a run's wrapper walks, the
     /// background-tuned defaults exist so a job waits out an outage,
     /// and this knob exists for tests that cannot sit through one.
     /// Call before the first job starts.
@@ -413,7 +413,7 @@ impl SubagentTools {
     /// The synchronous variant: a call runs the subagent to its report
     /// inside the resolving step, exactly as the tool behaved before
     /// the registry. Reserved for the nested level inside a background
-    /// job — the notification path has one steering consumer, and a
+    /// job, the notification path has one steering consumer, and a
     /// nested job would have none.
     fn synchronous(inner: Inner, shell: Arc<ShellTools>) -> Self {
         Self {
@@ -434,7 +434,7 @@ impl SubagentTools {
     /// Installs the frontend's provider factory: the credential
     /// answers behind the `<provider>/<model>` spelling in the call's
     /// `model` argument and a definition's frontmatter. The kinds the
-    /// factory resolves are probed once here — the provider list the
+    /// factory resolves are probed once here, the provider list the
     /// spec teaches; a call resolves through the factory live, so a
     /// login mid-session still serves a job even though the prompt's
     /// list was stamped earlier.
@@ -457,7 +457,7 @@ impl SubagentTools {
         }
     }
 
-    /// Sets the stamped system prompt the inner agents run under —
+    /// Sets the stamped system prompt the inner agents run under,
     /// the parent's, computed once at wire time; the definition's
     /// body lands under it verbatim. Call before the first job.
     pub fn with_base_system(mut self, base: String) -> Self {
@@ -481,8 +481,8 @@ impl SubagentTools {
     }
 
     /// The status handle backed by this tool's registry: the UI's
-    /// subscription, and — through [`Registry`]'s [`Steering`]
-    /// implementation — the driver's notification source. The same
+    /// subscription, and, through [`Registry`]'s [`Steering`]
+    /// implementation, the driver's notification source. The same
     /// instance the tool resolver starts jobs into, held weakly so the
     /// handle never keeps the tool alive; a restart past the drop is
     /// an empty answer.
@@ -550,7 +550,7 @@ impl SubagentTools {
         // Where a run rides. The definition's frontmatter and the
         // session's model are the defaults; the argument is the
         // override. The provider list is the factory's wire-time
-        // answers — an empty list still leaves the bare-id spelling
+        // answers, an empty list still leaves the bare-id spelling
         // meaningful, on this session's own provider.
         if provider_kinds.is_empty() {
             description.push_str(
@@ -642,7 +642,7 @@ impl SubagentTools {
         match (id, name, prompt) {
             (Some(_), Some(_), _) | (Some(_), _, Some(_)) => Err(invalid(
                 "pass `name` and `prompt` to start a subagent, or `id` to \
-                 fetch a started one — not both"
+                 fetch a started one, not both"
                     .to_owned(),
             )),
             (Some(id), None, None) => {
@@ -704,7 +704,7 @@ impl SubagentTools {
         ctx: &ToolContext,
     ) -> ToolResult {
         // Resolve once here so a spelling that cannot ride fails the
-        // call outright — an id that starts a job destined to die is
+        // call outright, an id that starts a job destined to die is
         // not a start. The spawned task re-resolves the same spelling;
         // the factory's answers are live, and a restart re-aims the
         // same way.
@@ -719,7 +719,7 @@ impl SubagentTools {
         // The hook is read at spawn and held for the job's lifetime: a
         // gate firing after the parent turn's end still consults the
         // turn's policy, never the fail-safe reject. No hook installed
-        // means the inner tools reject — the fail-safe default.
+        // means the inner tools reject, the fail-safe default.
         let hook = self.shell.current_approval();
         let rerun = JobRerun {
             def: def.clone(),
@@ -759,7 +759,7 @@ impl SubagentTools {
         tokio::spawn(async move {
             // Queue, not reject: past the cap the id was already
             // returned; the run begins when a slot frees. A dropped
-            // registry ends the wait with None — the agent is gone.
+            // registry ends the wait with None, the agent is gone.
             let Some(permit) = crate::registry::acquire_slot(&weak_registry).await else {
                 return;
             };
@@ -768,7 +768,7 @@ impl SubagentTools {
             // point now, and a definition's frontmatter rides the same
             // resolution it always had. A spelling that stopped
             // resolving (logged out since the start) fails the job
-            // with the reason — fetchable, restartable.
+            // with the reason, fetchable, restartable.
             let ride = match inner.resolve_model(rerun.model.as_deref(), &rerun.def) {
                 Ok(ride) => ride,
                 Err(why) => {
@@ -779,7 +779,7 @@ impl SubagentTools {
                 }
             };
             // Touch the registry only in short critical sections: the
-            // task holds the Weak, never a strong ref across the run —
+            // task holds the Weak, never a strong ref across the run,
             // a dropped registry must actually drop, and its flag stops
             // the job at the next step boundary.
             if let Some(registry) = weak_registry.upgrade() {
@@ -907,7 +907,7 @@ impl ToolResolver for SubagentTools {
                     Fetched::Unknown => ToolResult::failure(
                         id,
                         format!(
-                            "no such job: {job} is gone — jobs live in this \
+                            "no such job: {job} is gone, jobs live in this \
                              agent's memory and are lost on restart; start \
                              a new subagent"
                         ),
@@ -947,7 +947,7 @@ impl ToolResolver for SubagentTools {
 
 /// Pumps a background job's inner lifecycle into the registry: the
 /// statuses the forwarder reports become the job's status, the line the
-/// UI renders. The inner output rides no channel — the job is its own
+/// UI renders. The inner output rides no channel, the job is its own
 /// line, and its report is the fetch.
 struct StatusPump {
     registry: Weak<Registry>,
@@ -967,7 +967,7 @@ impl ToolProgress for StatusPump {
 /// Renders the inner turn's lifecycle into the call's own status: the
 /// phase the subagent is in, the context its current model call
 /// carries, and what its model calls have spent so far. The inner
-/// turn's text and tool output go nowhere — the subagent is
+/// turn's text and tool output go nowhere, the subagent is
 /// its own line on the parent's screen, and its report is the result;
 /// the lifecycle events themselves stay private, the status is
 /// screen-facing, never history. A nested subagent's status is dropped:
@@ -980,7 +980,7 @@ struct Forwarder<'a> {
     phase: Option<String>,
     /// The current model call's usage: the latest running tally, held
     /// past [`Event::StepEnd`](rhema_core::Event::StepEnd) until the
-    /// next call's first frame replaces it — the reply rides into the
+    /// next call's first frame replaces it, the reply rides into the
     /// next request, so input + output stays the right current-context
     /// figure between steps.
     context: Option<rhema_core::Usage>,
@@ -1050,7 +1050,7 @@ impl EventSink for Forwarder<'_> {
             // A retry announcement means the model call died and the
             // ladder is waiting: the line names the wait, so a job
             // riding out an outage reads as waiting, not hung. One
-            // report per announcement — the attempt number moves — and
+            // report per announcement, the attempt number moves, and
             // the next delta returns the flow phases.
             Event::RetryWait { attempt, total, .. } => {
                 self.report(format!("retrying model call (attempt {attempt}/{total})"));
@@ -1058,7 +1058,7 @@ impl EventSink for Forwarder<'_> {
             // A nested subagent's status stays private to it, argument
             // streaming is not a phase of its own, and the inner
             // output's lines ride no channel. A running tally replaces
-            // the context — it is the current call's figure, never a
+            // the context, it is the current call's figure, never a
             // spend to accumulate; the accounting still rides `StepEnd`.
             Event::ToolStatus { .. }
             | Event::ToolCallArgsDelta { .. }
@@ -1271,7 +1271,7 @@ mod tests {
         assert_eq!(ride.model, "vendor/model-name");
 
         // A known kind without credentials fails the call, naming what
-        // is available — never a silent ride on the session's own.
+        // is available, never a silent ride on the session's own.
         let why = expect_resolution_error(&tools.inner, Some("openrouter/mistral-large"), &plain);
         assert!(why.contains("openrouter"), "{why}");
         assert!(why.contains("anthropic"), "{why}");
@@ -1294,7 +1294,7 @@ mod tests {
     }
 
     /// The failure a resolution must carry, asserted to be a failure
-    /// first — `Result`'s `Ok` half holds no `Debug` (a dyn provider),
+    /// first, `Result`'s `Ok` half holds no `Debug` (a dyn provider),
     /// so `unwrap_err` cannot.
     fn expect_resolution_error(inner: &Inner, model: Option<&str>, def: &SubagentDef) -> String {
         match inner.resolve_model(model, def) {
@@ -1537,7 +1537,7 @@ mod tests {
     /// A running tally is the current call's context, never a spend: a
     /// mid-call frame replaces the context without touching the spend,
     /// and only the step's end bills into the spend. The context holds
-    /// past a `StepEnd` — the reply rides into the next request — until
+    /// past a `StepEnd`, the reply rides into the next request, until
     /// the next call's first frame replaces it.
     #[test]
     fn a_running_tally_is_context_and_only_a_step_end_is_spend() {

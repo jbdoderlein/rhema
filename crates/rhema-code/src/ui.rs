@@ -1,4 +1,4 @@
-//! Rendering only: maps the app state onto ratatui widgets. No logic —
+//! Rendering only: maps the app state onto ratatui widgets. No logic,
 //! every decision lives in [`crate::app`] and [`crate::screens`].
 
 use crate::palette::Theme;
@@ -61,7 +61,7 @@ pub(crate) struct BubblePiece {
     /// The piece's height in cells.
     pub(crate) rows: u16,
     /// The placement's stable id: a piece keeps its slot across
-    /// frames, and the runner moves a placement by restating it —
+    /// frames, and the runner moves a placement by restating it,
     /// the protocol replaces a placement that reuses the image and
     /// placement ids, so a scrolled card never deletes anything.
     pub(crate) slot: u16,
@@ -93,7 +93,7 @@ impl WrapCache {
 }
 
 /// One cached block: its line range, its first line (the wholesale-
-/// rebuild check — a new transcript can repeat a shape but not a
+/// rebuild check, a new transcript can repeat a shape but not a
 /// conversation), its wrapped rows, and the graphical bubbles' geometry
 /// beside the rows they describe.
 #[derive(Debug)]
@@ -148,7 +148,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         Screen::Chat => {
             // An error wraps, so its strip grows to the wrapped height
             // (plus the /retry hint's own row when one can run). Either
-            // strip — error or spinner — carries a blank row above it,
+            // strip, error or spinner, carries a blank row above it,
             // so it never sits flush against the transcript's tail;
             // idle, the strip is just that single row of air between
             // transcript and input.
@@ -156,7 +156,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
                 // Mirror what `render_status` draws for an error: the
                 // text wrapped one cell short (its indent cannot push a
                 // wrap), the blank row above, the /retry hint, and every
-                // live subagent line — jobs outlive turns, so they ride
+                // live subagent line, jobs outlive turns, so they ride
                 // under an error too.
                 Some(error) => {
                     wrap_line(
@@ -184,7 +184,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             let input_rows =
                 input_rows(&app.chat.input, &app.chat.chips, frame.area().width, &theme);
             // The startup tools strip takes one row between transcript
-            // and status, and only before the conversation starts —
+            // and status, and only before the conversation starts,
             // once it has, the model's environment section carries the
             // same facts and the row folds away.
             let missing_rows = u16::from(show_missing_tools(app));
@@ -203,7 +203,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             ])
             .areas(frame.area());
             // The popups paint over transcript cells, and the arc
-            // sprites composite above every cell — so the transcript
+            // sprites composite above every cell, so the transcript
             // render keeps its corners out of the popup rects, and a
             // bubble under a modal runs square for the duration.
             let mut occlusions: Vec<Rect> = Vec::new();
@@ -273,9 +273,9 @@ pub(crate) struct FlowLines {
     pub(crate) buttons_row: Option<usize>,
 }
 
-/// The flow stage's lines: the wrapped instruction — a device-grant
+/// The flow stage's lines: the wrapped instruction, a device-grant
 /// instruction and its code exceed the box's width, and a cut-off code
-/// cannot be typed — then the code, the open and copy buttons, the
+/// cannot be typed, then the code, the open and copy buttons, the
 /// link's host, and the latest progress note. The full URL is never
 /// rendered: it wraps past the box and cannot be selected, so the
 /// buttons carry it instead.
@@ -372,7 +372,7 @@ fn display_host(url: &str) -> Option<&str> {
 
 /// One picker row: `provider/` dim, id bright, then display name, price,
 /// the vision verdict, and context window dim. The verdict is tri-state
-/// like the catalog's: `None` — the common case — says nothing, because
+/// like the catalog's: `None`, the common case, says nothing, because
 /// unknown is not a verdict.
 fn model_row(
     provider: &str,
@@ -403,7 +403,7 @@ fn model_row(
 
 /// Greedy word wrap over styled spans. A word wider than `width` is
 /// hard-split at the display-width boundary, so the returned row count is
-/// exact for the given width — the transcript scroll math depends on it.
+/// exact for the given width, the transcript scroll math depends on it.
 fn wrap_line(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
     // A line that already fits passes through verbatim: re-tokenizing
     // would collapse the whitespace runs that table padding and indents
@@ -491,7 +491,7 @@ fn wrap_line(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
 }
 
 /// [`wrap_line`] capped: at most `max_lines` rows of `width` columns,
-/// each indented `pad` spaces — the indent kept on every row, unlike
+/// each indented `pad` spaces, the indent kept on every row, unlike
 /// `wrap_line`'s continuation rows, so a wrapped paragraph reads as one
 /// block. Overflow drops the tail and ends the last row with an
 /// ellipsis. The text collapses to one paragraph first: a multiline

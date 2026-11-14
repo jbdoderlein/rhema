@@ -1,4 +1,4 @@
-//! `rhema-provider-llama-cpp` — the llama.cpp `llama-server` adapter for
+//! `rhema-provider-llama-cpp`, the llama.cpp `llama-server` adapter for
 //! rhema-core's [`ModelProvider`](rhema_core::ModelProvider) seam.
 //!
 //! Speaks the server's OpenAI-compatible chat-completions API directly: one
@@ -6,7 +6,7 @@
 //! optional API key in the `Authorization: Bearer` header, the SSE stream
 //! decoded into rhema-core [`Event`](rhema_core::Event)s and assembled into
 //! a [`ModelOutput`](rhema_core::ModelOutput). The wire mapping constraints
-//! — roles, tool-call fragments, stop reasons, response shapes — are
+//!, roles, tool-call fragments, stop reasons, response shapes, are
 //! documented in the [`wire`] module.
 //!
 //! ```
@@ -34,9 +34,9 @@
 //! ```
 //!
 //! Layout:
-//! - [`wire`] — llama.cpp's [`Dialect`], the models-page normalization,
+//! - [`wire`]: llama.cpp's [`Dialect`], the models-page normalization,
 //!   and the `/props` context lookup
-//! - [`provider`] — the HTTP transport (models, props) and the
+//! - [`provider`]: the HTTP transport (models, props) and the
 //!   [`ModelProvider`](rhema_core::ModelProvider) implementation,
 //!   completing through the shared dialect core
 

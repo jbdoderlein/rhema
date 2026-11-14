@@ -24,7 +24,7 @@ pub struct ScriptedSandbox {
     outcomes: Mutex<Vec<ScriptedOutcome>>,
     /// Every command handed to `exec`, in order.
     executed: Mutex<Vec<String>>,
-    /// When set, the next `exec` parks until [`Self::release`] — the
+    /// When set, the next `exec` parks until [`Self::release`], the
     /// deterministic "crash mid-command" point: a turn task dropped
     /// while parked dies between commit and result. The channel's two
     /// halves travel together so the parked side has a live sender to
@@ -40,7 +40,7 @@ pub struct ScriptedSandbox {
     files: Mutex<BTreeMap<String, Vec<u8>>>,
     /// Every seed the sandbox was asked to apply.
     seeds: Mutex<Vec<WorkspaceSeed>>,
-    /// Fires when a held `exec` starts parking — the deterministic
+    /// Fires when a held `exec` starts parking, the deterministic
     /// point a test waits for before aborting the turn.
     parked: Arc<tokio::sync::Notify>,
 }
@@ -66,7 +66,7 @@ impl ScriptedSandbox {
         &self.parked
     }
 
-    /// Makes the next `exec` park until [`Self::release`] — or forever,
+    /// Makes the next `exec` park until [`Self::release`], or forever,
     /// which is how a turn is made to die mid-command.
     pub fn hold_next_exec(&self) {
         // The sender stays with the receiver: a sender dropped here

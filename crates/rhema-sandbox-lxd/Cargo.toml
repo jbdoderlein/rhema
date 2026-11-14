@@ -1,6 +1,6 @@
 [package]
 name = "rhema-sandbox-lxd"
-description = "LXD sandbox backend for the rhema `Sandbox` seam: one driver, two postures — a bind-mounted container and an instance taken as-is — both through the `lxc` CLI"
+description = "LXD sandbox backend for the rhema `Sandbox` seam: one driver, two postures, a bind-mounted container and an instance taken as-is, both through the `lxc` CLI"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

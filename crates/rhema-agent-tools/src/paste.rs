@@ -2,8 +2,8 @@
 //! session keeps the compact chip form.
 //!
 //! Chat input may carry embedded pastes (`rhema_core::paste`'s encoding,
-//! minted by the UIs). Expanding them here — wrapped around whatever
-//! `ModelProvider` an agent is built with — means fresh and resumed
+//! minted by the UIs). Expanding them here, wrapped around whatever
+//! `ModelProvider` an agent is built with, means fresh and resumed
 //! histories expand alike, and the engine stays ignorant of the encoding.
 
 use std::sync::Arc;
@@ -18,7 +18,7 @@ use rhema_core::{
 /// UI renders, the model sees only the plain text. Wrapped around
 /// every provider the agent is built with, so fresh and resumed
 /// histories expand alike. Public so a driver that assembles its own
-/// `Agent` — the resident handler — wraps the same seam instead of
+/// `Agent`, the resident handler, wraps the same seam instead of
 /// growing a second expansion.
 pub struct ExpandPastes {
     inner: Arc<dyn ModelProvider>,

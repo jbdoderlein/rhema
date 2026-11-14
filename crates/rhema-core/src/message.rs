@@ -26,7 +26,7 @@ pub enum Role {
 /// One block of a message's content.
 ///
 /// Serialized untagged: `Text` is a bare JSON string, the tool blocks are
-/// objects whose field sets distinguish them, and [`Image`] — tried last —
+/// objects whose field sets distinguish them, and [`Image`], tried last,
 /// is the remaining `{media_type, data}` object shape.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -126,7 +126,7 @@ impl ImageMediaType {
 /// An image carried inline in a message.
 ///
 /// `data` is the base64 encoding of the file bytes: no `data:` prefix, no
-/// MIME header, no newlines. Core only carries the encoding — frontends
+/// MIME header, no newlines. Core only carries the encoding, frontends
 /// produce it and provider adapters shape it for their wire format, so the
 /// block round-trips through session checkpoints byte-for-byte.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

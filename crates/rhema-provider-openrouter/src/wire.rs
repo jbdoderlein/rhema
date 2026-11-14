@@ -1,21 +1,21 @@
 //! OpenRouter's dialect of the OpenAI chat-completions wire, plus the
 //! catalog and account parsing that is OpenRouter's alone.
 //!
-//! The shared chat-completions vocabulary — request building, chunk
-//! assembly, the SSE drain — lives in
+//! The shared chat-completions vocabulary, request building, chunk
+//! assembly, the SSE drain, lives in
 //! [`rhema_provider_openai_compatible`]; this crate teaches it the one
 //! spelling OpenRouter does differently and reuses the rest:
 //!
 //! - Every reasoning field is named `reasoning`, and effort rides as an
-//!   object — `{"reasoning": {"effort": "high"}}` on the request, and
+//!   object, `{"reasoning": {"effort": "high"}}` on the request, and
 //!   the chain of thought replayed under `reasoning` on assistant turns
 //!   (not OpenAI's `reasoning_effort` string / `reasoning_content`).
 //! - A malformed streamed arguments payload wraps as
 //!   `{"_openrouter_args_text": <raw>}` so the call still round-trips.
 //!
-//! Everything else — roles, content parts for images, tool-call
+//! Everything else, roles, content parts for images, tool-call
 //! fragment assembly by index, the `[DONE]` sentinel, usage on the
-//! final chunk — is the shared dialect's behavior, documented there.
+//! final chunk, is the shared dialect's behavior, documented there.
 //!
 //! What remains here is the catalog side (paginated `/models` with
 //! per-token pricing and modality facts) and the account side
@@ -169,7 +169,7 @@ fn per_mtok_pricing(wire: &WireModel) -> Option<Pricing> {
 }
 
 /// The listing's own vision verdict: an entry publishing its input
-/// modalities names `image` there or not — a real `Some` either way. No
+/// modalities names `image` there or not, a real `Some` either way. No
 /// published list (`architecture` absent, or the field absent from it)
 /// stays unknown rather than guessed.
 fn vision_of(wire: &WireModel) -> Option<bool> {
@@ -244,7 +244,7 @@ pub struct WireKeyData {
 }
 
 /// The allowance the account endpoints report: the prepaid credit
-/// still available, bounded by the key's own cap when it has one —
+/// still available, bounded by the key's own cap when it has one,
 /// spending stops at the smaller of the two. `None` when the credits
 /// body carries no total; an unbounded key just lifts the cap.
 pub fn allowance(credits: &WireCredits, key: &WireKey) -> Option<Allowance> {

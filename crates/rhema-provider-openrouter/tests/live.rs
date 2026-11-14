@@ -1,4 +1,4 @@
-//! Live smoke test against the real OpenRouter API. Ignored by default —
+//! Live smoke test against the real OpenRouter API. Ignored by default,
 //! CI and plain `cargo test` never hit the network.
 //!
 //! Run with:

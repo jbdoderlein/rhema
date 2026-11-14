@@ -111,7 +111,7 @@ fn list_active_reports_only_leased_keys_without_sweeping() {
 }
 
 /// Builds the same crash as [`crashed`], but with the lease still well
-/// inside its TTL — the shape a daemon restart actually leaves behind:
+/// inside its TTL, the shape a daemon restart actually leaves behind:
 /// the process died, its lease has hours left on the clock.
 fn crashed_fresh_lease(with_unpolled_event: bool) -> (Arc<VolatileStore>, Arc<FixedClock>) {
     let clock = Arc::new(FixedClock::new(1_000));
@@ -138,7 +138,7 @@ fn crashed_fresh_lease(with_unpolled_event: bool) -> (Arc<VolatileStore>, Arc<Fi
 }
 
 /// The strict recovery: a restart over a single-node store releases a
-/// dead process's lease immediately, not at the dead lease's TTL — an
+/// dead process's lease immediately, not at the dead lease's TTL, an
 /// hour on the resident dispatcher would stall every key the cut turn
 /// held.
 #[test]

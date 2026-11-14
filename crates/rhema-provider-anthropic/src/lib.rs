@@ -1,4 +1,4 @@
-//! `rhema-provider-anthropic` — the Anthropic Messages API adapter for
+//! `rhema-provider-anthropic`, the Anthropic Messages API adapter for
 //! rhema-core's [`ModelProvider`](rhema_core::ModelProvider) seam.
 //!
 //! Speaks the Messages REST API directly: one `POST {base}/v1/messages`
@@ -10,10 +10,10 @@
 //! into rhema-core [`Event`](rhema_core::Event)s and assembled into a
 //! [`ModelOutput`](rhema_core::ModelOutput). `GET {base}/v1/models` lists
 //! the account's models as
-//! [`ModelCard`](rhema_provider::ModelCard) rows — the shared
+//! [`ModelCard`](rhema_provider::ModelCard) rows, the shared
 //! normalized model type; Anthropic's listing is text chat models only.
-//! The wire mapping constraints — user-turn tool
-//! results, the split usage accounting, stop reasons — are documented in
+//! The wire mapping constraints, user-turn tool
+//! results, the split usage accounting, stop reasons, are documented in
 //! the [`wire`] module.
 //!
 //! ```
@@ -41,14 +41,14 @@
 //! ```
 //!
 //! Layout:
-//! - [`wire`] — serde wire types plus the pure mapping between
+//! - [`wire`]: serde wire types plus the pure mapping between
 //!   [`rhema_core::ModelRequest`] / SSE events and
 //!   [`rhema_core::ModelOutput`] / [`rhema_core::Event`]s, and the models
 //!   mapping onto `ModelCard`
-//! - [`transport`] — the native reqwest transport (feature `native`);
+//! - [`transport`]: the native reqwest transport (feature `native`);
 //!   wasm builds turn the feature off and hand the provider their own
 //!   [`Transport`](rhema_provider::Transport) over host fetch
-//! - [`provider`] — the dialect over the transport seam and the
+//! - [`provider`]: the dialect over the transport seam and the
 //!   [`ModelProvider`](rhema_core::ModelProvider) implementation
 
 #![forbid(unsafe_code)]

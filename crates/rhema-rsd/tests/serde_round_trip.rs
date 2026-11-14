@@ -1,6 +1,6 @@
 //! Serde round-trips: the wrapped session (including crate-1 history and
 //! driver state) and the full key record must survive a checkpoint
-//! verbatim — the property the whole persistence story rests on.
+//! verbatim, the property the whole persistence story rests on.
 
 mod common;
 

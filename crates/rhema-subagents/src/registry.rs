@@ -3,26 +3,26 @@
 //! A start call mints a job id and registers it here
 //! (`queued → running → finished(ok, report) | finished(error,
 //! reason)`); the report is cached at production, capped, and a fetch
-//! only reads it back — a double-fetch returns the cache, never a
+//! only reads it back, a double-fetch returns the cache, never a
 //! re-run, because subagents are [`ReplaySafety::Unsafe`](rhema_core::ReplaySafety)
 //! and the fetch is a read of this registry, not an execution. Each
-//! job carries its own cancel flag — minted at spawn, never the parent
-//! turn's — so escape stops the main session and running subagents do
+//! job carries its own cancel flag, minted at spawn, never the parent
+//! turn's, so escape stops the main session and running subagents do
 //! not. Dropping the registry is the only stop switch: it flips every
 //! job's flag, queued jobs never start, and running ones end at their
-//! next step boundary — the jobs are bound to the agent's lifetime,
+//! next step boundary, the jobs are bound to the agent's lifetime,
 //! and their reports are lost with it.
 //!
 //! Concurrency: at most [`Registry::max_running`] top-level jobs run
-//! at once; a start beyond the cap queues — the id is still minted and
+//! at once; a start beyond the cap queues, the id is still minted and
 //! returned at once, and the job begins when a slot frees.
 //!
 //! Three surfaces leave the registry. [`Registry::status`] is the
 //! subscription the UI's redraw tick renders one working line per job
-//! from — working only: a finished job leaves it at once, and the
+//! from, working only: a finished job leaves it at once, and the
 //! finish moves to the transcript as a notice. The [`Steering`]
 //! implementation is one notification line per finished-but-unfetched
-//! job, a pure query — the driver deduplicates within a turn, and a
+//! job, a pure query, the driver deduplicates within a turn, and a
 //! crash between its append and its checkpoint only re-delivers. And
 //! the two consuming takes serve the frontend: [`Registry::take_finished`]
 //! delivers each finish once, the transcript notice, and
@@ -33,18 +33,18 @@
 //!
 //! Failures split into two classes, and the class decides what a
 //! restart may do. A [`JobFailure::Transient`] names the
-//! infrastructure — the model call died on the network or the server,
-//! the same class the provider's retry ladder waits out — and the job
+//! infrastructure, the model call died on the network or the server,
+//! the same class the provider's retry ladder waits out, and the job
 //! carried everything it needs to run again, so the user's retry
 //! command restarts it in place: [`Registry::restart_failed`] moves
 //! every transient-failed job back to queued under its own id, with a
 //! fresh cancel flag and clock, and hands the spawn ingredients back
 //! to the tool. The pending failure announcements retire with the
 //! state they describe, the report cache clears, and the re-run
-//! finishes into the same id — the model sees the failure, then a
+//! finishes into the same id, the model sees the failure, then a
 //! finish, and fetches as it always did. A
-//! [`JobFailure::Permanent`] names the work itself — no report, a
-//! spent step budget — and never restarts: re-running it repeats the
+//! [`JobFailure::Permanent`] names the work itself, no report, a
+//! spent step budget, and never restarts: re-running it repeats the
 //! failure at full cost.
 
 use std::collections::BTreeMap;
@@ -62,7 +62,7 @@ use rhema_core::Usage;
 pub const DEFAULT_MAX_RUNNING: usize = 4;
 
 /// How often a queued job polls for a freed slot. A job's start is not
-/// latency-critical — its report is announced when it finishes — and a
+/// latency-critical, its report is announced when it finishes, and a
 /// poll keeps the wait independent of the registry's lifetime: a
 /// dropped registry is observed as a failed upgrade, never a missed
 /// wakeup.
@@ -113,19 +113,19 @@ pub enum Fetched {
         /// The subagent definition the job runs.
         name: String,
     },
-    /// No job by that id — one the model invented, or one a restart
+    /// No job by that id, one the model invented, or one a restart
     /// lost (the registry is in-memory).
     Unknown,
 }
 
 /// Why a job ended without a report, and whether a retry could clear
-/// it. The class is decided where the failure is known — the inner
-/// turn's step error — and rides the finish, so a restart never has to
+/// it. The class is decided where the failure is known, the inner
+/// turn's step error, and rides the finish, so a restart never has to
 /// guess from the reason text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JobFailure {
     /// The infrastructure failed: a dead link, a transport timeout, a
-    /// struggling server — every [`ProviderError`] a retry ladder
+    /// struggling server, every [`ProviderError`] a retry ladder
     /// would wait out. The job may run again; the user's retry
     /// command restarts it from its start.
     Transient(String),
@@ -282,7 +282,7 @@ pub struct Registry {
 
 /// The most finished-but-untaken events one registry holds. The
 /// frontend drains [`Registry::take_finished`] every frame; the cap
-/// is the guard for a frontend that stops reading — each event names
+/// is the guard for a frontend that stops reading, each event names
 /// a finished job, so unbounded growth here is unbounded retention.
 const MAX_FINISHED: usize = 128;
 
@@ -320,7 +320,7 @@ impl Registry {
     }
 
     /// Mints a job: the id is returned at once and the job sits queued
-    /// until its task takes a slot. The cancel flag is the job's own —
+    /// until its task takes a slot. The cancel flag is the job's own,
     /// the caller's turn flag never reaches it.
     pub(crate) fn mint(&self, name: &str) -> Minted {
         let mut inner = self.lock();
@@ -344,7 +344,7 @@ impl Registry {
 
     /// Arms a minted job for a later restart: the spawn ingredients a
     /// [`Self::restart_failed`] hands back. A start calls this right
-    /// after minting; a job never armed (none today — every start
+    /// after minting; a job never armed (none today, every start
     /// arms) simply never restarts.
     pub(crate) fn arm_restart(&self, id: &str, rerun: JobRerun) {
         if let Some(job) = self.lock().jobs.get_mut(id) {
@@ -417,7 +417,7 @@ impl Registry {
         });
     }
 
-    /// Reads a job's report back — never an execution. A Report or
+    /// Reads a job's report back, never an execution. A Report or
     /// Failed fetch marks the job fetched: it stops announcing here
     /// and in the steering drain, while the cache stays until the
     /// registry drops.
@@ -452,7 +452,7 @@ impl Registry {
     }
 
     /// The notification lines: one per finished job neither fetched
-    /// nor taken, oldest first. A pure query — calling it twice
+    /// nor taken, oldest first. A pure query, calling it twice
     /// returns the same lines; the driver deduplicates within a turn,
     /// and a line a frontend took for its prompt is retired at the
     /// take, not here.
@@ -484,7 +484,7 @@ impl Registry {
 
     /// Takes the pending notification lines out, oldest first, marking
     /// each taken job announced: its line stops announcing here and in
-    /// the [`Steering`] drain. The frontend's idle path — a session
+    /// the [`Steering`] drain. The frontend's idle path, a session
     /// with no running turn runs the lines as the next turn's prompt,
     /// and this take keeps the driver's turn-start drain from
     /// repeating what the prompt already said. While a turn runs, the
@@ -514,7 +514,7 @@ impl Registry {
         taken.into_iter().map(|(_, _, line)| line).collect()
     }
 
-    /// Takes the finish events out, oldest first — one per job,
+    /// Takes the finish events out, oldest first, one per job,
     /// exactly once. The transcript notice feed: a frontend pushes
     /// each event's `line` when the job ends, whatever turn is
     /// running. Taking an event retires nothing else: the job keeps
@@ -532,7 +532,7 @@ impl Registry {
                     id: String::new(),
                     name: String::new(),
                     line: format!(
-                        "{} older subagent notice{} dropped — nobody was \
+                        "{} older subagent notice{} dropped, nobody was \
                          reading them",
                         inner.dropped,
                         if inner.dropped == 1 { "" } else { "s" }
@@ -547,13 +547,13 @@ impl Registry {
     /// Moves every transient-failed job back to queued, in mint
     /// order, and hands the spawn ingredients back: the tool re-spawns
     /// what this returns. A restart keeps the job's id and mint order,
-    /// refreshes the clock, and mints a fresh cancel flag — the old
+    /// refreshes the clock, and mints a fresh cancel flag, the old
     /// task is gone, so the re-run's task owns its own. Leaving
     /// `Finished` retires whatever was pending on it: the failure's
     /// notification line (it described a state that no longer exists,
     /// and a model that read it would delegate the same task beside
     /// the re-run), and the report cache (a fetch now reads "still
-    /// running"). Finish events already in the feed stay — the failure
+    /// running"). Finish events already in the feed stay, the failure
     /// happened, the transcript may have shown it. Ok jobs and
     /// permanent failures stay put; a re-run that fails transiently
     /// again keeps its ingredients and restarts again.
@@ -592,7 +592,7 @@ impl Registry {
             .collect()
     }
 
-    /// The subscription the UI renders: one entry per working job —
+    /// The subscription the UI renders: one entry per working job,
     /// queued or running. A finished job leaves the snapshot at once
     /// (the finish notice carries the outcome) and its report stays on
     /// the fetch until the registry drops.
@@ -639,7 +639,7 @@ impl Drop for Registry {
     fn drop(&mut self) {
         // The agent is gone: running jobs stop at their next step
         // boundary, queued ones never start. Their reports are lost
-        // with the registry — the session never carried them.
+        // with the registry, the session never carried them.
         for job in self.lock().jobs.values() {
             job.cancel.store(true, Ordering::Relaxed);
         }

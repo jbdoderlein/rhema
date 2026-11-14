@@ -3,7 +3,7 @@
 //!
 //! `MemoryStore::search` promises ranked-best-first and nothing about the
 //! method, so no caller may depend on rank internals. If anyone adds an
-//! order assertion to `run_all`, this store fails it — the tripwire that
+//! order assertion to `run_all`, this store fails it, the tripwire that
 //! keeps the suite replayable by the semantic ranker the framework spec
 //! defers to later.
 
@@ -14,7 +14,7 @@ use rhema_memory::{
 };
 
 /// Delegates everything to a [`VolatileStore`] but reverses every
-/// keyword search. The empty query — recent — is contract, not rank
+/// keyword search. The empty query, recent, is contract, not rank
 /// internals, so it passes through untouched.
 struct Scrambled(Arc<VolatileStore>);
 

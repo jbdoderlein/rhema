@@ -4,7 +4,7 @@
 //! [`DockerSandbox`] is the fs-sharing family's container member (spec
 //! §4's "container, v1" row, the bind-mount posture): `FsRoot` plus a
 //! `docker exec` prefix, no Engine API. The kill is the prefix's, as
-//! on every backend without a per-command kill —
+//! on every backend without a per-command kill,
 //! `timeout --kill-after=5` rides inside the container, `ExecRequest::
 //! timeout` stays the one budget knob, and the prefix's codes read
 //! through the shared `exit_status` (124 at the budget; an external
@@ -26,7 +26,7 @@ use rhema_sandbox::{ExecOutcome, ExecRequest, Sandbox, SandboxError, WorkspaceSe
 /// container whose bind mount is the sandbox filesystem.
 ///
 /// The caller stands the container up and bind-mounts the host
-/// directory — the one [`FsRoot`] maps sandbox paths onto — at
+/// directory, the one [`FsRoot`] maps sandbox paths onto, at
 /// `workspace` inside the container:
 ///
 /// ```text
@@ -38,9 +38,9 @@ use rhema_sandbox::{ExecOutcome, ExecRequest, Sandbox, SandboxError, WorkspaceSe
 ///
 /// That mount is the posture's whole point: the file routes are plain
 /// fs through [`FsRoot`] on the host, and the container sees every
-/// change live. Sandbox paths are mount-relative — sandbox path
+/// change live. Sandbox paths are mount-relative, sandbox path
 /// `/src/main.rs` is `<root>/src/main.rs` on the host and
-/// `/workspace/src/main.rs` in the container — and exec's working
+/// `/workspace/src/main.rs` in the container, and exec's working
 /// directory is the container-side path of the sandbox cwd.
 ///
 /// Cancelling mid-run kills the local `docker exec` process only; the
@@ -51,11 +51,11 @@ pub struct DockerSandbox {
     /// The running container's name, used verbatim on every `docker`
     /// command line.
     container: String,
-    /// The uid/gid exec runs as — the workspace owner's. The bind
+    /// The uid/gid exec runs as, the workspace owner's. The bind
     /// mount answers to host identities: as root, every file a
     /// command writes through it lands owned by root on the host.
     user: Option<(u32, u32)>,
-    /// The host directory standing in as the sandbox filesystem — the
+    /// The host directory standing in as the sandbox filesystem, the
     /// host side of the container's bind mount.
     root: FsRoot,
     /// The path the host root is mounted at inside the container.
@@ -74,7 +74,7 @@ impl DockerSandbox {
         }
     }
 
-    /// Names the uid/gid exec runs as — the workspace owner's, the
+    /// Names the uid/gid exec runs as, the workspace owner's, the
     /// identity the bind-mounted tree answers to. The assembly stats
     /// the workspace and passes the owner through.
     pub fn with_user(mut self, uid: u32, gid: u32) -> Self {
@@ -118,7 +118,7 @@ impl DockerSandbox {
 
 /// The container-side path of the sandbox cwd: sandbox paths are
 /// mount-relative, so the container path is `workspace` plus the cwd.
-/// `None` for the unset cwd (`""`) — `docker exec` keeps its own
+/// `None` for the unset cwd (`""`), `docker exec` keeps its own
 /// default working directory.
 fn container_cwd(workspace: &str, cwd: &str) -> Option<String> {
     // An empty cwd is the workspace itself: the exec lands where the
@@ -143,7 +143,7 @@ fn container_cwd(workspace: &str, cwd: &str) -> Option<String> {
 /// The exec argv: `docker exec [--workdir <container cwd>]
 /// <container> timeout --kill-after=5 <secs> bash -c <command>`.
 /// `docker exec` has its own `--workdir`, preferred over the shim's
-/// `cd` prefix — cleaner, and no shell quoting for the directory.
+/// `cd` prefix, cleaner, and no shell quoting for the directory.
 fn exec_argv(
     container: &str,
     workspace: &str,
@@ -230,7 +230,7 @@ impl Sandbox for DockerSandbox {
                         SandboxError::Failed(format!("the seed tarball is not base64: {err}"))
                     })?;
                 // Staged through the file route, unpacked at the root
-                // — the same shape the local backend seeds with, both
+                //, the same shape the local backend seeds with, both
                 // halves plain fs on the host side of the mount.
                 self.write_file(&format!("/{STAGING}"), &bytes).await?;
                 let unpacked = self.run_host_seed(&["tar", "-xzf", STAGING]).await;
@@ -351,7 +351,7 @@ mod tests {
         );
         assert_eq!(container_cwd("/", "/src").as_deref(), Some("/src"));
         assert_eq!(container_cwd("/", "/").as_deref(), Some("/"));
-        // The empty cwd is the workspace itself — the exec lands
+        // The empty cwd is the workspace itself, the exec lands
         // where the session lives, not in the container's default.
         assert_eq!(
             container_cwd("/workspace", "").as_deref(),
@@ -474,7 +474,7 @@ mod tests {
     #[tokio::test]
     async fn files_round_trip_through_the_mapped_root() {
         let (sandbox, dir) = sandbox();
-        // The instance-side form — the mirrored workspace's own path —
+        // The instance-side form, the mirrored workspace's own path,
         // lands at the mount tail, where the container's own path
         // points.
         sandbox
@@ -524,7 +524,7 @@ mod tests {
         );
     }
 
-    /// Builds a one-commit repository at a fresh tempdir — the fixture
+    /// Builds a one-commit repository at a fresh tempdir, the fixture
     /// the git-seed test clones.
     fn fixture_repo() -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -627,7 +627,7 @@ mod tests {
         );
     }
 
-    /// True when a docker daemon answers — the gate for the exec tests
+    /// True when a docker daemon answers, the gate for the exec tests
     /// that need a real container. Standing a container up needs an
     /// image pull, a network dependency a plain `cargo test` must not
     /// take, so the exec tests skip rather than fail without one.
@@ -642,7 +642,7 @@ mod tests {
     }
 
     /// The running container a live exec test may drive:
-    /// `RHEMA_TEST_DOCKER_CONTAINER` naming one, or none — the test
+    /// `RHEMA_TEST_DOCKER_CONTAINER` naming one, or none, the test
     /// skips. The file routes above cover everything the mount gives;
     /// these exercise the `docker exec` wrap alone.
     fn live_container() -> Option<String> {

@@ -5,7 +5,7 @@ use super::*;
 
 impl App {
     /// Persists the config through the store. `false` means the store
-    /// refused and the error strip carries why — callers that must not
+    /// refused and the error strip carries why, callers that must not
     /// pretend success stop there.
     pub(crate) fn save_config(&mut self) -> bool {
         match self.store.save(&self.config) {
@@ -45,7 +45,7 @@ impl App {
     /// The add-instance dialog validated a new instance's input: fetch
     /// the models; the fetch is the validation (a wrong key or a dead
     /// server both surface as the fetch's error). The dialog lives on
-    /// the settings screen or the onboarding wizard — both run the same
+    /// the settings screen or the onboarding wizard, both run the same
     /// login flow.
     pub(crate) fn validate_login(&mut self) -> Vec<Effect> {
         let pending_input = match &self.screen {
@@ -109,7 +109,7 @@ impl App {
     }
 
     /// A step of the running login flow: render it on the add-instance
-    /// dialog — the settings' modal or the wizard's inline copy — and
+    /// dialog, the settings' modal or the wizard's inline copy, and
     /// on completion validate the credential it produced through the
     /// same fetch path a typed key takes.
     pub(crate) fn on_login_update(&mut self, update: rhema_provider::LoginUpdate) -> Vec<Effect> {
@@ -209,7 +209,7 @@ impl App {
         let mut keychain_delete_failure: Option<String> = None;
         self.config.set_for_profile(Some(tab), |settings| {
             // A re-login replaces the instance wholesale; its old
-            // keychain entry must not linger — but a store that refuses
+            // keychain entry must not linger, but a store that refuses
             // the delete must not pass silently either, or the secret
             // outlives the login that named it.
             if let Some(old) = settings.instances.get(instance)
@@ -248,7 +248,7 @@ impl App {
         self.provider = Some(backend.provider());
         // The other logins' catalogs stay: a fresh login must not blank
         // the picker down to one provider. The instance's own slice
-        // replaces itself, so a stale copy cannot linger — a provider
+        // replaces itself, so a stale copy cannot linger, a provider
         // may hold several.
         self.models.retain(|entry| {
             entry.provider != provider || entry.instance.as_deref() != Some(instance)
@@ -426,9 +426,9 @@ impl App {
             FetchWhy::Bootstrap | FetchWhy::Refresh => {
                 // One result per queried backend: each fetched slice
                 // replaces itself in the catalog, and a slice no fetch
-                // asked about — a login that raced this one — survives. A
+                // asked about, a login that raced this one, survives. A
                 // total failure is the picker's error, and a partial one
-                // is named in its footer — a missing provider must never
+                // is named in its footer, a missing provider must never
                 // look like an empty one.
                 let (catalogs, failed): (Vec<_>, Vec<_>) =
                     result.into_iter().partition(|entry| entry.result.is_ok());
@@ -474,9 +474,9 @@ impl App {
     }
 
     /// A model was named for `/model <needle>`: resolve the needle
-    /// against the cached catalog's fully-qualified rows — `provider/id`,
-    /// the shape the palette completes and the picker displays — exact
-    /// match first, then a unique prefix — and switch, or say what went
+    /// against the cached catalog's fully-qualified rows, `provider/id`,
+    /// the shape the palette completes and the picker displays, exact
+    /// match first, then a unique prefix, and switch, or say what went
     /// missing. A bare id matches nothing on purpose: several providers
     /// can serve one id, so the name carries its provider
     /// (`opencode/glm-5.3-flash`, never just `glm-5.3-flash`). `/model`
@@ -557,8 +557,8 @@ impl App {
             matches!(&self.screen, Screen::Picker(_)) || matches!(&self.screen, Screen::Chat);
         match self.apply_model_choice(provider, instance, id) {
             Ok(effects) => {
-                // An interactive switch — the picker opened from the
-                // chat, or a `/model <needle>` typed there — says where
+                // An interactive switch, the picker opened from the
+                // chat, or a `/model <needle>` typed there, says where
                 // it landed; the login auto-selects stay quiet.
                 if from_chat {
                     self.transcript
@@ -591,8 +591,8 @@ impl App {
         };
         // The write follows the session's profile, not the startup flag:
         // after a mid-session /profile the pick must land where effective()
-        // reads it back from — profiles never inherit each other's model.
-        // The provider — and the instance it came from — moves with the
+        // reads it back from, profiles never inherit each other's model.
+        // The provider, and the instance it came from, moves with the
         // model: a pick from another login's catalog switches the backend
         // this session rides on.
         let profile = self.session_profile.as_deref();
@@ -650,7 +650,7 @@ impl App {
     }
 
     /// Swaps the session's agent for one built over `session` under
-    /// the current profile and flags — the rebuild idiom. The
+    /// the current profile and flags, the rebuild idiom. The
     /// transcript counters and sections given here ride along: same
     /// conversation, new executor. `Err` carries the build failure's
     /// text for the caller to notice with.
@@ -674,7 +674,7 @@ impl App {
 
     /// Rebuilds the live agent in place: take it, carry its
     /// transcript, build over its session, reinstall. `stamp` clears
-    /// the session's environment stamp first — for callers whose
+    /// the session's environment stamp first, for callers whose
     /// change alters what the machine reports. No agent, nothing to
     /// rebuild.
     pub(crate) fn rebuild_live_agent(&mut self, stamp: bool) -> Result<(), String> {
@@ -694,7 +694,7 @@ impl App {
     /// The wire's registry handle rides beside the agent: a rebuilt
     /// agent carries a fresh registry, and the UI must read that one.
     /// The third element is the assembly's absence list, the startup
-    /// notice's feed — the rebuild re-probes, so the notice re-answers
+    /// notice's feed, the rebuild re-probes, so the notice re-answers
     /// with it.
     pub(crate) fn build_agent(
         &self,

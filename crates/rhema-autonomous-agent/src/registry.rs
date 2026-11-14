@@ -1,7 +1,7 @@
 //! The tool registry (spec §5's `Tool` contract): named tools aggregated
 //! into one allowlist-filtered [`ToolResolver`].
 //!
-//! `rhema_core` deliberately ships the resolver seam without a registry —
+//! `rhema_core` deliberately ships the resolver seam without a registry,
 //! one primitive, not a registry. The registry is a resident-agent
 //! concern: many named tools, and a per-run permission filter (spec §8)
 //! applied before the handler's first step, so the model only ever sees
@@ -17,8 +17,8 @@ use serde_json::Value;
 use crate::Allowlist;
 
 /// Why a tool invocation failed: the message the model reads. The
-/// registry turns `Err` into an in-band failure result — a failing tool
-/// is a result the model reacts to, never a crashed run — so the
+/// registry turns `Err` into an in-band failure result, a failing tool
+/// is a result the model reacts to, never a crashed run, so the
 /// message is the error's whole content.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
@@ -49,7 +49,7 @@ impl From<&str> for ToolError {
 }
 
 /// One named tool: the spec the model sees, and the invocation the
-/// registry dispatches to. Errors surface in-band — a failing tool is a
+/// registry dispatches to. Errors surface in-band, a failing tool is a
 /// result the model can react to, never a crashed run.
 #[async_trait]
 pub trait Tool: Send + Sync {

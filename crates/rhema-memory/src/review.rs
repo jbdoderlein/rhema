@@ -1,7 +1,7 @@
 //! The review sweep: what is due for a re-check, and nothing else.
 //!
 //! The engine computes *what is due*; it schedules nothing and decides
-//! nothing. A caller — a scheduled agent turn, not a daemon — asks
+//! nothing. A caller, a scheduled agent turn, not a daemon, asks
 //! [`due_for_review`], re-checks what it can through each
 //! [`VerifyHint`], and only the `Manual` hints reach a human, batched.
 
@@ -19,7 +19,7 @@ pub struct ReviewItem {
     pub verify_hint: Option<VerifyHint>,
 }
 
-/// The instant `record` became due, used to order the sweep — most
+/// The instant `record` became due, used to order the sweep, most
 /// overdue first.
 fn due_since(record: &MemoryRecord) -> u64 {
     let candidates = [record.stale_at(), record.valid_until];
@@ -30,8 +30,8 @@ fn due_since(record: &MemoryRecord) -> u64 {
         .unwrap_or(record.created_at)
 }
 
-/// The active records in `records` that are due for review at `now` —
-/// past their decay interval or past their horizon — most overdue first,
+/// The active records in `records` that are due for review at `now`,
+/// past their decay interval or past their horizon, most overdue first,
 /// ties by id. Records already superseded or retracted never appear: the
 /// sweep reviews beliefs, not corpses.
 pub fn due_for_review(records: Vec<MemoryRecord>, now: u64) -> Vec<ReviewItem> {

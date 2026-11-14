@@ -1,25 +1,25 @@
-//! rhema-core — a small, embeddable, generic step engine for model exchanges.
+//! rhema-core, a small, embeddable, generic step engine for model exchanges.
 //!
 //! The primitive is [`Agent::step`]: ONE exchange with a model. Build the
 //! request from the caller-owned [`Session`], stream it through a
 //! [`ModelProvider`], append the assistant message to the session, resolve
 //! any tool calls through a [`ToolResolver`], and append the results. The
-//! engine never loops, never dispatches, never persists — those belong to
+//! engine never loops, never dispatches, never persists, those belong to
 //! drivers (SPEC.md §0, §5).
 //!
 //! Layout:
-//! - [`message`] — `Role`, `Content`, `Message`, the `Image` block
-//! - [`paste`] — embedded pastes in message text: the chip codec
-//! - [`session`] — the caller-owned, serializable `Session`
-//! - [`workspace`] — the checkout's directory conventions: `.rhema`
+//! - [`message`]: `Role`, `Content`, `Message`, the `Image` block
+//! - [`paste`]: embedded pastes in message text: the chip codec
+//! - [`session`]: the caller-owned, serializable `Session`
+//! - [`workspace`]: the checkout's directory conventions: `.rhema`
 //!   and the tiers under it
-//! - [`request`] — `ModelRequest`, `ChatParams`, `ToolSpec`
-//! - [`output`] — `ModelOutput`, `StopReason`, `Usage`, `Step`
-//! - [`provider`] — the `ModelProvider` seam
-//! - [`tool`] — the `ToolResolver` seam
-//! - [`event`] — `Event`, `EventSink`
-//! - [`engine`] — the `Agent` step engine, `AgentBuilder`, `run_turn`
-//! - [`mock`] — scripted `MockProvider` (behind the `mock` feature)
+//! - [`request`]: `ModelRequest`, `ChatParams`, `ToolSpec`
+//! - [`output`]: `ModelOutput`, `StopReason`, `Usage`, `Step`
+//! - [`provider`]: the `ModelProvider` seam
+//! - [`tool`]: the `ToolResolver` seam
+//! - [`event`]: `Event`, `EventSink`
+//! - [`engine`]: the `Agent` step engine, `AgentBuilder`, `run_turn`
+//! - [`mock`]: scripted `MockProvider` (behind the `mock` feature)
 
 #![forbid(unsafe_code)]
 

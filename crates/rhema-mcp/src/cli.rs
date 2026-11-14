@@ -1,19 +1,19 @@
 //! The CLI: the `rhema mcp` meta verbs, the config-maintenance verbs
 //! (`add`, `list`, `remove`), and the `__server` generated command
-//! mode — everything a bash command spawned by an agent sees.
+//! mode, everything a bash command spawned by an agent sees.
 //!
 //! Two surfaces, one JSON-on-stdout rule, distinct exit codes (spec
 //! §5): `0` ok; `2` usage (bad flags, unknown tool, unparseable or
 //! oversize args JSON); `3` unknown server; `4` transport (bridge
 //! unreachable, server down past respawn); `5` the server reported
-//! failure (JSON-RPC error or `isError: true` — the failure envelope
+//! failure (JSON-RPC error or `isError: true`, the failure envelope
 //! still prints, it is the model's diagnostic); `6` timeout. Two
 //! faults answer `4` in different voices: outside a wired agent
 //! shell the meta verbs print the explanation spec §10 asks for,
 //! and internal faults print nothing.
 //!
 //! The bridge client is a hand-rolled HTTP/1.1 exchange over the
-//! Unix socket, `Connection: close` — one request per process, no
+//! Unix socket, `Connection: close`, one request per process, no
 //! connection pool to grow. The `/call` answer arrives as the
 //! bridge's SSE stream; keepalive comments are skipped, the first
 //! terminal event carries the outcome.
@@ -125,7 +125,7 @@ pub fn run(argv: &[std::ffi::OsString]) -> i32 {
     }
 }
 
-/// Runs the CLI over an explicit environment — the seam the
+/// Runs the CLI over an explicit environment, the seam the
 /// integration tests use, since env vars are process-global and
 /// parallel tests would race on them. Process runs go through
 /// [`run`], which reads the init file's vars.
@@ -162,7 +162,7 @@ pub fn run_with_env(
 }
 
 /// Mode dispatch over an explicit env: `run` feeds the process env,
-/// tests feed a constructed one — env vars are process-global and
+/// tests feed a constructed one, env vars are process-global and
 /// parallel tests would race on them.
 fn dispatch(env: Result<CliEnv, Outcome>, argv: &[std::ffi::OsString]) -> Result<Exit, Outcome> {
     let Some(mode) = argv.first().and_then(|a| a.to_str()) else {
@@ -408,7 +408,7 @@ impl Fault {
 
 /// The extension a media block may write, by mime type; anything else
 /// becomes a text placeholder with the byte count. The file name is
-/// always our own `<sha256>.<ext>` — no server-provided name is ever
+/// always our own `<sha256>.<ext>`, no server-provided name is ever
 /// used, so no traversal is possible by construction.
 fn media_ext(mime: &str) -> Option<&'static str> {
     match mime {

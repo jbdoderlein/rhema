@@ -5,7 +5,7 @@
 //! this client never asked about must not fail a parse. Request types
 //! are exact because they are ours. Content blocks stay flat
 //! (`type` discriminator plus the verbatim JSON): the block-type set is
-//! server-extensible, and interpretation — text, media, structured —
+//! server-extensible, and interpretation, text, media, structured,
 //! is the caller's job, not the transport's.
 
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ pub const SUPPORTED_STDIO: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"
 
 /// The revisions a Streamable HTTP server may answer with: one fewer
 /// than stdio, because `2024-11-05` delivers responses on a GET SSE
-/// stream this client never opens — accepting it there would hang
+/// stream this client never opens, accepting it there would hang
 /// every call (spec §6).
 pub const SUPPORTED_HTTP: [&str; 2] = ["2025-06-18", "2025-03-26"];
 
@@ -106,7 +106,7 @@ pub struct InitializeParams {
     /// [`PROTOCOL_VERSION`], advertised exactly.
     #[serde(rename = "protocolVersion")]
     pub protocol_version: &'static str,
-    /// The capabilities object: `{}` — this client negotiates nothing.
+    /// The capabilities object: `{}`, this client negotiates nothing.
     pub capabilities: Value,
     /// Who is calling.
     #[serde(rename = "clientInfo")]

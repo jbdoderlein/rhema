@@ -3,7 +3,7 @@
 //! provider saves a memory in one turn and searches for it in the next;
 //! `run_turn` and `ToolResolver` carry the whole exchange. If wiring
 //! memory into a turn ever needs anything new in `rhema-core`, the
-//! boundary is wrong — fix the boundary, don't add the type.
+//! boundary is wrong, fix the boundary, don't add the type.
 
 use std::sync::Arc;
 

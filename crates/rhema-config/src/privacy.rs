@@ -2,8 +2,8 @@
 //! credentials or conversation content: directories `0700`, files
 //! `0600`. The mode applies at creation, so nothing sensitive ever
 //! touches disk world-readable, and is re-asserted on every write, so
-//! state that predates the rule — or was widened outside these
-//! helpers — tightens again. Beyond the create-time mode, changes are
+//! state that predates the rule, or was widened outside these
+//! helpers, tightens again. Beyond the create-time mode, changes are
 //! best-effort: a filesystem that refuses mode changes (FAT, some
 //! network mounts) must not turn a save that would otherwise succeed
 //! into an error.
@@ -12,7 +12,7 @@ use std::io;
 use std::path::Path;
 
 /// Creates `path` and its parents, then restricts the leaf directory
-/// to `0700` (best-effort). The parents keep their modes — only the
+/// to `0700` (best-effort). The parents keep their modes, only the
 /// directory this crate owns is tightened.
 pub fn private_dir(path: &Path) -> io::Result<()> {
     std::fs::create_dir_all(path)?;
@@ -35,7 +35,7 @@ pub fn private_write(path: &Path, contents: impl AsRef<[u8]>) -> io::Result<()> 
 /// Writes `contents` to `path` atomically and `0600`: the bytes land
 /// in a private sibling temp file first, then rename over `path`. A
 /// crash mid-write leaves the previous file whole, and no reader sees
-/// a half-written state — the shape session stores need, where the
+/// a half-written state, the shape session stores need, where the
 /// file being replaced may be the only good copy. The temp file is
 /// removed when the rename fails.
 pub fn private_write_atomic(path: &Path, contents: impl AsRef<[u8]>) -> io::Result<()> {
@@ -61,7 +61,7 @@ pub fn private_write_atomic(path: &Path, contents: impl AsRef<[u8]>) -> io::Resu
     }
 }
 
-/// Best-effort `0600` on an existing file this crate did not create —
+/// Best-effort `0600` on an existing file this crate did not create,
 /// a SQLite database another opener made, tightening whatever the
 /// umask left wide. Silent by contract; see the module docs.
 pub fn tighten_file(path: &Path) {

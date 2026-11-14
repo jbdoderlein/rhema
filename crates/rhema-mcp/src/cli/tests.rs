@@ -139,7 +139,7 @@ fn empty_and_object_arg_json_parse() {
 
 /// A missing bridge env is the silent internal fault: exit 4, no
 /// stderr from this path. Proven at process level once the rhema
-/// binary wires this dispatch — mutating this process's env here
+/// binary wires this dispatch, mutating this process's env here
 /// would be `unsafe` in edition 2024 and racy across parallel tests.
 
 #[test]

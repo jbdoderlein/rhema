@@ -1,8 +1,8 @@
 //! Scripted [`MockProvider`] for offline tests and examples: zero network.
 //!
 //! Replays caller-supplied [`ModelOutput`]s in order and emits the streaming
-//! events a real provider would — `TextDelta` for text, `ToolCallStart` plus
-//! `ToolCallArgsDelta` for each call — so tests can assert full event
+//! events a real provider would, `TextDelta` for text, `ToolCallStart` plus
+//! `ToolCallArgsDelta` for each call, so tests can assert full event
 //! sequences (SPEC.md §7 test 2).
 
 use std::collections::VecDeque;

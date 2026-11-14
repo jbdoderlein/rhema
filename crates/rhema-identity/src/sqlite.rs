@@ -1,6 +1,6 @@
 //! The durable [`IdentityStore`]: one `accounts` table in the
 //! deployment's SQLite file, its own connection beside the other stores'
-//! — WAL and a busy timeout, the two-connections pattern the claw's
+//!, WAL and a busy timeout, the two-connections pattern the claw's
 //! stores established. Secrets sit in the file's `secret` column; file
 //! privacy is the consumer's job (0600 file, 0700 directory).
 

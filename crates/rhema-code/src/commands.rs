@@ -1,7 +1,7 @@
 //! The slash-command table: the single source of truth for what commands
 //! exist, what they say, and what they do.
 //!
-//! ARCHITECTURE: every command is one row of [`COMMANDS`] — name,
+//! ARCHITECTURE: every command is one row of [`COMMANDS`], name,
 //! description, argument kind, and handler function, in one place. The
 //! palette, the parser, and the dispatcher all read this table,
 //! so a command cannot exist outside it: a handler without a row is dead
@@ -170,7 +170,7 @@ pub const COMMANDS: &[CommandSpec] = &[
 /// identity, not meaning.
 #[derive(Debug, Clone)]
 pub enum Parsed {
-    /// Not a slash input — a prompt for the model.
+    /// Not a slash input, a prompt for the model.
     Prompt(String),
     /// A table command, with its argument when one was typed.
     Command {
@@ -266,7 +266,7 @@ fn retry(app: &mut App, _argument: Option<&str>) -> Vec<Effect> {
         return Vec::new();
     }
     // The subagent half first: jobs the network killed re-run under
-    // their own ids, whether or not the parent turn has an offer up —
+    // their own ids, whether or not the parent turn has an offer up,
     // a job can die to an outage the parent turn survived. The restart
     // runs before the turn so the retried turn's start-of-turn drain
     // never announces the stale failures the restart just retired.

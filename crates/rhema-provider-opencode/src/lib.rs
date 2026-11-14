@@ -1,4 +1,4 @@
-//! `rhema-provider-opencode` — the OpenCode Console (pay-as-you-go)
+//! `rhema-provider-opencode`, the OpenCode Console (pay-as-you-go)
 //! and Go adapter for rhema-core's [`ModelProvider`] seam.
 //!
 //! Console serves every paid and Go text model through an
@@ -11,8 +11,8 @@
 //! per-MTok prices Console publishes.
 //!
 //! Two base URLs matter:
-//! - [`DEFAULT_BASE_URL`] — pay-as-you-go from the Console balance.
-//! - [`GO_BASE_URL`] — the Go, Go Plus, and Go Teams subscription.
+//! - [`DEFAULT_BASE_URL`]: pay-as-you-go from the Console balance.
+//! - [`GO_BASE_URL`]: the Go, Go Plus, and Go Teams subscription.
 //!
 //! Paste either into the login dialog; the stored instance keeps it.
 //!
@@ -124,7 +124,7 @@ impl OpenCodeProvider {
         Self::new(api_key).with_base_url(GO_BASE_URL)
     }
 
-    /// Targets `base_url` — the full versioned base used verbatim with
+    /// Targets `base_url`, the full versioned base used verbatim with
     /// `/chat/completions` and `/models` appended; trailing slashes are
     /// trimmed. This is how a stored instance chooses pay-as-you-go or
     /// Go, and how tests reach a mock server.

@@ -3,7 +3,7 @@
 //!
 //! The crate's tests re-execute this binary with
 //! `RHEMA_MCP_FAKE_SCRIPT` set; `main` then plays the scripted server
-//! (spec §9 item 3) instead of running tests — no node, no network.
+//! (spec §9 item 3) instead of running tests, no node, no network.
 //! Without the variable, `main` runs the test list sequentially with
 //! a hand-rolled harness: deterministic timing beats parallel flake
 //! for tests whose whole subject is timing.
@@ -1237,7 +1237,7 @@ async fn uds_request(socket: &std::path::Path, raw: &str) -> Result<(u16, String
         .await
         .map_err(|e| format!("write: {e}"))?;
     // Note: tokio's UnixStream::shutdown would close the whole
-    // stream, not just the write half, so no half-close here — the
+    // stream, not just the write half, so no half-close here, the
     // requests carry `Connection: close` and the response's own
     // content-length bounds the read.
     let mut buf = Vec::new();
@@ -1369,7 +1369,7 @@ async fn bridge_serves_the_whole_surface() -> Result<(), String> {
 /// A caller hanging up mid-call cancels the request server-side: the
 /// fake records `notifications/cancelled` to the notes file. The call
 /// budget is the full default here, so only the disconnect can end
-/// it — a timeout would fire its own cancellation and muddle the
+/// it, a timeout would fire its own cancellation and muddle the
 /// proof.
 async fn bridge_cancellation_reaches_the_server_on_disconnect() -> Result<(), String> {
     let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
@@ -1610,7 +1610,7 @@ async fn the_model_bash_command_walks_the_whole_chain() -> Result<(), String> {
     }
     let _ = stderr;
 
-    // The stdin path — the heredoc, the shape a model reaches for
+    // The stdin path, the heredoc, the shape a model reaches for
     // when the payload outgrows quoting: no argument escapes, no
     // temp file, the document verbatim.
     let mut command = std::process::Command::new("bash");

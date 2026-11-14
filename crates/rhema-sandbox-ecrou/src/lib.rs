@@ -4,12 +4,12 @@
 //! [`EcrouSandbox`] is the fs-sharing family's microVM member (spec
 //! §4's "VM / microVM" row, the ecrou shape): the host workspace
 //! crosses every boot as a virtiofs share, so the file routes are
-//! plain fs through [`FsRoot`] — as on the docker bind mount — and
+//! plain fs through [`FsRoot`], as on the docker bind mount, and
 //! only exec crosses the `ecrou` CLI. There is no instance to stand
 //! up or stop: ecrou runs one-shot machines, so every exec boots a
 //! fresh VM from the image, runs the command with the workspace
 //! shared in, and powers the machine off when the command exits.
-//! By default rootfs state — package installs, daemons, `/tmp` —
+//! By default rootfs state, package installs, daemons, `/tmp`,
 //! lives exactly one command and the workspace is what persists.
 //! With [`EcrouSandbox::with_persist`] the session names a persisted
 //! state (`--persist KEY`): the boots share one writable upper over a
@@ -26,7 +26,7 @@
 //! The capture directory is a scratch tempdir ecrou takes as an extra
 //! share: the payload's stdout and stderr land there as two files,
 //! the console (kernel and boot chatter, merged) is discarded, and
-//! the pump tails the two files while the machine runs — complete
+//! the pump tails the two files while the machine runs, complete
 //! lines through `progress`, a capped tail each, the same shape
 //! `exec_util` gives the pipe-backed backends. The scratch roots
 //! where the `ecrou` on PATH can see it: `/tmp` for a native build,
@@ -41,14 +41,14 @@
 //! `ecrou` process kills the machine with it (the VMM child carries
 //! `PR_SET_PDEATHSIG`), stronger than the docker prefix, which leaves
 //! the command running in the container. The boot rides inside the
-//! wall-clock budget — a cold image pays its download once into the
+//! wall-clock budget, a cold image pays its download once into the
 //! ecrou cache, every command pays its extract-plus-boot (under 2 s
 //! on a warm alpine, more on a distro rootfs). Anything `ecrou`
 //! itself reports (`Error:` on its stderr) is an unavailable sandbox,
 //! not a guest result. One refusal is answered instead of reported:
 //! ecrou refuses to boot a persisted state against a base it was not
 //! built on (`persist base mismatch`), and the retry resets the state
-//! and says so through `progress` — the state is regenerable, the
+//! and says so through `progress`, the state is regenerable, the
 //! model should know its installs are gone.
 #![forbid(unsafe_code)]
 
@@ -78,8 +78,8 @@ pub const DEFAULT_IMAGE: &str = "ghcr.io/vhaudiquet/rhema-images:latest";
 const SEED_BUDGET: Duration = Duration::from_secs(300);
 
 /// How often the capture files are tailed and the cancel flag and the
-/// budget sampled. The machine has no stdout to block on — the
-/// console rides a nulled pipe — so this tick is the only observation
+/// budget sampled. The machine has no stdout to block on, the
+/// console rides a nulled pipe, so this tick is the only observation
 /// point a silent command's kill has.
 const TICK: Duration = Duration::from_millis(100);
 
@@ -91,7 +91,7 @@ pub struct EcrouSandbox {
     /// The image reference every boot resolves: an ecrou distro name
     /// (`ubuntu`, `alpine:3.23`) or an OCI image reference.
     image: String,
-    /// The host directory standing in as the sandbox filesystem — the
+    /// The host directory standing in as the sandbox filesystem, the
     /// host side of the workspace share.
     root: FsRoot,
     /// The sandbox-side path of the workspace: the path the prompt
@@ -118,7 +118,7 @@ impl EcrouSandbox {
     }
 
     /// Names the persisted state rootfs changes land in. The key is
-    /// the workspace's derivation — stable across sessions, so a
+    /// the workspace's derivation, stable across sessions, so a
     /// session's installs are its next command's starting point.
     pub fn with_persist(mut self, key: impl Into<String>) -> Self {
         self.persist = Some(key.into());
@@ -141,7 +141,7 @@ impl EcrouSandbox {
         })
     }
 
-    /// The workspace share's host path, canonical — the path both
+    /// The workspace share's host path, canonical, the path both
     /// sides of the share use, so a workspace reached through a link
     /// still mounts under the name its files resolve to.
     fn mount_point(&self) -> String {
@@ -153,7 +153,7 @@ impl EcrouSandbox {
 }
 
 /// The payload line: the command through `bash -c` when the image
-/// carries bash, through its `sh` when it does not — the seam says
+/// carries bash, through its `sh` when it does not, the seam says
 /// `bash -c`, and an alpine rootfs ships no bash. `exec` hands the
 /// streams and the exit code straight through either way.
 fn shell_line(command: &str) -> String {
@@ -165,13 +165,13 @@ fn shell_line(command: &str) -> String {
 }
 
 /// The run argv: options first, the image, then the payload after
-/// `--`. Nothing in the payload is quoted for a middle shell — the
+/// `--`. Nothing in the payload is quoted for a middle shell, the
 /// argv crosses the CLI as argv, and the init script's own quoting
 /// takes it from there.
 /// The capture scratch, in a directory both sides see. A native ecrou
 /// shares `/tmp` with this process, so the default tempdir is right;
 /// the snap runs in a private `/tmp` of its own, where a shared
-/// directory would take the payload's streams and vanish — the
+/// directory would take the payload's streams and vanish, the
 /// machine writes them, the host never sees a byte. Under the snap
 /// the scratch moves to the snap's durable area
 /// (`~/snap/ecrou/common`), which the confinement maps to
@@ -182,12 +182,12 @@ fn capture_dir() -> Result<tempfile::TempDir, SandboxError> {
 }
 
 /// A scratch directory the `ecrou` on PATH can see, for anything that
-/// crosses the process boundary — the capture files, and the tests'
+/// crosses the process boundary, the capture files, and the tests'
 /// workspace shares. The snap's `/tmp` is a private per-run tmpfs: a
 /// host-created directory there is invisible to the machine, and
 /// ecrou refuses the share ("share host path does not exist") or,
 /// when the capture path happens to sit inside the share, silently
-/// materializes an empty copy of it and shares that — output
+/// materializes an empty copy of it and shares that, output
 /// swallowed, exit green. The snap's durable area
 /// (`~/snap/ecrou/common`) is on the real filesystem and visible to
 /// both sides, so scratch under the snap roots there; a native build
@@ -213,7 +213,7 @@ fn scratch_dir() -> std::io::Result<tempfile::TempDir> {
 }
 
 /// The staged git identity: where the file landed on the host, and
-/// the path it answers to inside the machine — the same absolute path,
+/// the path it answers to inside the machine, the same absolute path,
 /// the share being 1:1.
 #[derive(Debug, Clone, PartialEq)]
 struct GitEnv {
@@ -227,8 +227,8 @@ impl EcrouSandbox {
     /// The shape is deliberate. A mount of `~/.config` would drag every
     /// application's secrets into a machine that exists for one
     /// command, and the strict snap cannot see dot directories anyway;
-    /// a verbatim copy of `~/.gitconfig` breaks on `includeIf` — the
-    /// common per-directory identity points at host-only files — and
+    /// a verbatim copy of `~/.gitconfig` breaks on `includeIf`, the
+    /// common per-directory identity points at host-only files, and
     /// carries host-bound settings that actively break the machine
     /// (credential helpers that are not installed there, commit
     /// signing whose keys are not there). So the effective config is
@@ -236,14 +236,14 @@ impl EcrouSandbox {
     /// `gitdir:` conditions resolve to this tree, the same tree the
     /// share gives the machine, so the identity that lands is the one
     /// this workspace already gets. The flattened pairs re-emit as a
-    /// plain config file under three guard overrides — `safe.directory`
+    /// plain config file under three guard overrides, `safe.directory`
     /// (ownership across the share), `commit.gpgsign`, an empty
-    /// `credential.helper` (both host-only) — and repo-local
+    /// `credential.helper` (both host-only), and repo-local
     /// `.git/config` crosses with the tree on its own, under the usual
     /// system < global < local precedence.
     ///
-    /// Anything that cannot be done — no git here, no config, a
-    /// workspace that is not a repo — stages nothing, and the payload's
+    /// Anything that cannot be done, no git here, no config, a
+    /// workspace that is not a repo, stages nothing, and the payload's
     /// git behaves as it always has. Never an error: a config is
     /// provisioning, not the payload.
     fn stage_git_config(&self) -> Option<GitEnv> {
@@ -285,8 +285,8 @@ impl EcrouSandbox {
         })
     }
 
-    /// Adds `.rhema/` to the workspace's `.git/info/exclude` — the
-    /// local ignore that never leaves the machine — when the tree is a
+    /// Adds `.rhema/` to the workspace's `.git/info/exclude`, the
+    /// local ignore that never leaves the machine, when the tree is a
     /// repository and the line is not already there.
     fn exclude_staging(&self, root: &Path) {
         let Some(git_dir) = std::fs::canonicalize(root.join(".git")).ok() else {
@@ -313,7 +313,7 @@ impl EcrouSandbox {
 /// The settings that would break the machine, overridden after the
 /// flattened host config: git's dubious-ownership refusal (the tree
 /// crosses the share), commit signing (the keys stayed home), and the
-/// credential helper stack (the helpers stayed home too — an empty
+/// credential helper stack (the helpers stayed home too, an empty
 /// value resets the list git accumulated).
 const GIT_GUARDS: &str = "\n[safe]\n\tdirectory = *\n[commit]\n\tgpgsign = false\n[credential]\n\thelper =\n[core]\n\tfsmonitor = false\n";
 
@@ -347,7 +347,7 @@ fn render_pairs(flat: &str) -> String {
 }
 
 /// One value, file-safe: bare when plain, quoted and C-escaped when
-/// not — a newline in a value is a real thing (custom diff drivers
+/// not, a newline in a value is a real thing (custom diff drivers
 /// carry them) and bare it would end the entry early.
 fn config_value(value: &str) -> String {
     let plain = !value.is_empty()
@@ -461,11 +461,11 @@ struct StreamTail {
 impl StreamTail {
     /// Reads what appeared since the last tick, emits every complete
     /// line through `progress`, and keeps the capped tail. `final_pass`
-    /// — the drain after the machine is gone — also consumes a
+    ///, the drain after the machine is gone, also consumes a
     /// trailing partial line as a line, the way the pipe pump's
     /// `lines()` yields it at end of stream; mid-run, a partial line
     /// waits for its newline. The file does not exist until the
-    /// guest's first write — absence is silence, not an error.
+    /// guest's first write, absence is silence, not an error.
     async fn pump(
         &mut self,
         progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
@@ -522,7 +522,7 @@ impl StreamTail {
 }
 
 /// Appends `bytes` to `tail`, keeping at most the last
-/// [`MAX_STREAM_BYTES`] — the same cap the pipe pump applies as the
+/// [`MAX_STREAM_BYTES`], the same cap the pipe pump applies as the
 /// bytes land.
 fn append_capped(tail: &mut Vec<u8>, bytes: &[u8]) {
     tail.extend_from_slice(bytes);
@@ -534,8 +534,8 @@ fn append_capped(tail: &mut Vec<u8>, bytes: &[u8]) {
 
 /// The stderr lines that are ecrou's own words, not the guest's: the
 /// runtime's `Error:` diagnostics and clap's lowercase `error:` usage
-/// complaints. The payload's streams never touch this stderr — they
-/// ride the capture files — so a warning is the only thing that may
+/// complaints. The payload's streams never touch this stderr, they
+/// ride the capture files, so a warning is the only thing that may
 /// appear next to a guest's own nonzero exit.
 fn is_ecrou_error(line: &str) -> bool {
     line.starts_with("Error: ") || line.starts_with("error: ")
@@ -543,7 +543,7 @@ fn is_ecrou_error(line: &str) -> bool {
 
 /// Reads the ecrou process's stderr and sorts the exit out: a line of
 /// ecrou's own next to a nonzero exit is a failed boot, an image that
-/// would not resolve, an old binary — an unavailable sandbox, never a
+/// would not resolve, an old binary, an unavailable sandbox, never a
 /// guest result. Warnings ride along on successes and on guest
 /// failures alike; a guest exit is the command's own result.
 fn classify(
@@ -575,7 +575,7 @@ fn classify(
 
 /// Whether the host answers a live-machine test: `ecrou probe` green,
 /// a current binary (the `--capture` flag exists), an alpine tarball
-/// already in the cache — the tests run no downloads — and one smoke
+/// already in the cache, the tests run no downloads, and one smoke
 /// boot with a shared tempdir, the exact posture the tests use. The
 /// answer is cached: the smoke boot is a real machine, and the four
 /// live tests want it once.
@@ -622,7 +622,7 @@ fn ecrou_ready() -> bool {
         if !cached {
             return false;
         }
-        // The smoke boot: one machine, a tempdir share — the whole
+        // The smoke boot: one machine, a tempdir share, the whole
         // path a live test takes, minus the assertions.
         let Ok(smoke) = scratch_dir() else {
             return false;
@@ -695,7 +695,7 @@ impl Sandbox for EcrouSandbox {
             // refuses to boot it against a base it was not built on.
             // The state is regenerable and the refusal exists to be
             // answered: reset and retry once, saying plainly what the
-            // reset costs — the session's installs are gone.
+            // reset costs, the session's installs are gone.
             Err(SandboxError::Unavailable(detail))
                 if detail.contains("persist base mismatch") && self.persist.is_some() =>
             {
@@ -835,8 +835,8 @@ impl EcrouSandbox {
         // included.
         out.pump(progress, true).await?;
         err.pump(progress, true).await?;
-        // Nothing reads stderr while the machine runs — ecrou writes
-        // a warning or two, never a stream — so the drain after the
+        // Nothing reads stderr while the machine runs, ecrou writes
+        // a warning or two, never a stream, so the drain after the
         // exit cannot have filled the pipe.
         let mut ecrou_stderr = Vec::new();
         if let Some(mut pipe) = child.stderr.take() {
@@ -1147,7 +1147,7 @@ mod tests {
     }
 
     /// The whole git chain: a commit made inside the machine lands in
-    /// the host's log, authored as the host's user — the staged config
+    /// the host's log, authored as the host's user, the staged config
     /// crossing the share, the env pair pointing git at it, the
     /// dubious-ownership guard letting root touch a foreign tree.
     /// Skipped until the machine's image carries git: a pristine
@@ -1717,7 +1717,7 @@ mod tests {
         );
     }
 
-    /// Builds a one-commit repository at a fresh tempdir — the fixture
+    /// Builds a one-commit repository at a fresh tempdir, the fixture
     /// the git-seed test clones. Skips the test when git or the
     /// GNU `timeout` the seed budget leans on are missing.
     fn fixture_repo() -> tempfile::TempDir {

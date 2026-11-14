@@ -1,5 +1,5 @@
 //! The dialogs: the add flows, the model and resume pickers, and the two
-//! modals — each a centered box drawn over the current screen.
+//! modals, each a centered box drawn over the current screen.
 
 use super::*;
 
@@ -233,7 +233,7 @@ pub(crate) fn render_add_profile_dialog(
 }
 
 /// The add-server dialog: the stage's input line, the transport list,
-/// or the lines editor, over its status line — the MCP page's pop-in
+/// or the lines editor, over its status line, the MCP page's pop-in
 /// for installing a server.
 pub(crate) fn render_add_mcp_dialog(
     frame: &mut Frame,
@@ -328,7 +328,7 @@ pub(crate) fn render_add_mcp_dialog(
 }
 
 /// The removal confirm: one small box asking about the one server, in
-/// the quit confirm's shape — `y` answers, anything else leaves the
+/// the quit confirm's shape, `y` answers, anything else leaves the
 /// row alone.
 pub(crate) fn render_mcp_confirm(frame: &mut Frame, name: &str, theme: &Theme) {
     let width = (name.chars().count() + 24).max(34) as u16;
@@ -547,7 +547,7 @@ pub(crate) fn render_profile_picker(
 }
 
 /// The sandbox picker: the profile picker's frame and keys over the
-/// offered kinds — rounded border, `❯ ` highlight, one footer line.
+/// offered kinds, rounded border, `❯ ` highlight, one footer line.
 pub(crate) fn render_resume_picker(
     frame: &mut Frame,
     screen: &crate::screens::ResumeScreen,

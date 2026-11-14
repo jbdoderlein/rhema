@@ -20,7 +20,7 @@ permissions:
 jobs:
   release-binaries:
     # The stable binary channel: each leg's tarball under its version,
-    # and the root manifest repointed at them — the shape the installer
+    # and the root manifest repointed at them, the shape the installer
     # resolves. Built from the committed tree, so the vendored crossterm
     # ships in the binary (the crates.io one waits for the patches).
     # The two cross legs link a vendored OpenSSL (`vendored-openssl`),
@@ -28,7 +28,7 @@ jobs:
     # the system one. darwin-arm64 is absent on purpose: it needs an
     # Apple toolchain a Linux runner cannot carry. windows-amd64
     # cross-builds with mingw; the mcp bridge stays unix-only there
-    # (a session on windows wires no servers — see rhema-mcp's
+    # (a session on windows wires no servers, see rhema-mcp's
     # bridge.rs) until a named-pipe transport lands.
     if: ${{ !contains(gitea.ref_name, '-') }}
     runs-on: ubuntu-latest
@@ -128,7 +128,7 @@ jobs:
   release-manifest:
     # Hashes the tarballs as served (not as built), writes the version
     # dir's checksums.txt and the root manifest with the stable pointer
-    # repointed — only reached when every build leg above succeeded.
+    # repointed, only reached when every build leg above succeeded.
     if: ${{ !contains(gitea.ref_name, '-') }}
     needs: release-binaries
     runs-on: ubuntu-latest

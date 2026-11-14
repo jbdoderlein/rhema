@@ -31,7 +31,7 @@ fn default_max_turn_steps() -> u32 {
 pub struct SkillSeed {
     /// The skill's folder name.
     pub name: String,
-    /// The frontmatter description — the trigger.
+    /// The frontmatter description, the trigger.
     pub description: String,
     /// The frontmatter license, when the skill declares one.
     #[serde(default)]
@@ -83,7 +83,7 @@ impl Default for SessionConfig {
 
 impl SessionConfig {
     /// The skill list the prompt renders, against the paths the files
-    /// were seeded at — the model reads the bodies through the shell.
+    /// were seeded at, the model reads the bodies through the shell.
     pub fn skills(&self) -> Vec<Skill> {
         self.skills
             .iter()

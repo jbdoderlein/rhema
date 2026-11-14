@@ -28,7 +28,7 @@ fn model(id: &str) -> ModelCard {
 /// The bubble is the drawn frame on every terminal, and it carries no
 /// background: the cells stay on the page's ground, so nothing bleeds
 /// around it, `background: native` keeps the terminal's own ground
-/// inside it, and the protocol card — when the terminal takes one —
+/// inside it, and the protocol card, when the terminal takes one,
 /// backs the frame instead of replacing it. The geometry rides along
 /// for the runner's card.
 #[test]
@@ -246,8 +246,8 @@ fn the_appearance_labels_keep_a_gap_before_their_values() {
     // Four toggles render, all values one aligned column over; the
     // longest label (`Background`, ten cells) keeps a space before its
     // value instead of swallowing it.
-    // The screen's own placeholder state — nerd icons, native
-    // background — is what renders here; the opener overwrites it.
+    // The screen's own placeholder state, nerd icons, native
+    // background, is what renders here; the opener overwrites it.
     let row = |label: &str, value: &str| format!("{:<11}{value}", label);
     assert!(text.contains(&row("Background", "Native")), "{text}");
     assert!(text.contains(&row("Colors", "Rhema")), "{text}");
@@ -635,7 +635,7 @@ fn the_subagents_page_lists_the_definitions_and_their_targets() {
 }
 
 /// A long description renders at most two rows, both indented, the
-/// second ending in an ellipsis — never a sprawl from column zero.
+/// second ending in an ellipsis, never a sprawl from column zero.
 #[test]
 fn the_subagents_page_caps_the_description_at_two_rows() {
     let mut settings = crate::screens::SettingsScreen::new();
@@ -715,8 +715,8 @@ fn the_subagents_page_caps_the_description_at_two_rows() {
     );
 }
 
-/// The Skills page caps its descriptions at two indented rows —
-/// the same discipline the Subagents page applies — and the license
+/// The Skills page caps its descriptions at two indented rows,
+/// the same discipline the Subagents page applies, and the license
 /// renders one dim row under them.
 #[test]
 fn the_skills_page_caps_the_description_and_dims_the_license() {
@@ -1644,7 +1644,7 @@ mod scroll_tests {
     /// A background subagent job pins its live line under the spinner,
     /// read off the wire's registry at every redraw: working, it spins
     /// with the delegate's name and job id and phase; finished, the
-    /// line leaves at once — the transcript's finish notice carries the
+    /// line leaves at once, the transcript's finish notice carries the
     /// outcome now, and the strip pins working jobs only.
     #[tokio::test]
     async fn a_working_subagent_pins_its_line_under_the_spinner() {
@@ -1814,7 +1814,7 @@ mod scroll_tests {
             code: None,
         });
         let screen = screen_text(&mut app);
-        assert!(screen.contains("general-purpose — explore"), "{screen}");
+        assert!(screen.contains("general-purpose, explore"), "{screen}");
         assert!(screen.contains("✓"), "{screen}");
     }
 
@@ -1948,7 +1948,7 @@ mod scroll_tests {
     }
 
     /// The footer's folder: the home and its `Documents` trim away, and
-    /// at most two parents ride beside the folder itself — three
+    /// at most two parents ride beside the folder itself, three
     /// folders in all.
     #[test]
     fn the_footer_folder_trims_home_and_caps_parents() {
@@ -1994,7 +1994,7 @@ mod scroll_tests {
 
     /// The windows spelling trims by the same rule: the separators
     /// fold, the drive component never shows, and the verbatim prefix
-    /// a windows canonicalize adds has been stripped upstream — the
+    /// a windows canonicalize adds has been stripped upstream, the
     /// footer spells '/' whatever the host.
     #[test]
     fn the_footer_trims_a_windows_path_the_same_way() {
@@ -2012,7 +2012,7 @@ mod scroll_tests {
     }
 
     /// The window title: the mark, then the workspace as the footer
-    /// spells it — the home trim, the capped parents. No badge glyph:
+    /// spells it, the home trim, the capped parents. No badge glyph:
     /// title bars render plain text, and the badge arrives as tofu.
     #[test]
     fn the_window_title_reads_like_the_footer() {
@@ -2043,7 +2043,7 @@ mod scroll_tests {
     }
 
     /// The footer always names where bash runs: local reads as a fact,
-    /// and a running sandbox shows its kind — or its instance's name
+    /// and a running sandbox shows its kind, or its instance's name
     /// when the profile's active pointer names it.
     #[test]
     fn the_footer_names_where_bash_runs() {
@@ -2087,7 +2087,7 @@ mod scroll_tests {
 
     /// The allowance badge shows only the active backend's report: a
     /// fetch from a backend the session has since left never shows. A
-    /// money amount rides bare — the icon says the unit — while a
+    /// money amount rides bare, the icon says the unit, while a
     /// metered quota keeps its word.
     #[test]
     fn the_footer_shows_only_the_active_backend_allowance() {
@@ -2141,7 +2141,7 @@ mod scroll_tests {
     #[test]
     fn the_footer_shows_the_thinking_and_context_icons() {
         let mut app = chat_app();
-        // Wide enough for every segment at once — the badge and the
+        // Wide enough for every segment at once, the badge and the
         // gauge are the subject, not a width budget (see the allowance
         // test's note).
         let draw = |app: &mut App| {
@@ -2245,7 +2245,7 @@ mod scroll_tests {
         let text = screen_text(&mut app);
         assert!(text.contains("end-marker"), "{text}");
 
-        // Scrolled far back — far past the top, even — the draw clamps
+        // Scrolled far back, far past the top, even, the draw clamps
         // the offset to the content, and the first words are visible.
         app.chat.scroll = 1000;
         let text = screen_text(&mut app);
@@ -2362,8 +2362,8 @@ mod scroll_tests {
         assert_eq!(image_chip_label(&image, 2), "▣3 JPEG 12.3 KB");
     }
 
-    /// A running command's output earns the preview at a second line —
-    /// an instant command never flashes — or at a second of runtime,
+    /// A running command's output earns the preview at a second line,
+    /// an instant command never flashes, or at a second of runtime,
     /// and goes when the result lands.
     #[test]
     fn a_running_command_previews_its_lines_once_earned() {
@@ -2823,8 +2823,8 @@ mod scroll_tests {
 
     /// Dropped whitespace leaves the mapping whole: the wrapper skips
     /// row-leading and overflowing whitespace runs on the display, but
-    /// their source characters stay counted, so every cursor offset —
-    /// the tail's included — lands on a row and the input renders past
+    /// their source characters stay counted, so every cursor offset,
+    /// the tail's included, lands on a row and the input renders past
     /// the eight-row cap.
     #[test]
     fn the_input_maps_and_renders_when_whitespace_drops() {
@@ -2869,7 +2869,7 @@ mod scroll_tests {
         let clamped = app.chat.scroll;
         assert!(clamped > 0 && clamped < 50, "clamped in-range: {clamped}");
 
-        // One PageDown now moves the visible window by the whole tick —
+        // One PageDown now moves the visible window by the whole tick,
         // no stranded surplus to burn first.
         app.chat.scroll_by(-3);
         terminal.draw(|frame| render(&mut app, frame)).unwrap();
@@ -3055,7 +3055,7 @@ mod scroll_tests {
         let screen: String = (0..buffer.area.height)
             .flat_map(|y| (0..buffer.area.width).map(move |x| buffer[(x, y)].symbol().to_owned()))
             .collect();
-        // The whole prompt is visible, tail included — nothing clips.
+        // The whole prompt is visible, tail included, nothing clips.
         assert!(screen.contains("end"), "{screen}");
         // The box grew to the wrapped height: six-ish rows of content.
         assert!(
@@ -3068,8 +3068,8 @@ mod scroll_tests {
     fn the_input_box_grows_exactly_when_the_render_wraps() {
         // The height math and the render must wrap at the same width. A
         // prompt one or two cells past the render's wrap point used to
-        // reserve a one-row box and clip its tail — cursor and text
-        // hidden below — until further typing pushed past the height
+        // reserve a one-row box and clip its tail, cursor and text
+        // hidden below, until further typing pushed past the height
         // math's own wrap point.
         let mut app = chat_app();
         // 36 chars: one row by the height math's wrap (36), two by the
@@ -3127,7 +3127,7 @@ mod scroll_tests {
             .find(|row| row.trim_start().starts_with("$ ") && row.contains('…'))
             .expect("the command cut to the row");
         assert!(row.trim_end().ends_with("[0]"), "code at the end: {row}");
-        // Flush right: one cell follows the code — the pane's right
+        // Flush right: one cell follows the code, the pane's right
         // text padding. The old char-count math left the code a cell
         // short for every newline it silently dropped.
         let code_ends = row.rfind("[0]").unwrap() + "[0]".len();
@@ -3339,7 +3339,7 @@ mod scroll_tests {
         let bubble_width = end - start + 1;
         assert_eq!(bubble_width, 56 * 3 / 4, "capped at 3/4");
         // Nothing carries a fill of its own: the bubble is ink on the
-        // page, every cell — text, frame, pads — on the well.
+        // page, every cell, text, frame, pads, on the well.
         let body_row = top + 1;
         for x in start as u16..57 {
             assert_eq!(
@@ -3358,7 +3358,7 @@ mod scroll_tests {
     /// `background: native` hands the page fills to the terminal, and
     /// the bubble keeps them handed: every cell stays on the
     /// terminal's own ground, the reader's words framed but not
-    /// papered over — the card is a `background: rhema` device.
+    /// papered over, the card is a `background: rhema` device.
     #[test]
     fn a_prompt_bubble_keeps_the_ground_under_a_native_background() {
         let mut app = chat_app();
@@ -3509,8 +3509,8 @@ fn the_mcp_page_lists_the_servers_and_their_marks() {
     );
 }
 /// A session notification renders as its own card: the shared bubble
-/// frame, hugging the left edge — neither the prompt's right rail nor
-/// the response's bullet — and named by the neutral fill, not the
+/// frame, hugging the left edge, neither the prompt's right rail nor
+/// the response's bullet, and named by the neutral fill, not the
 /// accent.
 #[test]
 fn a_notification_renders_as_a_left_aligned_card() {
@@ -3547,7 +3547,7 @@ fn a_notification_renders_as_a_left_aligned_card() {
 }
 
 /// A run of finishes coalesces into one block, one stacked card per
-/// finish — the tick's joined prompt tells the model once, the
+/// finish, the tick's joined prompt tells the model once, the
 /// transcript shows the same count.
 #[test]
 fn a_run_of_notifications_is_one_block_of_stacked_cards() {

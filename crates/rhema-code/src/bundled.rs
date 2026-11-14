@@ -1,8 +1,8 @@
 //! The skills rhema ships with: seeded into the user's global skills
 //! directory on start, never overwritten once they are there.
 //!
-//! A bundled skill is an ordinary skill — a folder with a `SKILL.md`
-//! whose frontmatter carries the trigger — so the whole existing
+//! A bundled skill is an ordinary skill, a folder with a `SKILL.md`
+//! whose frontmatter carries the trigger, so the whole existing
 //! pipeline serves it: discovery reads it like any global skill, the
 //! model `cat`s the body by path, and a user folder of the same name
 //! shadows it. [`seed`] materializes the enabled ones into the global
@@ -16,11 +16,11 @@ use std::io;
 use std::path::Path;
 
 /// One skill shipped in the binary: its folder name, its default on/off
-/// state, its `SKILL.md` body verbatim, and — where the skill's license
-/// asks for a notice to travel with copies — that notice verbatim.
+/// state, its `SKILL.md` body verbatim, and, where the skill's license
+/// asks for a notice to travel with copies, that notice verbatim.
 #[derive(Debug)]
 pub struct BundledSkill {
-    /// The folder name the skill seeds under — also the name the
+    /// The folder name the skill seeds under, also the name the
     /// `skills_disabled` set switches it off by.
     pub name: &'static str,
     /// Whether a fresh install carries the skill on.
@@ -52,7 +52,7 @@ pub const BUNDLED_SKILLS: &[BundledSkill] = &[
 
 /// Seeds the bundled skills into `global`: every skill not disabled and
 /// not already on disk gets its folder and `SKILL.md`. An existing file
-/// is left untouched — user edits win, which is why there is no
+/// is left untouched, user edits win, which is why there is no
 /// un-seed. Errors name the folder they failed on; a partial seed is a
 /// fine outcome (the next start finishes it).
 pub fn seed(global: &Path, disabled: &BTreeSet<String>) -> io::Result<()> {
@@ -77,7 +77,7 @@ pub fn seed(global: &Path, disabled: &BTreeSet<String>) -> io::Result<()> {
     Ok(())
 }
 
-/// Seeds one bundled skill by name, whatever the disabled set says — the
+/// Seeds one bundled skill by name, whatever the disabled set says, the
 /// re-enable path, where the user just switched a skill back on and the
 /// file it should have is missing. `false` when no bundled skill carries
 /// the name or nothing needed seeding.

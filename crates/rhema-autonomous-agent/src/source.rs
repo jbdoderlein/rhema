@@ -1,8 +1,8 @@
 //! The `Source` contract (spec §5): deterministic detection into the
 //! dispatcher.
 //!
-//! A source owns one input stream — a forge watch set, a webhook
-//! receiver — and never invokes the model: its `detect` pass is the
+//! A source owns one input stream, a forge watch set, a webhook
+//! receiver, and never invokes the model: its `detect` pass is the
 //! gate-before-LLM check, and cadence belongs to the daemon's loop, not
 //! to the source or to any timer inside this crate.
 
@@ -23,7 +23,7 @@ pub enum SourceError {
 }
 
 /// One detectable input stream. The dispatcher must know this source's
-/// [`Source::name`] — register its [`Source::key_fn`] before the first
+/// [`Source::name`], register its [`Source::key_fn`] before the first
 /// `detect`.
 #[async_trait::async_trait]
 pub trait Source: Send + Sync {
@@ -37,6 +37,6 @@ pub trait Source: Send + Sync {
 
     /// One detection pass: poll the outside world, ingest what changed.
     /// Deterministic, model-free; returns how many events were fed
-    /// (replayed dedup ids included — the dispatcher dedups).
+    /// (replayed dedup ids included, the dispatcher dedups).
     async fn detect(&self) -> Result<usize, SourceError>;
 }

@@ -9,14 +9,14 @@
 //! on; the caller re-places when the anchor rect moves (a resize) and
 //! calls [`clear`] when the image's screen goes away. Leaving the
 //! alternate screen discards the images in conforming terminals, but
-//! `clear` runs on teardown anyway — a terminal that keeps them must
+//! `clear` runs on teardown anyway, a terminal that keeps them must
 //! not show a stray logo over the user's shell.
 //!
 //! The logo escape is transmit-and-display (`a=T`): the PNG payload
 //! rides the escape, and `c`/`r` scale it to the cell area given. The
 //! payload is chunked (`m=1`) at the protocol's recommended chunk size,
 //! so a 45 KB logo crosses in a handful of writes a pipe absorbs
-//! instantly. The prompt card works the other way around — five
+//! instantly. The prompt card works the other way around, five
 //! sprites (the [`Corner`] arcs and the solid fill) transmit once and
 //! get placed by id ([`transmit_sprite`], [`place_piece`]), because a
 //! scrolled transcript re-states its placements every frame and the
@@ -25,7 +25,7 @@
 use std::io::{IsTerminal, Write};
 
 /// The PNG the binary carries, copied from the repository's images by
-/// `build.rs` — empty in a packaged build without the asset, where
+/// `build.rs`, empty in a packaged build without the asset, where
 /// [`Self::logo_png`] answers `None` and the caller falls back to the
 /// text wordmark.
 const LOGO_PNG: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/rhema-logo.png"));
@@ -41,7 +41,7 @@ const CHUNK: usize = 4096;
 
 /// Whether `TERM` names Ghostty's own terminfo entry. Ghostty sets it
 /// for every shell it starts, and unlike `TERM_PROGRAM` and
-/// `GHOSTTY_RESOURCES_DIR` it survives ssh — the way a remote session
+/// `GHOSTTY_RESOURCES_DIR` it survives ssh, the way a remote session
 /// reaches a Ghostty terminal at all.
 fn ghostty_term(term: Option<&str>) -> bool {
     matches!(term, Some(term) if term == "ghostty" || term.ends_with("-ghostty"))
@@ -53,8 +53,8 @@ fn wezterm_term(term: Option<&str>) -> bool {
     term == Some("wezterm")
 }
 
-/// Whether this terminal draws the kitty graphics protocol — kitty,
-/// Ghostty, and WezTerm, by their own environment marks — and the
+/// Whether this terminal draws the kitty graphics protocol, kitty,
+/// Ghostty, and WezTerm, by their own environment marks, and the
 /// output is a terminal at all. `RHEMA_NO_IMAGES` overrides detection
 /// off: an escape a terminal mislabels as garbage on screen is worse
 /// than no image. Inside tmux the answer is no: tmux swallows the
@@ -88,7 +88,7 @@ pub fn graphics() -> bool {
 /// text layer for negative-z placements. Kitty and Ghostty composite
 /// a `z=-1` image under the glyphs; WezTerm composites it over the
 /// glyphs (its tracker: "kitty image not blending with text"), where
-/// the card would wash the prompt it should back — so there the card
+/// the card would wash the prompt it should back, so there the card
 /// stays off and the frame keeps its see-through interior. The card
 /// itself ships translucent, so a terminal that ignores the layer
 /// anyway washes the prompt instead of hiding it.
@@ -97,7 +97,7 @@ pub fn card_graphics() -> bool {
 }
 
 /// The card's opacity: the fill and the arcs bake it into their alpha,
-/// so the card tints whatever sits behind it — the palette's own page
+/// so the card tints whatever sits behind it, the palette's own page
 /// under `background: rhema`, the terminal's ground under `native`.
 /// It also keeps the failure mode above soft: a card drawn over the
 /// text veils it rather than covering it.
@@ -171,7 +171,7 @@ pub fn place(x: u16, y: u16, cols: u16, rows: u16) {
 
 /// One escape's chunked body: the base64 payload rides `m=1` chunks of
 /// [`CHUNK`], only the first carrying `head` (a continuation chunk is a
-/// bare transmit — the data continues the previous command).
+/// bare transmit, the data continues the previous command).
 fn write_chunks(head: &str, encoded: &str, out: &mut impl Write) {
     let total = encoded.len();
     let mut offset = 0;
@@ -203,7 +203,7 @@ const SPRITE_BASE: u32 = 1000;
 pub const NOTICE_SPRITE_OFFSET: u32 = 9;
 
 /// One card corner: the quarter-disc a bubble arc sprite draws. The
-/// four corners transmit once per fill color — a few kilobytes — and
+/// four corners transmit once per fill color, a few kilobytes, and
 /// every bubble's placements reference its corners' ids, so a scrolled
 /// transcript re-states its placements without moving a payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -219,7 +219,7 @@ pub enum Corner {
 }
 
 impl Corner {
-    /// Whether the pixel sits in the sprite's inner half — the side
+    /// Whether the pixel sits in the sprite's inner half, the side
     /// the hairlines bound. The frame's glyphs draw through the middle
     /// of their cells, so a card painted to the cell edge would
     /// overhang the drawn frame by that half on every side; the tint
@@ -250,7 +250,7 @@ impl Corner {
         SPRITE_BASE + self as u32
     }
 
-    /// The quarter-ellipse's center in the sprite's pixel grid — the
+    /// The quarter-ellipse's center in the sprite's pixel grid, the
     /// card's interior corner, the point the curve pulls away from:
     /// inside the ellipse the fill paints, outside it the cell's own
     /// ground shows through.
@@ -281,11 +281,11 @@ const SUBSAMPLES: u32 = 6;
 /// cells paint the fill and the page's ground; the sprite lays over
 /// the corner cell only, painting inside the curve and leaving the
 /// cell's ground visible outside it, so the arc blends against
-/// whatever ground the mode runs — the terminal's own included.
+/// whatever ground the mode runs, the terminal's own included.
 pub fn corner_sprite(corner: Corner, fill: (u8, u8, u8)) -> Vec<u8> {
     let (cx, cy) = corner.center();
     // The curve runs from the mid-point of one hairline to the
-    // mid-point of the other — half a cell out from the interior
+    // mid-point of the other, half a cell out from the interior
     // corner, so the rounded edge tracks the glyph arcs instead of
     // sweeping across the whole cell.
     let (rx, ry) = (SPRITE_W as f32 / 2.0, SPRITE_H as f32 / 2.0);
@@ -341,7 +341,7 @@ pub fn edge_sprite(edge: Edge, fill: (u8, u8, u8)) -> Vec<u8> {
     png_rgba(SPRITE_W, SPRITE_H, &rgba)
 }
 
-/// Transmits one sprite's PNG under `id` — the data crosses once, and
+/// Transmits one sprite's PNG under `id`, the data crosses once, and
 /// [`place_piece`] references it by id afterwards.
 pub fn transmit_sprite(id: u32, png: &[u8]) {
     let encoded = base64(png);
@@ -355,8 +355,8 @@ pub fn transmit_sprite(id: u32, png: &[u8]) {
 /// `slot`, below the text layer (`z=-1`): the card backs the frame's
 /// glyphs and the prompt text instead of covering them. A placement
 /// is the pair of the image id and the slot: restating the pair moves
-/// and resizes the piece in place — the protocol replaces it, no
-/// flicker and no delete — so scrolling the transcript only re-states
+/// and resizes the piece in place, the protocol replaces it, no
+/// flicker and no delete, so scrolling the transcript only re-states
 /// slots. Failures are
 pub fn place_piece(id: u32, slot: u16, x: u16, y: u16, cols: u16, rows: u16) {
     let mut out = std::io::stdout();
@@ -368,7 +368,7 @@ pub fn place_piece(id: u32, slot: u16, x: u16, y: u16, cols: u16, rows: u16) {
 }
 
 /// Removes one placement: the image's `slot`. The sprites' data stays
-/// transmitted, and every other placement — the logo's included — is
+/// transmitted, and every other placement, the logo's included, is
 /// untouched. Failures are ignored: a missing placement deletes as
 /// nothing.
 pub fn delete_placement(id: u32, slot: u16) {
@@ -378,8 +378,8 @@ pub fn delete_placement(id: u32, slot: u16) {
 }
 
 /// Encodes RGBA pixels (row-major, 4 bytes a pixel) as a PNG. No codec
-/// dependency: the zlib stream stores the scanlines uncompressed —
-/// deflate's stored blocks — which every decoder reads, and a corner
+/// dependency: the zlib stream stores the scanlines uncompressed,
+/// deflate's stored blocks, which every decoder reads, and a corner
 /// cell of pixels costs less than a keystroke to transmit. The sprites
 /// travel once a fill color; placements reference them by id.
 fn png_rgba(width: u16, height: u16, rgba: &[u8]) -> Vec<u8> {
@@ -437,7 +437,7 @@ fn write_chunk(png: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
     png.extend_from_slice(&crc32(&signed).to_be_bytes());
 }
 
-/// CRC-32, the polynomial PNG chunks sign with, bit at a time — three
+/// CRC-32, the polynomial PNG chunks sign with, bit at a time, three
 /// calls a sprite, and the table is not worth its space.
 fn crc32(data: &[u8]) -> u32 {
     let mut crc = 0xFFFF_FFFFu32;
@@ -464,7 +464,7 @@ fn adler32(data: &[u8]) -> u32 {
     (high << 16) | low
 }
 
-/// Standard base64 — the graphics protocol's payload alphabet. Written
+/// Standard base64, the graphics protocol's payload alphabet. Written
 /// here rather than pulled in as a dependency: one table, one padding
 /// rule, no configuration.
 fn base64(bytes: &[u8]) -> String {
@@ -599,8 +599,8 @@ mod tests {
 
     #[test]
     fn the_corner_sprite_is_a_quarter_disc() {
-        // TopRight's tint lives in its bottom-left quarter — the side
-        // the hairlines bound — at the card's opacity near the interior
+        // TopRight's tint lives in its bottom-left quarter, the side
+        // the hairlines bound, at the card's opacity near the interior
         // corner, bare across the outer half, and graded along the arc.
         let (width, height, rgba) = decode_png(&corner_sprite(Corner::TopRight, (1, 2, 3)));
         assert_eq!((width, height), (SPRITE_W, SPRITE_H));
@@ -636,8 +636,8 @@ mod tests {
 
     #[test]
     fn the_card_stops_at_the_hairlines() {
-        // Each corner tints only its inner quarter: the outer halves —
-        // the cell the frame's glyphs hollow out — stay ground, and the
+        // Each corner tints only its inner quarter: the outer halves,
+        // the cell the frame's glyphs hollow out, stay ground, and the
         // quarter's far pixel, the one toward the card's body, fills.
         for corner in Corner::ALL {
             let (_, _, rgba) = decode_png(&corner_sprite(corner, (0, 0, 0)));

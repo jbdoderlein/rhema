@@ -10,8 +10,8 @@ use rhema_core::request::ThinkingEffort;
 /// Finished-work notifications a turn loop injects into the history.
 ///
 /// The contract is deliberately text-shaped: the driver knows nothing
-/// about what the lines announce — a registry of background jobs, an
-/// inbox, anything — and the source knows nothing about turns or
+/// about what the lines announce, a registry of background jobs, an
+/// inbox, anything, and the source knows nothing about turns or
 /// history. `drain` is a query, never a mutation of record: the same
 /// lines may come back again (a crash between the append and the
 /// checkpoint only re-delivers), and the driver deduplicates within a
@@ -23,8 +23,8 @@ pub trait Steering: Send + Sync {
 }
 
 /// Several steering sources as one, in announcement order: a frontend
-/// with two feeds — the subagent registry and the background-shell
-/// poller — hands the driver one source, so the two announcements
+/// with two feeds, the subagent registry and the background-shell
+/// poller, hands the driver one source, so the two announcements
 /// coalesce into one User message with a stable order instead of
 /// racing for the config's one `steering` slot.
 pub struct SteeringChain {
@@ -51,7 +51,7 @@ impl Steering for SteeringChain {
 /// How a frontend resolves any provider kind to a turn provider: the
 /// credential policy behind the subagent tool's cross-provider
 /// `model` argument. A `None` answer means that kind has no usable
-/// credentials here — the same shape the model picker's catalog
+/// credentials here, the same shape the model picker's catalog
 /// reports. The registry's `build` does the wiring; what this closure
 /// adds is the resolved credentials themselves.
 pub type SubagentProviders =
@@ -65,12 +65,12 @@ pub struct CodingAgentConfig {
     /// [`ChatParams`](rhema_core::ChatParams).
     pub model: String,
     /// System prompt stamped into every request. `None` uses the base
-    /// prompt — [`base_system`](Self::base_system) when set, the
+    /// prompt, [`base_system`](Self::base_system) when set, the
     /// built-in default otherwise; setting it *replaces* everything, it
     /// does not append.
     pub system: Option<String>,
     /// The base prompt from the user's `SYSTEM.md`, a Jinja template
-    /// rendered by [`render_system`](crate::render_system) — a template
+    /// rendered by [`render_system`](crate::render_system), a template
     /// error fails the agent's construction. `None` uses the built-in
     /// [`default_system`](crate::default_system).
     pub base_system: Option<String>,
@@ -78,14 +78,14 @@ pub struct CodingAgentConfig {
     /// in-band to the model.
     pub workspace: PathBuf,
     /// Skills already collected elsewhere, for the prompt's skills list.
-    /// `None` discovers from the filesystem — the global config
+    /// `None` discovers from the filesystem, the global config
     /// directory and the workspace's `.rhema/skills`. A frontend with no
     /// filesystem to discover from (the cloud sandbox) seeds the skill
     /// files itself and passes the list; the model reads bodies through
     /// the shell, so each path must resolve inside the workspace.
     pub skills: Option<Vec<Skill>>,
     /// Skill folder names to drop from whichever list the prompt carries
-    /// — the persisted off switch a frontend reads out of its config.
+    ///, the persisted off switch a frontend reads out of its config.
     /// The filter runs after collection and after discovery alike, so
     /// both supply paths honor it; an empty set (the default) changes
     /// nothing.
@@ -97,7 +97,7 @@ pub struct CodingAgentConfig {
     /// ignore it, and [`ThinkingEffort::Default`] sends nothing.
     pub thinking: ThinkingEffort,
     /// The shell resolver the agent's tools run on. `None` builds one
-    /// over `workspace` — the default. A frontend that shares its shell
+    /// over `workspace`, the default. A frontend that shares its shell
     /// with an extension (the subagents extension reads the turn's
     /// approval hook off it) brings its own.
     pub tools: Option<Arc<ShellTools>>,
@@ -116,28 +116,28 @@ pub struct CodingAgentConfig {
     /// The compaction's model fill: a cheap worker the transcript's
     /// stepped compaction runs at flushes, rewriting each new block
     /// section's extractive stand-in into a dense markdown block. The
-    /// worker never blocks or fails a request — a failed call leaves
+    /// worker never blocks or fails a request, a failed call leaves
     /// the stand-in in place. `None` keeps the compaction extractive:
     /// still stepped, still cache-stable, only less dense. See
     /// `specs/rhema-transcript.md`.
     pub summary_worker: Option<Arc<dyn rhema_transcript::Summarizer>>,
     /// Extra environment the shell tool's commands run with, layered
-    /// over the inherited one — how a frontend provisions its agent's
+    /// over the inherited one, how a frontend provisions its agent's
     /// client tools (a daemon URL, a scoped token, a PATH addition)
     /// without touching the process environment.
     pub shell_env: std::collections::BTreeMap<String, String>,
     /// A steering source the turn loop drains: one User-role message per
     /// drain lands in the history at a step boundary, so work that
     /// finished outside the turn (a background subagent) is announced to
-    /// the model. `None` — the default — runs the turn exactly as
+    /// the model. `None`, the default, runs the turn exactly as
     /// before: the loop is the provided `run_turn` with no injection.
     pub steering: Option<Arc<dyn Steering>>,
     /// The wired MCP servers, as the prompt's `mcp` section carries
-    /// them — the lines a frontend's wire step produced (spec:
+    /// them, the lines a frontend's wire step produced (spec:
     /// `specs/rhema-mcp.md` §10). Empty renders no section: a
     /// frontend that wires nothing advertises nothing.
     pub mcp_servers: Vec<rhema_agent_tools::prompt::McpServerLine>,
-    /// MCP server names to drop from the prompt's section — the
+    /// MCP server names to drop from the prompt's section, the
     /// persisted off switch a frontend reads out of its stored
     /// settings, the [`disabled_skills`](Self::disabled_skills)
     /// mechanism. Applied at stamp time over
@@ -145,7 +145,7 @@ pub struct CodingAgentConfig {
     /// step filters the same set before anything spawns.
     pub disabled_mcp_servers: std::collections::BTreeSet<String>,
     /// Subagent definition folder names the subagent wire drops from
-    /// discovery — the persisted off switch a frontend reads out of
+    /// discovery, the persisted off switch a frontend reads out of
     /// its stored settings, the [`disabled_skills`](Self::disabled_skills)
     /// mechanism. The filter runs before the catalog builds, so a
     /// disabled name is in neither the prompt's tool list nor the
@@ -159,7 +159,7 @@ pub struct CodingAgentConfig {
     /// run on another logged-in provider while the session stays put.
     /// The wire hands it to the tool; `None` means the session's own
     /// provider is the only one, and cross-provider requests fail with
-    /// that named. Credential resolution stays with the frontend —
+    /// that named. Credential resolution stays with the frontend,
     /// this carries the answers, not the policy.
     pub subagent_providers: Option<SubagentProviders>,
     /// The environment section rendered into the system prompt: machine
@@ -168,20 +168,20 @@ pub struct CodingAgentConfig {
     /// A verbatim `system` prompt ignores it, like every template
     /// section.
     pub environment: Option<String>,
-    /// The user-preferences section rendered into the system prompt —
+    /// The user-preferences section rendered into the system prompt,
     /// the contents of the user's global `USER.md`, verbatim, a
     /// frontend that has one reads it and passes it here. `None`
     /// renders nothing.
     pub user_preferences: Option<String>,
     /// The prompt section documenting the wired
-    /// [`vision`](rhema_agent_tools::vision) macro — the `see` bash
+    /// [`vision`](rhema_agent_tools::vision) macro, the `see` bash
     /// function's documentation, produced by the frontend's
     /// provisioning and passed verbatim. `None` renders no section: a
     /// frontend that wired nothing advertises nothing, the same rule
     /// the `mcp_servers` section follows.
     pub vision: Option<String>,
     /// The prompt section documenting the wired
-    /// [`jobs`](rhema_agent_tools::jobs) macro — the `job` bash
+    /// [`jobs`](rhema_agent_tools::jobs) macro, the `job` bash
     /// function's documentation, produced by the frontend's provisioning
     /// and passed verbatim. `None` renders no section: a frontend that
     /// wired nothing (a sandbox session, a machine without the backend)
@@ -190,8 +190,8 @@ pub struct CodingAgentConfig {
     pub jobs: Option<String>,
     /// The directory conventions skill discovery reads when
     /// [`skills`](Self::skills) is `None`: the user-wide skills directory
-    /// and the cross-agent `.agents/skills` convention. `None` — the
-    /// default — discovers the reference layout
+    /// and the cross-agent `.agents/skills` convention. `None`, the
+    /// default, discovers the reference layout
     /// ([`Home::discover`](rhema_config::Home::discover)); a frontend
     /// that owns its own directory hands a relocated `Home` instead.
     pub home: Option<rhema_config::Home>,
@@ -223,8 +223,8 @@ impl std::fmt::Debug for CodingAgentConfig {
 }
 
 impl CodingAgentConfig {
-    /// Default for `max_turn_steps`. Long autonomous sessions — builds,
-    /// rebases, multi-package sweeps — routinely run hundreds of steps on
+    /// Default for `max_turn_steps`. Long autonomous sessions, builds,
+    /// rebases, multi-package sweeps, routinely run hundreds of steps on
     /// cheap models under a watching eye; the cap exists to end a runaway
     /// loop, not to ration the model. `--max-steps` is the tighter leash
     /// for unattended turns on expensive models.

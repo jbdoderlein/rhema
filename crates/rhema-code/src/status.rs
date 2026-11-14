@@ -1,6 +1,6 @@
 //! Program status over OSC 7501: the escape sequence that tells the
-//! terminal what rhema is doing — working, blocked on the user, idle,
-//! done, failed — so tab headers, session pickers, and agentic inboxes
+//! terminal what rhema is doing, working, blocked on the user, idle,
+//! done, failed, so tab headers, session pickers, and agentic inboxes
 //! can show it without scraping the screen. See Mitchell Hashimoto's
 //! proposal (mitchellh.com/writing/program-status-osc7501). Terminals
 //! must ignore OSC sequences they do not know, so emission needs no
@@ -10,16 +10,16 @@
 //! Wire shape: `ESC ] 7501 ; key=value:key=value ESC \`. The value of
 //! `msg` is base64 UTF-8, capped at the spec's 2048 decoded bytes; the
 //! other values are plain. One report fully replaces the record it
-//! addresses, and rhema addresses a single root record — one agent per
+//! addresses, and rhema addresses a single root record, one agent per
 //! terminal, so the spec's hierarchical `id`s have nothing to address.
 //!
-//! TERMINAL OWNERSHIP: emissions happen on the UI thread — through the
-//! `Tracker` the event loop syncs — or in the headless runner, which
+//! TERMINAL OWNERSHIP: emissions happen on the UI thread, through the
+//! `Tracker` the event loop syncs, or in the headless runner, which
 //! owns its stdout. The turn task reports through the event channel and
 //! never writes. The tracker derives the state from those events and the
 //! app, and re-emits only when the rendered report changed.
 //!
-//! LIFETIME: the TUI removes its record when it leaves the terminal — an
+//! LIFETIME: the TUI removes its record when it leaves the terminal, an
 //! exited interactive session is no status at all. The headless one-shot
 //! never removes it: `done` or `error` standing after exit is the point.
 
@@ -34,12 +34,12 @@ pub(crate) enum Status {
     /// At rest at the prompt, awaiting the user.
     Idle,
     /// A turn is running. `progress` is the step fraction when the
-    /// turn's step cap gives it meaning; `msg` names the intent — the
+    /// turn's step cap gives it meaning; `msg` names the intent, the
     /// prompt until the first tool call, the latest tool call after.
     Working {
         /// Human-readable line; base64 on the wire.
         msg: Option<String>,
-        /// 0–100, when the step cap is known.
+        /// 0-100, when the step cap is known.
         progress: Option<u8>,
     },
     /// The turn is parked on the user.
@@ -49,7 +49,7 @@ pub(crate) enum Status {
         /// Human-readable line; base64 on the wire.
         msg: Option<String>,
     },
-    /// Finished with the result unseen — the headless one-shot's exit
+    /// Finished with the result unseen, the headless one-shot's exit
     /// state, left standing so the terminal can mark the tab.
     Done,
     /// The turn failed; the session is back at the prompt.
@@ -163,9 +163,9 @@ fn capped(msg: &str) -> &str {
     &msg[..end]
 }
 
-/// Step `step` of `max_steps` as the 0–100 percentage the spec's
-/// `progress` takes. A turn may run more steps than the cap allows —
-/// the cap is a limit, not a promise — so the figure saturates at 100.
+/// Step `step` of `max_steps` as the 0-100 percentage the spec's
+/// `progress` takes. A turn may run more steps than the cap allows,
+/// the cap is a limit, not a promise, so the figure saturates at 100.
 pub(crate) fn progress(step: u32, max_steps: u32) -> u8 {
     let max = max_steps.max(1);
     (step.saturating_mul(100) / max).min(100) as u8
@@ -183,7 +183,7 @@ pub(crate) fn first_line(content: &str) -> String {
 }
 
 /// Writes one report to stdout, when a terminal is attached there. A
-/// piped stdout captures the reply text byte-exact — the sequence would
+/// piped stdout captures the reply text byte-exact, the sequence would
 /// be pollution there, and no terminal would see it anyway. Errors are
 /// ignored: a failed status write must never fail the session.
 pub(crate) fn emit(status: &Status) {
@@ -197,7 +197,7 @@ pub(crate) fn emit(status: &Status) {
 
 /// Removes rhema's record. The TUI calls this on terminal teardown, so
 /// an exited session never leaves a stale badge behind; the headless
-/// runner does not — its `done`/`error` is what survives it.
+/// runner does not, its `done`/`error` is what survives it.
 pub(crate) fn clear() {
     let mut out = std::io::stdout().lock();
     if !out.is_terminal() {
@@ -211,7 +211,7 @@ pub(crate) fn clear() {
 /// on the UI thread with the event loop: `observe` folds the engine
 /// events in as they drain, `sync` derives from the app and emits on
 /// change. The turn's outcome is tracked here rather than read from the
-/// app's `error` — that one deliberately outlives a turn ("until the
+/// app's `error`, that one deliberately outlives a turn ("until the
 /// next submit"), while the record must not: a turn that ends well is
 /// `idle`, whatever the last failure was.
 #[derive(Default)]

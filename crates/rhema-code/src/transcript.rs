@@ -30,7 +30,7 @@ pub enum Line {
     },
     /// Assistant text; streamed deltas merge into these lines.
     Assistant(String),
-    /// A tool invocation and, once it resolved, its outcome — one line.
+    /// A tool invocation and, once it resolved, its outcome, one line.
     ToolCall {
         /// The call's correlation id, matching the result event.
         id: String,
@@ -45,13 +45,13 @@ pub enum Line {
         code: Option<i32>,
     },
     /// A session notification: a background job or a subagent finish,
-    /// delivered to the model and recorded as its own card — not user
+    /// delivered to the model and recorded as its own card, not user
     /// input, and dropped by a rebuild like a notice.
     Notification(String),
     /// A UI notice (model switched, turn declined, ...).
     Notice(String),
     /// A system-generated markdown block: rendered as markdown, but not
-    /// part of the session history — a rebuild drops it, like a notice.
+    /// part of the session history, a rebuild drops it, like a notice.
     Markdown(String),
 }
 
@@ -60,7 +60,7 @@ pub enum Line {
 pub struct Transcript {
     lines: Vec<Line>,
     /// The smallest index of any line whose content changed after the
-    /// line was created — a streamed tail extending it, an argument
+    /// line was created, a streamed tail extending it, an argument
     /// fragment landing on it, a result marking it. Appends do not
     /// count. `usize::MAX` for a transcript grown only by appends, where
     /// every existing line is untouchable; `0` after a wholesale
@@ -96,7 +96,7 @@ impl Transcript {
         self.dirty_from = self.dirty_from.min(index);
     }
 
-    /// Rebuilds the transcript from a session history — the resume /
+    /// Rebuilds the transcript from a session history, the resume /
     /// model-switch path. Must produce the same lines the live stream
     /// would have.
     pub fn from_history(history: &[Message]) -> Self {
@@ -203,7 +203,7 @@ impl Transcript {
     }
 
     /// The `name` argument of the tool call `id`, parsed off its
-    /// streamed arguments — the subagent live line reads the delegate's
+    /// streamed arguments, the subagent live line reads the delegate's
     /// name here. `None` while the arguments have not reached the field.
     pub fn call_name(&self, id: &str) -> Option<String> {
         let args = self.lines.iter().rev().find_map(|line| match line {
@@ -347,7 +347,7 @@ pub fn describe(name: &str, args: &str) -> String {
     match name {
         // The shell command renders bare and in full: the transcript
         // cuts it at the terminal's width, not at an arbitrary count.
-        // Still one row: control characters — a heredoc's newlines —
+        // Still one row: control characters, a heredoc's newlines,
         // become spaces, because ratatui drops control glyphs when it
         // draws, and the row's width math must count what shows.
         "bash" | "run_command" => match arg("command") {
@@ -358,9 +358,9 @@ pub fn describe(name: &str, args: &str) -> String {
             None => "(no command)".to_owned(),
         },
         // A subagent call reads as delegation: who was asked, then the
-        // task's first line — a whole prompt would drown the row.
+        // task's first line, a whole prompt would drown the row.
         "subagent" => match (arg("name"), arg("prompt").and_then(|p| p.lines().next())) {
-            (Some(name), Some(head)) => format!("{name} — {head}"),
+            (Some(name), Some(head)) => format!("{name}, {head}"),
             (Some(name), None) => name.to_owned(),
             _ => "(no subagent)".to_owned(),
         },
@@ -665,7 +665,7 @@ mod tests {
         assert_eq!(rebuilt.lines(), streamed.lines());
     }
 
-    /// A prompt of images alone — an empty text beside them — rebuilds
+    /// A prompt of images alone, an empty text beside them, rebuilds
     /// the same line the submit pushed.
     #[test]
     fn an_images_only_prompt_rebuilds_identically() {
@@ -749,7 +749,7 @@ mod tests {
                 "subagent",
                 r#"{"name": "general-purpose", "prompt": "fix the flaky test\nthen run the suite"}"#
             ),
-            "general-purpose — fix the flaky test",
+            "general-purpose, fix the flaky test",
             "the prompt rides as its first line only"
         );
         assert_eq!(

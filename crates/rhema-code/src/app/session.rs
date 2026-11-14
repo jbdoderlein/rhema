@@ -5,7 +5,7 @@ use super::*;
 
 impl App {
     /// Drops the conversation: a fresh transcript and a fresh session.
-    /// The session file drops with it — what is typed after /clear is a
+    /// The session file drops with it, what is typed after /clear is a
     /// new conversation, not a continuation of the loaded file, so the
     /// next turn allocates a file of its own instead of overwriting the
     /// cleared one's history.
@@ -14,7 +14,7 @@ impl App {
             agent.session_mut().history.clear();
         }
         // The App's own copy clears with the conversation too: with the
-        // agent out — a keyless switch, a removed login — this copy is
+        // agent out, a keyless switch, a removed login, this copy is
         // what a switch-back rebuilds on and what the exit save exports.
         // Left full, the cleared conversation came back, and the exit
         // save (its file binding dropped below) wrote it to a fresh
@@ -37,7 +37,7 @@ impl App {
 
     /// The file a turn checkpoints into and the exit save updates:
     /// `--save`'s explicit path wins; otherwise this conversation's own
-    /// file. `None` when neither exists — the exit save then falls back
+    /// file. `None` when neither exists, the exit save then falls back
     /// to allocating at exit, and a turn simply cannot checkpoint.
     pub fn checkpoint_target(&self) -> Option<PathBuf> {
         self.options
@@ -120,7 +120,7 @@ impl App {
     }
 
     /// The `/resume` pick: refuses politely under a running turn, and
-    /// hands the load to the runner — the session file is a JSON read
+    /// hands the load to the runner, the session file is a JSON read
     /// plus a parse on the blocking pool, and the result lands as
     /// [`UiEvent::SessionResumed`] for `apply_resume`.
     pub fn request_resume(&mut self, path: &Path) -> Vec<Effect> {
@@ -135,7 +135,7 @@ impl App {
     /// Loads a saved session and applies it on the spot: the
     /// synchronous path the tests drive and the headless runner keeps.
     /// The interactive app goes through [`Self::request_resume`]
-    /// instead — the UI thread never reads the file.
+    /// instead, the UI thread never reads the file.
     pub fn resume_session(&mut self, path: &Path) {
         let loaded = Self::load_resume_parts(path).map_err(|err| err.to_string());
         self.apply_resume(path, loaded);
@@ -143,7 +143,7 @@ impl App {
 
     /// Applies a loaded resume: rebuilds the agent on it, re-derives
     /// the transcript from its history, and lands in the chat. The
-    /// current conversation is replaced — it keeps its own saved file
+    /// current conversation is replaced, it keeps its own saved file
     /// from its own exit.
     pub(crate) fn apply_resume(&mut self, path: &Path, loaded: Result<Box<ResumedLoad>, String>) {
         let loaded = match loaded {
@@ -194,7 +194,7 @@ impl App {
     }
 
     /// Reads and derives a resume's parts: the session file plus the
-    /// usage accounting computed from it — the work the UI thread must
+    /// usage accounting computed from it, the work the UI thread must
     /// not do. Runs on the blocking pool via
     /// [`crate::turn::spawn_session_resume`].
     pub(crate) fn load_resume_parts(path: &Path) -> std::io::Result<Box<ResumedLoad>> {
@@ -205,7 +205,7 @@ impl App {
 
     /// The settings that apply to this session's profile: field-wise, the
     /// named profile (or the one chosen at startup) over the top-level
-    /// section. Computed on demand — it changes mid-session.
+    /// section. Computed on demand, it changes mid-session.
     pub fn effective(&self) -> rhema_config::Profile {
         self.config.effective(self.session_profile.as_deref())
     }
@@ -296,7 +296,7 @@ impl App {
     }
 
     /// The background subagent jobs' live state, read off the wire's
-    /// registry handle: one entry per working job — queued or running.
+    /// registry handle: one entry per working job, queued or running.
     /// A finished job left already; its outcome arrived as a finish
     /// event. Empty without an agent or a wire.
     pub(crate) fn subagent_jobs(&self) -> Vec<rhema_subagents::JobStatus> {
@@ -306,7 +306,7 @@ impl App {
             .unwrap_or_default()
     }
 
-    /// The pricing of any catalog model by id — the running subagent's
+    /// The pricing of any catalog model by id, the running subagent's
     /// model may differ from the session's, and its cost prices by its
     /// own card. An unknown id (the catalog never fetched it) prices to
     /// nothing.
@@ -317,7 +317,7 @@ impl App {
             .and_then(|entry| entry.model.pricing)
     }
 
-    /// The context window of any catalog model by id — the running
+    /// The context window of any catalog model by id, the running
     /// subagent's gauge is sized by its own card. `None` when unknown.
     pub(crate) fn model_window(&self, model: &str) -> Option<u64> {
         self.models
@@ -338,9 +338,9 @@ impl App {
     }
 
     /// The context footprint the footer shows: the latest reported
-    /// tally — the last turn's final usage, or while a turn streams the
+    /// tally, the last turn's final usage, or while a turn streams the
     /// provider's running count, whose prompt already includes its reply
-    /// — otherwise an estimate over the loaded history, which already
+    ///, otherwise an estimate over the loaded history, which already
     /// includes every message. A resumed session has spent context
     /// before its first turn here, and an empty one estimates to zero.
     pub fn context_used(&self) -> u64 {

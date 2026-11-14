@@ -2,8 +2,8 @@
 //!
 //! One small, vendor-free surface both frontends speak, so a client
 //! written against one talks to the other: what the client sends
-//! ([`ClientMessage`] — a turn's input, an approval answer, a stop),
-//! and what streams back ([`ServerMessage`] — the engine's events as
+//! ([`ClientMessage`], a turn's input, an approval answer, a stop),
+//! and what streams back ([`ServerMessage`], the engine's events as
 //! they arrive, the approval round-trip, the turn's close). The shapes
 //! are the Cloudflare DO's existing wire, typed; nothing changed on
 //! the socket.
@@ -73,7 +73,7 @@ pub enum ServerMessage {
         /// The chunk, in stream order.
         chunk: String,
     },
-    /// A streaming tool reported its own live status — its phase and,
+    /// A streaming tool reported its own live status, its phase and,
     /// when it tracks them, its token spend. A later status for the same
     /// call replaces the earlier one; a client without a place for it
     /// can drop it.
@@ -111,7 +111,7 @@ pub enum ServerMessage {
         /// The running tally.
         usage: Usage,
     },
-    /// A gated call waits for the client's decision — answer with
+    /// A gated call waits for the client's decision, answer with
     /// [`ClientMessage::Approve`], or the ask denies at the timeout.
     ApprovalRequest {
         /// The call's correlation id; the answer quotes it back.
@@ -126,14 +126,14 @@ pub enum ServerMessage {
         /// The call id whose ask expired.
         id: String,
     },
-    /// A request was refused or failed before a turn — a second chat
+    /// A request was refused or failed before a turn, a second chat
     /// while one runs, an unreadable message.
     Error {
         /// What went wrong, client-renderable.
         message: String,
     },
     /// The turn is over, in either direction: the close every client
-    /// waits for. Exactly one of the two shapes carries fields — the
+    /// waits for. Exactly one of the two shapes carries fields, the
     /// success shape `stop_reason`/`usage`/`cost_usd`, the failure
     /// shape `error`.
     TurnComplete {
@@ -154,7 +154,7 @@ pub enum ServerMessage {
 }
 
 impl ServerMessage {
-    /// The wire form of one engine event — the sink's mapping, typed.
+    /// The wire form of one engine event, the sink's mapping, typed.
     /// `None` for the events the wire carries no frame for.
     pub fn from_event(event: Event<'_>) -> Option<Self> {
         match event {
@@ -198,12 +198,12 @@ impl ServerMessage {
             }),
             Event::Usage(usage) => Some(Self::Usage { usage }),
             // The retry wait is the TUI's countdown material; the wire
-            // carries no frame for it, and the step's outcome — a
-            // recovery or the final error — reaches the client anyway.
+            // carries no frame for it, and the step's outcome, a
+            // recovery or the final error, reaches the client anyway.
             Event::RetryWait { .. } => {
                 // The retry wait is the TUI's countdown material; the
-                // wire carries no frame for it, and the step's outcome —
-                // a recovery or the final error — reaches the client
+                // wire carries no frame for it, and the step's outcome,
+                // a recovery or the final error, reaches the client
                 // anyway.
                 None
             }
@@ -220,7 +220,7 @@ impl ServerMessage {
         }
     }
 
-    /// The failure close for a turn that errored — the history is
+    /// The failure close for a turn that errored, the history is
     /// still whole, so the client may continue the conversation.
     pub fn turn_failed(error: String) -> Self {
         Self::TurnComplete {

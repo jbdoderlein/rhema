@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 
 /// The `custom` palette's token overrides, per appearance. A shell
 /// process (a wallpaper watcher, a pywal-style generator) writes these;
-/// the TUI reads them at startup. Any token left out — or written in a
-/// form that is not a `#RRGGBB` color — reads as the rhema default for
+/// the TUI reads them at startup. Any token left out, or written in a
+/// form that is not a `#RRGGBB` color, reads as the rhema default for
 /// that slot, so a partial file is an overlay, not a broken theme.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -66,14 +66,14 @@ pub struct CustomTokens {
     pub info: Option<String>,
 }
 
-/// The file this frontend owns: the framework's [`Settings`] section —
+/// The file this frontend owns: the framework's [`Settings`] section,
 /// flattened, its keys at the top level, byte-compatible with the
-/// layout the file has always had — beside this frontend's own
+/// layout the file has always had, beside this frontend's own
 /// settings. The framework reads only its section; everything else
 /// here is the terminal UI's.
 ///
 /// The strictness the framework's section has on its own does not
-/// survive serde's flatten — unknown keys would be dropped silently —
+/// survive serde's flatten, unknown keys would be dropped silently,
 /// so [`Document::load_from`] re-enforces it: every key that is not
 /// this frontend's own must parse as the section, whose unknown-key
 /// rejection is loud. A typo'd `profiles:` is an error naming the key
@@ -92,21 +92,21 @@ pub struct Document {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icons: Option<String>,
     /// The color theme: `dark` (the default) or `light`. Validated by
-    /// the consumer, not here — anything unparseable reads as the
+    /// the consumer, not here, anything unparseable reads as the
     /// default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
     /// What paints behind the ink: `native` (the default) leaves the
     /// terminal's own background in place, `rhema` paints the palette's
     /// fills over the whole screen. Validated by the consumer, not
-    /// here — anything unparseable reads as the default.
+    /// here, anything unparseable reads as the default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background: Option<String>,
     /// The UI color palette: `rhema` (the default), `aquamarine`,
     /// `black-and-white`, `dracula`, `catppuccin-frappe`,
     /// `catppuccin-macchiato`, `catppuccin-mocha`, `nord`, `gruvbox`,
     /// `solarized`, `m3-you`, or `custom`. Validated by the consumer,
-    /// not here — anything unparseable reads as the default.
+    /// not here, anything unparseable reads as the default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colors: Option<String>,
     /// The seed color of the `m3-you` palette, `#RRGGBB`: pick one from
@@ -122,28 +122,28 @@ pub struct Document {
     pub custom: Option<CustomPalette>,
     /// The last profile that served each workspace a turn, keyed by the
     /// workspace's absolute path. Startup reopens a directory on its
-    /// last-used profile — a per-directory memory, never a global
+    /// last-used profile, a per-directory memory, never a global
     /// switch, so parallel instances in different directories stay
     /// independent.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub last_profile_by_workspace: BTreeMap<String, String>,
     /// The last sandbox kind each workspace ran `bash` under, keyed by
-    /// the workspace's absolute path — the sandbox twin of
+    /// the workspace's absolute path, the sandbox twin of
     /// `last_profile_by_workspace`. A directory reopens on the kind it
     /// last used, never overriding an explicit flag or `RHEMA_SANDBOX`.
     /// The kind is stored as given; whether this machine still offers
     /// it is the consumer's question.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub last_sandbox_by_workspace: BTreeMap<String, String>,
-    /// Where the first-run onboarding stands. `Some(false)` — the
-    /// wizard opened but did not finish — reopens it on the next
+    /// Where the first-run onboarding stands. `Some(false)`, the
+    /// wizard opened but did not finish, reopens it on the next
     /// start; `Some(true)` never shows it again. `None`, the default,
     /// is a document that predates the wizard and reads as onboarded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub onboarded: Option<bool>,
 }
 
-/// The document under its historical name — the one the session state
+/// The document under its historical name, the one the session state
 /// machine, the screens, and the run loop speak.
 pub type Config = Document;
 
@@ -190,7 +190,7 @@ impl Document {
     /// Persists the document, creating the directory `0700` and the
     /// file `0600` on Unix because the framework section can hold
     /// credentials. Both modes are re-asserted on every save, so a
-    /// file that predates the rule — or was widened elsewhere —
+    /// file that predates the rule, or was widened elsewhere,
     /// tightens again.
     pub fn save(&self) -> Result<(), ConfigError> {
         let dir = Home::discover()?.config;
@@ -206,8 +206,8 @@ impl Document {
     /// [`Document::load`] against an explicit file (missing file is
     /// the default document).
     ///
-    /// The parse is lenient — serde's flatten drops keys it cannot
-    /// place — so the framework section's strictness is re-asserted
+    /// The parse is lenient, serde's flatten drops keys it cannot
+    /// place, so the framework section's strictness is re-asserted
     /// here, key by key: see `reject_unknown_keys`.
     pub fn load_from(path: &impl AsRef<Path>) -> Result<Document, ConfigError> {
         let raw = match std::fs::read_to_string(path) {
@@ -222,7 +222,7 @@ impl Document {
         Ok(doc)
     }
 
-    /// Rejects a key that belongs to neither vocabulary — a typo'd
+    /// Rejects a key that belongs to neither vocabulary, a typo'd
     /// `profiles:` must not silently read as unset just because the
     /// flatten swallowed it. The frontend's own keys are checked by
     /// name; everything left over must parse as the framework's
@@ -260,7 +260,7 @@ impl Document {
     }
 
     /// The profile `workspace` last served a turn under, when one was
-    /// recorded. The name is returned as stored — the caller decides
+    /// recorded. The name is returned as stored, the caller decides
     /// whether that profile still exists and can serve turns.
     pub fn last_profile_in(&self, workspace: &Path) -> Option<String> {
         self.last_profile_by_workspace
@@ -280,7 +280,7 @@ impl Document {
     }
 
     /// The sandbox kind `workspace` last ran `bash` under, when one was
-    /// recorded. The kind is returned as stored — the caller decides
+    /// recorded. The kind is returned as stored, the caller decides
     /// whether this machine still offers it.
     pub fn last_sandbox_in(&self, workspace: &Path) -> Option<String> {
         self.last_sandbox_by_workspace
@@ -461,7 +461,7 @@ mod tests {
         let path = dir.path().join("config.yaml");
         // The framework's section and this frontend's, one file: the
         // section's keys read through the flatten, the UI's beside
-        // them, and the saved layout matches the historical one —
+        // them, and the saved layout matches the historical one,
         // both sections at the top level, no nesting.
         let mut config = Document::default();
         config.settings.set_for_profile(Some("work"), |p| {

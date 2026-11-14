@@ -1,7 +1,7 @@
 //! The approval seam: a per-turn hook that gates the side-effecting tools.
 //!
 //! The hook travels as an `Arc` because the resolver that consults it is
-//! owned by the engine's `Agent` and must stay `'static` — a plain `&dyn`
+//! owned by the engine's `Agent` and must stay `'static`, a plain `&dyn`
 //! borrow cannot be installed into it. It is installed before a turn and
 //! cleared after; tool resolution is synchronous within a turn, so the
 //! per-turn swap is race-free.

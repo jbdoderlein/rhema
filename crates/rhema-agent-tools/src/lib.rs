@@ -1,23 +1,23 @@
-//! rhema-agent-tools — the agent toolkit on rhema-core's tool
+//! rhema-agent-tools, the agent toolkit on rhema-core's tool
 //! abstraction.
 //!
 //! The pieces any agent needs, concrete and shared. The concepts stay in
 //! rhema-core (`ToolResolver`, `ToolCall`, `Session`); this crate
 //! implements them:
 //!
-//! - [`approval`] — the `Approval` hook and `AllowAll`/`DenyAll`
-//! - [`exec`] — the `ShellExecutor` seam: where `bash` commands run
-//! - [`shell`] — `ShellTools`, one approval-gated `bash` scoped to a
+//! - [`approval`]: the `Approval` hook and `AllowAll`/`DenyAll`
+//! - [`exec`]: the `ShellExecutor` seam: where `bash` commands run
+//! - [`shell`]: `ShellTools`, one approval-gated `bash` scoped to a
 //!   workspace; reading, listing, and editing are shell work, not
 //!   separate tools
-//! - [`skills`] — discovery of markdown skills, prompt presentation
-//! - [`overlay`] — `Overlay`, one resolver over built-ins plus an extension set
-//! - [`paste`] — `ExpandPastes`, paste expansion at the provider seam
-//! - [`revive`] — `repair_dangling_calls`, `revive_dangling_calls`
-//! - [`prompt`] — the Jinja system-prompt renderer
-//! - [`vision`] — the `see` macro: a bash command's staged images
+//! - [`skills`]: discovery of markdown skills, prompt presentation
+//! - [`overlay`]: `Overlay`, one resolver over built-ins plus an extension set
+//! - [`paste`]: `ExpandPastes`, paste expansion at the provider seam
+//! - [`revive`]: `repair_dangling_calls`, `revive_dangling_calls`
+//! - [`prompt`]: the Jinja system-prompt renderer
+//! - [`vision`]: the `see` macro: a bash command's staged images
 //!   become [`ToolResult`] image blocks
-//! - [`jobs`] — the `job` macro: background shells the model starts now
+//! - [`jobs`]: the `job` macro: background shells the model starts now
 //!   and reads on a later turn
 //!
 //! # Skills
@@ -33,7 +33,7 @@
 //! The coding-agent driver (`rhema-coding-agent`) builds on the kit; the
 //! TUI and ACP adapters reach it through that driver. The claw's resident
 //! agent assembles its own agent from the same pieces, which is the
-//! point: one shell, one approval seam, one expansion, one renderer —
+//! point: one shell, one approval seam, one expansion, one renderer,
 //! not one per driver.
 #![forbid(unsafe_code)]
 

@@ -1,4 +1,4 @@
-//! rhema-memory — cross-session agent memory
+//! rhema-memory, cross-session agent memory
 //! (specs/rhema-memory.md).
 //!
 //! Durable memory the model *pulls* through tools, never context the
@@ -7,14 +7,14 @@
 //! through the [`MemoryStore`] contract and the tools on
 //! [`MemoryResolver`]. The contract promises ranked-best-first search and
 //! nothing about the ranking method, so a semantic ranker can replace the
-//! keyword one without a signature change — the framework spec §9
+//! keyword one without a signature change, the framework spec §9
 //! requirement, restated as the trait's shape.
 //!
 //! Records carry their temporal facts: a validity window, a decay (how
 //! soon to doubt them), provenance, a subject overlap key, a status, and
 //! a verify hint. The engine computes what is stale, what is due for
 //! review, and what may conflict with what; it never decides that a fact
-//! became false. Time never kills a record — only supersession or
+//! became false. Time never kills a record, only supersession or
 //! retraction does, and both keep the body, so the history of what was
 //! believed stays readable. Search default-rules surface only active
 //! records inside their window, and every rendered record carries its
@@ -22,24 +22,24 @@
 //!
 //! The store trait is sync, like `rhema-rsd`'s `Store`: operations are
 //! short local reads and writes, and the async seam is the tool resolver
-//! above the store. There is no dispatch machinery here — no leases, no
+//! above the store. There is no dispatch machinery here, no leases, no
 //! inbox, no revisions; a memory operation is short, serialized by the
 //! store, and durable on return. Review is not a daemon: a caller asks
 //! what is due and does the work at a cadence of its own choosing.
 //!
 //! Layout:
-//! - [`record`] — `MemoryRecord`, `Scope`, `MemoryDraft`, the temporal
+//! - [`record`]: `MemoryRecord`, `Scope`, `MemoryDraft`, the temporal
 //!   types (`Decay`, `Source`, `Status`, `VerifyHint`), tags, ids, UTC
 //!   rendering
-//! - [`store`] — the `MemoryStore` contract and `MemoryError`
-//! - [`search`] — `MemoryQuery` (with `as_of` replay) and the v1
+//! - [`store`]: the `MemoryStore` contract and `MemoryError`
+//! - [`search`]: `MemoryQuery` (with `as_of` replay) and the v1
 //!   keyword+recency ranker under the validity rules
-//! - [`conflict`] — subject-overlap detection for the write path
-//! - [`review`] — the due-for-review sweep
-//! - [`volatile`] — the in-process `VolatileStore`
-//! - [`file`] — the markdown-file `FileMemoryStore`, the durable default
-//! - [`tools`] — the memory tools and `MemoryResolver`
-//! - [`store_contract`] — the replayable behavioral suite (`store-contract` feature)
+//! - [`conflict`]: subject-overlap detection for the write path
+//! - [`review`]: the due-for-review sweep
+//! - [`volatile`]: the in-process `VolatileStore`
+//! - [`file`]: the markdown-file `FileMemoryStore`, the durable default
+//! - [`tools`]: the memory tools and `MemoryResolver`
+//! - [`store_contract`]: the replayable behavioral suite (`store-contract` feature)
 
 #![forbid(unsafe_code)]
 

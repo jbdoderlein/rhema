@@ -5,7 +5,7 @@
 //! (`ThinkingDelta`, `TextDelta`, `ToolCallStart`, `ToolCallArgsDelta`,
 //! `Usage`) while it streams; the [`crate::Agent`] emits the lifecycle events
 //! (`StepStart`, `ToolResult`, `StepEnd`). A provider that announces a tool
-//! call while streaming it is not echoed by the engine — the engine only
+//! call while streaming it is not echoed by the engine, the engine only
 //! emits `ToolCallStart` for calls the provider did not announce.
 
 /// One streaming or lifecycle event of a step.
@@ -18,7 +18,7 @@ pub enum Event<'a> {
         iteration: u32,
     },
     /// A piece of the model's reasoning trace, in stream order. Ephemeral
-    /// by design: never appended to the session history — sinks render it
+    /// by design: never appended to the session history, sinks render it
     /// live (or drop it), and it is gone when the step ends.
     ThinkingDelta(&'a str),
     /// A piece of assistant text, in stream order.
@@ -40,8 +40,8 @@ pub enum Event<'a> {
         /// A piece of the call's JSON arguments.
         delta: &'a str,
     },
-    /// A chunk of a running tool's human-facing output — a command's
-    /// completed lines — in stream order. Ephemeral like
+    /// A chunk of a running tool's human-facing output, a command's
+    /// completed lines, in stream order. Ephemeral like
     /// [`Event::ThinkingDelta`]: never appended to the session history;
     /// sinks render it live, and the full text arrives in the call's
     /// `ToolResult`.
@@ -52,7 +52,7 @@ pub enum Event<'a> {
         /// included.
         chunk: &'a str,
     },
-    /// A streaming tool reported its own live status — what its inner
+    /// A streaming tool reported its own live status, what its inner
     /// work is doing and what it has spent. Ephemeral like
     /// [`Event::ToolOutputDelta`]: sinks render it live, never into the
     /// session history, and a later status for the same call replaces it.
@@ -75,7 +75,7 @@ pub enum Event<'a> {
     },
     /// The running token tally for the in-flight model call, as the
     /// provider reports it inside the stream itself. The fields are
-    /// cumulative for the call — each event replaces the previous tally,
+    /// cumulative for the call, each event replaces the previous tally,
     /// never adds to it. Emitted whenever the wire carries a usage frame:
     /// Anthropic-shaped wires report the prompt with `message_start` and
     /// the completion with cumulative `message_delta` frames; Gemini
@@ -85,8 +85,8 @@ pub enum Event<'a> {
     Usage(crate::output::Usage),
     /// A provider attempt failed transiently and the retry ladder is
     /// waiting `delay` before the next one. Ephemeral like
-    /// [`Event::ThinkingDelta`]: sinks render it live — a countdown, a
-    /// notice — and it never reaches the session history.
+    /// [`Event::ThinkingDelta`]: sinks render it live, a countdown, a
+    /// notice, and it never reaches the session history.
     RetryWait {
         /// The failed attempt's own error text.
         error: &'a str,

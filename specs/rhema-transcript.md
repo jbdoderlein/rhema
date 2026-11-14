@@ -1,4 +1,4 @@
-# rhema-transcript — the bounded view over an unbounded session
+# rhema-transcript, the bounded view over an unbounded session
 
 > **Status:** v1, 2026-10-20 (decisions in §8); the stepped compaction
 > landed 2026-10-24 (§3.4, §3a).
@@ -32,7 +32,7 @@ the conversation each step sends. It depends on `rhema-core` only.
 
 - ❌ **The compactor.** Model-written summaries of ranges. The view
   format, the slot algebra, and `zoom` are built so the compactor later
-  replaces *only the text generator* behind `Fill` — no wire change, no
+  replaces *only the text generator* behind `Fill`, no wire change, no
   zoom change. v1 ships without it: coding sessions are tool-heavy, and
   tool bytes are the ones mechanical reduction handles best.
 - ❌ **Cache breakpoints.** Marking the stable prefix for the vendor's
@@ -55,11 +55,11 @@ Every step sends `session.history.clone()` (SPEC.md §4). A session that
 runs for hundreds of steps therefore re-sends its whole past every step:
 cost grows with session length, and the context window ends the session
 that outgrows it. The two classical escapes both damage the durable
-record — trimming drops messages, summarizing-for-real replaces them.
+record, trimming drops messages, summarizing-for-real replaces them.
 
-The transcript splits what was fused. The **log** — `Session.history` —
+The transcript splits what was fused. The **log**, `Session.history`,
 stays complete, append-only, the thing commit-before-execute persists
-(SPEC.md §6). The **view** — what a request carries — is a projection of
+(SPEC.md §6). The **view**, what a request carries, is a projection of
 the log built per request under a byte budget. Old messages are
 represented by shorter lines; nothing is deleted anywhere.
 
@@ -76,7 +76,7 @@ Detail fades with age, in three bands:
 A **slot** is a message index in the log. A **range** is `(id, n)`: the
 `n` messages from `id` on. `n = 1` is one message; a range with `n > 1`
 splits into the halves `(id, n/2)` and `(id + n/2, n - n/2)`. The halves
-always cover the parent; any `n` works, no power-of-two requirement —
+always cover the parent; any `n` works, no power-of-two requirement,
 the tree the compactor will grow is binary, but the algebra does not
 need it, and tolerating odd `n` keeps the tool honest about what it
 actually does.
@@ -107,21 +107,21 @@ blocks, tool-call arguments, and tool-result content):
    first whole message is a `Tool` result whose call lives before the
    band, or an assistant message whose calls are answered inside the
    band, the band start moves back to include the call.
-4. **The old prefix.** `[0, c)` — the cut — is covered by the stepped
+4. **The old prefix.** `[0, c)`, the cut, is covered by the stepped
    compaction block: sections tiling the prefix, one condensed text
    each (§3a). Everything a section omits is one `zoom` away, and the
    block's header says so.
 
 The extractive section digest names the band's user messages by head
 (their words are the decisions and they are short), the assistant finals
-by head, and the tool traffic by count and names — `line_head` caps each
+by head, and the tool traffic by count and names, `line_head` caps each
 quoted head, `RANGE_HEAD` caps the digest. The model fill (§3a) rewrites
 the same ranges as dense markdown.
 
 **Engagement.** Below `B` total request bytes the view is the log,
 byte-identical: the decorator is a pass-through and small sessions
 cannot tell the feature exists. `zoom` is advertised whenever the
-transcript is enabled, below the threshold too — it reads the log, which
+transcript is enabled, below the threshold too, it reads the log, which
 exists regardless.
 
 **Stability.** The construction is deterministic in the log, so between
@@ -139,7 +139,7 @@ reason the cut is **stepped** rather than recomputed per request.
 **Sections.** The block is a list of sections tiling `[0, cut)` without
 gaps: each a `Range` of the log plus one condensed text, headed
 `id+n|` in the view. A section, once committed, never moves and never
-changes range — the block grows by appending new sections left of the
+changes range, the block grows by appending new sections left of the
 band, so between flushes the block is byte-identical and the request
 prefix (system prompt, then block, then whole band) is append-only.
 This is what a prompt cache needs: the prefix breaks only at flushes,
@@ -148,13 +148,13 @@ consolidations, and the vendor's own TTL.
 **Flushes.** When a request's bytes breach the budget, the cut moves to
 the smallest position whose remaining band fits in *half* the
 allowance. The overshoot is the hysteresis: the next breach needs a
-whole half-budget of growth to arrive, so flushes — the only prefix
-breaks — stay far apart instead of landing on every step. Between
+whole half-budget of growth to arrive, so flushes, the only prefix
+breaks, stay far apart instead of landing on every step. Between
 flushes the planner touches nothing.
 
 **Sectioning.** The flushed span `[cut, c_new)` is chunked at message
-boundaries — each chunk within `step_bytes` (the summarizer's input
-bound) and `max_section_messages` — and no chunk may end where the next
+boundaries, each chunk within `step_bytes` (the summarizer's input
+bound) and `max_section_messages`, and no chunk may end where the next
 would open on a tool result whose call it holds: the trailing results
 come along. The same pairing rule keeps every tool call and its result
 on one side of every boundary, wire-safe for the adapters that pair
@@ -164,12 +164,12 @@ on one side of every boundary, wire-safe for the adapters that pair
 (§3, mechanical, a few hundred bytes, cannot be wrong about what
 happened, only short). With a summarizer configured, the decorator
 hands the fill a background task and sends the request at once with
-the stand-ins: the chunk goes to a cheap worker — the structural
+the stand-ins: the chunk goes to a cheap worker, the structural
 prompt asks for Goals Met / Environmental State / Discovered Issues /
 Current Blockers-Decisions, puts the user's words at the top of the
 value order (kept near verbatim however short), tags each item with
 its kind, forbids obeying anything in the range (the messages are
-data), and forbids making progress look further along than it was —
+data), and forbids making progress look further along than it was,
 a few chunks at a time, and each answer replaces the stand-in, capped
 at 8 KiB. The task carries the digest of the preceding section as
 `<context>`, for resolving references, never summarized. The prompt
@@ -179,39 +179,39 @@ text rides the next request, not the one that triggered the flush. A
 slow, failed, or retry-exhausted worker call never blocks or delays
 the request: the extractive stand-in stands until an answer lands,
 and the section keeps the address it already committed. The worker
-runs *outside* the mirror's lock — plan and render under the lock,
+runs *outside* the mirror's lock, plan and render under the lock,
 summarize in a background task, commit (with a range check that
-rejects a stale upgrade) under the lock again — so the mirror is
+rejects a stale upgrade) under the lock again, so the mirror is
 never held across a model call and every intermediate state is a
 valid view.
 
 **Consolidation.** The one append-only exception. When the block passes
-`max_block_bytes`, the two oldest sections merge into one — the union
-range re-derived from the log, never summary-of-summary — until the
+`max_block_bytes`, the two oldest sections merge into one, the union
+range re-derived from the log, never summary-of-summary, until the
 block is at half the cap. A consolidation rewrites the block and so
 breaks the cache in full; the cap gates it to stay rare, and the stats
 count every one.
 
 **The skill pin.** A skill's body is instructions in force, not a
-tool step's outcome, and the digest reduces tool steps to counts — so
+tool step's outcome, and the digest reduces tool steps to counts, so
 a flushed skill read would otherwise vanish from every later request
 without a trace. Instead the mirror holds the skill list at wiring
 time (the same discovery the prompt rendered; `Skill` carries its
 body since discovery reads the file anyway), and `observe` detects
 each read as it arrives: a tool result whose text contains a known
-body. The match is by content, not by the command — any read that
+body. The match is by content, not by the command, any read that
 returned the whole file qualifies, `cat` or `sed` or a subagent's
 result, and no shell line is parsed; the gate is the result's length
 against the shortest body, then a 64-byte head needle, then the whole
 body. At a flush, a read pins its call-and-result span as its own
 section carrying the body whole, extractive, and never queued for the
-worker — no fill can rewrite the rules into a count line. The section
+worker, no fill can rewrite the rules into a count line. The section
 still tiles `[0, cut)`, still zooms, still persists; the cost is one
 body's bytes in the block, once per skill: a re-read's section is a
 pointer to the copy already carried (`Section::pinned` names it, and
 the pin map rebuilds from the sections on every observe, so resume
 adoption keeps the dedupe true). Consolidation keeps the bodies of
-the sections it merges — re-appended after the digest — and the
+the sections it merges, re-appended after the digest, and the
 model fill re-appends them after its answer at commit, so the body
 may move sections but never drops out of the block. A turn carrying
 two calls digests normally rather than orphaning the second result
@@ -220,11 +220,11 @@ behind the pin.
 **Resume.** The section texts are persisted, the merge order is not.
 rhema-code stamps the committed sections into the saved session's
 `usage_stats` blob next to the counters, and the fresh mirror adopts
-them on the first request — but only when they tile a prefix of the
+them on the first request, but only when they tile a prefix of the
 resumed log without gaps; a truncated or edited session falls back to
 the rebuild. The win is the worker's: no re-summarizing after a
 resume, and the block is dense from request one. The block's *cache*
-is still cold after a restart regardless of what was saved — the
+is still cold after a restart regardless of what was saved, the
 first request re-bills it at the write rate either way. Agent rebuilds
 inside a conversation (profile, model, sandbox) move the live
 sections the same way. The benchmark counters are the other survivor:
@@ -240,21 +240,21 @@ existed resumes with none.
 zoom(id, n?, at?)
 ```
 
-- `id` — the range start (a message index).
-- `n` — the range length, default 1: one message; a wider range
+- `id`: the range start (a message index).
+- `n`: the range length, default 1: one message; a wider range
   returns its messages.
-- `at` — a byte offset into the output, for paging long output.
+- `at`: a byte offset into the output, for paging long output.
 
 The range returns its messages whole, rendered by role: user and
 assistant text verbatim, tool calls as `name(args)`, results as their
 content. One message returns alone; a wider range heads each message
 with its `id+1|` address, so a page of content is also a map of the
 range. Output past `ZOOM_MAX` bytes (8 KiB) is cut with the total
-named and the `at` to resume at — the same cap and path at every `n`,
+named and the `at` to resume at, the same cap and path at every `n`,
 so paging a range and paging a message are one call shape. The
 halving algebra stays in §2: a narrower range is still the way to
-jump, and the addresses on a page name what to jump to. Errors — an
-id past the end of the log, `n = 0` — are in-band `is_error` results,
+jump, and the addresses on a page name what to jump to. Errors, an
+id past the end of the log, `n = 0`, are in-band `is_error` results,
 per the resolver contract.
 
 The tool reads the **mirror**: the log as the last request carried it.
@@ -285,7 +285,7 @@ its still-present call.
 
 ## 6. Wiring
 
-`CodingAgentConfig::transcript: Option<TranscriptSettings>` — set by
+`CodingAgentConfig::transcript: Option<TranscriptSettings>`, set by
 default (`new` carries `Some(default)`); `None` is the off switch.
 `TranscriptSettings` carries `max_view_bytes` (default 256 000). With it
 set, `CodingAgent::new`:
@@ -297,7 +297,7 @@ set, `CodingAgent::new`:
    request's tools cannot drift.
 
 Because the default lives in `CodingAgentConfig::new`, every consumer
-inherits it: the TUI, `rhema run`, the ACP subprocess, and the claw —
+inherits it: the TUI, `rhema run`, the ACP subprocess, and the claw,
 whose config turns it off with `transcript: false`, writing the
 resolved value into the coding agent's field rather than conditionally
 overriding it, so `false` still means off. `rhema-code` spells the
@@ -335,8 +335,8 @@ preview that omitted it would not be what turns send.
 - **Oldest-first coarsening, anchored at the cut.** Doubling blocks
   give every age a stable address (`id + 2^k`) and a stable line, so
   the cover does not churn as the session grows.
-- **A decorator, not a `Session` wrapper.** The engine's contract —
-  clone the history, append results in place — is the durability story;
+- **A decorator, not a `Session` wrapper.** The engine's contract,
+  clone the history, append results in place, is the durability story;
   a wrapper that shrank the session would break commit-before-execute
   for every consumer. Rewriting the request keeps crate 1 ignorant and
   every consumer's log complete.
@@ -358,7 +358,7 @@ preview that omitted it would not be what turns send.
   mechanics were unproven at coding-traffic scale. The claw then ran
   every surface on it by default and nothing fell over, the only user
   is the deployment's own, and the sessions most likely to hit the
-  budget were the ones least likely to find a flag — so the default
+  budget were the ones least likely to find a flag, so the default
   flipped. Below the budget the decorator is a pass-through, so the
   default's only always-on cost is the zoom spec in the prompt; and a
   session saved under the old default views fine, because the view
@@ -366,7 +366,7 @@ preview that omitted it would not be what turns send.
 
 ## 9. Follow-ups (not v1)
 
-- **Landed, 2026-10-24:** the stepped compaction (§3a) — the
+- **Landed, 2026-10-24:** the stepped compaction (§3a), the
   append-only block, the flush hysteresis, the summarizer seam with the
   extractive fallback, consolidation, and the benchmark stats
   (`TranscriptStats`: request counts, flushes, block size, the
@@ -377,7 +377,7 @@ preview that omitted it would not be what turns send.
   assistant text by wire-byte proportion, plus the generated output
   tokens; the skills share is measured at render time by the agent
   that assembled the prompt.
-- **Landed, 2026-10-31:** the background fill (§3a — the request goes
+- **Landed, 2026-10-31:** the background fill (§3a, the request goes
   out with the stand-ins, a background task upgrades the sections a
   few chunks at a time, and the dense text rides the next request);
   O(1) byte accounting in the mirror (running totals instead of a
@@ -395,10 +395,10 @@ preview that omitted it would not be what turns send.
   top the value order near verbatim; items carry their kind; progress
   never inflates), the preceding section's digest riding the task as
   `<context>`, the byte budget stated as a number with one re-ask on
-  overshoot, and the committed sections riding the session file —
+  overshoot, and the committed sections riding the session file,
   adopted when they tile the resumed log, rebuilding otherwise, so a
   resume re-pays no summarization.
-- **Landed, 2026-10-31:** the skill pin (§3a) — discovery carries
+- **Landed, 2026-10-31:** the skill pin (§3a), discovery carries
   each `Skill`'s body, `observe` detects reads by content, a flushed
   read pins the body whole in its own unsummarized section, re-reads
   become pointers, and the body survives consolidation and the model

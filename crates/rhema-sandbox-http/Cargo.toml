@@ -12,7 +12,7 @@ authors.workspace = true
 default = ["native"]
 # The reqwest transport behind the default constructor. Off in wasm
 # builds, whose host has no sockets to speak of: they bring their own
-# `HttpTransport` over host fetch — the provider family's `native`
+# `HttpTransport` over host fetch, the provider family's `native`
 # precedent.
 native = ["dep:reqwest"]
 

@@ -1,5 +1,5 @@
 //! The `Source` contract, end to end: a fake detection stream registered
-//! through its own `name`/`key_fn` report, feeding a real dispatcher —
+//! through its own `name`/`key_fn` report, feeding a real dispatcher,
 //! the fed count, the landed inbox, and the dedup on replay. Zero network.
 
 mod common;
@@ -111,7 +111,7 @@ async fn a_detect_pass_feeds_its_events_through_its_own_registration() {
         "both keys are dispatch-eligible once the window elapses"
     );
 
-    // The replayed poll: same dedup ids, fed again, dropped as duplicates —
+    // The replayed poll: same dedup ids, fed again, dropped as duplicates,
     // the inbox the driver will see is unchanged.
     source.feed("github:acme/widgets#142", "e1");
     source.feed("github:acme/widgets#142", "e2");

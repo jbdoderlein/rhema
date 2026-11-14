@@ -1,4 +1,4 @@
-//! The MCP CLI as a standalone binary — the test harness's exec
+//! The MCP CLI as a standalone binary, the test harness's exec
 //! target and a debugging aid. The agent shells' stubs exec the
 //! rhema binary itself (`RHEMA_MCP_BIN`), which routes to the same
 //! `rhema_mcp::cli::run`; this target exists so provision's exec

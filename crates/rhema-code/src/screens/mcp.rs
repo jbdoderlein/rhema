@@ -1,5 +1,5 @@
 //! The settings MCP page: the active profile's servers as rows, the
-//! validation state each carries, and the add-server dialog — the
+//! validation state each carries, and the add-server dialog, the
 //! state machine behind the install flow.
 
 use super::*;
@@ -7,10 +7,10 @@ use super::*;
 /// One row of the MCP page: one server of the active profile's map.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpServerRow {
-    /// The server's name — the profile map's key.
+    /// The server's name, the profile map's key.
     pub name: String,
     /// How it is reached: `stdio` for a command, `http` for a URL.
-    /// `None` when the entry names neither (or both) — the state the
+    /// `None` when the entry names neither (or both), the state the
     /// row's notice explains.
     pub transport: Option<&'static str>,
     /// The user-written description feeding the prompt disclosure.
@@ -20,15 +20,15 @@ pub struct McpServerRow {
     /// reads.
     pub disabled: bool,
     /// The notice the entry earns at assembly time, in the assembly's
-    /// own wording — an invalid entry stays listed so it can be fixed
+    /// own wording, an invalid entry stays listed so it can be fixed
     /// or removed here.
     pub notice: Option<String>,
 }
 
 /// The profile's `mcp_servers` map as rendered rows, in name order,
 /// each tagged muted from `disabled`. Validation runs through
-/// [`rhema_config::mcp::McpConfig::from_entries`] — the same fold the
-/// assembly runs — so a row the manager would keep is clean and a row
+/// [`rhema_config::mcp::McpConfig::from_entries`], the same fold the
+/// assembly runs, so a row the manager would keep is clean and a row
 /// it would skip carries the notice that says why.
 pub fn mcp_server_rows(
     entries: &BTreeMap<String, rhema_config::mcp::McpServerEntry>,
@@ -105,7 +105,7 @@ pub enum McpDialogAction {
 
 /// The editable `KEY=value` lines of the env and header stages: one
 /// buffer, one cursor line, enter opening a line and a blank last
-/// line finishing. A pasted or typed line may hold anything — the
+/// line finishing. A pasted or typed line may hold anything, the
 /// shape check runs when the lines are read as pairs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PairLines {
@@ -172,7 +172,7 @@ impl PairLines {
     }
 
     /// A bracketed paste into the cursor line: a line is a line, so
-    /// control characters — newlines above all — drop.
+    /// control characters, newlines above all, drop.
     pub fn paste(&mut self, text: &str) {
         self.lines[self.cursor].extend(text.chars().filter(|c| !c.is_control()));
     }
@@ -244,7 +244,7 @@ pub struct AddMcpServerDialog {
     /// The accepted bash-name override; empty means none.
     pub command_name: String,
     /// The server names taken when the dialog opened: the name stage
-    /// refuses them. A snapshot, not a window — the dialog is modal.
+    /// refuses them. A snapshot, not a window, the dialog is modal.
     pub(crate) taken: BTreeSet<String>,
 }
 
@@ -313,7 +313,7 @@ impl AddMcpServerDialog {
 
     /// A bracketed paste landed: into the single-line input, or into
     /// the lines editor's cursor line. Control characters drop in both
-    /// — a pasted newline must not fire a stage advance.
+    ///, a pasted newline must not fire a stage advance.
     pub fn paste(&mut self, text: &str) {
         match self.stage {
             McpDialogStage::Transport => {}
@@ -345,7 +345,7 @@ impl AddMcpServerDialog {
 
     /// Keys on the transport list: arrows choose, enter descends into
     /// the command or URL input, esc returns to the description.
-    /// Choosing a transport clears the other's field — one server is
+    /// Choosing a transport clears the other's field, one server is
     /// one transport, and a retyped choice starts fresh.
     fn handle_transport_key(&mut self, key: KeyEvent) -> McpDialogAction {
         match key.code {
@@ -475,7 +475,7 @@ impl AddMcpServerDialog {
     }
 
     /// Enter on a single-line stage: validate the line, store it, and
-    /// step forward — or name the problem and stay. The bash-name
+    /// step forward, or name the problem and stay. The bash-name
     /// stage's enter is the dialog's store: it builds and validates
     /// the whole entry.
     fn accept_line(&mut self) -> McpDialogAction {
@@ -500,7 +500,7 @@ impl AddMcpServerDialog {
             }
             McpDialogStage::Description => {
                 // Optional: empty advances, the fold substitutes a
-                // "no description; run --help" line at prompt time —
+                // "no description; run --help" line at prompt time,
                 // the server cannot be asked (nothing is spawned
                 // until the first call) and the field is a hint, not
                 // an identity.
@@ -555,7 +555,7 @@ impl AddMcpServerDialog {
     }
 
     /// The entry the dialog collected, with its name: the config
-    /// layer's resolve is the validator — name charset, transport
+    /// layer's resolve is the validator, name charset, transport
     /// XOR, and the pairs' placement are its rules, so the stored
     /// entry is one the assembly will keep.
     pub fn build(&self) -> Result<(String, rhema_config::mcp::McpServerEntry), String> {
@@ -584,7 +584,7 @@ impl AddMcpServerDialog {
             command_name: (!self.command_name.is_empty()).then(|| self.command_name.clone()),
         };
         // The resolution result is discarded: it is the validation,
-        // not the shape the dialog hands over — the stored form is
+        // not the shape the dialog hands over, the stored form is
         // the entry itself, which the profile map round-trips.
         entry
             .resolve(&self.name)

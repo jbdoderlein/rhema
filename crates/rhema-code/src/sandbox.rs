@@ -7,15 +7,15 @@
 //! it constructs nothing here, and the agent builds
 //! `ShellTools::new(workspace)` exactly as it always has. Every other
 //! kind builds an `Arc<dyn Sandbox>`, seeds it once per workspace, and
-//! hands the agent a [`ShellSandbox`] executor instead — the tool's
+//! hands the agent a [`ShellSandbox`] executor instead, the tool's
 //! spec, caps, and error shaping are unchanged wherever commands run.
 //! Everything else stays host-side: profiles, sessions, config reads,
 //! subagent definition discovery, the skills' discovery itself.
 //!
 //! A non-local choice is also a shared instance: the assembly runs
-//! under the instance's cross-process lock ([`InstanceLock`]) —
+//! under the instance's cross-process lock ([`InstanceLock`]),
 //! exclusive for the launch, the devices, the provision, and the seed,
-//! shared for the session — and the last session out stops a
+//! shared for the session, and the last session out stops a
 //! rhema-derived instance, never one a stored target named.
 
 use std::path::{Path, PathBuf};
@@ -47,16 +47,16 @@ pub use machines::{SandboxAvailability, SandboxMachines};
 use provision::{ensure_container, ensure_lxd_instance, ensure_lxd_mount, workspace_owner};
 use seed::{agents_skills_dir, discovered_skills, ensure_seeded, global_skills_dir};
 
-/// The choice this profile runs `bash` under: `RHEMA_SANDBOX` first —
+/// The choice this profile runs `bash` under: `RHEMA_SANDBOX` first,
 /// [`Profile::sandbox_kind`] already layers the env over the stored
-/// kind — then the stored kind. Anything unset or unparseable reads as
+/// kind, then the stored kind. Anything unset or unparseable reads as
 /// [`SandboxChoice::Local`]: the zero-flag path must never break
 /// because of a typo'd config.
 pub fn resolve_choice(profile: &Profile) -> SandboxChoice {
     choice_from_kind(profile.sandbox_kind().as_deref())
 }
 
-/// [`resolve_choice`] over the already-env-layered kind — the testable
+/// [`resolve_choice`] over the already-env-layered kind, the testable
 /// form. The env tier is injected the way `rhema-config`'s env-wins
 /// tests inject it: as the value [`Profile::sandbox_kind`] would have
 /// returned.
@@ -86,21 +86,21 @@ pub struct Sandboxed {
     /// postures.
     pub workspace: String,
     /// The discovered skills; every `Skill::path` resolves inside the
-    /// sandbox's filesystem — [`Self::workspace`] itself for the seeded
+    /// sandbox's filesystem, [`Self::workspace`] itself for the seeded
     /// postures, the workspace plus the two read-only skills mounts
     /// (rhema's own and the cross-agent `.agents` tree) for the mounted
-    /// ones — because the model reads the bodies through the sandbox's
+    /// ones, because the model reads the bodies through the sandbox's
     /// shell.
     pub skills: Vec<Skill>,
     /// The shared instance's lock, held shared for the session: the
     /// mounted choices (docker, lxd) only. Dropping it is the release.
     pub(crate) instance_lock: Option<InstanceLock>,
-    /// The instance stop-on-exit may stop: a rhema-derived name only —
+    /// The instance stop-on-exit may stop: a rhema-derived name only,
     /// a stored target names an instance the user owns, never stopped.
     pub(crate) managed: Option<ManagedInstance>,
 }
 
-/// The backend of a managed instance — the stop argv's program.
+/// The backend of a managed instance, the stop argv's program.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ManagedKind {
     Docker,
@@ -120,7 +120,7 @@ pub(crate) struct ManagedInstance {
 /// wrapped in the built-in `bash`'s executor seam.
 ///
 /// Startup failures are loud and name their key: a missing ssh host or
-/// http url is a configuration error, not a silent fall-back to local —
+/// http url is a configuration error, not a silent fall-back to local,
 /// only an unparseable *kind* falls back, at [`resolve_choice`].
 pub async fn assemble(
     choice: SandboxChoice,
@@ -131,15 +131,15 @@ pub async fn assemble(
 ) -> anyhow::Result<Sandboxed> {
     let host_workspace = workspace.to_string_lossy().into_owned();
     // The shared instance's coordination, `Some` for the mounted
-    // choices: the lock is taken exclusive before any ensure — the
-    // mutation window no two assemblies may share — and carried out on
+    // choices: the lock is taken exclusive before any ensure, the
+    // mutation window no two assemblies may share, and carried out on
     // `Sandboxed` for the session and the exit to use.
     let mut instance_lock = None;
     let mut managed = None;
     // Whether the skills ride the mounts; the seeded postures copy them
     // into the workspace instead.
     let mut mounted_skills = false;
-    // What the choice resolved to — the same value `Sandboxed::target`
+    // What the choice resolved to, the same value `Sandboxed::target`
     // carries out, set by whichever arm runs.
     let target;
     let sandbox: Arc<dyn Sandbox> = match choice {
@@ -233,7 +233,7 @@ pub async fn assemble(
         }
         SandboxChoice::Ecrou => {
             // One-shot machines: nothing to stand up, provision, or
-            // stop — every exec boots. The lock serializes the seed
+            // stop, every exec boots. The lock serializes the seed
             // the way it serializes every other assembly's mutation
             // window; the name is the workspace's derivation, stable
             // across sessions, never a stoppable instance.
@@ -286,7 +286,7 @@ pub async fn assemble(
             })?;
             // One session per workspace, stable across runs: the
             // daemon multiplexes one root directory per session name.
-            // The container derivation carries the path hash — a bare
+            // The container derivation carries the path hash, a bare
             // basename would collide (`repo` twice on one daemon
             // would share a root).
             let session = derived_container_name(workspace);
@@ -317,7 +317,7 @@ pub async fn assemble(
         .map(|(name, body)| (name.as_str(), body.as_str()))
         .collect();
     ensure_seeded(&*sandbox, &workspace_string, &bodies, base_system).await?;
-    // The assembly is done — devices, provision, and seed all landed
+    // The assembly is done, devices, provision, and seed all landed
     // under the exclusive hold. Downgrade to the session's shared
     // posture; the lock rides `Sandboxed` out to the exit path.
     if let Some(lock) = instance_lock.as_ref() {
@@ -358,13 +358,13 @@ impl Sandboxed {
     }
 
     /// Stop-on-exit: when the session ran on a rhema-derived instance
-    /// and this process is its lock's sole holder, stop it — no peer
+    /// and this process is its lock's sole holder, stop it, no peer
     /// session remains to lose the sandbox under. Everything else (a
     /// stored target the user owns, a peer still holding the session
     /// open, a choice with no instance) leaves the instance as it
     /// stands; the lock's release is the drop. Best-effort by design:
     /// a failed stop leaves the instance for the next assembly to find,
-    /// which the safe direction — up, never killed under a peer.
+    /// which the safe direction, up, never killed under a peer.
     pub fn shutdown(&mut self) {
         // RHEMA_SANDBOX_TRACE=1 makes every no-stop decision say why on
         // stderr; the failures already speak for themselves.
@@ -414,8 +414,8 @@ impl Sandboxed {
             argv.push("--timeout=30".to_owned());
         }
         argv.push(managed.name.clone());
-        // Best effort, but not silent: a stop that could not run — the
-        // client missing, the daemon gone, a refused command — names
+        // Best effort, but not silent: a stop that could not run, the
+        // client missing, the daemon gone, a refused command, names
         // itself, so "the instance is still up" has an author on the
         // terminal the TUI just restored. The safe direction is
         // unchanged: up, never killed under a peer.
@@ -447,7 +447,7 @@ fn stop_instance(program: &str, argv: &[String]) -> std::io::Result<bool> {
 }
 
 /// The target a non-local `kind` execs in: the named instance's first
-/// — the active pointer or the first stored of the kind — then the
+///, the active pointer or the first stored of the kind, then the
 /// section's own single-instance fact, the shape the map grew out of.
 /// `None` means neither place has one and the caller derives or
 /// refuses.
@@ -475,7 +475,7 @@ pub(crate) fn sandbox_target(profile: &Profile, kind: &str) -> Option<String> {
 pub(crate) const SANDBOX_TOOLS: &str = "git ripgrep fd-find jq sd curl python3 build-essential";
 
 /// The container name a workspace derives when none is stored:
-/// `rhema-sandbox-<basename>-<hash>` — recognizable in `docker ps`,
+/// `rhema-sandbox-<basename>-<hash>`, recognizable in `docker ps`,
 /// unique per workspace path, and valid whatever the directory is
 /// called (docker names take a narrow charset; the basename is
 /// filtered and capped).
@@ -505,7 +505,7 @@ fn derived_container_name(workspace: &Path) -> String {
 }
 
 /// The instance name a workspace derives when none is stored: the
-/// docker pattern — `rhema-sandbox-<basename>-<hash>` — recognizable
+/// docker pattern, `rhema-sandbox-<basename>-<hash>`, recognizable
 /// in `lxc list`, unique per workspace path, and valid whatever the
 /// directory is called (LXD names take a narrow charset; the basename
 /// is filtered and capped).
@@ -514,13 +514,13 @@ fn derived_lxd_name(workspace: &Path) -> String {
 }
 
 /// The ecrou lock's name: the same derivation. There is no instance
-/// to list — the name keys the assembly's cross-process lock only,
+/// to list, the name keys the assembly's cross-process lock only,
 /// the seed's mutation window.
 fn derived_ecrou_name(workspace: &Path) -> String {
     derived_container_name(workspace)
 }
 
-/// FNV-1a over the workspace path, hex — a hash pinned here so a
+/// FNV-1a over the workspace path, hex, a hash pinned here so a
 /// workspace's derived container name is stable across rhema builds
 /// and Rust versions (std's `DefaultHasher` makes no such promise).
 fn path_hash(path: &str) -> String {

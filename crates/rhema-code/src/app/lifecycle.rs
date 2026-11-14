@@ -1,4 +1,4 @@
-//! The turn's life: begin, track, cancel, end — and the UI events
+//! The turn's life: begin, track, cancel, end, and the UI events
 //! and ticks that carry it. Effects that touch the runtime come back
 //! to the runner from here.
 
@@ -80,7 +80,7 @@ impl App {
                 // download outlives the page, and the notice is the
                 // record the chat holds either way.
                 let notice = match &result {
-                    Ok(_) => "rhema updated — restart to run the new version".to_owned(),
+                    Ok(_) => "rhema updated, restart to run the new version".to_owned(),
                     Err(err) => format!("the rhema update failed: {err}"),
                 };
                 self.update.install = crate::screens::UpdateInstall::Done(result);
@@ -93,19 +93,19 @@ impl App {
 
     /// The redraw loop's per-tick work: subagent and background-job
     /// finishes reach the transcript and the model through one feed
-    /// loop — the two feeds answer the same two takes, so the tick
+    /// loop, the two feeds answer the same two takes, so the tick
     /// cannot tell them apart, and neither can the transcript. The
     /// delivery splits on the turn state, and the transcript record
     /// is the notification card either way:
     ///
     /// - while a turn runs, each detected finish lands as a card
-    ///   right away — the finish's live line left the strip at the
-    ///   same moment, so the card is the record — and the driver
+    ///   right away, the finish's live line left the strip at the
+    ///   same moment, so the card is the record, and the driver
     ///   delivers the pending lines itself, steering at the next
     ///   step boundary;
     /// - with no turn running, the tick delivers: it takes the
-    ///   pending lines — subagent lines first, then background jobs',
-    ///   the steering chain's order — records each as its own card,
+    ///   pending lines, subagent lines first, then background jobs',
+    ///   the steering chain's order, records each as its own card,
     ///   and runs the joined text as the next turn's prompt. The
     ///   take retires the lines, so the driver's turn-start drain
     ///   does not repeat what the prompt already said.
@@ -113,7 +113,7 @@ impl App {
     /// A finish is delivered exactly once per line: a job's steering
     /// drain consumes what it returns (the exit code was the whole
     /// message), and a subagent's is retired by the fetch or this
-    /// take — the re-announce in between is the registry's crash
+    /// take, the re-announce in between is the registry's crash
     /// durability, not a second delivery.
     pub fn on_tick(&mut self) -> Vec<Effect> {
         let promptable = !self.turn.running
@@ -177,7 +177,7 @@ impl App {
 
     /// Prices one finished step of a running turn into the session cost:
     /// every engine step is one billed model call, so the footer's figure
-    /// covers the turn's whole tool chain and not only its last call —
+    /// covers the turn's whole tool chain and not only its last call,
     /// the dropped intermediate steps were where most of the spend sat.
     /// A model the catalog cannot price adds nothing.
     pub(crate) fn price_step(&mut self, owned: &OwnedEvent) {
@@ -194,10 +194,10 @@ impl App {
 
     /// Tracks which phase a running turn is in, from the engine's own
     /// events: streaming is thinking, a tool call is processing. A result
-    /// leaves the phase alone — the next call or step moves it, so the
+    /// leaves the phase alone, the next call or step moves it, so the
     /// label never flickers between back-to-back commands. Reasoning
     /// deltas fill the preview buffer; real output or a tool call clears
-    /// it — the thinking block vanishes once the answer starts. A
+    /// it, the thinking block vanishes once the answer starts. A
     /// running command's lines fill the tool preview; its result or the
     /// next call clears that. The provider's running usage tally lands
     /// in `usage` as it arrives: its prompt count already covers the
@@ -319,8 +319,8 @@ impl App {
                     self.usage = Some(output.usage);
                 }
                 // Silence is a symptom, not an answer: the usual cause is
-                // a reasoning-only response — a thinking model spending
-                // its whole output budget before any text started — and
+                // a reasoning-only response, a thinking model spending
+                // its whole output budget before any text started, and
                 // the turn must not read as completed when nothing was
                 // said.
                 let said_something = output.message.content.iter().any(|content| {
@@ -342,8 +342,8 @@ impl App {
         // Messages sent in the finishing race sit in the returned
         // receiver: they run as the next turns, in order. The transcript
         // already carries their user lines from submit time. Only one
-        // turn leaves per finish — the dispatch takes the agent once,
-        // and a second StartTurn would find it gone — so the rest queue
+        // turn leaves per finish, the dispatch takes the agent once,
+        // and a second StartTurn would find it gone, so the rest queue
         // on the app and each finish chains the next one out.
         while let Ok(text) = steer.try_recv() {
             self.pending_prompts.push_back(text);
@@ -373,7 +373,7 @@ impl App {
 
 /// One finish feed as the tick sees it. The subagent registry and the
 /// background-shell poller expose the same two takes, so the tick's
-/// loop — and the transcript it writes — cannot tell the feeds apart;
+/// loop, and the transcript it writes, cannot tell the feeds apart;
 /// which feed a card came from is not a fact the transcript carries.
 trait FinishFeed {
     /// The finish events detected since the last take, each as its

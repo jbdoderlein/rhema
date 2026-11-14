@@ -1,19 +1,19 @@
 //! The local backend: processes rooted at a host directory.
 //!
 //! [`LocalSandbox`] is the fs-sharing family's direct member (spec §4's
-//! "local direct" row): exec runs the shim's argv —
-//! `timeout --kill-after=5 <secs> bash -c <command>` — as a child of
+//! "local direct" row): exec runs the shim's argv,
+//! `timeout --kill-after=5 <secs> bash -c <command>`, as a child of
 //! this process, its working directory mapped through the
 //! [`FsRoot`](rhema_sandbox::FsRoot). The kill is the prefix's, not
 //! tokio's: the budget is the mechanism the spec's kill-semantics
 //! decision (§4/§9) fixed, so `ExecRequest::timeout` means the same
-//! thing on every backend that lacks a per-command kill — including
+//! thing on every backend that lacks a per-command kill, including
 //! this one. `timeout` kills at the budget (exit 124) and
 //! `--kill-after` escalates to SIGKILL, which the shell reports as 137;
 //! those two codes are how a run is read as a timeout, the shim's
 //! `timed_out` detection restated for a process child. Streams pump
 //! live lines and keep a capped tail each, the shim's caps restated
-//! host-side — the wiring is `exec_util`'s, shared with the docker
+//! host-side, the wiring is `exec_util`'s, shared with the docker
 //! and ssh backends.
 #![forbid(unsafe_code)]
 
@@ -42,7 +42,7 @@ impl LocalSandbox {
     }
 
     /// Runs one seed command at the root through the ordinary exec
-    /// path — the same caps, the same budget, the same kill semantics
+    /// path, the same caps, the same budget, the same kill semantics
     /// as every other command. A nonzero exit surfaces the stderr, the
     /// way the shim's seed route reports a failed clone or unpack.
     async fn run_seed(&self, command: String) -> Result<(), SandboxError> {
@@ -121,7 +121,7 @@ impl Sandbox for LocalSandbox {
                         SandboxError::Failed(format!("the seed tarball is not base64: {err}"))
                     })?;
                 // Staged through the file route, unpacked through the
-                // exec route — the same caps and budget every other
+                // exec route, the same caps and budget every other
                 // call gets.
                 self.write_file(&format!("/{STAGING}"), &bytes).await?;
                 let unpacked = self.run_seed(format!("tar -xzf {STAGING}")).await;
@@ -155,7 +155,7 @@ mod tests {
 
     /// A sandbox over a fresh tempdir; the guard comes back so the
     /// root outlives the test's calls and vanishes after.
-    /// True when the GNU `timeout` binary answers — the budget
+    /// True when the GNU `timeout` binary answers, the budget
     /// mechanism the local sandbox wraps. macOS ships none, and the
     /// tests skip rather than fail where the sandbox itself cannot run.
     fn timeout_available() -> bool {
@@ -185,7 +185,7 @@ mod tests {
     }
 
     /// One exec through the sandbox with nothing cancelled and nothing
-    /// watching the progress — the shape most tests want.
+    /// watching the progress, the shape most tests want.
     async fn run(
         sandbox: &LocalSandbox,
         request: ExecRequest,
@@ -211,7 +211,7 @@ mod tests {
         );
     }
 
-    /// Builds a one-commit repository at a fresh tempdir — the fixture
+    /// Builds a one-commit repository at a fresh tempdir, the fixture
     /// the git-seed tests clone.
     fn fixture_repo() -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("tempdir");

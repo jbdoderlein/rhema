@@ -115,7 +115,7 @@ pub fn is_text(model: &WireModel) -> bool {
 }
 
 /// The row's vision verdict: an advertised input modality names an
-/// image type or not — a real `Some` either way. No modality list stays
+/// image type or not, a real `Some` either way. No modality list stays
 /// unknown rather than guessed.
 fn vision_of(model: &WireModel) -> Option<bool> {
     let inputs = model.modalities.as_ref()?.input.as_slice();

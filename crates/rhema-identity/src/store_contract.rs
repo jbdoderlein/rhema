@@ -122,7 +122,7 @@ pub fn put_update_unknown_id_errors(store: &dyn IdentityStore) {
     );
 }
 
-/// `forget` removes once — secret included — then reports absence
+/// `forget` removes once, secret included, then reports absence
 /// idempotently.
 pub fn forget_removes_then_reports_absent(store: &dyn IdentityStore) {
     let account = store.put(draft("contract-forget", "tok")).unwrap();
@@ -205,7 +205,7 @@ pub fn set_secret_unknown_id_errors(store: &dyn IdentityStore) {
     );
 }
 
-/// `list` returns every account, redacted — the two the function creates
+/// `list` returns every account, redacted, the two the function creates
 /// are found by id, since the suite composes on one shared store.
 pub fn list_returns_every_account(store: &dyn IdentityStore) {
     let first = store.put(draft("contract-list-1", "t")).unwrap();

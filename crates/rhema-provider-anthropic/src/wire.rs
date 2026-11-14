@@ -1,22 +1,22 @@
 //! Anthropic wire types and the pure mapping between them and rhema-core's
-//! model. No I/O here — [`crate::provider`] drives these functions.
+//! model. No I/O here, [`crate::provider`] drives these functions.
 //!
 //! Mapping constraints (the Messages API):
 //! - `max_tokens` is required on every call; when
 //!   [`rhema_core::ChatParams::max_tokens`] is unset,
 //!   [`DEFAULT_MAX_TOKENS`] is sent.
 //! - `ModelRequest.system` and the text of every `Role::System` message
-//!   fold into the top-level `system` string, joined by a blank line — the
+//!   fold into the top-level `system` string, joined by a blank line, the
 //!   API has no system role inside `messages`.
 //! - `Role::User` and `Role::Assistant` map to their like-named roles.
 //!   `Role::Tool` has no wire role: its results become `tool_result`
 //!   blocks, which the API only accepts inside `user` messages. Consecutive
 //!   user-role turns (several `Tool` messages, or a `Tool` message followed
 //!   by a `User` one) merge into one message, and `tool_result` blocks are
-//!   hoisted ahead of text blocks — the API expects results at the top of
+//!   hoisted ahead of text blocks, the API expects results at the top of
 //!   the user turn.
 //! - Images ride the [`Content::Image`] blocks of user turns, each a
-//!   `source` block of base64 bytes beside the text — the API accepts
+//!   `source` block of base64 bytes beside the text, the API accepts
 //!   jpeg, png, gif, and webp, exactly
 //!   [`rhema_core::message::ImageMediaType`]'s set, and no url sources.
 //!   Models never emit image blocks, so the response side is untouched.
@@ -31,8 +31,8 @@
 //! - Reasoning replay: a streamed thinking block never joins the assembled
 //!   message, but it is the chain of thought that led to the next call, so
 //!   [`ChunkAssembler::finish`] stores its text and signature on that
-//!   call's `ToolCall::provider_data` — only with a signature, which the
-//!   API requires to accept a thinking block back — and [`request_body`]
+//!   call's `ToolCall::provider_data`, only with a signature, which the
+//!   API requires to accept a thinking block back, and [`request_body`]
 //!   prepends the matching `thinking` block ahead of the call, but only
 //!   while thinking stays enabled: the API rejects thinking blocks on
 //!   plain turns.
@@ -62,15 +62,15 @@
 //! - Usage merges per field: `message_start`'s nested `usage` carries the
 //!   input-token count, `message_delta`'s the final output-token count.
 //!   The totals normalize to the inclusive convention the other adapters
-//!   use: `input_tokens` counts the whole prompt — the uncached input
+//!   use: `input_tokens` counts the whole prompt, the uncached input
 //!   plus both cache subsets (writes bill near the full input price,
-//!   reads are the cached subset) — and `cache_read_input_tokens` maps
+//!   reads are the cached subset), and `cache_read_input_tokens` maps
 //!   to cached tokens (0 when absent). A prompt served whole from cache
 //!   reports its whole size, never just the new tokens.
 //! - Stop reasons: `end_turn` -> EndTurn, `tool_use` -> ToolUse,
 //!   `max_tokens` -> MaxTokens, `stop_sequence` -> StopSequence, anything
-//!   else -> Other. Anthropic's reason is authoritative — `tool_use` rides
-//!   the wire exactly when tool blocks were streamed — so, unlike the
+//!   else -> Other. Anthropic's reason is authoritative, `tool_use` rides
+//!   the wire exactly when tool blocks were streamed, so, unlike the
 //!   sibling adapters, the assembled message never overrides it.
 //! - Models: `GET /v1/models` paginates with `has_more` + `after_id`
 //!   (cursor `last_id`). The list carries only id and display name;
@@ -103,7 +103,7 @@ const WRAPPED_ARGS_TEXT_KEY: &str = "_anthropic_args_text";
 
 /// The `max_tokens` sent when [`rhema_core::ChatParams::max_tokens`] is
 /// unset: the field is required by the API, and this ceiling is accepted
-/// by every current model — Anthropic's own and the Z.ai plan route —
+/// by every current model, Anthropic's own and the Z.ai plan route,
 /// while sitting high enough that a long reply or a large generated file
 /// is not cut off mid-stream (a `max_tokens` stop ends the turn with the
 /// answer truncated).
@@ -119,7 +119,7 @@ pub struct MessagesRequest {
     pub model: String,
     /// Output token ceiling; the API rejects calls without one.
     pub max_tokens: u32,
-    /// The folded system prompt, when the request has one — as a block
+    /// The folded system prompt, when the request has one, as a block
     /// array so its end can carry a cache breakpoint.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system: Option<Vec<WireSystemBlock>>,
@@ -128,7 +128,7 @@ pub struct MessagesRequest {
     /// Tools offered this step, when any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<WireTool>>,
-    /// Sampling temperature, when set — and never set while thinking is
+    /// Sampling temperature, when set, and never set while thinking is
     /// enabled: the API rejects temperature modifications on thinking
     /// turns.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -144,7 +144,7 @@ pub struct MessagesRequest {
 /// The `thinking` request field: extended thinking with a token budget.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct WireThinking {
-    /// Always `"enabled"`; there is no disabled form — absence is.
+    /// Always `"enabled"`; there is no disabled form, absence is.
     #[serde(rename = "type")]
     pub kind: &'static str,
     /// The reasoning token budget.
@@ -206,8 +206,8 @@ pub enum WireBlock {
     ToolResult {
         /// The answered call's id.
         tool_use_id: String,
-        /// Result payload: bare text, or — when the result carries
-        /// images — a block array of the text and each image, the two
+        /// Result payload: bare text, or, when the result carries
+        /// images, a block array of the text and each image, the two
         /// shapes the API's `tool_result.content` accepts.
         content: WireToolContent,
         /// Whether the call failed; the model reacts to this in-band.
@@ -218,8 +218,8 @@ pub enum WireBlock {
         cache_control: Option<WireCacheControl>,
     },
     /// An image the user attached (user turns only), as base64 bytes
-    /// beside the text. The API accepts jpeg, png, gif, and webp —
-    /// exactly [`rhema_core::message::ImageMediaType`]'s set — and no
+    /// beside the text. The API accepts jpeg, png, gif, and webp,
+    /// exactly [`rhema_core::message::ImageMediaType`]'s set, and no
     /// url sources, so core's inline-image model maps one-to-one.
     Image {
         /// The base64 payload and its media type.
@@ -233,7 +233,7 @@ pub enum WireBlock {
 
 /// The `content` of a [`WireBlock::ToolResult`]: bare text when the
 /// result carries no images, otherwise the block array the API accepts
-/// there — the text first, then one image block per result image, in
+/// there, the text first, then one image block per result image, in
 /// order.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
@@ -275,8 +275,8 @@ pub struct WireImageSource {
 
 impl WireBlock {
     /// Marks this block as a cache breakpoint. Assistant blocks are
-    /// never the last block of a request — a turn always ends with the
-    /// user's input or a tool result — so only the user-side variants
+    /// never the last block of a request, a turn always ends with the
+    /// user's input or a tool result, so only the user-side variants
     /// carry the marker, images included: a turn may end on an attached
     /// image, and a lookup position there is as good as one on text.
     fn mark_ephemeral(&mut self) {
@@ -292,7 +292,7 @@ impl WireBlock {
 }
 
 /// A result's wire content: bare text, or the text and each image as
-/// blocks. The text always leads — the model reads the result, then
+/// blocks. The text always leads, the model reads the result, then
 /// sees what it produced.
 fn tool_result_content(result: &rhema_core::tool::ToolResult) -> WireToolContent {
     if result.images.is_empty() {
@@ -523,7 +523,7 @@ pub struct WireModel {
 /// Whether a listed model accepts image input, as far as this adapter
 /// knows. The models list carries no modality field, so this is curated
 /// knowledge: every `claude`-prefixed id is a Claude 3+ chat model, and
-/// every Claude 3+ model takes images — the same honesty basis as the
+/// every Claude 3+ model takes images, the same honesty basis as the
 /// pricing other adapters bake into their listings. Anything else (Z.ai's
 /// route serves non-claude ids too) stays unknown, not guessed.
 fn vision_of(id: &str) -> Option<bool> {
@@ -553,7 +553,7 @@ impl From<WireModel> for ModelCard {
 // --- Z.ai quota: the Coding Plan monitor endpoint -> normalized ---
 
 /// The `GET /api/monitor/usage/quota/limit` response of Z.ai's GLM
-/// Coding Plan — an undocumented monitor endpoint (the plan's web
+/// Coding Plan, an undocumented monitor endpoint (the plan's web
 /// console builds on it) served beside the Anthropic route on the Z.ai
 /// hosts. A rejected token answers with HTTP 200 and `success` false.
 #[derive(Debug, Default, Deserialize)]
@@ -596,13 +596,13 @@ pub struct WireZaiLimit {
     /// weekly one, 5 the monthly tool allowance.
     #[serde(default)]
     pub unit: Option<u32>,
-    /// The share of the window's budget already spent, 0–100.
+    /// The share of the window's budget already spent, 0-100.
     #[serde(default)]
     pub percentage: Option<f64>,
 }
 
 /// The plan allowance the quota report describes: what is left of each
-/// coding window, the 5-hour one first — `"5h 53% wk 88%"` for the
+/// coding window, the 5-hour one first, `"5h 53% wk 88%"` for the
 /// footer's badge, a space between the windows because they spend one
 /// pool (the footer's `·` marks a new fact, not a detail of one). The
 /// tool quota stays out. `None` when the report
@@ -733,7 +733,7 @@ pub fn request_body(req: &ModelRequest) -> Result<MessagesRequest, ProviderError
                         _ => None,
                     })
                     .collect();
-                // Text and images keep their own relative order — the
+                // Text and images keep their own relative order, the
                 // model reads the blocks as the user arranged them.
                 blocks.extend(message.content.iter().filter_map(|content| match content {
                     Content::Text(text) if !text.is_empty() => Some(WireBlock::Text {
@@ -764,7 +764,7 @@ pub fn request_body(req: &ModelRequest) -> Result<MessagesRequest, ProviderError
     // The last two user turns each end a cached prefix. A cache lookup
     // happens only at a marked position, so this request's last-turn
     // marker is read back only if the next request still marks where
-    // this one ends — the second-to-last user turn's marker is that
+    // this one ends, the second-to-last user turn's marker is that
     // position, and the rolling pair turns each step's conversation
     // delta into a cache read instead of a full cache-write re-bill.
     // With the system and tools markers that is four breakpoints, the
@@ -1147,7 +1147,7 @@ impl ChunkAssembler {
         let mut content: Vec<Content> = Vec::new();
         // The trace streamed since the last call: the chain of thought that
         // led to it, replayed on that call. Text never consumes it, and a
-        // call spends it — replay or not — so a later call cannot inherit
+        // call spends it, replay or not, so a later call cannot inherit
         // it.
         let mut pending: Option<(String, String)> = None;
         for (index, block) in self.blocks {
@@ -1194,10 +1194,10 @@ impl ChunkAssembler {
 /// the value a previous frame set.
 fn merge_usage(usage: &mut Usage, wire: &WireUsage) {
     // The input total is inclusive: the API's own input_tokens count
-    // excludes both cache subsets, so both fold in — the writes (which
+    // excludes both cache subsets, so both fold in, the writes (which
     // bill near the full input price) and the reads (which the cached
     // subset carries, disjoint from the rest). That keeps every
-    // downstream consumer — the context footprint and the cost math —
+    // downstream consumer, the context footprint and the cost math,
     // on the inclusive convention the other adapters use: input is the
     // whole prompt, cached the part of it served from cache. A prompt
     // fully served from cache reports its whole size, never just the
@@ -1234,8 +1234,8 @@ fn parse_args(raw: &str) -> Value {
 }
 
 /// Maps the wire `stop_reason` onto rhema-core's stop reason. Anthropic's
-/// reason is authoritative — `tool_use` rides the wire exactly when tool
-/// blocks were streamed — so the assembled message never overrides it.
+/// reason is authoritative, `tool_use` rides the wire exactly when tool
+/// blocks were streamed, so the assembled message never overrides it.
 fn stop_reason(stop_reason: Option<&str>) -> StopReason {
     match stop_reason {
         None | Some("") | Some("end_turn") => StopReason::EndTurn,
@@ -1548,7 +1548,7 @@ mod tests {
     #[test]
     fn the_last_two_user_turns_each_end_a_cached_prefix() {
         // Two tool rounds: the wire carries user, assistant, user,
-        // assistant, user — the marked pair is the second and the last
+        // assistant, user, the marked pair is the second and the last
         // user turn, and the turns outside the pair carry no breakpoint.
         let round = |id: &str| {
             vec![
@@ -1911,7 +1911,7 @@ mod tests {
     fn a_cached_prompt_reports_its_whole_size() {
         // The prefix served from cache rides cache_read_input_tokens,
         // outside the API's own input_tokens. The normalized total must
-        // still describe the whole prompt — a gauge reading the raw
+        // still describe the whole prompt, a gauge reading the raw
         // input_tokens alone collapses to the new tokens once the
         // prefix is cached.
         let mut assembler = ChunkAssembler::new();

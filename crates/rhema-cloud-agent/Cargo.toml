@@ -12,7 +12,7 @@ authors.workspace = true
 default = []
 # The scripted sandbox for offline tests; mirrors rhema-core's feature.
 # The scripted sandbox itself lives in rhema-sandbox now, so the feature
-# follows it there — the re-export below compiles only when it does.
+# follows it there, the re-export below compiles only when it does.
 mock = ["rhema-sandbox/mock"]
 
 [dependencies]
@@ -23,7 +23,7 @@ rhema-agent-tools = { path = "../rhema-agent-tools", version = "0.2.6", default-
 rhema-coding-agent = { path = "../rhema-coding-agent", version = "0.2.6", default-features = false }
 rhema-core = { path = "../rhema-core", version = "0.2.6" }
 # The sandbox seam, extracted so any frontend can reach it; the mock
-# default stays off here — this crate drives no scripted sandbox, its
+# default stays off here, this crate drives no scripted sandbox, its
 # e2e test does (see dev-dependencies).
 rhema-sandbox = { path = "../rhema-sandbox", version = "0.2.6", default-features = false }
 # Transcript settings in the session config

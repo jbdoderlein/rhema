@@ -6,12 +6,12 @@
 //! [`protocol::TOKEN_HEADER`](rhema_sandbox::protocol::TOKEN_HEADER). `base` is
 //! the daemon's location (`https://box.example:7600`, no trailing
 //! slash); the session name is the one path segment ahead of every
-//! route — the daemon multiplexes one root directory per session name
+//! route, the daemon multiplexes one root directory per session name
 //! (spec §3). The [`HttpTransport`] seam keeps reqwest out of any
 //! build that does not name the `native` feature: the native transport
 //! hides behind [`HttpSandbox::new`], and any host that cannot own
-//! sockets — wasm or a featureless consumer — brings its own transport
-//! through `new_with_transport` — the `AnthropicProvider` precedent.
+//! sockets, wasm or a featureless consumer, brings its own transport
+//! through `new_with_transport`, the `AnthropicProvider` precedent.
 //! reqwest is a native-only dependency, absent from the wasm build
 //! even with the feature on, and the reqwest code is gated on the
 //! feature, not just the target.
@@ -39,7 +39,7 @@ use rhema_sandbox::{ExecOutcome, ExecRequest, Sandbox, SandboxError, WorkspaceSe
 pub trait HttpTransport: Send + Sync {
     /// Posts `body` (JSON) to `url` with `token` in [`TOKEN_HEADER`],
     /// answering the response's status code and body bytes. Transport
-    /// failures — unreachable, refused, cut short — are
+    /// failures, unreachable, refused, cut short, are
     /// [`SandboxError::Unavailable`]; the status rides through
     /// unjudged, because only the route's caller knows which codes its
     /// reply shapes survive.
@@ -51,7 +51,7 @@ pub trait HttpTransport: Send + Sync {
     ) -> Result<(u16, Vec<u8>), SandboxError>;
 }
 
-/// A `reqwest::Client` speaking the [`HttpTransport`] seam — the
+/// A `reqwest::Client` speaking the [`HttpTransport`] seam, the
 /// transport behind [`HttpSandbox::new`], and the reason the `client`
 /// feature carries reqwest. Native-only: reqwest's own wasm client is
 /// `!Send` under this seam's `Send` contract, so a wasm build compiles
@@ -111,13 +111,13 @@ impl HttpTransport for ReqwestTransport {
 }
 
 /// The sandbox a session's commands run in, over plain HTTPS to a
-/// daemon that speaks the protocol — `rhema-sandboxd` on some box, or
+/// daemon that speaks the protocol, `rhema-sandboxd` on some box, or
 /// anything else serving the same routes.
 pub struct HttpSandbox {
     /// The daemon's base URL (`https://box.example:7600`), no trailing
     /// slash: every request lands on `{base}/{session}{route}`.
     base: String,
-    /// The session name — the one path segment between the base and
+    /// The session name, the one path segment between the base and
     /// the route, the daemon's multiplexing key.
     session: String,
     /// The shared secret checked on every route.
@@ -135,7 +135,7 @@ impl HttpSandbox {
         Self::new_with_transport(base, session, token, Arc::new(ReqwestTransport::new()))
     }
 
-    /// A client over a caller-supplied transport — the wasm frontend's
+    /// A client over a caller-supplied transport, the wasm frontend's
     /// seam, and any test's loopback double.
     pub fn new_with_transport(
         base: String,
@@ -152,7 +152,7 @@ impl HttpSandbox {
     }
 
     /// One JSON POST on the session's route: the URL, the token
-    /// header, the non-2xx gate, and the reply decode — the whole
+    /// header, the non-2xx gate, and the reply decode, the whole
     /// exchange the protocol fixes, done once so every route fails
     /// alike (`SandboxDo`'s wording, so the two clients fail alike).
     async fn post<T: serde::de::DeserializeOwned>(
@@ -194,7 +194,7 @@ impl Sandbox for HttpSandbox {
         progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
     ) -> Result<ExecOutcome, SandboxError> {
         // Checked before the command starts, and nowhere else: a
-        // command that completed remotely reports its true result —
+        // command that completed remotely reports its true result,
         // the model sees the truth, whatever the turn decided
         // meanwhile.
         if cancelled.load(std::sync::atomic::Ordering::Relaxed) {
@@ -268,7 +268,7 @@ mod tests {
     }
 
     /// Serves `handler`'s canned answers on an ephemeral loopback
-    /// port, one hand-rolled HTTP/1.1 exchange per connection — no
+    /// port, one hand-rolled HTTP/1.1 exchange per connection, no
     /// axum, so the test pins the wire the daemon must speak, not a
     /// framework's reading of it. Answers the base URL and every
     /// request as the daemon saw it.
@@ -306,7 +306,7 @@ mod tests {
     }
 
     /// Reads one HTTP/1.1 request off the connection: the head to the
-    /// blank line, then exactly Content-Length body bytes — just
+    /// blank line, then exactly Content-Length body bytes, just
     /// enough to route, which is all a protocol test should parse.
     async fn read_request(stream: &mut tokio::net::TcpStream) -> std::io::Result<Seen> {
         let mut raw: Vec<u8> = Vec::new();

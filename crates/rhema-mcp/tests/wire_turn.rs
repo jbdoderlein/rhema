@@ -1,8 +1,8 @@
 //! The wired whole, offline: a `CodingAgent` over a scripted model
 //! runs one turn against a fake stdio MCP server with one tool,
 //! `validate-test`. The turn's steps are the discovery story the
-//! prompt teaches — `mcp servers`, the generated command's `--help`,
-//! then the call — and the assertions cover both faces: the request's
+//! prompt teaches, `mcp servers`, the generated command's `--help`,
+//! then the call, and the assertions cover both faces: the request's
 //! system prompt (the `mcp` section lists the server; the tools array
 //! never grows) and the session history (every command's output lands
 //! as a tool result, exit codes clean, exactly one server spawn).
@@ -102,7 +102,7 @@ fn handshake_result(version: &str) -> Value {
 }
 
 /// Handshake (one marker line per spawn), a one-tool catalog, canned
-/// calls that echo the `path` argument back — the echo proves the
+/// calls that echo the `path` argument back, the echo proves the
 /// arguments crossed CLI, bridge, manager, and server intact.
 fn validate_test_scenario(marker: &str) {
     loop {
@@ -275,8 +275,8 @@ fn marker_lines(marker: &Path) -> usize {
 // ---------------------------------------------------------------------
 
 /// Spec §9 item 12, whole: the wire provisions an agent shell; the
-/// scripted model runs the discovery story through it — the meta
-/// verb, the generated command's `--help`, the call — and every
+/// scripted model runs the discovery story through it, the meta
+/// verb, the generated command's `--help`, the call, and every
 /// answer lands in history as a tool result.
 async fn the_wire_turn_walks_servers_help_and_call() -> Result<(), String> {
     let workspace = tempfile::tempdir().map_err(|e| e.to_string())?;
@@ -336,7 +336,7 @@ async fn the_wire_turn_walks_servers_help_and_call() -> Result<(), String> {
         &marker,
     ));
 
-    // The agent builds its own ShellTools over the wiring's env map —
+    // The agent builds its own ShellTools over the wiring's env map,
     // the production shape, `BASH_ENV` and the bridge token included.
     let mut config = CodingAgentConfig::new("mock-model", workspace.path());
     config.skills = Some(Vec::new());
@@ -364,7 +364,7 @@ async fn the_wire_turn_walks_servers_help_and_call() -> Result<(), String> {
 
     // The prompt face: the section lists the server with its command
     // name and description, teaches the discovery story, and the
-    // tools array grew by zero — `validate-test` is a bash command,
+    // tools array grew by zero, `validate-test` is a bash command,
     // never an advertised tool.
     let requests = provider.requests();
     if requests.len() != 5 {
@@ -434,7 +434,7 @@ async fn the_wire_turn_walks_servers_help_and_call() -> Result<(), String> {
         }
     }
     // The server's help lists its tools; the tool's help lists its
-    // flags — the two levels the prompt teaches.
+    // flags, the two levels the prompt teaches.
     let server_help = result_for("c2")?;
     for needle in ["validate-test", "Validate a test file"] {
         if !server_help.content.contains(needle) {

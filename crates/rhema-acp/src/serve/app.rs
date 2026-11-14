@@ -13,7 +13,7 @@ const MAX_SLOTS: usize = 16;
 /// One live session: the agent between turns, the cancel sender of the
 /// turn in flight, and the `always` answers the session has collected.
 pub(crate) struct SessionSlot {
-    /// The provider kind the session rides on — a [`backend::PROVIDERS`]
+    /// The provider kind the session rides on, a [`backend::PROVIDERS`]
     /// name, or `"mock"` under the mock feature. A model switch may
     /// change it; the provider moves with it.
     pub(crate) kind: &'static str,
@@ -32,7 +32,7 @@ pub(crate) struct SessionSlot {
     /// The workspace root the agent's tools are scoped to; a model
     /// change rebuilds the agent over the same history and root.
     pub(crate) workspace: std::path::PathBuf,
-    /// The catalog rows the model picker offers — every logged-in
+    /// The catalog rows the model picker offers, every logged-in
     /// provider's, fetched once per `session/new`/`session/load`. A
     /// model switch re-renders the select from these rows without
     /// re-fetching.
@@ -63,7 +63,7 @@ pub(crate) struct SessionSlot {
 /// The connection-wide state every handler closes over.
 /// Puts a turn's agent back in its slot however the task ends. The
 /// outcome arms take the agent and restore it themselves; a panic
-/// unwinding past them is what the drop covers — without it, a slot
+/// unwinding past them is what the drop covers, without it, a slot
 /// whose agent never came home serves no further prompt.
 pub(crate) struct SlotRestore {
     pub(crate) app: Arc<App>,
@@ -163,8 +163,8 @@ impl App {
             });
         }
         // A configuration problem (nothing configured, an unknown
-        // stored spelling) is reported on stderr — the one channel left
-        // — and reads to the client as `None`: `auth_required`, the
+        // stored spelling) is reported on stderr, the one channel left
+        //, and reads to the client as `None`: `auth_required`, the
         // honest answer for a session that cannot start either way.
         match backend::resolve(
             &self.effective,
@@ -330,11 +330,11 @@ impl App {
     }
 
     /// The `Model` select one session carries: the model it runs on is
-    /// the current value — `<kind>/<model>` — and every catalog row is
+    /// the current value, `<kind>/<model>`, and every catalog row is
     /// a choice, led by the current model when the catalog does not
     /// list it (a `--model` override, or its provider's slice failed to
     /// fetch). Each choice's description carries its provider and the
-    /// card's facts — the same line the TUI's picker renders — so the
+    /// card's facts, the same line the TUI's picker renders, so the
     /// client can show pricing and context window beside the name.
     pub(crate) fn model_select(
         &self,
@@ -396,7 +396,7 @@ impl App {
         Some((agent, slot.memory.clone()))
     }
 
-    /// Drops idle slots past [`MAX_SLOTS`] — least recently used
+    /// Drops idle slots past [`MAX_SLOTS`], least recently used
     /// first, never one whose turn is in flight (its agent is checked
     /// out, its cancel armed). A session dropped here is not lost: any
     /// session that ran a turn was persisted at the turn's end, and
@@ -444,7 +444,7 @@ impl App {
         }
     }
 
-    /// Swaps the session's model — and, when the choice names another
+    /// Swaps the session's model, and, when the choice names another
     /// provider kind, the provider with it: the agent is rebuilt over
     /// the session's existing history, so the conversation continues
     /// under the new model. Returns both selects with their new
@@ -578,7 +578,7 @@ impl App {
     /// commands: the effort or model switch happens in place (no model
     /// call, no history entry), the answer streams as the turn's
     /// message, and the selects ride along so pickers re-render.
-    /// `None` when the name is not one of ours — the prompt then runs
+    /// `None` when the name is not one of ours, the prompt then runs
     /// as a normal turn.
     pub(crate) fn command(
         &self,
@@ -609,7 +609,7 @@ impl App {
             };
             return Ok(CommandAnswer {
                 message: format!(
-                    "reasoning effort is {} — pass one of low, medium, high to switch",
+                    "reasoning effort is {}, pass one of low, medium, high to switch",
                     effort_id(exposed(thinking))
                 ),
                 selects,
@@ -662,7 +662,7 @@ impl App {
             choices.insert(0, current);
             return Ok(CommandAnswer {
                 message: format!(
-                    "model is {} — pass one of: {}",
+                    "model is {}, pass one of: {}",
                     choices[0],
                     choices.join(", ")
                 ),

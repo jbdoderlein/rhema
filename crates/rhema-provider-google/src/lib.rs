@@ -1,12 +1,12 @@
-//! `rhema-provider-google` — the Google Gemini adapter for rhema-core's
+//! `rhema-provider-google`, the Google Gemini adapter for rhema-core's
 //! [`ModelProvider`](rhema_core::ModelProvider) seam.
 //!
 //! Speaks the Generative Language REST API directly: one
 //! `POST {base}/models/{model}:streamGenerateContent?alt=sse` per exchange,
 //! the API key in the `x-goog-api-key` header, the SSE stream decoded into
 //! rhema-core [`Event`](rhema_core::Event)s and assembled into a
-//! [`ModelOutput`](rhema_core::ModelOutput). The wire mapping constraints —
-//! roles, tool-call ids, stop reasons, response shapes — are documented in
+//! [`ModelOutput`](rhema_core::ModelOutput). The wire mapping constraints,
+//! roles, tool-call ids, stop reasons, response shapes, are documented in
 //! the [`wire`] module.
 //!
 //! ```
@@ -34,10 +34,10 @@
 //! ```
 //!
 //! Layout:
-//! - [`wire`] — serde wire types plus the pure mapping between
+//! - [`wire`]: serde wire types plus the pure mapping between
 //!   [`rhema_core::ModelRequest`] / SSE chunks and
 //!   [`rhema_core::ModelOutput`] / [`rhema_core::Event`]s
-//! - [`provider`] — the HTTP transport and the
+//! - [`provider`]: the HTTP transport and the
 //!   [`ModelProvider`](rhema_core::ModelProvider) implementation
 
 #![forbid(unsafe_code)]

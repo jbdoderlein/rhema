@@ -113,7 +113,7 @@ async fn the_base_url_is_used_verbatim_including_its_path() {
     assert_eq!(DEFAULT_BASE_URL, "https://api.openai.com/v1");
 
     let server = MockServer::start().await;
-    // Both endpoints sit directly under the given base, `/v1` included —
+    // Both endpoints sit directly under the given base, `/v1` included,
     // the provider adds only `/chat/completions` and `/models`.
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))

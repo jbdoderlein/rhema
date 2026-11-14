@@ -2,7 +2,7 @@
 //! and fetch shapes, the registry lifecycle (running → finished →
 //! fetch → cached; failure → error result; unknown id; queueing past
 //! the cap), approval inheritance held past the turn, nesting, and the
-//! escape semantics — the parent turn's cancel flag never reaches a
+//! escape semantics, the parent turn's cancel flag never reaches a
 //! job.
 
 use std::sync::Arc;
@@ -332,8 +332,8 @@ fn job_id(result: &ToolResult) -> String {
 }
 
 /// Waits until `id` finished: a finished job leaves the status
-/// snapshot at once — it carries working jobs only — and its finish
-/// event names the outcome (ok or error — the fetch tells which).
+/// snapshot at once, it carries working jobs only, and its finish
+/// event names the outcome (ok or error, the fetch tells which).
 async fn wait_finished(handle: &rhema_subagents::SubagentHandle, id: &str) {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
@@ -576,7 +576,7 @@ async fn the_captured_hook_outlives_the_turn() {
             .resolve(call("worker", "do it"), &ToolContext::default())
             .await,
     );
-    // The turn ends — the driver clears the hook. The job holds the
+    // The turn ends, the driver clears the hook. The job holds the
     // hook it captured at spawn, so its gated command is answered by
     // the turn's policy, never the fail-safe reject.
     shell.clear_approval();
@@ -734,7 +734,7 @@ async fn starts_past_the_cap_queue_until_a_slot_frees() {
         assert!(Instant::now() < deadline, "the first job never started");
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    // The second queues — id minted and returned at once.
+    // The second queues, id minted and returned at once.
     let second = job_id(&tools.resolve(call("worker", "second"), &ctx).await);
     assert_ne!(first, second);
     let phases: Vec<(String, String)> = handle
@@ -810,7 +810,7 @@ async fn nesting_follows_the_budget() {
         "no subagent tool inside at the default budget"
     );
 
-    // Budget 2: the inner agent sees one, and a nested call resolves —
+    // Budget 2: the inner agent sees one, and a nested call resolves,
     // synchronously, to its report inside the job's step loop.
     let provider = Arc::new(BySystem {
         marker: "You are the worker".to_owned(),
@@ -886,7 +886,7 @@ fn the_start_stays_replay_unsafe() {
 #[tokio::test]
 async fn engine_errors_surface_in_band() {
     // A provider that fails: the fetch returns the reason as the
-    // result's error text — failure is in-band, never a panic, never
+    // result's error text, failure is in-band, never a panic, never
     // an abort of the parent's turn.
     struct Failing;
 
@@ -930,7 +930,7 @@ async fn engine_errors_surface_in_band() {
 
 /// The inner requests ride the transcript view (`rhema_transcript::
 /// attach` in the inner run): a short run proves the decorator is wired
-/// and pass-through — below the transcript's budget the whole inner
+/// and pass-through, below the transcript's budget the whole inner
 /// history still reaches the provider, prompt and tool rounds alike.
 #[tokio::test]
 async fn a_short_run_reads_through_the_transcript_whole() {
@@ -951,7 +951,7 @@ async fn a_short_run_reads_through_the_transcript_whole() {
     let report = tools.resolve(fetch(&id), &ToolContext::default()).await;
     assert!(!report.is_error, "{}", report.content);
     // Request 1: the prompt alone. Request 2: the prompt, the
-    // assistant's tool call, the tool's result — nothing dropped or
+    // assistant's tool call, the tool's result, nothing dropped or
     // rewritten on the way through the bounded view.
     assert_eq!(provider.message_counts(), vec![1, 3]);
     assert!(
@@ -1059,8 +1059,8 @@ async fn a_job_dies_with_its_registry() {
             .resolve(call("worker", "do it"), &ToolContext::default())
             .await,
     );
-    // Wait for the job's step to reach its tool call — the shell's
-    // `sleep` is mid-run and no second model call has happened — then
+    // Wait for the job's step to reach its tool call, the shell's
+    // `sleep` is mid-run and no second model call has happened, then
     // drop everything.
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
@@ -1112,7 +1112,7 @@ impl ModelProvider for Capture {
 }
 
 /// The stamp a job is handed rides into the inner system prompt, with
-/// the definition's body appended verbatim under it — template
+/// the definition's body appended verbatim under it, template
 /// syntax in the body reaches the model as the author wrote it.
 #[tokio::test]
 async fn a_job_runs_under_the_supplied_base_prompt() {
@@ -1153,7 +1153,7 @@ async fn a_job_runs_under_the_supplied_base_prompt() {
 #[tokio::test]
 async fn a_dead_link_inside_a_job_retries_and_completes() {
     // The job-tuned wrapper: the frontend's turn ladder never appears
-    // here — the provider is raw — so this retry is the subagents'
+    // here, the provider is raw, so this retry is the subagents'
     // own, and one failure plus a one-tick ladder still ends in a
     // report, not a failed job.
     let provider = Flaky::new(1);
@@ -1182,7 +1182,7 @@ async fn a_dead_link_inside_a_job_retries_and_completes() {
 #[tokio::test]
 async fn an_outage_that_outruns_the_ladder_fails_transiently_and_retry_restarts_it() {
     // No ladder at all: the first attempt dies, the job fails with a
-    // transient error — the class the retry command picks up. The
+    // transient error, the class the retry command picks up. The
     // restart re-runs the same id from its start, and the recovered
     // network answers.
     let provider = Flaky::new(1);

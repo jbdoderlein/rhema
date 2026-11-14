@@ -1,7 +1,7 @@
 //! The real binary's road for the MCP CLI. In production the agent
 //! shell's generated functions exec the `rhema` binary itself
 //! (`RHEMA_MCP_BIN` is the running frontend), never the standalone
-//! `rhema-mcp-cli` — so the property under test is that this binary
+//! `rhema-mcp-cli`, so the property under test is that this binary
 //! hands `mcp`, `__server`, and every unrecognized subcommand to
 //! `rhema_mcp::cli::run` and adopts its exit code, instead of the
 //! outer clap shadowing the modes with its own subcommands or its

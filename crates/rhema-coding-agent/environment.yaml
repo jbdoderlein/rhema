@@ -1,5 +1,5 @@
 # The environment report, data end to end: what the probe looks for,
-# the OS name mapping, and every text the report renders — Jinja
+# the OS name mapping, and every text the report renders, Jinja
 # templates over the facts the module gathers (os, date, model,
 # harness, workspace, shell, branch, tools, notes, kind, reason). The
 # same renderer and whitespace rules as SYSTEM.md apply.
@@ -57,7 +57,7 @@ probe:
       ~/.cache. Gitignore both paths. The budget fast-forwards JS
       timers so SPAs finish rendering; raise it for slow pages.
 
-# The session facts every shape carries — written once here and placed
+# The session facts every shape carries, written once here and placed
 # by reference (`{{ facts }}`), never duplicated in the texts below.
 # The date is stamped at the conversation's start and carried across
 # resumes, so the prompt prefix stays byte-identical and the label
@@ -89,7 +89,7 @@ report: |
 
 # The message a sandboxed session shows instead of host facts: host
 # facts would be lies about a container, so none are claimed and the
-# kind is named. The sandbox-side workspace is named — it is where the
+# kind is named. The sandbox-side workspace is named, it is where the
 # model's commands run, not a host fact.
 notice: |
   ## Environment

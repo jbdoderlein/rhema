@@ -1,15 +1,15 @@
 //! The coding-agent driver: a provider, the built-in workspace tools, and
-//! the per-turn loop — the provided `rhema_core::run_turn`, or, with a
+//! the per-turn loop, the provided `rhema_core::run_turn`, or, with a
 //! steering source configured, the driver's own loop with the two drain
 //! points that append finished-work notifications at step boundaries.
 //!
 //! The agent owns one [`ShellTools`] resolver for its lifetime. Approval
 //! arrives per turn; it is installed into the resolver before stepping and
 //! cleared after (see [`rhema_agent_tools::approval`] for why the hook travels
-//! as an `Arc`). The session is plain data — the driver may mutate it between
+//! as an `Arc`). The session is plain data, the driver may mutate it between
 //! turns, checkpoint it, or resume it from disk. A turn entering with
 //! committed-but-unanswered calls (a crash resume) revives first:
-//! replay-safe tools re-run, the rest are reported interrupted — see
+//! replay-safe tools re-run, the rest are reported interrupted, see
 //! [`revive_dangling_calls`].
 
 use std::io;
@@ -30,16 +30,16 @@ use crate::config::{CodingAgentConfig, Steering};
 
 /// The driver-state key carrying the conversation's rendered
 /// environment section: stamped at the conversation's start, reused by
-/// every resume, so the system prompt's bytes — and with them the
-/// provider's prompt cache for the whole prefix — survive rebuilds.
+/// every resume, so the system prompt's bytes, and with them the
+/// provider's prompt cache for the whole prefix, survive rebuilds.
 const ENVIRONMENT_STATE_KEY: &str = "environment_report";
 
-/// Clears a session's stamped environment report — the transition hook
+/// Clears a session's stamped environment report, the transition hook
 /// for rebuilds that change the facts the report carries: a machine
 /// switch (a sandbox picked mid-conversation re-reports where `bash`
 /// runs) or a model switch (the report names the model, and the
 /// provider's cache is per-model regardless). Transitions that change
-/// neither — a thinking level, a resume — keep the stamp: the report is
+/// neither, a thinking level, a resume, keep the stamp: the report is
 /// conversation state, and re-rendering it would rewrite the system
 /// prompt and break the prefix cache for nothing.
 pub fn clear_environment_stamp(session: &mut Session) {
@@ -61,8 +61,8 @@ pub enum CodingAgentError {
     /// loop.
     #[error("workspace escape: {0}")]
     WorkspaceEscape(std::path::PathBuf),
-    /// The system-prompt template failed to render — bad syntax, unknown
-    /// filter — with the template position when known. The agent refuses
+    /// The system-prompt template failed to render, bad syntax, unknown
+    /// filter, with the template position when known. The agent refuses
     /// to start on a prompt it cannot fully render.
     #[error("system prompt template: {0}")]
     Template(String),
@@ -79,9 +79,9 @@ impl From<minijinja::Error> for CodingAgentError {
 }
 
 /// The system prompt an agent stamps into every request, assembled
-/// outside an agent: `base` — the user's SYSTEM.md — when given, the
+/// outside an agent: `base`, the user's SYSTEM.md, when given, the
 /// built-in default otherwise, rendered over `workspace` as given, the
-/// discovered skills, and the tool specs — the built-ins plus
+/// discovered skills, and the tool specs, the built-ins plus
 /// `extra`, the extension resolver's specs, so the prompt and the
 /// request's tools array cannot drift. The one assembly point:
 /// [`CodingAgent::new`] builds every agent's prompt here, and a driver
@@ -93,7 +93,7 @@ pub fn stamped_system(
     workspace: &Path,
     extra: &[ToolSpec],
 ) -> Result<String, CodingAgentError> {
-    // Either global directory may be missing (no HOME) — as normal as
+    // Either global directory may be missing (no HOME), as normal as
     // an empty one.
     let home = rhema_config::Home::discover().ok();
     let agents = home.as_ref().map(|h| h.agents_skills());
@@ -103,7 +103,7 @@ pub fn stamped_system(
     stamped_system_with_sections(base, workspace, extra, &skills, None, None, &[], None, None)
 }
 
-/// [`stamped_system`] over skills collected elsewhere — the input path
+/// [`stamped_system`] over skills collected elsewhere, the input path
 /// for frontends with no filesystem to discover from: the cloud
 /// deployment keeps skills in its durable storage, seeds them into the
 /// sandbox workspace, and feeds the list here. The model still reads a
@@ -119,7 +119,7 @@ pub fn stamped_system_with_skills(
 }
 
 /// The full assembly: the template over `workspace`, the skills, the
-/// tool specs, and the two optional sections — `environment` (machine
+/// tool specs, and the two optional sections, `environment` (machine
 /// facts probed where commands run, see [`crate::environment`]) and
 /// `user` (the user's preferences file, verbatim). The template decides
 /// whether and where the sections appear; `None` is the section-less
@@ -162,7 +162,7 @@ pub struct CodingAgent {
     config: CodingAgentConfig,
     session: Session,
     tools: Arc<ShellTools>,
-    /// The composed resolver — shell tools plus every extension (zoom,
+    /// The composed resolver, shell tools plus every extension (zoom,
     /// subagents). Revive classifies dangling calls against it, so an
     /// extension tool's replay-safety answer is honored; `tools` alone
     /// would answer `Unsafe` for every name.
@@ -199,7 +199,7 @@ impl CodingAgent {
         };
         // The transcript: the bounded view rides the provider, `zoom`
         // joins the resolver chain, and the prompt's tool list grows to
-        // match — the prompt and the request's tools cannot drift.
+        // match, the prompt and the request's tools cannot drift.
         let mut extra: Vec<ToolSpec> = config
             .extra_resolver
             .as_ref()
@@ -224,7 +224,7 @@ impl CodingAgent {
         };
         // The skill list: pre-collected or discovered, minus the
         // disabled names. The prompt renders it, and the transcript
-        // pins the bodies — the disabled names drop before either sees
+        // pins the bodies, the disabled names drop before either sees
         // the list.
         let mut skills = match &config.skills {
             Some(skills) => skills.clone(),
@@ -281,7 +281,7 @@ impl CodingAgent {
                 // arrive from BTreeMap-sorted discovery), so the bare
                 // re-render differs from `system` by that section alone.
                 // The environment and user sections ride both renders
-                // identically — they carry no skills — and cancel out.
+                // identically, they carry no skills, and cancel out.
                 let mut bare = ShellTools::builtin_specs();
                 bare.extend_from_slice(&extra);
                 rhema_agent_tools::render_system_with_sections(
@@ -347,7 +347,7 @@ impl CodingAgent {
     ///
     /// The conversation's environment report is conversation state: a
     /// session carrying one reuses its bytes verbatim, whatever the
-    /// config would render fresh — the report's date names the
+    /// config would render fresh, the report's date names the
     /// conversation's start, and a resume that re-stamped it would
     /// rewrite the system prompt and break the provider's prompt cache
     /// for the whole prefix. A session without one (a conversation from
@@ -385,7 +385,7 @@ impl CodingAgent {
         if !state.is_object() {
             if !state.is_null() {
                 // Another driver's shape: never clobbered, never
-                // extended — the stamp is skipped, not forced.
+                // extended, the stamp is skipped, not forced.
                 return;
             }
             *state = serde_json::json!({});
@@ -397,9 +397,9 @@ impl CodingAgent {
 
     /// Installs the per-stream checkpoint hook on the engine (see
     /// [`rhema_core::CommitHook`]); `None` disables it. A driver that
-    /// persists the session sets this so a crash mid-turn — inside a
+    /// persists the session sets this so a crash mid-turn, inside a
     /// tool call (a committed intent, which the next turn's revive
-    /// closes) or mid-stream, first stream included — leaves a resumable
+    /// closes) or mid-stream, first stream included, leaves a resumable
     /// session at the last boundary rather than no record at all.
     pub fn set_commit_hook(&mut self, hook: Option<CommitHook>) {
         self.agent.set_commit_hook(hook);
@@ -416,9 +416,9 @@ impl CodingAgent {
         self.agent.system()
     }
 
-    /// The transcript's compaction benchmark snapshot — request
+    /// The transcript's compaction benchmark snapshot, request
     /// counts, flushes, block size, and the providers' own prompt-cache
-    /// hit rate — when the transcript is on. `None` with it off.
+    /// hit rate, when the transcript is on. `None` with it off.
     pub fn transcript_stats(&self) -> Option<rhema_transcript::TranscriptStats> {
         self.transcript
             .as_ref()
@@ -428,7 +428,7 @@ impl CodingAgent {
     /// Folds a saved session's benchmark counters into the transcript
     /// mirror, when the transcript is on: a resumed session's stats
     /// keep reading as one run, pre-resume requests included. No-op
-    /// with the transcript off — there is nothing to continue.
+    /// with the transcript off, there is nothing to continue.
     pub fn carry_transcript_stats(&mut self, saved: &rhema_transcript::TranscriptStats) {
         if let Some(mirror) = &self.transcript {
             mirror
@@ -488,7 +488,7 @@ impl CodingAgent {
     /// requesting tools (capped at `max_turn_steps`), with `approval`
     /// gating the side-effecting tools. Appends to the session in place;
     /// the hook is cleared on the way out, success or failure. A history
-    /// entering with unanswered calls — a crash resume — revives first, so
+    /// entering with unanswered calls, a crash resume, revives first, so
     /// the model sees a closed round, not a dangling one.
     pub async fn turn(
         &mut self,
@@ -503,8 +503,8 @@ impl CodingAgent {
     /// [`Self::turn`] with a driver-held cancel flag: flipping
     /// `cancelled` mid-turn asks in-flight tools to stop (the executor
     /// polls it) and the next resolution to refuse. A driver whose stop
-    /// arrives from outside the turn — a frontend's stop message, a
-    /// disconnected socket — holds one flag per turn and passes it here;
+    /// arrives from outside the turn, a frontend's stop message, a
+    /// disconnected socket, holds one flag per turn and passes it here;
     /// the plain [`Self::turn`] builds a flag nobody else can reach.
     pub async fn turn_with_cancel(
         &mut self,
@@ -519,7 +519,7 @@ impl CodingAgent {
 
     /// [`Self::turn`] over a whole [`Message`]: the entry point for
     /// inputs carrying image blocks beside the text. Steering stays
-    /// text — a steered nudge is a sentence, not a screenshot.
+    /// text, a steered nudge is a sentence, not a screenshot.
     pub async fn turn_message(
         &mut self,
         message: Message,
@@ -531,7 +531,7 @@ impl CodingAgent {
     }
 
     /// [`Self::turn_message`] with [`Self::turn_with_cancel`]'s cancel
-    /// flag — the full form both convenience wrappers fold into.
+    /// flag, the full form both convenience wrappers fold into.
     pub async fn turn_message_with_cancel(
         &mut self,
         message: Message,
@@ -550,7 +550,7 @@ impl CodingAgent {
         // no hook answering "rejected" for a prompt nobody saw.
         self.tools.install_approval(approval);
         revive_dangling_calls(&mut self.session, self.resolver.as_ref(), &ctx).await;
-        // With a steering source the loop is this driver's own — the
+        // With a steering source the loop is this driver's own, the
         // same shape as the provided `run_turn` plus the two drain
         // points; without one, the provided convenience runs unchanged.
         let result = match self.config.steering.clone() {
@@ -574,15 +574,15 @@ impl CodingAgent {
         Ok(result?)
     }
 
-    /// The failed request again: no new input message — the step loop
+    /// The failed request again: no new input message, the step loop
     /// runs on the history exactly as the failed turn left it, so the
     /// same request goes out. A first-request failure re-issues the
     /// identical request; a mid-turn failure re-issues the step that
     /// failed, with the committed steps still in view (the model sees
-    /// what already ran and continues from there — no committed tool
+    /// what already ran and continues from there, no committed tool
     /// call re-executes behind the model's back). A history entering
-    /// with unanswered calls — a commit-hook failure after an intent
-    /// landed — revives first, like any turn. Approval and cancel wire
+    /// with unanswered calls, a commit-hook failure after an intent
+    /// landed, revives first, like any turn. Approval and cancel wire
     /// in as in [`Self::turn_message_with_cancel`].
     pub async fn retry_turn_with_cancel(
         &mut self,
@@ -608,7 +608,7 @@ impl CodingAgent {
     }
 
     /// The driver's own step loop: [`run_turn`]'s shape, generalized
-    /// over the two axes the turn shapes differ on — whether a new
+    /// over the two axes the turn shapes differ on, whether a new
     /// input message is pushed (a retry pushes none; it re-requests on
     /// the history as the last turn left it) and whether a steering
     /// source drains between steps. With an input and no steering the
@@ -648,7 +648,7 @@ impl CodingAgent {
 
     /// Drains the steering source and appends what is new as one
     /// User-role message, one line per notification. The drain is a pure
-    /// query, so the same line can come back on the next drain — within
+    /// query, so the same line can come back on the next drain, within
     /// a turn each finish is announced once, and `announced` carries the
     /// lines already appended to this turn's history.
     fn append_notifications(&mut self, steering: &dyn Steering, announced: &mut Vec<String>) {
@@ -826,7 +826,7 @@ mod paste_tests {
                 )),
             ]
         );
-        // The session history is the message, verbatim — checkpointing
+        // The session history is the message, verbatim, checkpointing
         // must carry the images byte-for-byte.
         assert_eq!(agent.session().history[0].content, seen[0]);
     }
@@ -1136,7 +1136,7 @@ mod environment_stamp_tests {
     }
 
     /// The resume contract: a session carrying a report reuses its
-    /// bytes, whatever the config would render fresh — the date inside
+    /// bytes, whatever the config would render fresh, the date inside
     /// names the conversation's start, and a re-stamp would rewrite
     /// the system prompt and break the prefix cache.
     #[tokio::test]
@@ -1148,8 +1148,8 @@ mod environment_stamp_tests {
             .unwrap();
         let session = first.session().clone();
 
-        // Whatever the rebuilt config carries — a model switch, a
-        // profile switch, a resume — the conversation's bytes stand.
+        // Whatever the rebuilt config carries, a model switch, a
+        // profile switch, a resume, the conversation's bytes stand.
         let second =
             CodingAgent::from_session(Arc::new(Ender), config("REPORT-B"), session).unwrap();
         let prompt = second.system().expect("the agent has a prompt");
@@ -1196,8 +1196,8 @@ mod environment_stamp_tests {
         );
     }
 
-    /// Another driver's keys coexist with the stamp — driver_state is
-    /// one object per driver key — and a non-object shape is never
+    /// Another driver's keys coexist with the stamp, driver_state is
+    /// one object per driver key, and a non-object shape is never
     /// clobbered: no stamp, no error, the section still renders.
     #[test]
     fn driver_state_shapes_coexist_or_stay_untouched() {
@@ -1358,8 +1358,8 @@ mod transcript_tests {
         assert!(text.starts_with("<transcript>"), "{text}");
         assert_eq!(messages.last().unwrap(), &Message::text(Role::User, "next"));
 
-        // The session kept every message — restored, this turn's
-        // input, and the turn's reply — the log is untouched.
+        // The session kept every message, restored, this turn's
+        // input, and the turn's reply, the log is untouched.
         assert_eq!(agent.session().history.len(), 5 * 2 + 3);
     }
 }

@@ -1,8 +1,8 @@
 //! Resolver composition: several resolvers behind one seam.
 //!
-//! The resident agent's toolset is naturally layered — the coding tools
+//! The resident agent's toolset is naturally layered, the coding tools
 //! (shell and friends) plus agent-side capabilities like watch
-//! management — but `rhema_core` ships exactly one resolver seam and no
+//! management, but `rhema_core` ships exactly one resolver seam and no
 //! composition, on purpose. The chain lives here because composing
 //! toolsets is an agent-tier concern.
 

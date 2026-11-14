@@ -5,7 +5,7 @@
 //! terminal, outside any provisioned shell (no `RHEMA_MCP_BRIDGE` in
 //! the environment, which is the point: this is how a server gets
 //! configured in the first place). Writes land in the named profile's
-//! `mcp_servers` map — `personal` without `--profile` — mirroring the
+//! `mcp_servers` map, `personal` without `--profile`, mirroring the
 //! settings screen. The global `mcp.yaml` is never written: it is
 //! user-authored, and its formatting and comments are the user's.
 //!
@@ -21,7 +21,7 @@
 //! these verbs face the user, not the model: `0` ok; `2` usage or
 //! validation (bad flags, bad name, duplicate without `--force`);
 //! `3` the name is not in the profile (`remove`); `1` the config could
-//! not be loaded or saved, with the reason on stderr — the call path's
+//! not be loaded or saved, with the reason on stderr, the call path's
 //! "1 prints nothing" rule keeps agent tool output clean, which is not
 //! this surface's problem.
 //!
@@ -71,7 +71,7 @@ fn run(argv: &[OsString]) -> i32 {
     }
 }
 
-/// The verb's work against an explicit config file — the seam the
+/// The verb's work against an explicit config file, the seam the
 /// tests use, since the real path hangs off `$HOME`.
 fn run_at(config_path: &Path, argv: &[OsString]) -> i32 {
     let verb = argv.first().and_then(|a| a.to_str()).unwrap_or("");
@@ -104,7 +104,7 @@ fn load_config(config_path: &Path) -> Result<SettingsDocument, String> {
 }
 
 /// Persists the config: the directory `0700` first (it may not exist
-/// yet — a first `add` on a fresh machine), the file through
+/// yet, a first `add` on a fresh machine), the file through
 /// [`SettingsDocument::save_to`]'s atomic `0600` write.
 fn save_config(config_path: &Path, config: &SettingsDocument) -> Result<(), String> {
     if let Some(dir) = config_path.parent() {
@@ -372,7 +372,7 @@ fn resolved_row(name: &str, transport: &McpTransport) -> String {
 
 /// The `mcp list` report: the profile's scope and the global file,
 /// each as the config layer resolves them on load. An entry that
-/// fails validation lists as `invalid` with the reason — surfacing a
+/// fails validation lists as `invalid` with the reason, surfacing a
 /// broken entry is the point of the listing.
 fn list_render(config_path: &Path, profile: &str) -> Result<String, String> {
     let config = load_config(config_path)?;
@@ -515,7 +515,7 @@ fn remove(config_path: &Path, argv: &[OsString]) -> i32 {
         if in_global {
             eprintln!(
                 "mcp remove: `{name}` is not in profile `{profile}`; it is defined in the global \
-                 mcp.yaml, which this command never edits — remove it there by hand"
+                 mcp.yaml, which this command never edits, remove it there by hand"
             );
         } else {
             eprintln!("mcp remove: no server `{name}` in profile `{profile}`");

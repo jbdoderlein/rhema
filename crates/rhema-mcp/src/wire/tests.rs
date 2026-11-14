@@ -1,6 +1,6 @@
 //! The wire seam's tests: filter-before-spawn, the env map's keys,
 //! the prompt lines, and one CLI round trip through the provisioned
-//! env — over the real bridge and a fake stdio child.
+//! env, over the real bridge and a fake stdio child.
 
 use super::*;
 use std::collections::BTreeMap;
@@ -16,7 +16,7 @@ use std::time::Duration;
 fn counter_server(name: &str, command_name: Option<&str>) -> McpServer {
     // The budgets match the config default deliberately: a parallel
     // cargo run saturates every core, the fake child's handshake
-    // stretches past shorter budgets, and the slot goes cooling — a
+    // stretches past shorter budgets, and the slot goes cooling, a
     // flake that looks like a bridge bug and isn't.
     McpServer {
         name: name.to_owned(),
@@ -123,7 +123,7 @@ fn wiring_produces_env_lines_and_a_live_bridge() {
 
     // One CLI round trip through the provisioned env, bridge live:
     // the mcp meta surface answers. The CLI is synchronous, so it
-    // runs on the blocking pool — a blocking read on a worker thread
+    // runs on the blocking pool, a blocking read on a worker thread
     // would starve this runtime's accept loop.
     let socket = wiring.socket().to_path_buf();
     let token = wiring.shell_env.get(provision::VAR_TOKEN).unwrap().clone();

@@ -11,7 +11,7 @@ use rhema_core::{Message, Role, Session, StopReason, ToolCall, Usage};
 use rhema_provider::ModelCard;
 use std::collections::BTreeMap;
 
-/// A turn provider the cancelled-turn tests never drive — these tests
+/// A turn provider the cancelled-turn tests never drive, these tests
 /// exercise the UI's cancellation bookkeeping, not an exchange, so any
 /// `Arc<dyn ModelProvider>` will do and a scripted one (feature
 /// `mock`) would gate the tests.
@@ -184,7 +184,7 @@ struct Harness {
     secrets: Option<Arc<rhema_config::secrets::VolatileSecretStore>>,
 }
 
-/// Stores `key` as `provider`'s instance on `profile` — the login
+/// Stores `key` as `provider`'s instance on `profile`, the login
 /// flow's write shape.
 fn store_key(profile: &mut rhema_config::Profile, provider: &str, key: &str) {
     profile.upsert_instance(
@@ -211,8 +211,8 @@ fn keyed_profile(provider: &str, key: &str) -> rhema_config::Profile {
 }
 
 /// A test stand-in for a real approval hook: the parking half of the
-/// bridge — sends the request event, blocks on the answer, declines on
-/// any failure — without the production type nothing wires today.
+/// bridge, sends the request event, blocks on the answer, declines on
+/// any failure, without the production type nothing wires today.
 struct ScriptedApproval {
     events: tokio::sync::mpsc::UnboundedSender<UiEvent>,
     answers: std::sync::Mutex<std::sync::mpsc::Receiver<bool>>,
@@ -339,7 +339,7 @@ fn harness_inner(
 }
 
 /// Drives the settings' add-instance dialog to the credential stage
-/// for `provider`, accepting the suggested instance name — ready to
+/// for `provider`, accepting the suggested instance name, ready to
 /// type the credential. The settings must be open (or `/login`
 /// dispatchable) first.
 fn descend_to_credential(h: &mut Harness, provider: LoginProvider) -> String {
@@ -592,8 +592,8 @@ fn a_finished_turn_refreshes_the_allowance() {
     assert_eq!(effects, vec![Effect::FetchUsage]);
 }
 
-/// A reasoning-only response — a content-less assistant message the
-/// provider ended itself — cannot pass for an answer: the transcript
+/// A reasoning-only response, a content-less assistant message the
+/// provider ended itself, cannot pass for an answer: the transcript
 /// names what happened. A reply that said something raises nothing.
 #[test]
 fn an_empty_turn_surfaces_its_stop_reason() {
@@ -903,7 +903,7 @@ fn llama_login_validates_by_server_url_and_persists_the_provider() {
         ),
     });
     // Router mode: several models land in the picker with no
-    // metadata, and the rows carry the llama.cpp prefix — not google's.
+    // metadata, and the rows carry the llama.cpp prefix, not google's.
     match &h.app.screen {
         Screen::Picker(picker) => {
             assert!(picker.models.iter().all(|m| m.provider == "llama-cpp"));
@@ -1017,7 +1017,7 @@ fn openai_login_validates_by_key_with_the_default_base() {
         })]
     );
     // A failed validation stays on the login screen and persists
-    // nothing — same contract as the other keyed providers.
+    // nothing, same contract as the other keyed providers.
     h.app.on_event(UiEvent::ModelsLoaded {
         why: FetchWhy::Login {
             backend: Backend::OpenAi {
@@ -1061,7 +1061,7 @@ fn zai_login_validates_by_key_with_the_default_route() {
         })]
     );
     // A failed validation stays on the login screen and persists
-    // nothing — same contract as the other keyed providers.
+    // nothing, same contract as the other keyed providers.
     h.app.on_event(UiEvent::ModelsLoaded {
         why: FetchWhy::Login {
             backend: Backend::Zai {
@@ -1119,7 +1119,7 @@ fn a_zai_profile_builds_its_own_backend_from_a_stored_route() {
         ),
         "the proxy instance's route serves"
     );
-    // No key, no backend — the kind is not served by another's key.
+    // No key, no backend, the kind is not served by another's key.
     let mut cross = rhema_config::Profile {
         provider: Some("zai".into()),
         ..rhema_config::Profile::default()
@@ -1186,7 +1186,7 @@ fn anthropic_and_openai_profiles_build_their_own_backends() {
         matches!(backend, Backend::OpenAi { ref api_key, .. } if api_key == "k-o"),
         "the openai profile builds the openai backend: {backend:?}"
     );
-    // No key, no backend — a keyless profile cannot serve turns.
+    // No key, no backend, a keyless profile cannot serve turns.
     let mut cross = rhema_config::Profile {
         provider: Some("anthropic".into()),
         ..rhema_config::Profile::default()
@@ -1296,7 +1296,7 @@ fn candidates_name_every_stored_instance_and_put_the_active_one_first() {
             )
         })
         .collect();
-    // The active instance leads, the rest follow in name order —
+    // The active instance leads, the rest follow in name order,
     // every llama.cpp server joins, a stored URL being an explicit
     // login now.
     assert_eq!(
@@ -1497,7 +1497,7 @@ fn a_failed_resume_load_lands_in_the_error_strip() {
         h.app.error.as_deref(),
         Some("cannot load session: no such file")
     );
-    // The screen held through the failure: no half-applied session —
+    // The screen held through the failure: no half-applied session,
     // the harness's own agent is still the live one.
     assert!(matches!(h.app.screen, Screen::Chat));
 }
@@ -1576,7 +1576,7 @@ fn the_saved_usage_survives_a_save_and_resume_round_trip() {
     crate::sessions::write_session(&path, &session).unwrap();
 
     // Resume, then save: the exit save re-stamps what the run
-    // measured — the carried counters, nothing lost to the fresh
+    // measured, the carried counters, nothing lost to the fresh
     // mirror starting at zero.
     h.app.resume_session(&path);
     let (exported, _) = h.app.export_session().unwrap();
@@ -1758,8 +1758,8 @@ fn choosing_from_another_provider_switches_the_backend() {
 #[test]
 fn turn_costs_accumulate_from_the_model_pricing() {
     // No stored model: the chat opens bare and the test names the
-    // priced model through /model — the move the red footer
-    // invites — before the turn runs.
+    // priced model through /model, the move the red footer
+    // invites, before the turn runs.
     let mut h = harness(
         Some("k"),
         None,
@@ -1772,7 +1772,7 @@ fn turn_costs_accumulate_from_the_model_pricing() {
     );
     h.app.on_event(UiEvent::ModelsLoaded {
         why: FetchWhy::Bootstrap,
-        // $0.75/M in, $3.75/M out, cached input at a quarter — the
+        // $0.75/M in, $3.75/M out, cached input at a quarter, the
         // shape the google adapter bakes for a flash model.
         result: loaded(
             "google",
@@ -1977,7 +1977,7 @@ fn d_forgets_the_highlighted_instance() {
     assert!(effective.instances.is_empty());
     assert_eq!(effective.instance, None);
     // The provider stays llama-cpp, whose keyless server always
-    // constructs — on the default URL now, the way a flat profile
+    // constructs, on the default URL now, the way a flat profile
     // always could.
     assert!(matches!(
         h.app.backend,
@@ -2408,7 +2408,7 @@ fn the_live_usage_tally_moves_the_gauge_mid_turn() {
     })));
     assert_eq!(h.app.context_used(), 407);
 
-    // A later frame replaces the tally — never adds to it.
+    // A later frame replaces the tally, never adds to it.
     h.app.on_event(UiEvent::Engine(OwnedEvent::Usage(Usage {
         input_tokens: 400,
         output_tokens: 19,
@@ -2745,7 +2745,7 @@ fn a_submit_travels_embedded_and_lands_in_the_transcript() {
     h.app.chat.paste(long);
     let embedded = rhema_core::paste::embed(&ChatState::MARK.to_string(), &[long.to_owned()]);
     // The turn starts on the session form, and the transcript line
-    // carries it — the chip survives the send.
+    // carries it, the chip survives the send.
     assert_eq!(
         h.app.on_key(key(KeyCode::Enter)),
         vec![Effect::StartTurn {
@@ -3080,7 +3080,7 @@ fn a_workspace_reopens_on_the_profile_it_last_used() {
         "personal"
     );
     // A memory naming a profile that can no longer serve turns falls
-    // through to the default — never the login screen by surprise.
+    // through to the default, never the login screen by surprise.
     config
         .profiles
         .insert("empty".to_owned(), rhema_config::Profile::default());
@@ -3688,7 +3688,7 @@ fn slash_sandbox_opens_the_settings_sandbox_page() {
         panic!("expected the settings screen");
     };
     assert_eq!(settings.section, SettingsSection::Sandbox);
-    // An empty config: the host's own row and the add row — the
+    // An empty config: the host's own row and the add row, the
     // default view is only local.
     assert_eq!(
         settings
@@ -3802,7 +3802,7 @@ fn the_sandbox_add_dialog_stores_the_kinds_instance() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     crate::commands::dispatch(&mut h.app, "/sandbox");
     // One down: local, add row. Enter opens the dialog; enter
-    // again stores docker — no name asked, the concrete one is
+    // again stores docker, no name asked, the concrete one is
     // the workspace's to set at assembly time.
     h.app.on_key(key(KeyCode::Down));
     h.app.on_key(key(KeyCode::Enter));
@@ -3837,7 +3837,7 @@ fn the_sandbox_add_dialog_stores_the_kinds_instance() {
             .any(|line| matches!(line, Line::Notice(text) if text.contains("docker"))),
         "the notice names the instance"
     );
-    // Same flow, lxd picked — two downs now, docker's row sits
+    // Same flow, lxd picked, two downs now, docker's row sits
     // between local and the add row. Its launch flag stays unset
     // (config.yaml's call).
     crate::commands::dispatch(&mut h.app, "/sandbox");
@@ -4163,7 +4163,7 @@ fn subagent_enter_on_a_definition_emits_the_edit_effect() {
     h.app.options.workspace = workspace.path().to_path_buf();
     crate::commands::dispatch(&mut h.app, "/subagents");
     // The rows sort by name: the built-in first, the definition
-    // second. The path is discovery's own — the canonicalized
+    // second. The path is discovery's own, the canonicalized
     // workspace, since the opener canonicalizes.
     let file = std::fs::canonicalize(workspace.path())
         .unwrap()
@@ -4299,7 +4299,7 @@ fn shadowing_the_builtin_writes_a_discoverable_definition() {
         file,
         global.path().join("general-purpose").join("SUBAGENT.md")
     );
-    // What the copy wrote is a definition discovery accepts — the
+    // What the copy wrote is a definition discovery accepts, the
     // shadow replaces the built-in wholesale, description and body.
     let workspace = tempfile::tempdir().unwrap();
     let defs = rhema_subagents::discover(Some(global.path()), workspace.path());
@@ -4498,7 +4498,7 @@ fn slash_resume_opens_a_picker_and_picking_resumes() {
         _other => panic!("expected the resume picker"),
     }
 
-    // Down moves to the older session; enter requests the load — the
+    // Down moves to the older session; enter requests the load, the
     // screen holds until the parts come back off the blocking pool.
     h.app.on_key(key(KeyCode::Down));
     let effects = h.app.on_key(key(KeyCode::Enter));
@@ -5005,7 +5005,7 @@ fn the_subagents_page_toggles_through_space_and_persists_it() {
             path: Some("/w/.rhema/subagents/reviewer/SUBAGENT.md".into()),
         }];
     }
-    // Space (not enter — that opens $EDITOR) flips the row into the
+    // Space (not enter, that opens $EDITOR) flips the row into the
     // disabled set and persists it.
     h.app.on_key(key(KeyCode::Char(' ')));
     assert!(
@@ -5133,7 +5133,7 @@ fn the_active_profile_refuses_removal() {
         .insert("work".to_owned(), rhema_config::Profile::default());
     h.app
         .open_settings_at(crate::screens::SettingsSection::Profiles);
-    // Row 0 is personal — the profile this session runs on. Its
+    // Row 0 is personal, the profile this session runs on. Its
     // removal is also what keeps the registry from emptying.
     h.app.on_key(key(KeyCode::Char('d')));
     assert!(
@@ -5717,7 +5717,7 @@ async fn a_background_subagent_job_pins_its_live_line() {
     let mut harness = harness(Some("key"), Some("m"), Session::default());
 
     // A running job: the line spins with its name, id, and phase,
-    // even with no turn running — jobs outlive turns.
+    // even with no turn running, jobs outlive turns.
     let tools = scout_tools(Arc::new(Hanging));
     harness.app.subagents = Some(tools.handle());
     let _ = rhema_core::ToolResolver::resolve(
@@ -5786,7 +5786,7 @@ async fn a_background_subagent_job_pins_its_live_line() {
 }
 
 /// A job finishing with no turn running runs its notification as
-/// the next turn's prompt — the regular-prompt path. The tick
+/// the next turn's prompt, the regular-prompt path. The tick
 /// emits `StartTurn` with the notification line, the transcript
 /// records it as the user line it is, and the take retires the
 /// announcement: the driver's drain has nothing left to repeat,
@@ -5877,7 +5877,7 @@ async fn an_idle_session_runs_a_finished_jobs_notification_as_the_next_prompt() 
 
     // A second tick starts nothing: the take retired the line.
     assert!(h.app.on_tick().is_empty());
-    // The driver's drain is empty too — the prompt already said it.
+    // The driver's drain is empty too, the prompt already said it.
     let steering = h.app.subagents.as_ref().unwrap().steering();
     assert!(steering.drain().is_empty(), "a taken line stops announcing");
 }
@@ -5885,7 +5885,7 @@ async fn an_idle_session_runs_a_finished_jobs_notification_as_the_next_prompt() 
 /// A subagent job finishing while a turn runs lands as its card and
 /// leaves the delivery to the driver's steering: the tick starts
 /// nothing and takes no notification line, so the drain still names
-/// the job — the registry's drain stays a query, the fetch or the
+/// the job, the registry's drain stays a query, the fetch or the
 /// idle take retiring it.
 #[tokio::test]
 async fn a_running_turn_shows_the_finish_card_and_leaves_steering_to_the_driver() {
@@ -5975,7 +5975,7 @@ async fn a_running_turn_shows_the_finish_card_and_leaves_steering_to_the_driver(
 
 /// A background job finishing while the session is idle becomes the
 /// next prompt: the tick delivers the line as a turn, records it as
-/// its notification card — never as user input — and the take retires
+/// its notification card, never as user input, and the take retires
 /// it so neither the driver's drain nor a second tick repeats it.
 #[test]
 fn an_idle_session_runs_a_finished_job_line_as_the_next_prompt() {
@@ -6012,7 +6012,7 @@ fn an_idle_session_runs_a_finished_job_line_as_the_next_prompt() {
 }
 
 /// A background job finishing while a turn runs lands as its card and
-/// leaves the delivery to the driver's steering — which consumes the
+/// leaves the delivery to the driver's steering, which consumes the
 /// line, so the idle prompt never repeats it: the tick starts nothing,
 /// the drain names the job once.
 #[test]
@@ -6039,14 +6039,14 @@ fn a_running_turn_shows_a_job_finish_card_and_leaves_one_delivery_to_the_driver(
         matches!(last, Some(Line::Notification(text)) if text == line.as_str()),
         "the finish lands as its card, got {last:?}"
     );
-    // The driver steers the delivery — once, the drain consuming it.
+    // The driver steers the delivery, once, the drain consuming it.
     let steering = h.app.jobs.as_ref().unwrap().steering();
     assert_eq!(steering.drain(), vec![line]);
     assert!(h.app.jobs.as_ref().unwrap().take_notifications().is_empty());
 }
 
 /// Both feeds pending and the session idle: one prompt carries both
-/// announcements, subagents first, background jobs second — the
+/// announcements, subagents first, background jobs second, the
 /// steering chain's order, and neither feed swallowed by the other.
 #[tokio::test]
 async fn both_feeds_join_into_one_idle_prompt_with_subagents_first() {
@@ -6132,7 +6132,7 @@ async fn both_feeds_join_into_one_idle_prompt_with_subagents_first() {
 
 /// A turn that failed with a network error leaves the offer up:
 /// the error strip rides the hint, and `/retry` re-issues the same
-/// request — no new prompt, the flag spent.
+/// request, no new prompt, the flag spent.
 #[test]
 fn a_failed_turn_offers_retry_and_retry_fires_it() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
@@ -6276,7 +6276,7 @@ async fn retry_restarts_transient_failed_subagents() {
     );
 
     // With a failed turn behind it as well, one dispatch restarts
-    // the jobs and fires the turn — the whole outage rewound.
+    // the jobs and fires the turn, the whole outage rewound.
     h.app.retryable = true;
     let effects = crate::commands::dispatch(&mut h.app, "/retry");
     assert_eq!(effects, vec![Effect::RetryTurn]);
@@ -6349,7 +6349,7 @@ fn the_retry_offer_clears_when_the_conversation_moves_on() {
 
 /// The offer survives an agent rebuild on purpose: a failed turn,
 /// then a model switch, then `/retry` re-issues the request on the
-/// new model — the rate-limit answer.
+/// new model, the rate-limit answer.
 #[test]
 fn a_model_switch_keeps_the_retry_offer() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
@@ -6372,7 +6372,7 @@ fn a_model_switch_keeps_the_retry_offer() {
     );
 }
 
-/// While a turn runs — a retry included — `/retry` waits.
+/// While a turn runs, a retry included, `/retry` waits.
 #[test]
 fn retry_waits_while_a_turn_runs() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
@@ -6573,7 +6573,7 @@ fn the_mcp_mute_round_trips() {
     assert!(settings.mcp[0].disabled, "the row marks the mute");
     assert!(
         h.app.transcript.lines().contains(&Line::Notice(
-            "the atlassian server is muted — saved and applied to new turns".into()
+            "the atlassian server is muted, saved and applied to new turns".into()
         )),
         "the mute is noticed"
     );
@@ -6655,7 +6655,7 @@ fn the_update_page_checks_then_installs() {
     ));
     assert!(
         h.app.transcript.lines().contains(&Line::Notice(
-            "rhema updated — restart to run the new version".into()
+            "rhema updated, restart to run the new version".into()
         )),
         "the install is noticed"
     );
@@ -6754,7 +6754,7 @@ fn a_clear_with_the_agent_out_leaves_nothing_to_resume() {
     assert_eq!(h.app.session.history.len(), 2, "the switch keeps the talk");
 
     // The clear lands while the agent is out. The exit save reads the
-    // App's copy — a stale copy here would export the cleared
+    // App's copy, a stale copy here would export the cleared
     // conversation, and with the file binding gone it would grow a
     // second session file for it.
     let _ = crate::commands::dispatch(&mut h.app, "/clear");

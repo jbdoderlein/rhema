@@ -8,13 +8,13 @@ use rhema_core::ProviderError;
 
 /// The live-catalog seam: a provider's models, as they list today.
 /// Every adapter in the family implements it, so a consumer holding
-/// nothing but a provider name can still fetch the catalog — no
+/// nothing but a provider name can still fetch the catalog, no
 /// concrete type required. The listing stays off the turn seam's
 /// retry: a catalog fetch either answers or fails, no ladder.
 #[async_trait]
 pub trait ModelListing: Send + Sync {
     /// The provider's text-chat models, normalized to [`ModelCard`]
-    /// rows — pricing included when the provider publishes it.
+    /// rows, pricing included when the provider publishes it.
     async fn list_models(&self) -> Result<Vec<ModelCard>, ProviderError>;
 }
 
@@ -22,7 +22,7 @@ pub trait ModelListing: Send + Sync {
 /// the adapter's chat API accepts, the listing's display fields, and the
 /// adapter's price for it when known. Adapters decide which of their
 /// listed models are text chat models and `list_models` only hands out
-/// those — the marker data is per provider, so the verdict never rides on
+/// those, the marker data is per provider, so the verdict never rides on
 /// this row. Not `Eq`: the price is floating point.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelCard {
@@ -38,8 +38,8 @@ pub struct ModelCard {
     /// Output ceiling in tokens, when advertised.
     pub output_token_limit: Option<u64>,
     /// Whether the model accepts image input, when the listing or the
-    /// adapter's own knowledge says so. Tri-state: `None` — the common
-    /// case — is unknown, not "no": most listings carry no modality
+    /// adapter's own knowledge says so. Tri-state: `None`, the common
+    /// case, is unknown, not "no": most listings carry no modality
     /// data. A `Some` verdict rides the catalog row; sending an image
     /// to a `false` model fails server-side.
     #[serde(default, skip_serializing_if = "Option::is_none")]

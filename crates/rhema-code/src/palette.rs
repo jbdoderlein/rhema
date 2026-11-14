@@ -3,7 +3,7 @@
 //! A palette is a named set of [`Theme`] tokens in a dark and a light
 //! appearance. The default is the Rhema palette, the design spec
 //! ("Jadeite") the TUI was drawn against; the others restyle the same
-//! token slots. The dark grounds are deliberately tinted — that is a
+//! token slots. The dark grounds are deliberately tinted, that is a
 //! decision, not an oversight; do not normalize them to slate. Dark is
 //! the primary appearance; light exists for light-terminal users and is
 //! selected with `theme: light`. Components reference tokens, never
@@ -17,8 +17,8 @@
 //! mantle and crust for secondary panes, surface0 for elements, text /
 //! subtext0 / overlay1 for the type ladder, blue for the accent, base
 //! on accent, green/yellow/red for the status set). The appearance
-//! toggle switches the whole flavor — Latte is the set's only light
-//! flavor, so every dark flavor resolves to it on `theme: light` —
+//! toggle switches the whole flavor, Latte is the set's only light
+//! flavor, so every dark flavor resolves to it on `theme: light`,
 //! because the style guide forbids blending flavors inside one theme.
 
 mod hct;
@@ -27,7 +27,7 @@ use ratatui::style::Color;
 
 /// Which appearance of a palette paints the screen: its dark tokens or
 /// its light ones. Parsed from the stored config (`theme: dark|light`),
-/// not a flag — a machine choice, not a per-invocation one.
+/// not a flag, a machine choice, not a per-invocation one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThemeKind {
     /// The dark tokens: the primary appearance.
@@ -38,7 +38,7 @@ pub enum ThemeKind {
 
 /// What paints behind the ink: the palette's own fills, or the
 /// terminal's background showing through. Parsed from the stored config
-/// (`background: rhema|native`), not a flag — a machine choice, not a
+/// (`background: rhema|native`), not a flag, a machine choice, not a
 /// per-invocation one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Background {
@@ -54,7 +54,7 @@ pub enum Background {
 
 impl Background {
     /// Parses the stored config value; unset or unparseable reads as
-    /// the default. Both spellings parse — `rhema` fell into the
+    /// the default. Both spellings parse, `rhema` fell into the
     /// default arm while it *was* the default, and reading it back as
     /// `native` once the default flipped would silently drop the
     /// stored choice.
@@ -94,7 +94,7 @@ pub struct Theme {
     pub text: Color,
     /// Secondary text.
     pub text2: Color,
-    /// Hints only — floors out here.
+    /// Hints only, floors out here.
     pub text3: Color,
     /// Fills, rules, the mark.
     pub accent: Color,
@@ -133,7 +133,7 @@ impl Theme {
     /// Paints the background choice onto the tokens. `Native` hands the
     /// fill slots (`sunken`, `surface`, `elevated`) back to the
     /// terminal: `Color::Reset` leaves each cell on the terminal's own
-    /// background, and the ink — text, borders, accents — keeps the
+    /// background, and the ink, text, borders, accents, keeps the
     /// palette's colors. `ground` never paints a cell (only
     /// [`Theme::is_dark`] reads it), so the appearance checks stay
     /// exact either way.
@@ -164,7 +164,7 @@ impl Theme {
     /// The prompt fill as sRGB bytes, when it is one: the graphics
     /// sprites bake the fill in as bytes, so a fill that is not an RGB
     /// (a non-generated palette slot the mix could not read) cannot
-    /// ride one — the bubble keeps its drawn frame instead.
+    /// ride one, the bubble keeps its drawn frame instead.
     pub fn prompt_fill_rgb(&self) -> Option<(u8, u8, u8)> {
         match self.prompt_fill() {
             Color::Rgb(r, g, b) => Some((r, g, b)),
@@ -173,7 +173,7 @@ impl Theme {
     }
 
     /// The notification card's fill: the same lifted card the prompt
-    /// bubble gets, tinted by the text ink instead of the accent — a
+    /// bubble gets, tinted by the text ink instead of the accent, a
     /// neutral card, so a session notification reads as neither the
     /// reader's own prompt nor the model's response. Derived, never
     /// stated: every palette tints its own card, the generated one
@@ -187,7 +187,7 @@ impl Theme {
         mix(base, self.text, NOTICE_TINT)
     }
 
-    /// The notification fill as sRGB bytes, when it is one — the
+    /// The notification fill as sRGB bytes, when it is one, the
     /// sprites bake bytes, [`Self::prompt_fill_rgb`] explains.
     pub fn notice_fill_rgb(&self) -> Option<(u8, u8, u8)> {
         match self.notice_fill() {
@@ -203,7 +203,7 @@ impl Theme {
 const PROMPT_TINT: u32 = 10;
 
 /// How much of the text ink the notification card's fill carries, in
-/// percent: a visible lift off the page that stays neutral — no hue of
+/// percent: a visible lift off the page that stays neutral, no hue of
 /// its own, so the card never competes with the status set.
 const NOTICE_TINT: u32 = 8;
 
@@ -249,7 +249,7 @@ pub(crate) fn parse_hex_u32(text: &str) -> Option<u32> {
 }
 
 /// Parses a `#RRGGBB` or `RRGGBB` config color. Config colors are user
-/// data, not component literals — rule 1 governs code, not profiles.
+/// data, not component literals, rule 1 governs code, not profiles.
 pub fn parse_hex_color(text: &str) -> Option<Color> {
     parse_hex_u32(text).map(|value| {
         Color::Rgb(
@@ -374,7 +374,7 @@ pub const AQUAMARINE_LIGHT: Theme = Theme {
 };
 
 /// The dark Black-and-white appearance: grayscale only, hue nowhere.
-/// The status set carries meaning by luminance alone — a deliberate
+/// The status set carries meaning by luminance alone, a deliberate
 /// trade for a palette that promises zero color.
 pub const BLACK_WHITE_DARK: Theme = Theme {
     ground: Color::Rgb(0x0A, 0x0A, 0x0A),
@@ -568,7 +568,7 @@ pub struct PaletteInputs<'a> {
 }
 
 /// The Nord appearance: the official sixteen colors in the roles the
-/// Nord docs assign — polar night for the grounds, snow storm for the
+/// Nord docs assign, polar night for the grounds, snow storm for the
 /// type ladder, frost for the accent, aurora for the status set. The
 /// well (#262B38) and the strong divider (#7B88A1, the muted tone from
 /// Nord's own site) fill slots the sixteen do not name.
@@ -593,9 +593,9 @@ pub const NORD_DARK: Theme = Theme {
 };
 
 /// The light Nord appearance. Nord ships one dark palette; these keep
-/// the hue families — snow storm grounds, a deepened frost accent, and
+/// the hue families, snow storm grounds, a deepened frost accent, and
 /// darkened aurora status colors, since the pastels cannot sit on a
-/// light ground — and reuse the muted tones (#6D7A96, #F2F4F8) from
+/// light ground, and reuse the muted tones (#6D7A96, #F2F4F8) from
 /// Nord's own light pages.
 pub const NORD_LIGHT: Theme = Theme {
     ground: Color::Rgb(0xEC, 0xEF, 0xF4),
@@ -617,7 +617,7 @@ pub const NORD_LIGHT: Theme = Theme {
     info: Color::Rgb(0x4E, 0x79, 0xA8),
 };
 
-/// The Gruvbox dark appearance: the official palette — bg0 through bg2
+/// The Gruvbox dark appearance: the official palette, bg0 through bg2
 /// for the grounds (the hard dark bg0_h as the well), fg and its fades
 /// for the type ladder, the bright set for accent and status.
 pub const GRUVBOX_DARK: Theme = Theme {
@@ -690,7 +690,7 @@ pub const SOLARIZED_DARK: Theme = Theme {
 
 /// The Solarized light appearance: base3 and base2 grounds, the
 /// base01/base00 type pair the official light mode prescribes (its
-/// base0 body color reads 2.9:1 — under the floor). The accent
+/// base0 body color reads 2.9:1, under the floor). The accent
 /// deepens past the label floor, ok and warn darken past 3:1, and
 /// #F5EFDC, #E4DCC6, #7E8C93 fill the ladder slots the palette does
 /// not name.
@@ -746,7 +746,7 @@ pub enum Palette {
     /// baseline purple).
     M3You,
     /// The custom palette: the config's token overrides over the rhema
-    /// defaults (`custom` in the config file) — the hook a wallpaper
+    /// defaults (`custom` in the config file), the hook a wallpaper
     /// watcher or scheme generator writes. With nothing stored it reads
     /// exactly as rhema.
     Custom,
@@ -770,7 +770,7 @@ impl Palette {
     ];
 
     /// Parses a stored config value; `None` for no value and unknown
-    /// spellings alike — the caller decides whether that means the
+    /// spellings alike, the caller decides whether that means the
     /// default palette or an error naming the stored value.
     pub fn from_stored(value: Option<&str>) -> Option<Self> {
         match value {
@@ -799,7 +799,7 @@ impl Palette {
         }
     }
 
-    /// The config value this palette persists as — the inverse of
+    /// The config value this palette persists as, the inverse of
     /// [`Self::from_stored`] for the canonical spelling.
     pub fn stored_name(self) -> &'static str {
         match self {
@@ -837,8 +837,8 @@ impl Palette {
     }
 
     /// Resolves the palette's tokens for `kind`. `inputs` feeds the
-    /// generated palettes alone — the seed for [`Palette::M3You`], the
-    /// token overrides for [`Palette::Custom`] — and the fixed palettes
+    /// generated palettes alone, the seed for [`Palette::M3You`], the
+    /// token overrides for [`Palette::Custom`], and the fixed palettes
     /// ignore it.
     pub fn theme(self, kind: ThemeKind, inputs: PaletteInputs<'_>) -> Theme {
         match self {
@@ -890,8 +890,8 @@ impl Palette {
 
 /// Resolves the custom palette: the rhema tokens for `kind` with the
 /// config's overrides applied. An appearance the config does not give
-/// reads as the other one's full resolution — a generator writing only
-/// `dark` paints its whole scheme, never a half-light hybrid — and an
+/// reads as the other one's full resolution, a generator writing only
+/// `dark` paints its whole scheme, never a half-light hybrid, and an
 /// unparseable value reads as the rhema default for its slot, matching
 /// the other look-and-feel keys.
 fn custom_theme(kind: ThemeKind, custom: Option<&crate::store::CustomPalette>) -> Theme {
@@ -996,7 +996,7 @@ mod tests {
         assert_eq!(painted.surface, Color::Reset);
         assert_eq!(painted.elevated, Color::Reset);
         // The ink keeps the palette's colors, and the appearance check
-        // stays exact — `ground` never paints a cell.
+        // stays exact, `ground` never paints a cell.
         assert_eq!(painted.text, DARK.text);
         assert_eq!(painted.accent, DARK.accent);
         assert_eq!(painted.ground, DARK.ground);
@@ -1011,7 +1011,7 @@ mod tests {
     /// either background, apart from the transcript well, and still
     /// legible under the body ink on every palette.
     /// The notification card is its own voice: painted on either
-    /// background, apart from the prompt's accent tint, and neutral —
+    /// background, apart from the prompt's accent tint, and neutral,
     /// the text ink tints it, no hue of the status set rides the fill.
     #[test]
     fn the_notification_fill_is_a_neutral_card_of_its_own() {
@@ -1040,9 +1040,9 @@ mod tests {
                         fill, base,
                         "{palette:?} {kind:?} {background:?}: the text ink lifts the card"
                     );
-                    // The card's ink is the body text — the card is
+                    // The card's ink is the body text, the card is
                     // set apart by alignment and fill, not by dimmer
-                    // ink — and it reads at the same floor the prompt
+                    // ink, and it reads at the same floor the prompt
                     // card answers to.
                     assert!(
                         contrast(fill, theme.text) >= 3.0,

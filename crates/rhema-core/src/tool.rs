@@ -2,7 +2,7 @@
 //!
 //! A [`ToolResolver`] decides which tools the model sees this step
 //! ([`ToolResolver::specs`]) and turns a model's call into an in-band
-//! [`ToolResult`]. Errors never abort a step — they become `is_error` results
+//! [`ToolResult`]. Errors never abort a step, they become `is_error` results
 //! the model can react to; an unknown tool name is the resolver's error
 //! result, not a panic. Each tool also declares its [`ReplaySafety`]:
 //! whether a committed call that lost its result to a crash may be
@@ -28,7 +28,7 @@ pub struct ToolCall {
     /// the session history. Stateful providers mark their function calls
     /// (e.g. Gemini's thought signatures) and reject replays that lose the
     /// marker; the provider stores it here on the way in and reads it back
-    /// on the way out. Crate 1 never interprets it — the provider owns the
+    /// on the way out. Crate 1 never interprets it, the provider owns the
     /// shape.
     #[serde(default)]
     pub provider_data: serde_json::Value,
@@ -45,14 +45,14 @@ pub struct ToolResult {
     /// Whether the call failed; the model reacts to this in-band.
     pub is_error: bool,
     /// The process exit code of command-like tools; `None` for everything
-    /// else. UI-facing metadata — the model reads the status from
+    /// else. UI-facing metadata, the model reads the status from
     /// `content`.
     #[serde(default)]
     pub code: Option<i32>,
     /// Images the result carries beside its text, base64-encoded file
     /// bytes. Empty for most tools; the shell tool fills it from the
     /// images a command staged for viewing (rhema-agent-tools' `vision`
-    /// module). Every provider maps the field onto its wire — APIs whose
+    /// module). Every provider maps the field onto its wire, APIs whose
     /// tool results carry text only state the withholding in the text.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub images: Vec<crate::Image>,
@@ -87,7 +87,7 @@ impl ToolResult {
         self
     }
 
-    /// Attaches images, replacing any already present — the staging
+    /// Attaches images, replacing any already present, the staging
     /// side's builder. An empty `images` changes nothing.
     pub fn with_images(mut self, images: Vec<crate::Image>) -> Self {
         self.images = images;
@@ -126,12 +126,12 @@ impl Default for ToolContext {
 /// before retrying.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ReplaySafety {
-    /// Re-running may repeat an external effect — a post, a merge, a
+    /// Re-running may repeat an external effect, a post, a merge, a
     /// delete. The default: an unclassified tool is treated as
     /// side-effecting.
     #[default]
     Unsafe,
-    /// Re-running is safe — read-only queries, pure computation. A resume
+    /// Re-running is safe, read-only queries, pure computation. A resume
     /// may re-execute the call without asking the model again.
     Safe,
 }
@@ -152,11 +152,11 @@ pub trait ToolResolver: Send + Sync {
 
     /// Turn a model's call into a result. Errors become in-band results:
     /// implementations must not panic and must not abort on unknown names
-    /// or bad arguments — return [`ToolResult::failure`] instead.
+    /// or bad arguments, return [`ToolResult::failure`] instead.
     async fn resolve(&self, call: ToolCall, ctx: &ToolContext) -> ToolResult;
 
-    /// Resolve with progress: an implementation running something long —
-    /// a shell command — reports human-facing output chunks (complete
+    /// Resolve with progress: an implementation running something long,
+    /// a shell command, reports human-facing output chunks (complete
     /// lines) as they land, so a sink can render them live; the full
     /// text still arrives in the returned result. The default ignores
     /// progress and resolves as usual.
@@ -174,26 +174,26 @@ pub trait ToolResolver: Send + Sync {
 /// The live status of a streaming tool call's inner work: what that work
 /// is doing now, the context its current model call carries, and what
 /// its model calls have spent, when the tool knows. Status, not
-/// output — a sink shows it beside the call, and it never lands in the
+/// output, a sink shows it beside the call, and it never lands in the
 /// call's output or the session history.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolStatus {
     /// The phase the work is in, in the few words a status line reads
     /// ("thinking", "running").
     pub phase: String,
-    /// The work's current model call's usage — prompt plus reply in
-    /// flight — when the tool runs model calls of its own. The figure a
+    /// The work's current model call's usage, prompt plus reply in
+    /// flight, when the tool runs model calls of its own. The figure a
     /// context-window gauge sizes against [`ToolStatus::model`]'s
     /// window: each step re-sends the whole prompt, so this is the only
     /// input count that reads as "how full is the context now".
     pub context: Option<crate::output::Usage>,
     /// The work's cumulative token spend across every model call so
     /// far, when the tool runs model calls of its own. The figure cost
-    /// prices — every re-sent prompt is billed again, so the spend
+    /// prices, every re-sent prompt is billed again, so the spend
     /// legitimately grows past the context window.
     pub spent: Option<crate::output::Usage>,
-    /// The model the work runs on — the catalog id a UI prices and sizes
-    /// it by — when the tool knows it. It may differ from the caller's
+    /// The model the work runs on, the catalog id a UI prices and sizes
+    /// it by, when the tool knows it. It may differ from the caller's
     /// model.
     pub model: Option<String>,
 }
@@ -213,7 +213,7 @@ pub trait ToolProgress: Send {
 }
 
 /// A [`ToolProgress`] that keeps only the output chunks: the adapter for
-/// callers — drivers, tests — that have no status surface.
+/// callers, drivers, tests, that have no status surface.
 pub struct OutputOnly<F: FnMut(&str) + Send>(
     /// The receiver of the output chunks.
     pub F,

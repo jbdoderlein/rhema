@@ -102,7 +102,7 @@ impl KeyRecord {
 ///   persisted record's [`KeyRecord::revision`] equals `expected_revision`,
 ///   or when `expected_revision` is `None` and no record exists for the key.
 ///   Every other case fails with [`crate::StoreError::RevisionMismatch`] and
-///   leaves the stored record untouched — concurrent dispatchers cannot
+///   leaves the stored record untouched, concurrent dispatchers cannot
 ///   lose updates.
 /// - **Ordered queue.** The record's inbox is stored and returned in its
 ///   given order; FIFO event delivery depends on it.
@@ -115,9 +115,9 @@ impl KeyRecord {
 /// - **Durable deletion.** [`Store::delete`] removes a key's whole record:
 ///   when it returns `Ok`, the record is gone (for an embedded database:
 ///   committed), [`Store::load`] answers `None`, and [`Store::keys`] no
-///   longer lists the key. A delete carries no revision precondition —
+///   longer lists the key. A delete carries no revision precondition,
 ///   deletion is not a compare-and-swap write, so it succeeds whatever
-///   revision the stored record sits at — and deleting a key with no record
+///   revision the stored record sits at, and deleting a key with no record
 ///   is `Ok(false)`, not an error.
 /// - **Deterministic enumeration.** [`Store::keys`] returns every key with a
 ///   record, in ascending order.
@@ -136,7 +136,7 @@ pub trait Store: Send + Sync {
 
     /// Remove `key`'s record: `Ok(true)` when one existed and is gone,
     /// `Ok(false)` when there was none. Durable before it returns, and not
-    /// a compare-and-swap write — the caller asserts the key's absence,
+    /// a compare-and-swap write, the caller asserts the key's absence,
     /// not a revision, so deleting across a revision change simply deletes.
     fn delete(&self, key: &ResourceKey) -> Result<bool, crate::StoreError>;
 

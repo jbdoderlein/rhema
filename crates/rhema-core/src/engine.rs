@@ -3,7 +3,7 @@
 //! `step()` semantics are exact (SPEC.md §4): emit `StepStart`, hand the
 //! session to the commit hook (the stream's input durable), assemble the
 //! request from the session, stream through the provider, append the
-//! assistant message, then — on `ToolUse` — hand the session to the commit
+//! assistant message, then, on `ToolUse`, hand the session to the commit
 //! hook again (commit-before-execute), resolve each call in order, append
 //! its `Tool`-role result, hand the session to the hook a third time (the
 //! stream's outcome durable), and emit `StepEnd`. Tool errors never abort;
@@ -56,10 +56,10 @@ pub struct CommitError(
 
 impl AgentError {
     /// Whether a retry could clear this failure: a model call that
-    /// failed with a retryable provider error — a dead link, a
+    /// failed with a retryable provider error, a dead link, a
     /// transport timeout, a struggling server (see
-    /// [`ProviderError::is_retryable`]). Everything else — a rejected
-    /// key, an exhausted budget, a commit hook that would fail again —
+    /// [`ProviderError::is_retryable`]). Everything else, a rejected
+    /// key, an exhausted budget, a commit hook that would fail again,
     /// repeats identically, and a caller that retries only burns the
     /// attempt. This is the question a background runner asks when a
     /// step dies: does the failure name the infrastructure, which may
@@ -114,20 +114,20 @@ impl ToolProgress for CallProgress<'_, '_> {
 /// so a session that dies mid-turn is always resumable at the last one.
 /// Three fires per tool step, two per plain step:
 ///
-/// 1. at the step's start, before the request — the caller's new input is
+/// 1. at the step's start, before the request, the caller's new input is
 ///    durable before tokens are spent on it;
 /// 2. on a `ToolUse` stop, after the assistant message is appended and
-///    before the first call resolves — commit-before-execute. Persisting
+///    before the first call resolves, commit-before-execute. Persisting
 ///    here is what makes a crash inside a tool call resumable without
 ///    losing the fact that the call was decided: the durable history ends
 ///    with the committed intent, and the resume path
 ///    ([`crate::ToolResolver::replay_safety`]) decides between re-running
 ///    a safe call and reporting an unsafe one interrupted;
 /// 3. at the step's end, after the results (or after the assistant message
-///    when no tools follow) — the stream's outcome is durable before the
+///    when no tools follow), the stream's outcome is durable before the
 ///    driver hears of the step's completion.
 ///
-/// An `Err` fails the step at the boundary it fired on — the engine never
+/// An `Err` fails the step at the boundary it fired on, the engine never
 /// spends tokens on, or starts a side effect for, a session it could not
 /// commit.
 pub type CommitHook = Box<dyn Fn(&Session) -> Result<(), CommitError> + Send + Sync>;
@@ -178,9 +178,9 @@ impl Agent {
         let iteration = self.steps;
         self.steps += 1;
 
-        // An interrupted predecessor — a cancelled turn dropped
+        // An interrupted predecessor, a cancelled turn dropped
         // mid-await, a failed commit between the call's durable intent
-        // and its result — leaves dangling calls in the history, and
+        // and its result, leaves dangling calls in the history, and
         // the next request would be invalid carrying them. The repair
         // rides this step's first commit like any result would.
         close_orphaned_calls(&mut session.history);
@@ -191,8 +191,8 @@ impl Agent {
         };
         events.emit(Event::StepStart { iteration });
 
-        // Per-stream durability: the session as it stands — the caller's
-        // new input included — is committed before the request spends
+        // Per-stream durability: the session as it stands, the caller's
+        // new input included, is committed before the request spends
         // tokens on it. A death mid-stream leaves a file the next start
         // resumes from, instead of a turn that never happened.
         if let Some(commit) = &self.commit {
@@ -239,7 +239,7 @@ impl Agent {
                     });
                 }
                 // The call's live output rides the sink as ephemeral
-                // deltas, the call's id stamped on by the engine — the
+                // deltas, the call's id stamped on by the engine, the
                 // resolver knows only its own progress lines; its status
                 // rides the same stamp. The stamp's borrow ends with the
                 // call, before the result event.
@@ -270,7 +270,7 @@ impl Agent {
             }
         }
 
-        // The stream's outcome — results included, when tools ran — is
+        // The stream's outcome, results included, when tools ran, is
         // durable before the step is announced complete. A plain step
         // lands here too, so a final answer that never touches a tool is
         // still checkpointed.
@@ -380,7 +380,7 @@ impl AgentBuilder {
 /// Closes tool calls left dangling by an interrupted turn: an
 /// assistant message carrying tool calls must be answered by a result
 /// for every call before the next request is valid. A cancel (the
-/// turn future dropped mid-await — no code of the turn's runs on that
+/// turn future dropped mid-await, no code of the turn's runs on that
 /// path), a failed commit between the call's durable intent and its
 /// result, or a crash leaves exactly that shape. The repair appends
 /// one synthetic failure per unanswered call, at the tail, where the
@@ -422,7 +422,7 @@ pub fn close_orphaned_calls(history: &mut Vec<Message>) -> Vec<String> {
 }
 
 /// The provided coding-agent driver: push the user input, then loop steps
-/// until the model stops requesting tools. Not the primitive — the RSD
+/// until the model stops requesting tools. Not the primitive, the RSD
 /// driver (crate 2) has the same shape with different scaffolding.
 pub async fn run_turn(
     agent: &mut Agent,

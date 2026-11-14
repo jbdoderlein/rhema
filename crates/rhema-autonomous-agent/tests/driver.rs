@@ -1,5 +1,5 @@
 //! Offline integration tests: the [`Driver`] end to end over a
-//! memory-store dispatcher with a hand-driven clock — burst coalescing,
+//! memory-store dispatcher with a hand-driven clock, burst coalescing,
 //! the live inbox and lease renewal, session continuity, outcome
 //! bookkeeping, the capacity/race/panic edges. Zero network, zero real
 //! time.
@@ -17,7 +17,7 @@ use rhema_rsd::{DispatchError, DispatcherConfig, IngestResult, KeyState, Outcome
 use tokio::sync::{Notify, mpsc};
 
 /// A handler the test paces step by step: it waits at `start` before its
-/// first poll and at `resume` before its last act — a final poll when
+/// first poll and at `resume` before its last act, a final poll when
 /// `poll_after_resume`, else straight to `outcome`. Every drain's size is
 /// reported on the channel.
 struct GatedHandler {
@@ -63,7 +63,7 @@ fn gated(
     (handler.start.clone(), handler.resume.clone(), rx, handler)
 }
 
-/// A handler that drains once — its trigger, normally — and reports the
+/// A handler that drains once, its trigger, normally, and reports the
 /// batch size, for tests with no mid-run coordination.
 struct SimpleHandler {
     report: mpsc::UnboundedSender<usize>,
@@ -224,7 +224,7 @@ async fn an_event_ingested_mid_run_reaches_the_next_poll_which_renewed_the_lease
     assert_eq!(rx.recv().await, Some(1));
 
     // t = 2_700: past the unrenewed deadline (2_100), before the renewed
-    // one (2_800). The event lands live — no second dispatch — only
+    // one (2_800). The event lands live, no second dispatch, only
     // because poll_inbox renewed the lease.
     clock.advance(900);
     assert_eq!(
@@ -634,7 +634,7 @@ async fn concurrent_runs_serve_every_key_once_under_the_cap() {
 
 /// Two drivers over one store, each owning half the key space: an event
 /// for the other's key is not driven here, is not consumed, and is
-/// driven — once — by the driver that owns it. This is the claw's
+/// driven, once, by the driver that owns it. This is the claw's
 /// forge/resident split, where an unfiltered pass would run, fail, and
 /// consume the other side's event.
 #[tokio::test]

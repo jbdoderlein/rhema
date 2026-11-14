@@ -1,5 +1,5 @@
 //! The built-in tool against a real tempdir workspace: execution, exit
-//! codes, output caps, approval gating, and cancellation. No mock needed —
+//! codes, output caps, approval gating, and cancellation. No mock needed,
 //! the resolver runs directly.
 
 use std::path::Path;
@@ -162,7 +162,7 @@ async fn large_output_is_truncated_with_a_notice() {
     assert!(
         result
             .content
-            .contains("[output truncated — 61538 bytes elided]"),
+            .contains("[output truncated, 61538 bytes elided]"),
         "{}",
         result.content
     );

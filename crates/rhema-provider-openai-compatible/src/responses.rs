@@ -5,8 +5,8 @@
 //! Why a second wire exists here: chat-completions tool messages carry
 //! text only, so a tool result's images need a follow-up user turn to
 //! arrive. The Responses API takes content parts in a
-//! `function_call_output` itself — an `input_image` part rides the
-//! result it came from, with no reroute — which is the honest wire home
+//! `function_call_output` itself, an `input_image` part rides the
+//! result it came from, with no reroute, which is the honest wire home
 //! for `see`'s staged images on the servers that support it.
 //!
 //! The API is stateless where rhema points it (DeepSeek publishes
@@ -19,7 +19,7 @@
 //!
 //! - `ModelRequest.system` and `Role::System` messages fold into
 //!   `instructions`, which the API inserts as the first system message.
-//! - A text-only turn keeps a bare string content — strict servers
+//! - A text-only turn keeps a bare string content, strict servers
 //!   predate the parts shape; a turn with images spells a parts array
 //!   of `input_text`/`input_image` items, the data-URI form a pasted
 //!   image already rides.
@@ -29,12 +29,12 @@
 //!   array), then the text message, then one `function_call` item per
 //!   call.
 //! - A tool result replays as a `function_call_output`: bare string
-//!   output for text-only results, a parts array — text first, then
-//!   each image — when the result carries images.
+//!   output for text-only results, a parts array, text first, then
+//!   each image, when the result carries images.
 //!
 //! The stream is a sequence of typed server-sent events, each
 //! carrying its `type` in the JSON payload, ending with
-//! `response.completed`/`response.incomplete`/`response.failed` —
+//! `response.completed`/`response.incomplete`/`response.failed`,
 //! there is no `[DONE]` sentinel (one arriving from a proxy is
 //! tolerated). [`ResponsesAssembler`] folds the events into the same
 //! streaming contract as the chat [`crate::wire::ChunkAssembler`]:
@@ -109,7 +109,7 @@ pub enum WireInputItem {
 /// One conversation turn: a role and its content.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct WireMessageItem {
-    /// `"user"` or `"assistant"` — the roles rhema's history holds.
+    /// `"user"` or `"assistant"`, the roles rhema's history holds.
     pub role: String,
     /// Bare text for a text-only turn, parts for a turn with images.
     pub content: WireItemContent,
@@ -135,7 +135,7 @@ pub enum WireContentPart {
         /// The text.
         text: String,
     },
-    /// An image as a `data:` URI — the inline form, since rhema carries
+    /// An image as a `data:` URI, the inline form, since rhema carries
     /// bytes, not URLs.
     InputImage {
         /// The whole `data:<media type>;base64,<bytes>` URI.
@@ -144,7 +144,7 @@ pub enum WireContentPart {
 }
 
 /// One function tool offered this step. The Responses-API spelling is
-/// flat — the name sits beside the `type`, not under a `function` key.
+/// flat, the name sits beside the `type`, not under a `function` key.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct WireResponsesTool {
     /// Always `"function"`.
@@ -168,7 +168,7 @@ pub struct WireReasoning {
 /// One call the assistant asked for, replayed.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct WireFunctionCallItem {
-    /// The call's correlation id — the id the paired output carries.
+    /// The call's correlation id, the id the paired output carries.
     pub call_id: String,
     /// The tool's name.
     pub name: String,
@@ -181,13 +181,13 @@ pub struct WireFunctionCallItem {
 pub struct WireFunctionCallOutputItem {
     /// The answered call's correlation id.
     pub call_id: String,
-    /// Bare text for a text-only result; a parts array — the text, then
-    /// each staged image — when the result carries images.
+    /// Bare text for a text-only result; a parts array, the text, then
+    /// each staged image, when the result carries images.
     pub output: WireItemContent,
 }
 
 /// One reasoning item replayed into the context. The chain of thought
-/// rides the canonical `summary` field — an array of summary parts —
+/// rides the canonical `summary` field, an array of summary parts,
 /// which strict OpenAI-compatible normalizers validate: OpenCode's
 /// gateway answers HTTP 400, `input[N].summary: expected an array`,
 /// when the field is absent.
@@ -307,8 +307,8 @@ fn push_message_item(input: &mut Vec<WireInputItem>, message: &Message) {
 }
 
 /// Pushes one `function_call_output` item per result block: bare string
-/// output for a text-only result, a parts array — the result text
-/// first, then each staged image as an `input_image` data URI — when
+/// output for a text-only result, a parts array, the result text
+/// first, then each staged image as an `input_image` data URI, when
 /// the result carries images.
 fn push_result_items(input: &mut Vec<WireInputItem>, message: &Message) {
     for content in &message.content {
@@ -660,7 +660,7 @@ impl ResponsesAssembler {
 
     /// Folds a call's `added` event: the announcement of the call, with
     /// argument pieces following as deltas. A call whose name has not
-    /// arrived yet is remembered but not started — the `done` item
+    /// arrived yet is remembered but not started, the `done` item
     /// starts it.
     fn item_added(&mut self, item: &WireOutputItem, sink: &mut dyn EventSink) {
         if item.kind.as_deref() != Some("function_call") {
@@ -698,8 +698,8 @@ impl ResponsesAssembler {
     }
 
     /// Folds a call's `done` event: the complete item. A call still
-    /// unstarted starts here — some servers spell the whole call only
-    /// at `done` — and the item's complete arguments replace the
+    /// unstarted starts here, some servers spell the whole call only
+    /// at `done`, and the item's complete arguments replace the
     /// accumulated pieces when present.
     fn item_done(&mut self, item: &WireOutputItem, sink: &mut dyn EventSink) {
         if item.kind.as_deref() != Some("function_call") {
@@ -811,7 +811,7 @@ impl ResponsesAssembler {
 }
 
 /// Maps the terminal event onto rhema-core's stop reason; any tool
-/// call in the assembled message wins as [`StopReason::ToolUse`] — the
+/// call in the assembled message wins as [`StopReason::ToolUse`], the
 /// same rule as the sibling adapters.
 fn stop_reason(finish: Option<&Finish>, has_calls: bool) -> StopReason {
     if has_calls {
@@ -828,7 +828,7 @@ fn stop_reason(finish: Option<&Finish>, has_calls: bool) -> StopReason {
     }
 }
 
-/// Whether two optional ids name the same thing — both present, both
+/// Whether two optional ids name the same thing, both present, both
 /// non-empty, equal.
 fn same_nonempty(left: Option<&str>, right: Option<&str>) -> bool {
     match (left, right) {
@@ -961,7 +961,7 @@ mod tests {
             })
         );
         // A result with images spells a parts array: text first, then
-        // the image — inside the function_call_output itself, no
+        // the image, inside the function_call_output itself, no
         // follow-up turn.
         assert_eq!(
             input[2],

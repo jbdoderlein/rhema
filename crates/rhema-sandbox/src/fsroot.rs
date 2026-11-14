@@ -2,11 +2,11 @@
 //!
 //! [`FsRoot`] is the fs-sharing family's shared piece (spec §4): the
 //! sandbox's POSIX tree maps onto one host directory, and every file
-//! route — and every exec working directory — goes through
+//! route, and every exec working directory, goes through
 //! [`FsRoot::map`]. The paths are model-influenced; the guard is the
 //! point. It refuses `..` in both directions: a sandbox path that
 //! climbs out of the root textually, and a host path that resolves
-//! outside the root — a symlink planted in the workspace is refused
+//! outside the root, a symlink planted in the workspace is refused
 //! exactly like a `..`.
 #![forbid(unsafe_code)]
 
@@ -39,7 +39,7 @@ impl FsRoot {
 
     /// Maps a sandbox-absolute POSIX path (`/workspace/x`) onto the
     /// host root (`<root>/workspace/x`). The empty string is the root
-    /// itself — the shim's absent `cwd` — and nothing else may be
+    /// itself, the shim's absent `cwd`, and nothing else may be
     /// relative.
     pub fn map(&self, sandbox_path: &str) -> Result<PathBuf, SandboxError> {
         if sandbox_path.is_empty() {
@@ -70,7 +70,7 @@ impl FsRoot {
     /// The host direction: walks the vetted names component by
     /// component, so every link that exists along the way is resolved
     /// and re-checked against the root. Only something that exists can
-    /// redirect the walk — a link is resolved (a dangling one fails),
+    /// redirect the walk, a link is resolved (a dangling one fails),
     /// a directory the walk continues through, anything else is a
     /// plain leaf name for the caller's fs call to judge.
     fn resolve_inside(&self, names: &[&str]) -> Result<PathBuf, SandboxError> {
@@ -98,7 +98,7 @@ impl FsRoot {
 mod tests {
     use super::*;
 
-    /// The canonical form of a tempdir's path — the form [`FsRoot`]
+    /// The canonical form of a tempdir's path, the form [`FsRoot`]
     /// stores, and the form the mapping's results compare against (a
     /// tempdir may sit behind a link, `/tmp` on macOS among them).
     fn canonical(dir: &std::path::Path) -> PathBuf {

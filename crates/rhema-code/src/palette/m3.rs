@@ -2,7 +2,7 @@
 //! seed color at startup. The seed's hue drives five tonal palettes at
 //! the fixed tonal-spot chromas (primary 36, tertiary hue+60 at 24,
 //! neutral 4, neutral-variant 8, error 25/84); tones map onto the
-//! Jadeite token slots — background/surface-container tones for the
+//! Jadeite token slots, background/surface-container tones for the
 //! layers, primary for the accent, the standard error palette, and
 //! fixed-hue green/amber palettes for ok/warn the way M3 fixes error.
 //!

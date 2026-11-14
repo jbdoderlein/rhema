@@ -1,8 +1,8 @@
 //! The [`AnthropicProvider`]: the Anthropic Messages API over the
 //! [`Transport`] seam.
 //!
-//! Auth is by API key in the `x-api-key` header — never a query parameter,
-//! so the key never lands in URLs or access logs — with the pinned
+//! Auth is by API key in the `x-api-key` header, never a query parameter,
+//! so the key never lands in URLs or access logs, with the pinned
 //! `anthropic-version` header ([`ANTHROPIC_VERSION`]). Anthropic-compatible
 //! endpoints that authenticate by bearer token instead (Z.ai's GLM Coding
 //! Plan route, [`ZAI_BASE_URL`]) switch the header scheme with
@@ -11,7 +11,7 @@
 //!
 //! The HTTP ride is injectable: the default constructor speaks reqwest
 //! (feature `native`), and [`AnthropicProvider::new_with_transport`]
-//! accepts any [`Transport`] — the wasm frontends bring one over host
+//! accepts any [`Transport`], the wasm frontends bring one over host
 //! fetch, whose `!Send` JS stream is bridged inside the transport so the
 //! seam stays `Send`. Transport failures map onto [`ProviderError`]:
 //! timeouts to [`ProviderError::Timeout`], everything else to
@@ -22,7 +22,7 @@
 //! [`ProviderError::Api`] without one.
 //!
 //! Timeouts are layered where the transport allows: the native client
-//! bounds connection setup (10s) and each stream read (90s — a stall
+//! bounds connection setup (10s) and each stream read (90s, a stall
 //! guard, not a duration cap, because a long generation is legitimate),
 //! and non-streaming calls (the models list, the quota probe) carry a
 //! 20s overall budget on their request. Streaming calls get no total
@@ -50,21 +50,21 @@ pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
 /// The API version pin every request carries.
 pub const ANTHROPIC_VERSION: &str = "2023-06-01";
 
-/// The Z.ai GLM Coding Plan's Anthropic-compatible base — the
+/// The Z.ai GLM Coding Plan's Anthropic-compatible base, the
 /// `with_base_url` target for that backend, which also switches the
 /// header scheme with `with_bearer_auth` (Z.ai documents token auth, not
 /// `x-api-key`).
 pub const ZAI_BASE_URL: &str = "https://api.z.ai/api/anthropic";
 
 /// The `User-Agent` every request carries: honest client identification,
-/// so the server side sees rhema as rhema — never another tool's mark.
+/// so the server side sees rhema as rhema, never another tool's mark.
 pub const USER_AGENT: &str = concat!("rhema/", env!("CARGO_PKG_VERSION"));
 
 /// The largest page size the models endpoint honors.
 const MODELS_PAGE_LIMIT: u32 = 1000;
 
 /// The overall budget of the bounded, listing-style calls: the models
-/// list and the quota probe. Not a stream's budget — a generation runs
+/// list and the quota probe. Not a stream's budget, a generation runs
 /// unbounded.
 const LIST_TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -92,7 +92,7 @@ impl std::fmt::Debug for AnthropicProvider {
 
 impl AnthropicProvider {
     /// A provider speaking for Z.ai's GLM Coding Plan: the key against
-    /// [`ZAI_BASE_URL`], bearer auth — the scheme that route documents.
+    /// [`ZAI_BASE_URL`], bearer auth, the scheme that route documents.
     /// A stored route override composes: `.with_base_url` replaces the
     /// base and keeps the scheme.
     #[cfg(feature = "native")]
@@ -109,7 +109,7 @@ impl AnthropicProvider {
         Self::new_with_transport(api_key, Arc::new(crate::transport::ReqwestTransport::new()))
     }
 
-    /// A provider over a caller-supplied transport — the seam the wasm
+    /// A provider over a caller-supplied transport, the seam the wasm
     /// frontends come in through. Any [`Transport`] fits; the provider
     /// never sees what the bytes ride on.
     pub fn new_with_transport(api_key: impl Into<String>, transport: Arc<dyn Transport>) -> Self {
@@ -121,7 +121,7 @@ impl AnthropicProvider {
         }
     }
 
-    /// Overrides the base URL (trailing slashes trimmed) — for the
+    /// Overrides the base URL (trailing slashes trimmed), for the
     /// Anthropic-compatible endpoints and for tests against a mock
     /// server.
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
@@ -130,7 +130,7 @@ impl AnthropicProvider {
     }
 
     /// Authenticates with `Authorization: Bearer <key>` instead of the
-    /// default `x-api-key` — the scheme the Anthropic-compatible
+    /// default `x-api-key`, the scheme the Anthropic-compatible
     /// endpoints document (Z.ai's GLM Coding Plan route,
     /// [`ZAI_BASE_URL`]). Everything else about the dialect is unchanged.
     pub fn with_bearer_auth(mut self) -> Self {
@@ -139,8 +139,8 @@ impl AnthropicProvider {
     }
 
     /// The subscription allowance the base URL's platform reports: the
-    /// GLM Coding Plan's metered windows — the 5-hour and weekly shares
-    /// its badge shows — on the Z.ai hosts, `Ok(None)` anywhere else.
+    /// GLM Coding Plan's metered windows, the 5-hour and weekly shares
+    /// its badge shows, on the Z.ai hosts, `Ok(None)` anywhere else.
     /// Anthropic itself has no such endpoint, and a proxy in front of the
     /// route serves no Z.ai monitor API either, so both degrade to no
     /// badge instead of a per-turn error.
@@ -229,7 +229,7 @@ impl AnthropicProvider {
     }
 }
 
-/// The api.z.ai host — the one endpoint this adapter decorates, because
+/// The api.z.ai host, the one endpoint this adapter decorates, because
 /// its `/models` serves ids alone: the Anthropic schema has no room for
 /// catalog facts.
 const ZAI_HOST: &str = "api.z.ai";
@@ -239,7 +239,7 @@ const ZAI_HOST: &str = "api.z.ai";
 const ZAI_CN_HOST: &str = "open.bigmodel.cn";
 
 /// One row of Z.ai's published GLM catalog: context window, output
-/// ceiling, and the standard per-MTok rates — cached input, uncached
+/// ceiling, and the standard per-MTok rates, cached input, uncached
 /// input, output. The numbers move with Z.ai's price list
 /// (docs.z.ai/guides/overview/pricing and the models' pages, fetched
 /// 2026-10-14); the endpoint serves none of them. List prices, even on
@@ -252,8 +252,8 @@ struct ZaiFacts {
     input_per_mtok: f64,
     output_per_mtok: f64,
     /// Whether the model accepts image input. The GLM-5.3 family's
-    /// multimodal input is a published product surface — Z.ai's model
-    /// documentation and pricing list the vision-capable chat rows — a
+    /// multimodal input is a published product surface, Z.ai's model
+    /// documentation and pricing list the vision-capable chat rows, a
     /// verdict neither the Anthropic-compatible route nor the monitor
     /// endpoint carries a field for.
     vision: bool,
@@ -294,7 +294,7 @@ const ZAI_CATALOG: &[ZaiFacts] = &[
 
 /// Fills Z.ai's published facts into a listing: ids naming a catalog row
 /// gain their context window and pricing, everything else passes through
-/// untouched — unknown models simply show no facts. The match is
+/// untouched, unknown models simply show no facts. The match is
 /// case-insensitive: the endpoint spells the ids lowercase, Z.ai's own
 /// docs uppercase.
 fn decorate_zai(models: &mut [ModelCard]) {
@@ -315,7 +315,7 @@ fn decorate_zai(models: &mut [ModelCard]) {
     }
 }
 
-/// The host of a `scheme://host[:port]/...` URL, port stripped — the one
+/// The host of a `scheme://host[:port]/...` URL, port stripped, the one
 /// piece of URL parsing this crate needs, done by hand so the wasm build
 /// carries no URL crate.
 fn url_host(url: &str) -> Option<&str> {
@@ -358,7 +358,7 @@ fn is_success(status: u16) -> bool {
 }
 
 /// Reads the whole body. For bounded payloads only: error bodies,
-/// listing pages, quota envelopes — never a generation stream.
+/// listing pages, quota envelopes, never a generation stream.
 async fn read_all(response: &mut HttpResponse) -> Result<Vec<u8>, ProviderError> {
     let mut bytes = Vec::new();
     while let Some(item) = response.body.next().await {
@@ -399,7 +399,7 @@ fn api_error(status: u16, raw: &str, headers: &[(String, String)]) -> ProviderEr
 }
 
 /// Maps a transport failure onto [`ProviderError`]: a timeout is its own
-/// variant, and every other failure is a network error — its own variant,
+/// variant, and every other failure is a network error, its own variant,
 /// and the retryable one.
 fn transport_error(err: TransportError) -> ProviderError {
     match err {
@@ -573,7 +573,7 @@ mod tests {
         );
         // Every GLM-5.3-family row is multimodal input.
         assert_eq!(models[0].supports_vision, Some(true));
-        // The endpoint spells the ids lowercase, the docs uppercase —
+        // The endpoint spells the ids lowercase, the docs uppercase,
         // both hit the catalog row.
         assert_eq!(models[1].input_token_limit, Some(1_000_000));
         assert_eq!(
@@ -597,7 +597,7 @@ mod tests {
             zai_quota_url("https://open.bigmodel.cn/api/anthropic/").as_deref(),
             Some("https://open.bigmodel.cn/api/monitor/usage/quota/limit")
         );
-        // Another host's route — a plain Anthropic key or a proxy — has
+        // Another host's route, a plain Anthropic key or a proxy, has
         // no monitor endpoint to ask, not a wrong one to leak the key to.
         assert_eq!(zai_quota_url("https://api.anthropic.com"), None);
         assert_eq!(zai_quota_url("http://127.0.0.1:8080/api/anthropic"), None);

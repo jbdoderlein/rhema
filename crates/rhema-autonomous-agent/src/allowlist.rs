@@ -1,14 +1,14 @@
 //! Tool permission scoping (spec §8): what a handler run may call.
 //!
 //! The allowlist is fixed before the handler's first reasoning step; the
-//! model never decides its own permissions mid-run. Policy — which event
-//! earns which allowlist — is per-deployment, resolved by the consumer;
+//! model never decides its own permissions mid-run. Policy, which event
+//! earns which allowlist, is per-deployment, resolved by the consumer;
 //! this type only carries the decision.
 
 use std::collections::BTreeSet;
 
 /// The tool-permission set one handler run is granted. `None` means
-/// permissive — every registered tool — which is the spec's v1 default.
+/// permissive, every registered tool, which is the spec's v1 default.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Allowlist {
     allowed: Option<BTreeSet<String>>,

@@ -3,8 +3,8 @@
 //! `rhema-mcp-cli`; `mcp_routing.rs` here pins the `rhema` binary's
 //! routing with no bridge behind it. This test is the middle both
 //! leave open: the wire provisions an agent shell whose
-//! `RHEMA_MCP_BIN` is the running frontend itself — the production
-//! shape — and the scripted model walks `mcp servers`, the generated
+//! `RHEMA_MCP_BIN` is the running frontend itself, the production
+//! shape, and the scripted model walks `mcp servers`, the generated
 //! command's `--help`, one tool's `--help`, and the call through it.
 //!
 //! The binary re-executes itself with `RHEMA_MCP_WIRE_FAKE` set to
@@ -104,7 +104,7 @@ fn handshake_result(version: &str) -> Value {
 }
 
 /// Handshake (one marker line per spawn), a one-tool catalog, canned
-/// calls that echo the `path` argument back — the echo proves the
+/// calls that echo the `path` argument back, the echo proves the
 /// arguments crossed the rhema binary, bridge, manager, and server
 /// intact.
 fn validate_test_scenario(marker: &str) {
@@ -280,7 +280,7 @@ fn marker_lines(marker: &Path) -> usize {
 /// The production shape, whole: the wire provisions an agent shell
 /// around the running frontend binary, the scripted model walks the
 /// discovery story through it, and every answer lands in history as a
-/// tool result. A routing break lands here too — the generated
+/// tool result. A routing break lands here too, the generated
 /// functions exec the rhema binary, whose catch-all hands `__server`
 /// to the MCP CLI.
 async fn the_real_binary_walks_the_discovery_story() -> Result<(), String> {
@@ -325,8 +325,8 @@ async fn the_real_binary_walks_the_discovery_story() -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
     // The stubs' `$RHEMA_MCP_BIN`: provision moves the exec target
-    // into its per-agent dir — a hardlink of the rhema binary on one
-    // filesystem, a copy across a filesystem boundary — so the value
+    // into its per-agent dir, a hardlink of the rhema binary on one
+    // filesystem, a copy across a filesystem boundary, so the value
     // is that path, not the source. Link identity pins it to the real
     // binary on one filesystem; the preserved file name covers the
     // copy (the test binary and the standalone CLI bin are named
@@ -362,7 +362,7 @@ async fn the_real_binary_walks_the_discovery_story() -> Result<(), String> {
         &marker,
     ));
 
-    // The agent builds its own ShellTools over the wiring's env map —
+    // The agent builds its own ShellTools over the wiring's env map,
     // the production shape, `BASH_ENV` and the bridge token included.
     let mut config = CodingAgentConfig::new("mock-model", workspace.path());
     config.skills = Some(Vec::new());
@@ -390,7 +390,7 @@ async fn the_real_binary_walks_the_discovery_story() -> Result<(), String> {
 
     // The prompt face: the section lists the server with its command
     // name and description, teaches the discovery story, and the
-    // tools array grew by zero — `validate-test` is a bash command,
+    // tools array grew by zero, `validate-test` is a bash command,
     // never an advertised tool.
     let requests = provider.requests();
     if requests.len() != 5 {
@@ -460,7 +460,7 @@ async fn the_real_binary_walks_the_discovery_story() -> Result<(), String> {
         }
     }
     // The server's help lists its tools; the tool's help lists its
-    // flags — the two levels the prompt teaches.
+    // flags, the two levels the prompt teaches.
     let server_help = result_for("c2")?;
     for needle in ["validate-test", "Validate a test file"] {
         if !server_help.content.contains(needle) {

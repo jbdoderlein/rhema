@@ -8,7 +8,7 @@ use crate::transcript;
 /// One renderable unit of the transcript, the granularity the wrap
 /// cache works at: one markdown response, one prompt, a tight run of
 /// tool calls, a notice, or a system markdown block. Partitioning is
-/// prefix-stable — appending lines extends the last block or adds one,
+/// prefix-stable, appending lines extends the last block or adds one,
 /// never rejoins an earlier one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Kind {
@@ -57,8 +57,8 @@ pub(crate) struct BubbleGeom {
 }
 
 /// Partitions the transcript lines into blocks. A whitespace-only
-/// assistant line with no response behind it is noise — models emit
-/// empty text parts between tool calls — and belongs to no block.
+/// assistant line with no response behind it is noise, models emit
+/// empty text parts between tool calls, and belongs to no block.
 pub(crate) fn partition(lines: &[transcript::Line]) -> Vec<TranscriptBlock> {
     let mut blocks = Vec::new();
     let mut index = 0;
@@ -171,7 +171,7 @@ pub(crate) fn render_transcript(
 
     // The canvas of rows: the banner, then the blocks with their
     // separators. Blocks read apart: a prompt, a response, and a tool
-    // run each end below a blank row — tool lines sit tight against
+    // run each end below a blank row, tool lines sit tight against
     // each other, notices and markdown take no trailing air.
     let banner = [
         Line::from(vec![
@@ -239,9 +239,9 @@ pub(crate) fn render_transcript(
     app.chat.scroll = app.chat.scroll.min(max_top);
     let top = max_top - app.chat.scroll;
     // The prompt card: the screen cells its sprites cover, restated
-    // for the runner's graphics pass. The card is a nine-slice — four
+    // for the runner's graphics pass. The card is a nine-slice, four
     // corner arcs at one cell each, the four edges and the interior as
-    // half-cell-padded strips the placements stretch — sliced against
+    // half-cell-padded strips the placements stretch, sliced against
     // the viewport, so a
     // bubble scrolled half out of the well records only the pieces
     // that fit and no sprite crosses under the input. The popups clip
@@ -253,7 +253,7 @@ pub(crate) fn render_transcript(
             let foot_row = first_row + geometry.rows.saturating_sub(1);
             // The card slices to the rows the viewport holds: a piece
             // anchors on whole cells, and every cell it claims must be
-            // a well cell — the sprites are not the Paragraph, they
+            // a well cell, the sprites are not the Paragraph, they
             // clip nothing on their own.
             let first = (*first_row).max(top);
             let last = foot_row.min(top + visible.saturating_sub(1));
@@ -305,7 +305,7 @@ pub(crate) fn render_transcript(
             }
             // The interior band: the fill and the two sides it runs
             // between. `foot_row` tops the frame, so the band is empty
-            // on a single-row frame — saturating keeps it so.
+            // on a single-row frame, saturating keeps it so.
             let body_top = (*first_row + 1).max(first);
             let body_foot = foot_row.saturating_sub(1).min(last);
             if body_top <= body_foot {
@@ -400,7 +400,7 @@ pub(crate) fn render_transcript(
     }
 }
 
-/// Renders one block's wrapped content rows at `width` — the separators
+/// Renders one block's wrapped content rows at `width`, the separators
 /// between blocks live at assembly, so a block's rows are cacheable
 /// regardless of what comes after it. A graphical prompt block also
 /// reports its cards' geometry, in the same row coordinates the rows
@@ -558,11 +558,11 @@ fn user_body(text: &str, images: &[Image], theme: &Theme) -> Vec<Vec<Span<'stati
 
 /// A submitted prompt as a chat bubble: right-aligned, at most three
 /// quarters of the column wide, the palette's drawn rounded frame. The
-/// frame carries no background — every cell stays on the page's
+/// frame carries no background, every cell stays on the page's
 /// ground, so nothing bleeds around the bubble and `background:
 /// native` keeps the terminal's own ground inside it. Where the
-/// graphics protocol is available the runner lays the prompt card —
-/// the tint, rounded by the same four anti-aliased arcs — underneath
+/// graphics protocol is available the runner lays the prompt card,
+/// the tint, rounded by the same four anti-aliased arcs, underneath
 /// the whole frame, under the text layer, so the drawn bubble gains
 /// its background back without a cell painting over the page. An
 /// embedded paste renders as its chip (id and size, the body hidden).
@@ -579,8 +579,8 @@ pub(crate) fn render_user(
 
 /// A session notification as its own card: the same bubble frame, but
 /// hugging the left edge and painted with the neutral fill. The
-/// alignment and the fill carry the whole read — this is neither the
-/// reader's prompt nor the model's response — so the text itself
+/// alignment and the fill carry the whole read, this is neither the
+/// reader's prompt nor the model's response, so the text itself
 /// carries no marker and no status hue. One card per finish; a run of
 /// finishes stacks them tight.
 pub(crate) fn render_notification(
@@ -621,7 +621,7 @@ impl CardFill {
 
 /// Frames body rows as a bubble: the rounded cap and foot, one pad
 /// cell each side, hugging its longest row up to the quarter-share
-/// cap — at the right edge for a prompt, the left for a notification.
+/// cap, at the right edge for a prompt, the left for a notification.
 /// An empty body still draws a frame. Returns the rows and the card
 /// geometry the graphics pass paints behind them.
 fn bubble_card(
@@ -684,7 +684,7 @@ fn bubble_card(
 }
 
 /// The bubble's interior pad cells: the ink only. The background
-/// stays the page's — the protocol card (or nothing) sits behind it.
+/// stays the page's, the protocol card (or nothing) sits behind it.
 fn bubble_pad(theme: &Theme) -> Style {
     Style::default().fg(theme.text)
 }
@@ -750,7 +750,7 @@ pub(crate) fn render_line(
             }
             Line::from(spans)
         }
-        // Off the card path — selection copy reads the same rows —
+        // Off the card path, selection copy reads the same rows,
         // a notification is its plain text.
         transcript::Line::Notification(text) => Line::from(Span::raw(text.clone())),
         transcript::Line::Assistant(text) => Line::from(Span::raw(text.clone())),
@@ -762,7 +762,7 @@ pub(crate) fn render_line(
             ..
         } => {
             // A shell call reads as a transcript of what ran: `$ cmd`,
-            // with the exit code trailing in brackets — green for zero,
+            // with the exit code trailing in brackets, green for zero,
             // red for anything else.
             if name == "bash" {
                 let mut spans = vec![Span::raw("$ ").fg(theme.text3)];
@@ -835,7 +835,7 @@ pub(crate) fn tool_row(
     };
     // Cells, not chars: the row is drawn by terminal cells, so a wide
     // glyph in the command or the code shifts the alignment otherwise.
-    // The suffix is bare width — the cell it leaves for the gap is the
+    // The suffix is bare width, the cell it leaves for the gap is the
     // budget's +1, counted once.
     let suffix_width = suffix.as_ref().map_or(0, |(text, _)| text.width());
     let command = transcript::truncate_width(

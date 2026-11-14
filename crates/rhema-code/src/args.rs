@@ -48,7 +48,7 @@ pub enum ProviderChoice {
 
 impl ProviderChoice {
     /// Parses a stored config value; `None` for no value and unknown
-    /// spellings alike — the caller decides whether that means the
+    /// spellings alike, the caller decides whether that means the
     /// login flow or an error naming the stored value.
     pub fn from_stored(value: Option<&str>) -> Option<Self> {
         match value {
@@ -66,7 +66,7 @@ impl ProviderChoice {
         }
     }
 
-    /// The config value this choice persists as — the inverse of
+    /// The config value this choice persists as, the inverse of
     /// [`Self::from_stored`] for the canonical spellings.
     pub fn stored_name(self) -> &'static str {
         match self {
@@ -84,20 +84,20 @@ impl ProviderChoice {
     }
 }
 
-/// Where `bash` runs, by the stored config's sandbox kind names — the
+/// Where `bash` runs, by the stored config's sandbox kind names, the
 /// [`ProviderChoice`] pattern applied to machines. The choice is a
 /// stored-profile or `RHEMA_SANDBOX` decision, never a per-invocation
 /// flag; the TUI picker and the availability probing are the next
 /// phase of the sandbox design (`specs/rhema-sandbox.md` §5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum SandboxChoice {
-    /// This host's processes rooted at the workspace — today's path,
+    /// This host's processes rooted at the workspace, today's path,
     /// and the fallback for anything unset or unparseable.
     Local,
     /// A bind-mounted container, driven through the `docker` CLI.
     Docker,
-    /// An LXD instance — container or `--vm`, one driver and a launch
-    /// flag — driven through the `lxc` CLI.
+    /// An LXD instance, container or `--vm`, one driver and a launch
+    /// flag, driven through the `lxc` CLI.
     Lxd,
     /// A microVM per command through the `ecrou` CLI, the workspace
     /// shared in at its own path.
@@ -111,7 +111,7 @@ pub enum SandboxChoice {
 
 impl SandboxChoice {
     /// Parses a stored config value; `None` for no value and unknown
-    /// spellings alike — the caller decides whether that means the
+    /// spellings alike, the caller decides whether that means the
     /// zero-flag fast path or a startup error naming the stored value.
     pub fn from_stored(value: Option<&str>) -> Option<Self> {
         match value {
@@ -125,7 +125,7 @@ impl SandboxChoice {
         }
     }
 
-    /// The config value this choice persists as — the inverse of
+    /// The config value this choice persists as, the inverse of
     /// [`Self::from_stored`] for the canonical spellings.
     pub fn stored_name(self) -> &'static str {
         match self {
@@ -139,13 +139,13 @@ impl SandboxChoice {
     }
 }
 
-/// `rhema` — the rhema frontend: a full-screen terminal UI when attached
+/// `rhema`, the rhema frontend: a full-screen terminal UI when attached
 /// to a terminal, and one-shot or ACP serving through a subcommand.
 #[derive(Debug, Parser)]
 #[command(
     name = "rhema",
     // The baked label, not the bare crate version: `--version` answers
-    // the same question the banner does — which tree is this binary.
+    // the same question the banner does, which tree is this binary.
     version = crate::VERSION_LABEL,
     about = "Full-screen terminal UI for the rhema coding agent"
 )]
@@ -193,16 +193,16 @@ pub struct Args {
 /// The alternate frontends.
 #[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
 pub enum Command {
-    /// Run one prompt headless — no full-screen UI, plain text on
+    /// Run one prompt headless, no full-screen UI, plain text on
     /// stdout, tool events on stderr, exit 0 on success, 2 when the
-    /// model backend failed (a rate limit, a dead endpoint — a wrapper
+    /// model backend failed (a rate limit, a dead endpoint, a wrapper
     /// retries on its own schedule), 1 otherwise.
     Run(RunArgs),
     /// Serve the Agent Client Protocol over stdio: the coding agent as
     /// an editor-launched subprocess (Zed, Neovim, JetBrains, Emacs).
     Acp(AcpArgs),
     /// Edit, restore, or print the system prompt. No model, profile,
-    /// or credential involved — these shape what turns would send.
+    /// or credential involved, these shape what turns would send.
     System {
         /// What to do with the system prompt.
         #[command(subcommand)]
@@ -248,7 +248,7 @@ pub enum Command {
     /// The catch-all the init file's stubs land in: `rhema __server
     /// <name> …` execs this binary with `__server` as the first
     /// token, and any other unrecognized subcommand follows the same
-    /// road — the MCP CLI answers for the modes it knows and exits 2
+    /// road, the MCP CLI answers for the modes it knows and exits 2
     /// for the ones it does not, preserving the old clap shape's
     /// error exit.
     #[command(external_subcommand)]
@@ -322,7 +322,7 @@ pub struct RunArgs {
 }
 
 /// Flags of `rhema acp`. The workspace comes from the client's
-/// `session/new` (`cwd`), not a flag — one process serves every
+/// `session/new` (`cwd`), not a flag, one process serves every
 /// workspace the client opens.
 #[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
 pub struct AcpArgs {
@@ -368,7 +368,7 @@ impl From<ThinkingKind> for rhema_core::request::ThinkingEffort {
 }
 
 /// The path as the session sees it: canonicalized, falling back to the
-/// input when the filesystem says no — and on windows with the
+/// input when the filesystem says no, and on windows with the
 /// `\\?\` verbatim prefix canonicalize adds stripped, so the footer's
 /// home trim, the window title, and the model all read the spelling a
 /// human typed.
@@ -536,7 +536,7 @@ mod tests {
     #[test]
     fn no_provider_or_llama_flag_exists() {
         // The provider is a profile decision, the llama.cpp server a
-        // stored URL (or LLAMA_CPP_URL) — neither is a flag.
+        // stored URL (or LLAMA_CPP_URL), neither is a flag.
         assert!(try_parse(&["--provider", "anthropic"]).is_err());
         assert!(try_parse(&["--llama-url", "http://box:8080"]).is_err());
         // Same for the machine-owned look and feel: config.yaml owns it.

@@ -1,6 +1,6 @@
 //! The spec §8.5 worked example, end to end: an assignment dispatch, live
 //! comments landing in the running handler's inbox, a clean release to
-//! idle — and the variant where a comment slips in between the last poll
+//! idle, and the variant where a comment slips in between the last poll
 //! and release, forcing a re-acquire of the same session.
 
 mod common;

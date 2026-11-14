@@ -1,6 +1,6 @@
 //! The v1 ranker: keyword match + recency, under the validity rules.
 //!
-//! Crate-internal on purpose — [`crate::MemoryStore::search`] promises
+//! Crate-internal on purpose, [`crate::MemoryStore::search`] promises
 //! ranked-best-first and nothing about the method, so a semantic ranker
 //! replaces the scoring without touching a signature. What must survive
 //! that swap lives outside it, in [`select`]: the default visibility
@@ -32,7 +32,7 @@ pub struct MemoryQuery {
     pub tags: Vec<String>,
     /// Result cap, clamped to [`SEARCH_LIMIT`].
     pub limit: u32,
-    /// The instant to search *as of*, in millis — retrieval as a pure
+    /// The instant to search *as of*, in millis, retrieval as a pure
     /// function of (query, t), the debugging/replay primitive. `None`
     /// means now.
     pub as_of: Option<u64>,
@@ -132,7 +132,7 @@ impl MemoryRecord {
 
 /// Filters and ranks `records` for `query`: scope and tag filters first,
 /// then score (a tag hit outweighs a body hit), ties broken by
-/// `updated_at` descending and finally id — deterministic, and id order
+/// `updated_at` descending and finally id, deterministic, and id order
 /// is creation order. A dead record ranks below every active one: keyword
 /// hits on dead facts are a known trap, and `include_superseded` must not
 /// turn into a resurrection.
@@ -162,7 +162,7 @@ pub(crate) fn rank(records: Vec<MemoryRecord>, query: &MemoryQuery) -> Vec<Memor
 }
 
 /// The match score, or `None` when some term misses entirely. An empty
-/// term list matches everything at zero — "recent".
+/// term list matches everything at zero, "recent".
 fn score(record: &MemoryRecord, terms: &[String]) -> Option<u32> {
     if terms.is_empty() {
         return Some(0);
@@ -338,7 +338,7 @@ mod tests {
             day,
         );
         // At day-1 all three existed, had started, and were still active
-        // *at that instant* — the set is what as_of owes; the order among
+        // *at that instant*, the set is what as_of owes; the order among
         // them stays the ranker's business.
         assert_eq!(replayed.len(), 3);
         assert!(!ids(replayed).contains(&"future".to_owned()));

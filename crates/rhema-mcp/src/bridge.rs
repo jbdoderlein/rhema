@@ -13,12 +13,12 @@
 //! bridge there instead of failing the session.
 //!
 //! Routes follow spec §5's surface: `/servers` (no spawns), `/tools`
-//! (names and descriptions only — the disclosure boundary: schemas
+//! (names and descriptions only, the disclosure boundary: schemas
 //! never pass this route), `/catalog` (full schemas, the CLI's
 //! clap-building input), `/schema`, and `/call`. Bodies cap at 1 MiB.
 //!
 //! Cancellation is the interesting one: when a bridge client
-//! disconnects mid-call, axum drops the handler future — a drop guard
+//! disconnects mid-call, axum drops the handler future, a drop guard
 //! fires the request's [`Cancel`], the client drops its pending entry
 //! and sends `notifications/cancelled` unconditionally, and a late
 //! result is discarded by construction.
@@ -146,7 +146,7 @@ pub async fn serve(
     }
 }
 
-/// The bearer check, constant-time on mismatch — the token is cheap
+/// The bearer check, constant-time on mismatch, the token is cheap
 /// insurance, but it need not be a timing oracle either.
 async fn require_auth(
     State(state): State<BridgeState>,
@@ -233,7 +233,7 @@ async fn schema(
 /// The stream, not the handler, is the cancellation point. hyper's
 /// HTTP/1 dispatch does not abort an in-flight handler when the
 /// client hangs up (the request ran to completion the first time this
-/// was built, and the caller's kill left the server busy) — but it
+/// was built, and the caller's kill left the server busy), but it
 /// DOES drop a response body's future on the first failed write. So
 /// the keepalive exists to be written: the caller's death surfaces as
 /// a write error within one tick, the stream future (which owns the
@@ -264,7 +264,7 @@ async fn call(
 }
 
 /// The `/call` event stream: keepalives until the call task answers,
-/// then one terminal event. The guard lives here — dropped the moment
+/// then one terminal event. The guard lives here, dropped the moment
 /// hyper drops this future.
 async fn stream_state(
     cancel: Cancel,
@@ -357,7 +357,7 @@ struct CallBody {
     arguments: Option<serde_json::Value>,
 }
 
-/// Fires the token when the handler future dies — return, panic, or
+/// Fires the token when the handler future dies, return, panic, or
 /// axum dropping it on client disconnect.
 struct CancelOnDrop(Cancel);
 
@@ -383,7 +383,7 @@ fn error_response(server: &str, err: crate::manager::ManagerError) -> Response {
         .into_response()
 }
 
-/// Manager errors to (HTTP status, kind) — the status IS the CLI's
+/// Manager errors to (HTTP status, kind), the status IS the CLI's
 /// exit-code mapping (404 → 3 unknown server, 502 → 4 transport, 504
 /// → 6 timeout).
 fn error_status_kind(err: &crate::manager::ManagerError) -> (StatusCode, &'static str) {

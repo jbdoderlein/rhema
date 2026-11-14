@@ -1,7 +1,7 @@
 //! The `see` macro: how a command's output becomes an image the model
 //! sees.
 //!
-//! There is no native tool for this — images are shell data like any
+//! There is no native tool for this, images are shell data like any
 //! other, so the surface is a bash function the model pipes into:
 //!
 //! ```ignore
@@ -14,7 +14,7 @@
 //! - [`provision_with_bin`] writes the init file one non-interactive
 //!   bash sources from `BASH_ENV` (the same fact the MCP provision
 //!   rests on, `specs/rhema-mcp.md` §2): `see()` execs the rhema
-//!   binary in its `__vision` mode — [`cli_run`] — which sniffs the
+//!   binary in its `__vision` mode, [`cli_run`], which sniffs the
 //!   bytes, stages them, and says so on stdout. The wiring's env map
 //!   carries the init file's path, the binary's, and the staging
 //!   directory's; [`wire`] builds it once per process and a frontend
@@ -25,8 +25,8 @@
 //!   notes the rest in text. Bytes never ride stdout, so output caps
 //!   and truncation cannot eat them.
 //!
-//! A staged image a command never got to see — the model staged it, it
-//! belongs in the model's context — attaches even when the command
+//! A staged image a command never got to see, the model staged it, it
+//! belongs in the model's context, attaches even when the command
 //! failed or timed out. A session whose bash runs elsewhere (a remote
 //! sandbox, an executor behind a wire) wires nothing: its commands
 //! cannot write where [`attach`] reads, the same rule the MCP wire
@@ -50,7 +50,7 @@ pub const NAME: &str = "see";
 /// transport detail, like the MCP CLI's `__server`.
 pub const MODE: &str = "__vision";
 
-/// The env var non-interactive bash reads its init file from — the
+/// The env var non-interactive bash reads its init file from, the
 /// same var the MCP provision uses, so whichever init file the wiring
 /// names last, its baked predecessor line reaches the other.
 pub const VAR_BASH_ENV: &str = "BASH_ENV";
@@ -61,7 +61,7 @@ pub const VAR_BIN: &str = "RHEMA_VISION_BIN";
 pub const VAR_STAGING: &str = "RHEMA_VISION_STAGING";
 
 /// The largest image one staged file may carry: 5 MB, the API-side
-/// per-image ceiling of the Anthropic Messages API — the strictest
+/// per-image ceiling of the Anthropic Messages API, the strictest
 /// target. Larger images are refused at both ends of the pipe, so the
 /// model learns the limit from the error and not from a silent drop.
 pub const MAX_IMAGE_BYTES: usize = 5 * 1024 * 1024;
@@ -74,7 +74,7 @@ const MAX_IMAGES_PER_RESULT: usize = 8;
 
 /// The system-prompt section a wired frontend renders: the macro's
 /// whole documentation, as [`include_str!`] of the file beside this
-/// module — the same crate-root data file the system template ships
+/// module, the same crate-root data file the system template ships
 /// as. No trailing newline: the template interpolates the bytes
 /// verbatim.
 pub const PROMPT_SECTION: &str = include_str!("../SYSTEM_SEE.md");
@@ -99,7 +99,7 @@ pub enum StageError {
 
 /// One process's wiring: the env map a frontend layers over
 /// `CodingAgentConfig::shell_env`, the prompt section to render, and
-/// the provisioned directory held for the process's life — dropping it
+/// the provisioned directory held for the process's life, dropping it
 /// deletes the init file and any staged files under it, so the wiring
 /// must outlive every session it feeds.
 pub struct Wiring {
@@ -111,7 +111,7 @@ pub struct Wiring {
     pub shell_env: BTreeMap<String, String>,
     /// The prompt's `vision` section text, verbatim.
     pub section: &'static str,
-    /// The init file's path — what a later provisioner (the MCP wire)
+    /// The init file's path, what a later provisioner (the MCP wire)
     /// bakes into its own init as the literal predecessor, so both
     /// files load whichever one `BASH_ENV` names.
     pub init_path: PathBuf,
@@ -127,13 +127,13 @@ impl Drop for Wiring {
 static WIRED: OnceLock<Option<Arc<Wiring>>> = OnceLock::new();
 
 /// The process's wiring, built on first use and kept for the process's
-/// life. `bash_env` is the pre-existing `BASH_ENV`, if any — the init
+/// life. `bash_env` is the pre-existing `BASH_ENV`, if any, the init
 /// file sources it first and guarded, so a user's own `BASH_ENV` chain
 /// survives under the generated one. `None` only when provisioning
 /// failed (the answer is cached; a failed temp dir does not retry).
 ///
 /// The production seam: the binary exec'd is `current_exe()`. Tests
-/// drive [`provision_with_bin`] directly instead — the process-wide
+/// drive [`provision_with_bin`] directly instead, the process-wide
 /// cache makes [`wire`] unusable inside a shared test process.
 pub fn wire(bash_env: Option<OsString>) -> Option<&'static Arc<Wiring>> {
     WIRED
@@ -145,7 +145,7 @@ pub fn wire(bash_env: Option<OsString>) -> Option<&'static Arc<Wiring>> {
 }
 
 /// Provisions one process: the 0700 dir, the init file, the staging
-/// directory, the env map. `bin` is the binary the function execs —
+/// directory, the env map. `bin` is the binary the function execs,
 /// production passes `current_exe()`, tests pass whichever target
 /// speaks [`MODE`].
 ///
@@ -182,7 +182,7 @@ pub fn provision_with_bin(bash_env: Option<OsString>, bin: &Path) -> std::io::Re
     // file, never carried by an env var: the executor layers the map
     // onto every command, so a var reaches *every* generated init in a
     // chain and an outer one re-sources itself until bash dies by
-    // signal — the shape any process with BASH_ENV already set
+    // signal, the shape any process with BASH_ENV already set
     // produced. A literal path sources exactly once. Provision paths
     // carry no user input; the one quote that could break single
     // quoting is escaped anyway.
@@ -212,7 +212,7 @@ pub fn provision_with_bin(bash_env: Option<OsString>, bin: &Path) -> std::io::Re
 /// when no path is given. The exit code is the process's: 0 staged, 1
 /// empty stdin, 2 refused bytes (unrecognized, oversized, missing
 /// path), 3 an I/O failure, 4 no staging directory in the environment
-/// — a shell the wiring never reached.
+///, a shell the wiring never reached.
 pub fn cli_run(argv: &[OsString]) -> i32 {
     let Some(staging) = std::env::var_os(VAR_STAGING) else {
         eprintln!("{NAME}: not wired in this shell (no {VAR_STAGING})");
@@ -270,7 +270,7 @@ fn exit_code(err: &StageError) -> i32 {
 }
 
 /// Stages one image: sniff, size check, write under a name only this
-/// process would reuse. The extension stays `.img` — the type lives in
+/// process would reuse. The extension stays `.img`, the type lives in
 /// the bytes, and [`attach`] sniffs again, so a mislabeled file cannot
 /// mislead anyone.
 ///
@@ -307,7 +307,7 @@ pub fn stage_bytes(
 /// Drains the staging directory into `result`: every recognizable,
 /// in-cap image joins [`ToolResult::images`], every staged file is
 /// consumed, and what could not attach is said in the result's text.
-/// Idempotent by construction — the directory empties — so a result
+/// Idempotent by construction, the directory empties, so a result
 /// that runs twice attaches once.
 pub(crate) fn attach(staging: &Path, result: &mut ToolResult) {
     let Ok(entries) = std::fs::read_dir(staging) else {
@@ -369,7 +369,7 @@ mod tests {
     use super::*;
 
     /// A minimal valid PNG: the 8-byte magic plus an IHDR chunk's
-    /// length and type — enough for the sniffer, nothing more.
+    /// length and type, enough for the sniffer, nothing more.
     fn png_bytes() -> Vec<u8> {
         let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
         bytes.extend_from_slice(&[0, 0, 0, 13]);

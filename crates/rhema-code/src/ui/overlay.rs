@@ -3,11 +3,11 @@
 use super::*;
 
 /// The completion popup: while the input names commands or the cursor
-/// sits on a path, the matches float above it — full terminal width, the
+/// sits on a path, the matches float above it, full terminal width, the
 /// shared background, no panel. The command reads in accent, the
 /// description dim, and the highlighted row carries the elevated tone.
 /// Tab completes, enter runs.
-/// The popup's rect for `rows` over `input_area` — the same rect the
+/// The popup's rect for `rows` over `input_area`, the same rect the
 /// transcript render keeps the bubble arcs out of, since the sprites
 /// composite above every cell and the popup paints over those.
 pub(crate) fn palette_area(rows: usize, input_area: Rect) -> Rect {
@@ -96,7 +96,7 @@ pub(crate) fn render_command_palette(
 }
 
 /// The palette row's name column: the command's name, the model's
-/// provider-prefixed id — the same shape the picker's rows carry — the
+/// provider-prefixed id, the same shape the picker's rows carry, the
 /// profile's name, the sandbox word, or the path entry's name.
 pub(crate) fn palette_row_name(row: &crate::screens::PaletteRow) -> String {
     match row {

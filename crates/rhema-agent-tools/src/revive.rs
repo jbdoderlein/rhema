@@ -3,8 +3,8 @@
 //!
 //! A provider rejects an assistant tool call with no matching result, so
 //! without this the next turn would fail before saying a word. Two paths:
-//! [`repair_dangling_calls`] for the cancel path — a cancelled call never
-//! re-runs, whatever its declared safety — and [`revive_dangling_calls`]
+//! [`repair_dangling_calls`] for the cancel path, a cancelled call never
+//! re-runs, whatever its declared safety, and [`revive_dangling_calls`]
 //! for the crash-resume path, which re-executes calls whose tool declared
 //! [`ReplaySafety::Safe`] and reports the rest interrupted.
 
@@ -17,9 +17,9 @@ use rhema_core::{
 /// Appends failure results for tool calls a dropped turn left hanging.
 /// A provider rejects an assistant tool call with no matching result, so
 /// without this the next turn would fail before saying a word. The drop
-/// can land between a committed call and its result — cancellation by
+/// can land between a committed call and its result, cancellation by
 /// future-drop (the TUI) and by `session/cancel` (ACP) both unwind this
-/// way — and the history must stay load-bearing for the next turn.
+/// way, and the history must stay load-bearing for the next turn.
 pub fn repair_dangling_calls(session: &mut Session) {
     let answered: HashSet<String> = session
         .history
@@ -56,7 +56,7 @@ pub fn repair_dangling_calls(session: &mut Session) {
 /// one gets an in-band failure telling the model the call was interrupted
 /// before its result landed, so it can verify state before retrying. One
 /// `Tool` result per dangling call, in call order; a clean history is
-/// untouched. The cancel path uses [`repair_dangling_calls`] instead — a
+/// untouched. The cancel path uses [`repair_dangling_calls`] instead, a
 /// cancelled call never re-runs, whatever its declared safety.
 pub async fn revive_dangling_calls(
     session: &mut Session,
@@ -87,7 +87,7 @@ pub async fn revive_dangling_calls(
             ReplaySafety::Unsafe => ToolResult::failure(
                 &call.id,
                 "interrupted: the call was committed but its result never \
-                 landed; its effect may have partially applied — verify \
+                 landed; its effect may have partially applied, verify \
                  state before retrying",
             ),
         };

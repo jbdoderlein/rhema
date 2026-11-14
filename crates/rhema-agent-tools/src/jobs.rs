@@ -86,7 +86,7 @@ pub const EXIT_NOT_WIRED: i32 = 4;
 pub const EXIT_NO_BACKEND: i32 = 5;
 
 /// The system-prompt section a wired frontend renders: the macro's whole
-/// documentation, as [`include_str!`] of the file beside this module —
+/// documentation, as [`include_str!`] of the file beside this module,
 /// the same crate-root data file the system template ships as. No
 /// trailing newline: the template interpolates the bytes verbatim.
 pub const PROMPT_SECTION: &str = include_str!("../SYSTEM_JOBS.md");

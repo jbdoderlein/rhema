@@ -4,10 +4,10 @@
 //! The shapes are the `rhema-cloudflare-code` repository's
 //! `deploy/cloudflare/sandbox-shim.mjs` documented surface, promoted:
 //! one command over [`EXEC`], single files over [`PUT`] and [`GET`], a
-//! workspace seed over [`SEED`] — every route a JSON POST carrying the
+//! workspace seed over [`SEED`], every route a JSON POST carrying the
 //! shared secret in [`TOKEN_HEADER`]. No version
 //! field in v1: a shape drift fails a test here instead of a debugging
-//! session there. Caps are per-implementation policy, not protocol —
+//! session there. Caps are per-implementation policy, not protocol,
 //! stream and payload size limits are imposed by each side before the
 //! bytes cross, so they belong to the implementations, not to these
 //! types.
@@ -38,8 +38,8 @@ pub struct ExecCall {
     /// filesystem, and no host should be tempted to touch it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
-    /// Wall-clock budget in seconds; the sandbox kills the command —
-    /// and every process it started — past it.
+    /// Wall-clock budget in seconds; the sandbox kills the command,
+    /// and every process it started, past it.
     pub timeout_secs: u64,
 }
 
@@ -89,14 +89,14 @@ pub struct Ack {
 }
 
 /// How a fresh workspace gets its contents: the request body of
-/// [`SEED`], tagged by field presence the way the shim reads it —
+/// [`SEED`], tagged by field presence the way the shim reads it,
 /// `{ "git": url }` or `{ "tarball_base64": ..., "tarball_name": ... }`.
 /// Untagged, because the shim dispatches on truthiness, not on a type
 /// key, so the wire carries exactly the two bodies and nothing else.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum SeedRequest {
-    /// `git clone <url> .` into the workspace root — the repository
+    /// `git clone <url> .` into the workspace root, the repository
     /// becomes the workspace.
     Git {
         /// The repository URL to clone.
@@ -118,7 +118,7 @@ pub enum SeedRequest {
 /// then stderr's, each with a trailing newline.
 ///
 /// The v1 shim buffers the whole (already tail-capped) output, so this
-/// is one burst, not live lines — the callback shape is the contract a
+/// is one burst, not live lines, the callback shape is the contract a
 /// streaming shim fills in.
 pub fn stream_reply(reply: &ExecReply, progress: &mut (dyn for<'a> FnMut(&'a str) + Send)) {
     for line in reply.stdout.lines() {

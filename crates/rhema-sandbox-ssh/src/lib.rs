@@ -4,13 +4,13 @@
 //! [`SshSandbox`] is the fs-disjoint family's daemonless member (spec
 //! §4's SSH row, first variant): zero setup beyond an ssh login. Exec
 //! is `ssh <host> -- timeout --kill-after=5 <secs> bash -c <command>`
-//! — the same prefix, so the same budget knob and the same timeout
+//!, the same prefix, so the same budget knob and the same timeout
 //! reading (124 at the budget; an external SIGKILL is a plain
 //! failure), with the streams pumped live through the shared
 //! `run_child` wiring (`exec_util`). Files cross as `ssh cat`
 //! and `ssh tee`; seeding is a remote `git clone` or a tarball
 //! streamed raw to a remote `tar -xzf -`. Every fs operation crosses
-//! the boundary, which is what makes the family different — there is
+//! the boundary, which is what makes the family different, there is
 //! no local root to resolve against, so the model-influenced paths are
 //! guarded textually by `check_remote_path` (`exec_util`).
 #![forbid(unsafe_code)]
@@ -24,7 +24,7 @@ use base64::Engine;
 use rhema_sandbox::exec_util::{check_remote_path, run_child, shquote};
 use rhema_sandbox::{ExecOutcome, ExecRequest, Sandbox, SandboxError, WorkspaceSeed};
 
-/// The seed budget, the shim's — the same one the fs-sharing backends
+/// The seed budget, the shim's, the same one the fs-sharing backends
 /// give their seed commands. A clone or unpack past it is a timeout:
 /// the local `ssh` is killed, the remote command may finish.
 const SEED_BUDGET: Duration = Duration::from_secs(300);
@@ -36,18 +36,18 @@ const SEED_BUDGET: Duration = Duration::from_secs(300);
 const FS_BUDGET: Duration = Duration::from_secs(60);
 
 /// The SSH sandbox a session's commands run in: one remote login, and
-/// nothing installed on the far end — that is the mode's reason to
+/// nothing installed on the far end, that is the mode's reason to
 /// exist.
 ///
 /// `host` is an ssh destination passed to `ssh` as-is; any alias or
 /// `user@host` the local config resolves works. The remote workspace
-/// root — where seeds land — defaults to `/root`; name another
+/// root, where seeds land, defaults to `/root`; name another
 /// directory with [`SshSandbox::with_workspace`]. A git clone seeds
 /// into that directory, so as with a fresh cloud workspace it must be
 /// empty or absent when the seed lands.
 ///
 /// Cancelling mid-run kills the local `ssh` process; the remote
-/// command may finish on the far end — ssh carries no cancel, and
+/// command may finish on the far end, ssh carries no cancel, and
 /// this type does not pretend otherwise.
 #[derive(Debug, Clone)]
 pub struct SshSandbox {
@@ -67,14 +67,14 @@ impl SshSandbox {
     }
 
     /// Names the remote directory the workspace root is, where the
-    /// seeds land — instead of the `/root` default.
+    /// seeds land, instead of the `/root` default.
     pub fn with_workspace(mut self, workspace: impl Into<String>) -> Self {
         self.workspace = workspace.into();
         self
     }
 
     /// Spawns one local `ssh` carrying `argv` and answers its raw
-    /// stdout bytes, its exit code, and its stderr text — the bytes
+    /// stdout bytes, its exit code, and its stderr text, the bytes
     /// cross as bytes, no line splitting, which is where the read
     /// route's binary-safety rides. `ssh` absent on this machine is an
     /// unavailable sandbox.
@@ -104,8 +104,8 @@ impl SshSandbox {
 
     /// Spawns one local `ssh` carrying `argv` with `bytes` on its
     /// stdin (the pipe closed after), answering the exit code and the
-    /// stderr text. The far end's stdout is of no route's use — `tee`
-    /// echoes, `tar -xzf -` is quiet — so it goes to null, and a large
+    /// stderr text. The far end's stdout is of no route's use, `tee`
+    /// echoes, `tar -xzf -` is quiet, so it goes to null, and a large
     /// feed cannot deadlock on a full stdout pipe.
     async fn feed(
         &self,
@@ -155,7 +155,7 @@ impl SshSandbox {
     }
 
     /// One ssh call under a wall-clock budget: past it the future
-    /// drops, and with it the local ssh (`kill_on_drop`) — a
+    /// drops, and with it the local ssh (`kill_on_drop`), a
     /// black-holed transport reads as a timeout, not a hang.
     async fn budgeted<T>(
         &self,
@@ -170,7 +170,7 @@ impl SshSandbox {
 }
 
 /// Maps a finished `ssh` onto a sandbox result. Exit 255 is ssh's own
-/// "could not reach or speak to the far end" — an unavailable sandbox,
+/// "could not reach or speak to the far end", an unavailable sandbox,
 /// not a failed command; any other nonzero exit failed in the remote
 /// command, with the stderr tail as the detail.
 fn ssh_failure(code: Option<i32>, stderr: &str) -> SandboxError {
@@ -190,7 +190,7 @@ fn ssh_failure(code: Option<i32>, stderr: &str) -> SandboxError {
 }
 
 /// The remote `cd` prefix for the sandbox cwd, quoted for the remote
-/// shell — the shim's trick, since ssh has no `--workdir` to prefer.
+/// shell, the shim's trick, since ssh has no `--workdir` to prefer.
 /// `None` for the empty cwd and the root, which need no `cd`.
 fn cd_prefix(cwd: &str) -> Option<String> {
     if cwd.is_empty() || cwd == "/" {
@@ -224,7 +224,7 @@ fn exec_argv(host: &str, timeout_secs: u64, cwd: &str, command: &str) -> Vec<Str
 }
 
 /// The read argv: `ssh <host> -- cat <path>`, the path quoted for the
-/// remote shell — ssh joins its command words and the far end
+/// remote shell, ssh joins its command words and the far end
 /// reparses them.
 fn read_argv(host: &str, path: &str) -> Vec<String> {
     vec![
@@ -236,7 +236,7 @@ fn read_argv(host: &str, path: &str) -> Vec<String> {
     ]
 }
 
-/// The parent directory of an absolute path, `None` at the root —
+/// The parent directory of an absolute path, `None` at the root,
 /// there is no directory above it to make.
 fn parent_of(path: &str) -> Option<String> {
     let trimmed = path.trim_end_matches('/');
@@ -271,7 +271,7 @@ fn tee_argv(host: &str, path: &str) -> Vec<String> {
     ]
 }
 
-/// The git-seed argv: `ssh <host> -- git clone <url> <workspace>` —
+/// The git-seed argv: `ssh <host> -- git clone <url> <workspace>`,
 /// the repository becomes the remote workspace root. Both operands
 /// are quoted for the remote shell.
 fn clone_argv(host: &str, url: &str, workspace: &str) -> Vec<String> {
@@ -287,7 +287,7 @@ fn clone_argv(host: &str, url: &str, workspace: &str) -> Vec<String> {
 }
 
 /// The tarball-seed argv: `ssh <host> -- tar -xzf - -C <workspace>`,
-/// the tarball streamed raw on stdin — no base64 hop, binary-safe.
+/// the tarball streamed raw on stdin, no base64 hop, binary-safe.
 fn tar_argv(host: &str, workspace: &str) -> Vec<String> {
     vec![
         "ssh".to_owned(),
@@ -320,7 +320,7 @@ impl Sandbox for SshSandbox {
         // There is no local root to resolve against: the textual guard
         // is the whole defense on a remote path.
         check_remote_path(&request.cwd)?;
-        // Run from this process's own directory — there is no local
+        // Run from this process's own directory, there is no local
         // root; the sandbox cwd is remote, and rides in the script.
         let argv = exec_argv(
             &self.host,
@@ -385,7 +385,7 @@ impl Sandbox for SshSandbox {
     async fn write_file(&self, path: &str, contents: &[u8]) -> Result<(), SandboxError> {
         check_remote_path(path)?;
         // The shim's put creates the parent directories, and the
-        // skills seeding writes two levels deep — one extra ssh call
+        // skills seeding writes two levels deep, one extra ssh call
         // when there is a parent above the root to make.
         if let Some(parent) = parent_of(path) {
             let (_, code, stderr) = self
@@ -412,7 +412,7 @@ impl Sandbox for SshSandbox {
 mod tests {
     use super::*;
 
-    /// A sandbox aimed at a host no test ever reaches — the pure-argv
+    /// A sandbox aimed at a host no test ever reaches, the pure-argv
     /// and guard tests spawn nothing, so the name only has to be
     /// present.
     fn sandbox() -> SshSandbox {
@@ -610,7 +610,7 @@ mod tests {
         assert_eq!(error, SandboxError::Failed("cancelled".into()));
     }
 
-    /// True when a real sshd answers on localhost in batch mode — the
+    /// True when a real sshd answers on localhost in batch mode, the
     /// gate for the live tests, and a stronger probe than `ssh -V`,
     /// which only proves the binary exists. A plain machine without a
     /// reachable sshd skips rather than fails; no CI default

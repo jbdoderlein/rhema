@@ -6,15 +6,15 @@
 //! verbatim under the subagent's stamped system prompt. Only
 //! well-formed definitions exist:
 //! a folder whose file lacks a non-empty description or a non-empty
-//! body is not a subagent, not an error — a subagent without a trigger
+//! body is not a subagent, not an error, a subagent without a trigger
 //! has nothing to show the parent, and one without instructions has no
 //! prompt to run on. Project definitions shadow global ones by folder
 //! name, and both shadow the built-in.
 //!
 //! One definition is compiled in: [`builtin`], the `general-purpose`
 //! subagent every agent gets, held as a `SUBAGENT.md` under the crate's
-//! `definitions/` and embedded at build time, so the catalog — and with
-//! it the tool — is never empty, on a filesystem or without one.
+//! `definitions/` and embedded at build time, so the catalog, and with
+//! it the tool, is never empty, on a filesystem or without one.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -32,7 +32,7 @@ pub const DEFAULT_MAX_STEPS: u32 = 256;
 pub struct SubagentDef {
     /// The folder's name.
     pub name: String,
-    /// The frontmatter description — the trigger shown to the parent in
+    /// The frontmatter description, the trigger shown to the parent in
     /// the `subagent` tool's catalog.
     pub description: String,
     /// The model identifier the subagent's requests carry; `None` uses
@@ -57,7 +57,7 @@ const BUILTIN_NAME: &str = "general-purpose";
 
 /// The built-in definition's file, embedded at compile time: the same
 /// folder-and-`SUBAGENT.md` shape a user writes, read by the same
-/// [`parse`], so the format has exactly one definition — the built-in
+/// [`parse`], so the format has exactly one definition, the built-in
 /// cannot drift out of it, and no filesystem is needed to read it.
 const BUILTIN_SRC: &str = include_str!("../definitions/general-purpose/SUBAGENT.md");
 
@@ -83,7 +83,7 @@ struct Frontmatter {
 
 /// Discovers subagent definitions: the built-in `general-purpose`
 /// first, then the global directory, then the workspace's
-/// `.rhema/subagents` — each level shadowing the previous by folder
+/// `.rhema/subagents`, each level shadowing the previous by folder
 /// name. A folder is a definition only when its `SUBAGENT.md` parses
 /// with a non-empty description and a non-empty body.
 pub fn discover(global: Option<&Path>, workspace: &Path) -> Vec<SubagentDef> {
@@ -288,7 +288,7 @@ mod tests {
         assert!(!def.description.is_empty());
         assert!(!def.body.is_empty());
         // The report contract: a "checks pass" claim is only as good as
-        // the commands and exit codes behind it — the built-in prompt
+        // the commands and exit codes behind it, the built-in prompt
         // says so, because the parent re-runs the gates on faith.
         assert!(def.body.contains("exit codes"), "{}", def.body);
     }

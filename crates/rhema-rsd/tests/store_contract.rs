@@ -1,4 +1,4 @@
-//! The bundled memory store replays the reusable Store-contract suite —
+//! The bundled memory store replays the reusable Store-contract suite,
 //! the same suite a durable backend (SQLite) replays to prove itself.
 
 #![cfg(feature = "store-contract")]

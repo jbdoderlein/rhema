@@ -27,7 +27,7 @@
 //! ([`check_id`](crate::record) guards every entry point). Scope lives in
 //! the frontmatter rather than the directory tree, so re-scoping is a
 //! rewrite, not a move. A stray `---` line in a body cannot be confused
-//! with the delimiter — the frontmatter ends at the *second* delimiter.
+//! with the delimiter, the frontmatter ends at the *second* delimiter.
 //!
 //! The temporal fields ([`valid_from`](crate::record::MemoryRecord), the
 //! horizon, decay, provenance, subject, status, verification, hint) are
@@ -39,7 +39,7 @@
 //! and renames, so a `put` that returned `Ok` survives a crash. A crash
 //! *during* a write can leave a `.tmp` behind; the `.md`-only scan ignores
 //! it. Files a hand edit corrupted are skipped by `search` and reported
-//! by `get`/`put` as [`MemoryError::Corrupt`] — never taken down — and
+//! by `get`/`put` as [`MemoryError::Corrupt`], never taken down, and
 //! `forget` still removes them.
 
 use std::fs;
@@ -68,8 +68,8 @@ pub struct FileMemoryStore {
 }
 
 /// The frontmatter half of a record file; the body follows the second
-/// delimiter. Every temporal field defaults, so a v1 file — which carried
-/// none of them — parses unchanged.
+/// delimiter. Every temporal field defaults, so a v1 file, which carried
+/// none of them, parses unchanged.
 #[derive(Serialize, Deserialize)]
 struct RecordMeta {
     id: String,
@@ -96,7 +96,7 @@ struct RecordMeta {
 }
 
 impl FileMemoryStore {
-    /// A store rooted at `root`, created if missing — fail fast on an
+    /// A store rooted at `root`, created if missing, fail fast on an
     /// unwritable root rather than at first write.
     pub fn new(root: impl Into<PathBuf>) -> io::Result<Self> {
         let root = root.into();
@@ -113,7 +113,7 @@ impl FileMemoryStore {
         self.root.join(format!("{id}.md"))
     }
 
-    /// A fresh id whose file does not exist yet — the counter is
+    /// A fresh id whose file does not exist yet, the counter is
     /// process-local, so a second lifetime in the same wall-clock second
     /// retries through here.
     fn fresh_id(&self, now: SystemTime) -> String {
@@ -133,7 +133,7 @@ fn now_millis(now: SystemTime) -> u64 {
 }
 
 /// Renders a record to its file text: frontmatter, then the body
-/// verbatim — round-trips are exact, so no newline is added or stripped.
+/// verbatim, round-trips are exact, so no newline is added or stripped.
 fn serialize(record: &MemoryRecord) -> Result<String, MemoryError> {
     let meta = RecordMeta {
         id: record.id.clone(),
@@ -156,7 +156,7 @@ fn serialize(record: &MemoryRecord) -> Result<String, MemoryError> {
     Ok(format!("---\n{yaml}---\n{}", record.body))
 }
 
-/// Writes through a `.tmp` sibling, `sync_all`ed, then renamed — the
+/// Writes through a `.tmp` sibling, `sync_all`ed, then renamed, the
 /// rename is the moment the write becomes durable.
 fn write_file(path: &Path, record: &MemoryRecord) -> Result<(), MemoryError> {
     let text = serialize(record)?;
@@ -331,7 +331,7 @@ impl MemoryStore for FileMemoryStore {
 
 impl FileMemoryStore {
     /// Rewrites one record in place through `change`, the shared body of
-    /// supersede/retract/verify: read, mutate, write atomically — the
+    /// supersede/retract/verify: read, mutate, write atomically, the
     /// record is never erased, whatever the transition.
     fn retire(
         &self,

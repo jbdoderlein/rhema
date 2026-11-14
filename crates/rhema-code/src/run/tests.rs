@@ -131,7 +131,7 @@ mod system_tests {
         assert!(prompt.contains("skill local"), "{prompt}");
         assert!(prompt.contains("tool bash"), "{prompt}");
         // The section renders only where the template places it: this
-        // test's own base never references it, so it stays empty — the
+        // test's own base never references it, so it stays empty, the
         // built-in template's preview below carries it instead.
         assert!(!prompt.contains("## Environment"), "{prompt}");
     }
@@ -194,7 +194,7 @@ mod system_tests {
 
     #[test]
     fn the_sections_gate_routes_kinds_to_host_or_notice() {
-        // The local case probes the host — either honest answer; the
+        // The local case probes the host, either honest answer; the
         // user section rides the machine's own USER.md, so its presence
         // is not asserted.
         let (host, _, missing) =
@@ -220,7 +220,7 @@ mod system_tests {
 }
 
 /// A scroll renumbers slots: the piece that inherits a slot may be a
-/// different sprite, and the placement the old sprite held must go —
+/// different sprite, and the placement the old sprite held must go,
 /// a placement is the pair of the image id and the slot, so a slot
 /// match alone would strand the old pair on screen as a ghost corner
 /// of a bubble that scrolled away.
@@ -242,7 +242,7 @@ fn a_slot_that_changes_sprite_deletes_the_old_pair() {
         piece(3, 1002),
         piece(4, 1001),
     ];
-    // Growth only — a bubble scrolled in — takes nothing away.
+    // Growth only, a bubble scrolled in, takes nothing away.
     let grown = vec![
         piece(1, 1000),
         piece(2, 1003),
@@ -253,7 +253,7 @@ fn a_slot_that_changes_sprite_deletes_the_old_pair() {
     assert!(super::stale_placements(&placed, &grown).is_empty());
     // A scrolled-out bubble pulls the list in: slot 2 now holds a
     // different sprite, and slots 3 and 4 are gone. All three old
-    // pairs must delete — slot 2's because the sprite changed, the
+    // pairs must delete, slot 2's because the sprite changed, the
     // other two because nothing holds them anymore.
     let pulled_in = vec![piece(1, 1000), piece(2, 1001)];
     let stale = super::stale_placements(&placed, &pulled_in);

@@ -1,7 +1,7 @@
 //! The caller-owned session: plain, serializable conversation state.
 //!
 //! The engine mutates only [`Session::history`]. [`Session::driver_state`] is
-//! opaque to crate 1 — the driver stores whatever it needs there (or keeps
+//! opaque to crate 1, the driver stores whatever it needs there (or keeps
 //! its own table). A `Session` holds no hidden engine state and no open
 //! stream, so a driver can checkpoint it at any step boundary (SPEC.md §6).
 

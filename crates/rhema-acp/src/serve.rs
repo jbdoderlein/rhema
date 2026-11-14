@@ -2,8 +2,8 @@
 //!
 //! Handlers follow the SDK's ordering contract. Everything that answers
 //! immediately (initialize, authenticate, session/new, session/load,
-//! session/cancel) runs inside the dispatch loop; `session/prompt` —
-//! minutes long — spawns its turn task through [`ConnectionTo::spawn`]
+//! session/cancel) runs inside the dispatch loop; `session/prompt`,
+//! minutes long, spawns its turn task through [`ConnectionTo::spawn`]
 //! and returns at once, so `session/cancel` and the client's permission
 //! answers keep flowing while the turn runs.
 //!
@@ -16,11 +16,11 @@
 //! Reported, beyond the turn itself: the commands a prompt's first
 //! line can name (`thinking`, `model`), the two selects a config-aware
 //! client renders (`model`, `thinking`), the session's title and last
-//! activity, and the context window and cost each step leaves behind —
+//! activity, and the context window and cost each step leaves behind,
 //! the meter they share also totals every `session/prompt` response.
 //!
 //! Deliberately absent: MCP servers (`mcpServers` is accepted and
-//! ignored — nothing is advertised), fs/terminal callbacks (the `bash`
+//! ignored, nothing is advertised), fs/terminal callbacks (the `bash`
 //! tool does its own I/O), and session modes (nothing advertised, so
 //! no client offers them).
 
@@ -99,7 +99,7 @@ pub struct AcpOptions {
 
 /// Serves one ACP connection over stdin/stdout until the client hangs
 /// up. The connection runs on a dedicated thread with its own
-/// multi-thread runtime — the approval bridge parks workers with
+/// multi-thread runtime, the approval bridge parks workers with
 /// `block_in_place`, which needs that scheduler, and a thread of its
 /// own means the caller can sit inside any runtime (the `rhema` binary
 /// is `#[tokio::main]`) without nesting one. Blocks the calling thread.
@@ -118,7 +118,7 @@ pub fn serve(options: AcpOptions) -> anyhow::Result<()> {
         .map_err(|_| anyhow::anyhow!("the ACP thread panicked"))?
 }
 
-/// Serves one ACP connection over `transport` — [`serve`] minus stdio,
+/// Serves one ACP connection over `transport`, [`serve`] minus stdio,
 /// the seam an in-memory client (the SDK's [`Channel`](agent_client_protocol::Channel)
 /// pair in tests) drives.
 pub async fn serve_over(
@@ -132,8 +132,8 @@ async fn serve_connection(
     transport: impl agent_client_protocol::ConnectTo<Agent>,
     options: AcpOptions,
 ) -> anyhow::Result<()> {
-    // Startup reads — the config file, the keychain behind the
-    // profile's `secret_ref`s, the user's SYSTEM.md — are blocking,
+    // Startup reads, the config file, the keychain behind the
+    // profile's `secret_ref`s, the user's SYSTEM.md, are blocking,
     // and this async context owns a scheduler: the work hops to the
     // blocking pool instead of parking a worker.
     let app = Arc::new(
@@ -325,8 +325,8 @@ async fn serve_connection(
                     // session's commands runs in place: the switch is
                     // answered as a completed turn without a model
                     // call, and the pickers re-render from the selects
-                    // that ride along. Any other slash spelling —
-                    // a path, an unknown command — is model input
+                    // that ride along. Any other slash spelling,
+                    // a path, an unknown command, is model input
                     // like any other text.
                     if let Some((name, args)) = slash_command(&prompt)
                         && let Some(answer) = app.command(&session_id.0, &name, &args)?
@@ -388,8 +388,8 @@ async fn serve_connection(
                     tokio::spawn(async move {
                         // The guard holds the agent while the turn runs:
                         // the arms below take it out and restore it
-                        // themselves, and a panic unwinding past them —
-                        // the turn's own, most likely — is what the drop
+                        // themselves, and a panic unwinding past them,
+                        // the turn's own, most likely, is what the drop
                         // covers, so the slot's agent always comes home
                         // and the slot keeps serving prompts.
                         let mut restore = SlotRestore {
@@ -490,7 +490,7 @@ async fn serve_connection(
                         );
                     };
                     // Rebuild the agent over the session's history on
-                    // the new choice — across providers when a model
+                    // the new choice, across providers when a model
                     // choice names one; the updated selects are the
                     // response.
                     let switched = match request.config_id.0.as_ref() {
@@ -529,7 +529,7 @@ async fn serve_connection(
 }
 
 /// Resolves once the cancel flag flips; a dropped sender (the session
-/// is gone) means never — the turn's own completion finishes the
+/// is gone) means never, the turn's own completion finishes the
 /// select then.
 async fn cancelled_turn(mut rx: watch::Receiver<bool>) {
     loop {
@@ -544,7 +544,7 @@ async fn cancelled_turn(mut rx: watch::Receiver<bool>) {
 
 /// A prompt that names one of the session's commands: the first line,
 /// `/name` then free text. Only the names the session advertises
-/// route; any other slash spelling — a path, a guess — is model input
+/// route; any other slash spelling, a path, a guess, is model input
 /// like any other text.
 fn slash_command(prompt: &str) -> Option<(String, String)> {
     let first = prompt.trim_start().lines().next()?;

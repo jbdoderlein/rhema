@@ -1,4 +1,4 @@
-# rhema-mcp — the MCP client, wired through bash
+# rhema-mcp, the MCP client, wired through bash
 
 > **Status:** v2, 2026-11-03. Supersedes the same-day v1 draft; the
 > adversary review's blockers and majors are folded in (§12 records what
@@ -141,7 +141,7 @@ documented interface wins name collisions inside agent shells; a user
 who wants their own `atlassian` overrides it in config (`command_name`,
 §3) rather than by fighting the init file. The predecessor's path is
 baked into the file text when there is one, and the line is absent when
-there is not — never carried by an env var. The executor layers the env
+there is not, never carried by an env var. The executor layers the env
 map onto every command, so an env var here would reach *every* generated
 init in a chain (rhema under rhema, CI under an agent), and an outer
 init would re-source itself until the shell died by signal. A literal
@@ -179,7 +179,7 @@ functions; `while read` loops cover those.
 ## 3. Configuration
 
 ```yaml
-# <config dir>/mcp.yaml — user-authored, the only scope in v1
+# <config dir>/mcp.yaml, user-authored, the only scope in v1
 servers:
   atlassian:
     description: Jira and Confluence
@@ -207,7 +207,7 @@ servers:
   failure is one notice with an empty result, and neither **ever fails
   agent construction**. Duplicate server names have no first-wins rule
   to reach: serde_yaml 0.9 rejects duplicate keys during the parse
-  itself (empirically pinned, not remembered — no visitor sees the
+  itself (empirically pinned, not remembered, no visitor sees the
   second one), so a name said twice skips the whole file with the
   parser's message. A dead server is `status: error` with a message, and
   its calls fail in-band.
@@ -308,7 +308,7 @@ the `--json` override makes every required flag conditional
 (`required_unless_present`). Mandatory flags also lead the Options
 list (display order) and carry a `(required)` mark in their help
 text. The error path lists the missing flags by name when an
-invocation omits one. The usage order is schema order — the only
+invocation omits one. The usage order is schema order, the only
 order the schema actually carries; the `required` array's order is
 convention, not contract, and is not leaned on.
 
@@ -397,7 +397,7 @@ is where configuration happens.
 `add` flags: `-e KEY=VALUE` (stdio env, repeatable), `-H 'KEY: VALUE'`
 (HTTP headers, repeatable), `-d TEXT` (the prompt disclosure line),
 `--force` (replace an existing entry). Entries land on the named
-profile's `mcp_servers` map — `personal` without `--profile` — created
+profile's `mcp_servers` map, `personal` without `--profile`, created
 when new, and validated through the same `resolve` rules a load
 applies (`[a-z0-9_-]+` names, transport XOR) before anything is
 written. The global `mcp.yaml` is never written by these verbs (it is
@@ -407,7 +407,7 @@ omitted description is legal: the disclosure falls back to "`<name>
 --help` lists its tools", so the command alone is enough to install.
 Exit codes: `0` ok; `2` usage or validation; `3` remove of a name not
 in the profile; `1` config load or save failure with the reason on
-stderr — these verbs face the user, not the model, so they sit outside
+stderr, these verbs face the user, not the model, so they sit outside
 the JSON-on-stdout noise contract.
 
 **Envelope.** On success the server's `CallToolResult` prints as JSON:
@@ -658,7 +658,7 @@ the README note rides the same commit. Both frontends set
    section riding the same commit (user-facing, per AGENTS.md)
 9. `feat(claw)`: the `claw mcp` route + wiring, README note riding
 10. `docs`: link the spec; retire rhema-code README's "no MCPs" line
-    (that line's removal belongs to the feature commits 8–9 if they
+    (that line's removal belongs to the feature commits 8-9 if they
     land together; this commit is the cross-links)
 
 ## 12. Decisions

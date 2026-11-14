@@ -1,6 +1,6 @@
 //! The wired whole: a `CodingAgent` over a steered config runs a turn
 //! that starts a subagent, the notification lands at the next turn's
-//! start, and the fetch returns the cached report — the exact loop
+//! start, and the fetch returns the cached report, the exact loop
 //! SPEC.md §13 describes, offline.
 
 use std::sync::Arc;
@@ -82,13 +82,13 @@ impl EventSink for NullSink {
 
 /// A mid-turn finish: the job ends while the parent's turn is between
 /// steps, and the between-steps drain appends the notification before
-/// the model's next request — the steering path, against the real
+/// the model's next request, the steering path, against the real
 /// registry, not a scripted `Steering`.
 #[tokio::test]
 async fn a_job_finishing_mid_turn_is_announced_at_the_next_step_boundary() {
     let provider = Arc::new(ByRole {
         marker: "the parent's system prompt".into(),
-        // Round 0: start a scout. Round 1: a short sleep — the job (an
+        // Round 0: start a scout. Round 1: a short sleep, the job (an
         // instant report) finishes under it. Round 2: end the turn.
         parent_replies: vec![
             tool_use(
@@ -140,7 +140,7 @@ async fn a_job_finishing_mid_turn_is_announced_at_the_next_step_boundary() {
         .unwrap();
 
     // The notification landed mid-turn, between the sleep round and
-    // the final round — before the turn ended, without a new turn.
+    // the final round, before the turn ended, without a new turn.
     let history = &agent.session().history;
     let is_notification = |message: &Message| {
         message.role == Role::User
@@ -176,7 +176,7 @@ async fn a_job_finishing_mid_turn_is_announced_at_the_next_step_boundary() {
 async fn a_wired_agent_starts_notifies_and_fetches_by_job_id() {
     let provider = Arc::new(ByRole {
         marker: "the parent's system prompt".into(),
-        // Round 0: start a scout. Round 1: end the turn — the job may
+        // Round 0: start a scout. Round 1: end the turn, the job may
         // or may not have finished by the between-steps drain, so the
         // notification's landing is asserted on the session, not here.
         // Round 2: fetch by id. Round 3: end.

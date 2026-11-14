@@ -1,4 +1,4 @@
-//! rhema-coding-agent — the coding-agent driver, the first consumer of
+//! rhema-coding-agent, the coding-agent driver, the first consumer of
 //! rhema-core's step engine.
 //!
 //! Wires a [`ModelProvider`](rhema_core::ModelProvider) into a
@@ -13,14 +13,14 @@
 //! unanswered, and cancel-path repair for those a user stopped.
 //!
 //! Layout:
-//! - [`agent`] — `CodingAgent`, `CodingAgentError`, `stamped_system`
-//! - [`config`] — `CodingAgentConfig` and the `Steering` seam
-//! - [`prompt`] — the SYSTEM.md template and its default render
-//! - [`environment`] — the startup environment report and the sandbox
+//! - [`agent`]: `CodingAgent`, `CodingAgentError`, `stamped_system`
+//! - [`config`]: `CodingAgentConfig` and the `Steering` seam
+//! - [`prompt`]: the SYSTEM.md template and its default render
+//! - [`environment`]: the startup environment report and the sandbox
 //!   notice, the prompt's environment section
 //!
-//! The toolkit itself — the `Approval` seam, `ShellTools`, skills, paste
-//! expansion, dangling-call repair, the renderer — lives in
+//! The toolkit itself, the `Approval` seam, `ShellTools`, skills, paste
+//! expansion, dangling-call repair, the renderer, lives in
 //! `rhema-agent-tools` and re-exports here: the TUI and ACP drivers
 //! import these names from this crate, and the claw's forge handler
 //! takes the approval policy the same way.

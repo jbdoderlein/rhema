@@ -1,12 +1,12 @@
-# rhema-sandbox — the sandbox seam, its wire protocol, and the execution choice
+# rhema-sandbox, the sandbox seam, its wire protocol, and the execution choice
 
 > **Status:** design, 2026-10-20 (decisions in §9). The rollout in §7 is
 > the commit plan; every phase lands green before the next starts.
-> **Grounding:** SPEC.md §10–§11 (the cloud frontends; the harness
+> **Grounding:** SPEC.md §10-§11 (the cloud frontends; the harness
 > extraction); the shim contract lives in the `rhema-cloudflare-code`
 > repository's `specs/` now.
 > **One-line promise:** one `Sandbox` seam any frontend can aim at any
-> machine — the host, a container, a VM, a box over SSH, a cloud sandbox —
+> machine, the host, a container, a VM, a box over SSH, a cloud sandbox,
 > chosen by configuration, never by which crate a frontend was born in.
 
 ---
@@ -21,7 +21,7 @@ where `bash` runs.
 
 **In scope:**
 
-- `rhema-sandbox` — the seam crate of the sandbox family: the `Sandbox`
+- `rhema-sandbox`: the seam crate of the sandbox family: the `Sandbox`
   trait and its types, the `ShellSandbox` adapter, the wire protocol, the
   HTTP client (`HttpSandbox`), the local sandbox (`LocalSandbox` over a
   host root), `rhema-sandboxd` (the protocol served from a host), the
@@ -32,7 +32,7 @@ where `bash` runs.
 - The `rhema-code` execution choice: `local | docker | ssh | http` in v1,
   stored in config, remembered per workspace, pickable in the TUI.
 
-**Out of scope, v1:** live output streaming (SSE) — the trait contract
+**Out of scope, v1:** live output streaming (SSE), the trait contract
 already blesses completion-buffered delivery; the TLS/mTLS posture of
 `sandboxd` on untrusted networks; VM and micro-VM *images* (that is
 packaging: an image running `sandboxd` needs no new client code); a
@@ -48,34 +48,34 @@ the rollout below landed, so the seam lives in `crates/rhema-sandbox`
 and the pre-extraction homes cited below are history. The vercel
 frontend shipped as item 8 and later left the tree entirely.
 
-- **The seam is cloud-scoped.** `Sandbox` — `exec`, `seed`, `read_file`,
-  `write_file`; object-safe, async, no platform dependency — lives in
+- **The seam is cloud-scoped.** `Sandbox`, `exec`, `seed`, `read_file`,
+  `write_file`; object-safe, async, no platform dependency, lives in
   `crates/rhema-cloud-agent/src/sandbox.rs`, a crate whose lib doc opens
   "the coding-agent harness the cloud frontends share". `rhema-code`
   does not depend on it and has no path to it: `run.rs` builds
-  `CodingAgentConfig::new`, whose default tools are `ShellTools::new` —
+  `CodingAgentConfig::new`, whose default tools are `ShellTools::new`,
   the local process executor. The terminal agent can only ever run
   `bash` on the machine it was started on.
 - **Frontend and sandbox are 1:1.** The Durable Object constructs
   `SandboxDo` itself (`worker/mod.rs`); the Vercel server constructs
   `VercelSandbox` itself (`server.rs`). Running the DO with `bash` on an
-  EC2 box — or the Vercel container against a Cloudflare container —
+  EC2 box, or the Vercel container against a Cloudflare container,
   means forking a frontend.
 - **The wire protocol exists but is unnamed.** The `rhema-cloudflare-code`
   repository's `deploy/cloudflare/sandbox-shim.mjs` already specifies a
-  complete sandbox surface —
+  complete sandbox API,
   `exec`, `put`, `get`, `seed`, a token header, tail-capped streams,
-  clamped timeouts — but its payload types are private (`ShimExec`,
+  clamped timeouts, but its payload types are private (`ShimExec`,
   `ShimAck`, `ShimFile` in the cloudflare crate) and its only transport
   is a DO binding. It is one promotion away from being the sandbox
   protocol of the whole project.
-- **Seeding is copy-pasted.** `ensure_seeded` exists twice — a DO meta
+- **Seeding is copy-pasted.** `ensure_seeded` exists twice, a DO meta
   table and a Postgres marker around the same logic: check the marker,
   git-clone the seed, write the skills.
 - **The pieces below the seam are right.** `ShellExecutor`
   (`rhema-agent-tools/src/exec.rs`) is the exec-only seam; `ShellSandbox`
-  adapts `Sandbox` onto it, so the `bash` tool — spec, caps, error
-  shaping, approval — is unchanged wherever commands run; subagents
+  adapts `Sandbox` onto it, so the `bash` tool, spec, caps, error
+  shaping, approval, is unchanged wherever commands run; subagents
   inherit the executor (`ShellTools::executor()`, used by
   `rhema-subagents`). Nothing below the seam moves in this design.
 
@@ -90,8 +90,8 @@ crates/rhema-sandbox/
                     #           `client` (reqwest), `server` (axum)
   src/
     lib.rs          # the seam: `Sandbox`, `ExecRequest`, `ExecOutcome`,
-                    #   `WorkspaceSeed`, `SandboxError` — moved verbatim
-    adapter.rs      # `ShellSandbox`: `Sandbox` -> `ShellExecutor` — moved
+                    #   `WorkspaceSeed`, `SandboxError`, moved verbatim
+    adapter.rs      # `ShellSandbox`: `Sandbox` -> `ShellExecutor`, moved
     protocol.rs     # the wire shapes and routes (§3)
     fsroot.rs       # `FsRoot`: one host dir as the sandbox fs; path
                     #   mapping and the traversal guard (§4)
@@ -99,13 +99,13 @@ crates/rhema-sandbox/
     http.rs         # `HttpSandbox`: the protocol over HTTPS (`client`)
     server.rs       # `rhema-sandboxd`: the protocol served (`server`)
     seed.rs         # `seed_workspace`: the shared half of `ensure_seeded`
-    mock.rs         # `ScriptedSandbox` (`mock`) — moved
+    mock.rs         # `ScriptedSandbox` (`mock`), moved
 ```
 
 Dependency order stays clean:
 `rhema-core ← rhema-agent-tools ← rhema-sandbox ← {rhema-cloud-agent,
 rhema-cloudflare-code, rhema-code}`. The default
-build needs only serde and async-trait — wasm-clean, the same dep stance
+build needs only serde and async-trait, wasm-clean, the same dep stance
 `rhema-core` keeps; `client`, `server`, and `local` are feature-gated so
 each consumer compiles only what it drives. House attributes apply:
 `#![forbid(unsafe_code)]`, `#![deny(missing_docs)]`.
@@ -120,14 +120,14 @@ Three contract clauses move verbatim, because they are load-bearing:
 - Output may arrive completion-buffered; the progress-callback shape is
   the seam a streaming transport fills in later.
 - Cancellation is checked before the command starts; a command that
-  completed remotely reports its true result — the model sees the truth
+  completed remotely reports its true result, the model sees the truth
   whatever the turn decided meanwhile.
 - The sandbox side caps streams before they cross the wire; the tool
   re-caps for display.
 
 **The falsification test:** every backend in §4 must land with zero
 trait changes. A backend that cannot express itself in
-exec/seed/read/write is a trait bug — stop and fix the trait, not the
+exec/seed/read/write is a trait bug, stop and fix the trait, not the
 backend.
 
 ## 3. The wire protocol
@@ -142,13 +142,13 @@ test here instead of a debugging session there.
 - **Auth:** one shared secret in the `x-rhema-token` header on every
   route; a wrong or missing token is `401`.
 - `POST /exec {command, cwd?, timeout_secs} → {exit_code, stdout,
-  stderr, timed_out}` — one command, `bash -c` semantics, wall-clock
+  stderr, timed_out}`, one command, `bash -c` semantics, wall-clock
   budget. `timed_out` is the sandbox's own kill; the client maps it to
   `SandboxError::Timeout`.
 - `POST /put {path, content_base64} → {error}` and
-  `POST /get {path} → {content_base64 | error}` — single files, base64,
+  `POST /get {path} → {content_base64 | error}`, single files, base64,
   `error: null` on success. Paths are sandbox-absolute POSIX.
-- `POST /seed {git} | {tarball_base64, tarball_name?} → {error}` — the
+- `POST /seed {git} | {tarball_base64, tarball_name?} → {error}`: the
   `WorkspaceSeed` ingress.
 
 Caps are per-implementation policy, not protocol: the shim tail-caps
@@ -156,49 +156,49 @@ streams at 50 KiB and files at 512 KiB; `sandboxd` re-imposes equivalent
 caps. What the protocol fixes is the shapes, the header, and the error
 convention.
 
-`HttpSandbox` (feature `client`) is this surface over plain HTTPS — the
+`HttpSandbox` (feature `client`) is this surface over plain HTTPS, the
 same request/reply handling `SandboxDo` performs over a DO binding,
 minus the binding. `rhema-sandboxd` (feature `server`) serves it from a
 host: one root directory per session name under its base, exec through
 the `timeout` prefix (§4), files and seeds straight on the fs, streams
 capped before the reply, the token checked on every route. A DO pointed
 at a `sandboxd` on any EC2 box, home server, or CI runner needs no
-container binding at all — the shim, the containers-beta config, and the
+container binding at all, the shim, the containers-beta config, and the
 wrangler plumbing become optional.
 
 ## 4. The backends
 
-Three axes separate every choice on the list: (1) filesystem semantics —
+Three axes separate every choice on the list: (1) filesystem semantics,
 does the runtime *share* the host fs or is its fs *disjoint*; (2) how
 exec is wrapped; (3) what transport reaches it. The trait absorbs the
-first — it is why the trait carries `seed`/`read_file`/`write_file` at
+first, it is why the trait carries `seed`/`read_file`/`write_file` at
 all, which an exec-only seam cannot express; the protocol absorbs the
 third; the second is the implementation's business.
 
 Backends fall into two families:
 
-- **fs-sharing** — `FsRoot` plus an exec prefix: `LocalSandbox`
+- **fs-sharing**, `FsRoot` plus an exec prefix: `LocalSandbox`
   (identity prefix), a bubblewrap/nsjail variant (the wrapper as argv
   prefix), a bind-mounted container (`docker exec` prefix).
   `read_file`/`write_file`/`seed` are plain fs under one root.
   `FsRoot` maps sandbox-absolute paths onto that root and refuses `..`
-  escapes in both directions — the paths are model-influenced.
-- **fs-disjoint** — every fs op crosses a boundary: copied-workspace
+  escapes in both directions, the paths are model-influenced.
+- **fs-disjoint**, every fs op crosses a boundary: copied-workspace
   containers, VMs, SSH remotes, the protocol family.
 
 **The workspace has two postures, and the seam holds both.** A
-workspace is either **copy-in** — born on the machine the frontend
-runs on, so the sandbox must receive it — or **native** — born where
+workspace is either **copy-in**, born on the machine the frontend
+runs on, so the sandbox must receive it, or **native**, born where
 the executor lives, so copying is meaningless. `rhema-code` on a
 laptop is the copy-in case: `local` and the mount postures make the
 copy the mount itself, a copied container takes `docker cp`, and
 `sandboxd` copies through the protocol's `put`/`get`. SSH is copy-in
-with no mount — nothing yet answers "how does the current folder get
+with no mount, nothing yet answers "how does the current folder get
 there", which is the mode's open piece (§8). A Durable Object serving
 claw is the native case: its workspace storage IS the sandbox fs, exec
 and the file ops meet in one place, and the meta-table seed marker is
-the whole story. The trait stays silent about provenance — that
-silence is the design — but the posture rides the frontend and the
+the whole story. The trait stays silent about provenance, that
+silence is the design, but the posture rides the frontend and the
 backend together, and no assembly may assume one posture for every
 backend.
 
@@ -208,15 +208,15 @@ backend.
 | bwrap / nsjail | the same `FsRoot`, a wrapped argv | ~one wrapper each |
 | container, v1 | the `docker` CLI: bind-mount posture = `FsRoot` + `docker exec`; copied posture = `docker cp` | medium |
 | container, later | the Engine API over the unix socket, behind its own seam (the `SandboxApi` precedent) | medium |
-| LXD / Incus | `rhema-sandbox-lxd`: one driver, two instance types. A container takes the docker bind-mount posture (`lxc exec` prefix, a `disk` device mapping the host root in) or the fs-disjoint one via `lxc file`; a `--vm` instance is the same driver with a launch flag — and the first true isolation tier in the offer | medium |
-| VM / microVM, hosted | an image running `rhema-sandboxd` — packaging, not code | ~zero |
+| LXD / Incus | `rhema-sandbox-lxd`: one driver, two instance types. A container takes the docker bind-mount posture (`lxc exec` prefix, a `disk` device mapping the host root in) or the fs-disjoint one via `lxc file`; a `--vm` instance is the same driver with a launch flag, and the first true isolation tier in the offer | medium |
+| VM / microVM, hosted | an image running `rhema-sandboxd`, packaging, not code | ~zero |
 | microVM, local | `rhema-sandbox-ecrou`: one boot per command through the `ecrou` CLI, the workspace a 1:1 `-v`, output a `--capture` file pair tailed into the live-line pump | medium |
-| SSH | daemonless: exec = `ssh host -- bash -c` (live lines through the existing pump), files via `ssh cat`/`tee`, seed via `ssh git clone`; or `sandboxd` on the remote behind `ssh -L` — then it *is* `HttpSandbox` | medium / zero |
+| SSH | daemonless: exec = `ssh host -- bash -c` (live lines through the existing pump), files via `ssh cat`/`tee`, seed via `ssh git clone`; or `sandboxd` on the remote behind `ssh -L`, then it *is* `HttpSandbox` | medium / zero |
 | cloud sandboxes | `SandboxDo` (transport unchanged, types from `protocol.rs`); `VercelSandbox` (the vendor adapter, kept) | done |
 
 Kill semantics: backends without a per-command kill API (docker exec
-among them) run every command under `timeout --kill-after=5 N bash -c …`
-— the shim's trick — so `ExecRequest::timeout` stays the single knob
+among them) run every command under `timeout --kill-after=5 N bash -c …`,
+the shim's trick, so `ExecRequest::timeout` stays the single knob
 everywhere. Live output is a transport property: local and SSH pump real
 lines today; HTTP-family backends deliver at completion until a
 streaming shape exists (§8).
@@ -229,14 +229,14 @@ The choice is the `ProviderChoice` pattern applied to machines: a
 (`kind`, `url`, token reference); per-workspace memory beside the
 remembered profile (`last_sandbox_in`/`note_sandbox_in`); a TUI picker
 cloned from `ProfileScreen`; and availability probing like
-`startup_profile` — the offered list depends on the machine (a docker
+`startup_profile`, the offered list depends on the machine (a docker
 socket present, `lxc` answering, `ecrou probe` green, `ssh`
 configured, a `sandboxd` reachable).
 `RHEMA_SANDBOX` overrides the stored kind, the env-wins convention
 `RHEMA_PROVIDER` set. The TUI's `/sandbox` completes the session
 profile's configured instances (`sandbox_instances`, the same rows
 the Sandbox page edits) and nothing else; a profile
-switch re-resolves `bash`'s home from the profile moving in — its own
+switch re-resolves `bash`'s home from the profile moving in, its own
 section, offered-gated, local when it names nothing, never the
 previous profile's choice or the workspace memory.
 
@@ -254,59 +254,59 @@ Assembly has two paths, and the split is the one the cloud already drew:
 
 What stays host-side in every mode is already host-side: credentials and
 profiles (`rhema-config`), session history (`$XDG_CACHE_HOME/rhema/
-sessions` — verified, not workspace-relative), the clipboard, the TUI
+sessions`, verified, not workspace-relative), the clipboard, the TUI
 itself. That is the whole migration for `rhema-code`: no state moves;
 only the tool's executor and the prompt's workspace string change.
 
-The v1 set is `local | docker | lxd | ecrou | ssh | http` — lxd
+The v1 set is `local | docker | lxd | ecrou | ssh | http`, lxd
 landed as one driver and a launch flag, containers and `--vm`
 instances alike (§9): `rhema-sandbox-lxd` execs through `lxc exec`,
 mounts a `disk` device 1:1 for the container posture, and rides
 `lxc file` attached for the VM one. ecrou is the local microVM tier:
 `rhema-sandbox-ecrou` boots one machine per command, shares the
 workspace at its own host path 1:1, and tails the capture files for
-live lines — the machine exists for the length of the command, so
+live lines, the machine exists for the length of the command, so
 there is nothing to stand up, provision, or stop; the seed is the
 whole assembly, and the timeout prefix is the kill (§9). ecrou
-landed with zero trait change — that is the test the abstraction has
+landed with zero trait change, that is the test the abstraction has
 to pass (§2), now answered once. bubblewrap/nsjail land the same way.
 SSH ships daemonless first: zero setup on the far
 end is the mode's reason to exist; tunnel-plus-`sandboxd` is the
 documented fast path. The instance is prepared, not assumed: the
-ensure step provisions a standard tool set — git, ripgrep, fd-find,
-jq, sd, curl, python3, build-essential — once per instance,
+ensure step provisions a standard tool set, git, ripgrep, fd-find,
+jq, sd, curl, python3, build-essential, once per instance,
 marker-gated and idempotent, so a stock image arrives ready for the
 bash tool's sessions. A failed provisioning is a degraded sandbox,
 not a dead one: the session runs, and the tools say what exists
 when probed; the absent marker retries on the next assembly. Exec
-runs as the workspace's owner — the instance's uid map and the
-`--user` flag name the pair the tree answers to — and an empty cwd
+runs as the workspace's owner, the instance's uid map and the
+`--user` flag name the pair the tree answers to, and an empty cwd
 lands at the workspace, not the instance's default directory.
 
 The choice UI is an instance list, not a kind list: the host's own
-`local` row, then the named instances the config stores — a user's
-name over a kind and that kind's one target — then the add row. The
+`local` row, then the named instances the config stores, a user's
+name over a kind and that kind's one target, then the add row. The
 add dialog offers the ready kinds only (docker, lxd, ecrou), ssh
-and http out of the picker — not absent from the contract, just honest about
+and http out of the picker, not absent from the contract, just honest about
 their standing (ssh's working tree has no carry story yet, §8; http
-presumes a daemon to reach) — and asks nothing else: no target is
+presumes a daemon to reach), and asks nothing else: no target is
 collected, because the concrete name is the workspace's to set,
 derived at assembly time and stable across sessions. Pinning a
-target — an existing container, an LXD VM, a host — is config.yaml's
+target, an existing container, an LXD VM, a host, is config.yaml's
 edit. What is configured still shows and still runs: a stored ssh
 instance lists with its not-offered mark, and `/sandbox <kind>`
-takes it when the probe offers it. Enter runs the row's instance —
+takes it when the probe offers it. Enter runs the row's instance,
 the section's active pointer names it, so two instances of one kind
-switch without touching the kind — and `d` removes the instance
+switch without touching the kind, and `d` removes the instance
 outright, the active pointer going with it.
 The bar for a kind joining the add dialog is a story, not a
 checkbox.
 
 On safety, plainly: `local` and the mount postures are process hygiene,
 not security boundaries; copied containers and VMs are the real tiers.
-v1 does not couple the approval policy to the sandbox choice — today
+v1 does not couple the approval policy to the sandbox choice, today
 every `rhema-code` mode auto-approves, and changing that is the approval
-UX's question (§8) — and the gate stays installed in every mode either
+UX's question (§8), and the gate stays installed in every mode either
 way.
 
 ## 6. How we know it works
@@ -314,14 +314,14 @@ way.
 - `protocol.rs` pins the shapes with literal-JSON tests (the `wire`
   precedent). `SandboxDo` adopts the shared types; its existing offline
   tests catch any drift.
-- `http.rs` + `server.rs`: one loopback integration test — spawn
+- `http.rs` + `server.rs`: one loopback integration test, spawn
   `sandboxd` on an ephemeral port, drive exec (success, timeout,
   nonzero exit), seed (git and tarball), get/put, a wrong token, and a
   stream cap. The client↔server contract is exercised, not asserted.
 - `fsroot.rs`/`local.rs`: unit tests for path mapping, `..` traversal
   refusal in both directions, and seeding into the root.
 - The offline e2e keeps its shape: `ScriptedSandbox` + `MockProvider`,
-  now from the sandbox crate's `mock` feature — the same suite the
+  now from the sandbox crate's `mock` feature, the same suite the
   cloud frontends inherit from.
 - `VercelSandbox` keeps its `SandboxApi`-seamed offline tests unchanged.
 
@@ -329,31 +329,31 @@ way.
 
 Per-scope commits (AGENTS.md); each lands green.
 
-1. `feat(sandbox): extract the Sandbox seam into rhema-sandbox` — move
+1. `feat(sandbox): extract the Sandbox seam into rhema-sandbox`, move
    the trait, the types, `ShellSandbox`, `ScriptedSandbox`; cloud-agent
    re-exports. Zero behavior change.
-2. `feat(sandbox): pin the sandbox wire protocol` — `protocol.rs` and
+2. `feat(sandbox): pin the sandbox wire protocol`, `protocol.rs` and
    its shape tests.
-3. `feat(sandbox): the HTTP sandbox client` — `http.rs`, feature
+3. `feat(sandbox): the HTTP sandbox client`, `http.rs`, feature
    `client`.
-4. `feat(sandbox): the local sandbox and the shared seeding` —
+4. `feat(sandbox): the local sandbox and the shared seeding`,
    `fsroot.rs`, `local.rs`, `seed.rs`, the traversal tests.
-5. `feat(sandbox): rhema-sandboxd` — `server.rs` and the loopback test.
-6. `feat(deploy): the rhema-sandboxd image` — a Dockerfile beside
+5. `feat(sandbox): rhema-sandboxd`, `server.rs` and the loopback test.
+6. `feat(deploy): the rhema-sandboxd image`, a Dockerfile beside
    `deploy/docker/`.
 7. `feat(cloudflare-code): select the sandbox backend from the
-   environment` — `SANDBOX_BACKEND=cloudflare|http`; `SandboxDo` over
+   environment`, `SANDBOX_BACKEND=cloudflare|http`; `SandboxDo` over
    the shared protocol types; the shim and the containers-beta config
    become optional under `http`.
 8. `feat(vercel-agent): select the sandbox backend from the
-   environment` — `SANDBOX_BACKEND=vercel|http`.
-9. `feat(rhema-code): the sandbox choice` — `SandboxChoice`, the config
+   environment`, `SANDBOX_BACKEND=vercel|http`.
+9. `feat(rhema-code): the sandbox choice`, `SandboxChoice`, the config
    section, per-workspace memory, the picker, seeding on non-local
    kinds, README.
-10. `docs: the sandbox seam and the execution choice` — SPEC.md §12,
+10. `docs: the sandbox seam and the execution choice`, SPEC.md §12,
     AGENTS.md scope entries.
 
-Phases 1–2 are pure motion plus naming and de-risk everything after;
+Phases 1-2 are pure motion plus naming and de-risk everything after;
 phase 7 delivers the stated goal (a DO with `bash` on arbitrary
 infrastructure); phase 9 is the one users see.
 
@@ -375,58 +375,58 @@ infrastructure); phase 9 is the one users see.
 - **Cross-cloud resume:** a session checkpointed in DO storage resuming
   against Vercel's Postgres is Store portability, not sandboxing.
 - **The copy-in story for ssh:** what carries the working tree to the
-  remote, and when — a git-remote sync, an rsync/tar push at startup
+  remote, and when, a git-remote sync, an rsync/tar push at startup
   and on demand, or `sandboxd` behind `ssh -L` (then the protocol's
   `put`/`get` IS the story). Until one lands, ssh stays daemonless
   exec with seeded files, honest about not mirroring the working tree.
 
 ## 9. Decisions
 
-- **An own crate, not `rhema-core` or `rhema-agent-tools`** — SPEC.md §0
+- **An own crate, not `rhema-core` or `rhema-agent-tools`**, SPEC.md §0
   commits the engine to "does not sandbox"; and `agent-tools` rides into
   every consumer (memory, acp, subagents), where axum/reqwest would
   follow or drown the crate in feature gates. The provider family is
   the shape to copy: a contract crate, per-backend adapters beside it.
-- **The wire protocol is the shim's surface, promoted** — it is already
+- **The wire protocol is the shim's surface, promoted**, it is already
   specified, already spoken by one client and one server, and already
   handles the hard parts (token, caps, timeouts). A second protocol
   would be a worse version of adopting this one.
-- **Backend selection rides deployment env, not `SessionConfig`** — the
+- **Backend selection rides deployment env, not `SessionConfig`**, the
   sandbox is a deployment decision; and a per-session client-chosen URL
   is an SSRF on a server that executes commands.
-- **`rhema-code` keeps the direct local fast path** — the zero-flag
+- **`rhema-code` keeps the direct local fast path**, the zero-flag
   invocation must not grow a sandbox abstraction in its hot path; the
   choice machinery engages only non-local kinds.
-- **`VercelSandbox` stays** — it is a legitimate per-vendor adapter (the
+- **`VercelSandbox` stays**, it is a legitimate per-vendor adapter (the
   `rhema-provider-anthropic` of sandboxes); it just stops being the
   only choice its frontend can make.
-- **v1 output may arrive buffered** — the trait contract already allows
+- **v1 output may arrive buffered**, the trait contract already allows
   it; live lines are a transport property, and the callback is the seam
   that receives them when a streaming shape lands.
-- **SSH ships daemonless first** — zero remote setup is the mode's
+- **SSH ships daemonless first**, zero remote setup is the mode's
   reason to exist; tunnel-plus-`sandboxd` is documented as the fast
   path, not required plumbing.
-- **The `timeout` prefix, not kill APIs** — uniform `ExecRequest::
+- **The `timeout` prefix, not kill APIs**, uniform `ExecRequest::
   timeout` semantics across backends that lack a per-command kill; the
   shim has run the pattern in production shape.
-- **No approval coupling in v1** — the gate stays installed everywhere;
+- **No approval coupling in v1**, the gate stays installed everywhere;
   tiering defaults per isolation would change two variables where this
   design changes exactly one (where `bash` runs).
-- **VMs are packaging** — if an isolation tier costs no client code,
+- **VMs are packaging**, if an isolation tier costs no client code,
   the abstraction is right; the success test is that §4's "later" rows
   need no trait change.
-- **Both workspace postures stay first-class** — copy-in (the laptop
+- **Both workspace postures stay first-class**, copy-in (the laptop
   folder carried to the sandbox: the mount, `docker cp`, the protocol's
   `put`/`get`, ssh's story still to land) and native (the DO's storage
   IS the workspace; copying there is meaningless). The seam serves
   both; an assembly that assumes one posture everywhere is wrong.
-- **LXD is one driver and a launch flag, not two kinds** — `lxc exec`
+- **LXD is one driver and a launch flag, not two kinds**, `lxc exec`
   and `lxc file` speak to containers and `--vm` instances alike, so
   the instance type lives in the lxd config section, not in the choice
   vocabulary. The VM type is the point: local and mounts are process
   hygiene, and an LXD VM is the strongest isolation tier a
   `rhema-code` host can offer without a cloud.
-- **ecrou is a per-command machine, not a managed instance** — one
+- **ecrou is a per-command machine, not a managed instance**, one
   boot per exec makes the machine's whole lifecycle the exec's, so
   the assembly has no ensure step, no provision, and no stop; the
   cross-process lock only serializes the seed, and the derived
@@ -434,15 +434,15 @@ infrastructure); phase 9 is the one users see.
   share is 1:1 at its own host path (the model's absolute paths are
   the same strings on both sides), and the skills ride the seed
   instead of a read-only mount: the snap ecrou ships in is confined
-  and cannot see the config directory a mount would name — nor the
+  and cannot see the config directory a mount would name, nor the
   host's `/tmp`, which is a private per-run tmpfs inside the snap, so
   the capture scratch roots in the snap's own durable area and any
   `/tmp`-rooted share is refused loudly rather than silently sharing
   an empty tree.
 
   The machine's tools are the image's business, not rhema's: the
-  sandbox consumes a rhema-ready base image — an OCI reference
-  built and hosted outside this tree, digest-pinned in the config —
+  sandbox consumes a rhema-ready base image, an OCI reference
+  built and hosted outside this tree, digest-pinned in the config,
   and no assembly ever runs a package manager inside a machine. The
   git identity is the one thing rhema stages per exec (the flattened
   `.rhema/git/config` and its `GIT_CONFIG_GLOBAL` pair); it carries
@@ -451,15 +451,15 @@ infrastructure); phase 9 is the one users see.
   business: ecrou's `--persist` keeps a per-workspace writable upper
   (default on, `sandbox.persist: false` for the one-command rootfs)
   keyed by the workspace's derived name, so `apt install` survives
-  its command and stays inside the workspace's own state — no entry
+  its command and stays inside the workspace's own state, no entry
   is ever shared between workspaces, and a base refresh that moves
   the image the state was built on makes the next exec refuse, reset
   the state, and say so in the session. The machine stays per-command
   through all of it: one boot per exec, the budget and kill unchanged.
   Availability
-  is `ecrou probe` — the dlopen-and-KVM check — and a stale binary
+  is `ecrou probe`, the dlopen-and-KVM check, and a stale binary
   surfaces in-band at the first exec, as an unavailable sandbox.
-- **The settings page is an instance list** — the host's `local`
+- **The settings page is an instance list**, the host's `local`
   row, the stored instances, the add row last. The add dialog
   advertises the ready set only (docker, lxd) while ssh and http
   instances stay addable through `config.yaml`, where they list with
@@ -467,4 +467,4 @@ infrastructure); phase 9 is the one users see.
   statement, not a capability one: `/sandbox <kind>` still runs a
   configured kind the probe offers, enter runs a stored instance
   through the section's active pointer, and `d` removes the instance
-  outright — record and pointer, never the stored kind.
+  outright, record and pointer, never the stored kind.

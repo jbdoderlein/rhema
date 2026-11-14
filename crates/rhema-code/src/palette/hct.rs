@@ -1,4 +1,4 @@
-//! HCT — hue, chroma, tone — the color space behind Material's tonal
+//! HCT, hue, chroma, tone, the color space behind Material's tonal
 //! palettes, and the solver that rounds a requested (hue, chroma, tone)
 //! to the nearest sRGB color. A trimmed port of Google's
 //! material-color-utilities (Apache-2.0): CAM16 in the standard sRGB

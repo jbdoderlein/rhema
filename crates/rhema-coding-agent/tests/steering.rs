@@ -76,7 +76,7 @@ impl Steering for Scripted {
     }
 }
 
-/// A steering source that answers the same line forever — a job the
+/// A steering source that answers the same line forever, a job the
 /// model never fetched, which the driver must still announce only once
 /// per turn.
 struct Stubborn(String);
@@ -199,7 +199,7 @@ async fn a_mid_turn_announcement_lands_after_the_tool_round() {
     assert_eq!(second.last().map(String::as_str), Some(notification));
     assert_eq!(second.len(), 2, "one announcement message: {:?}", second);
     // The drain ran at exactly the two points that consumed a batch:
-    // turn start and after the tool round — the turn's last step is an
+    // turn start and after the tool round, the turn's last step is an
     // end-turn, which drains no further.
     assert_eq!(steering.drained(), 2);
 }
@@ -299,7 +299,7 @@ async fn a_separate_turn_reannounces_the_same_unfetched_line() {
     let requests = recorder.requests();
     assert_eq!(requests.len(), 2);
     // The request carries the whole history, so the tail is what the
-    // second turn appended: the re-announcement before its input — the
+    // second turn appended: the re-announcement before its input, the
     // dedup does not carry across turns while the report is unfetched.
     let texts = user_texts(&requests[1]);
     let tail: Vec<String> = texts[texts.len() - 2..].to_vec();

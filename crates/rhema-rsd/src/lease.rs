@@ -8,7 +8,7 @@ use crate::key::ResourceKey;
 use crate::state::Revision;
 
 /// Identity of one lease grant, unique per [`crate::Dispatcher`] process.
-/// Leases do not survive a restart — recovery sweeps them instead — so a
+/// Leases do not survive a restart, recovery sweeps them instead, so a
 /// process-local counter is a sufficient uniqueness source.
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]

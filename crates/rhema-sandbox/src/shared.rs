@@ -4,7 +4,7 @@
 //!
 //! Two rhema processes in one workspace derive the same instance name,
 //! so "stop the instance when the session ends" has to know how many
-//! sessions are live — and a counter kept anywhere forgets what a
+//! sessions are live, and a counter kept anywhere forgets what a
 //! crash knew. The lock file replaces the counter: each process holds
 //! an advisory lock on one file per instance for the length of its
 //! session, and the kernel drops the hold when the process dies, so a
@@ -15,21 +15,21 @@
 //!
 //! The discipline every holder follows:
 //!
-//! 1. [`InstanceLock::acquire`] — exclusive when free, otherwise a
-//!    join — around the whole assembly (launch, devices, idmap
+//! 1. [`InstanceLock::acquire`], exclusive when free, otherwise a
+//!    join, around the whole assembly (launch, devices, idmap
 //!    repair, provision, seed). A free instance is the mutation
 //!    window, serialized across processes; a held one means a peer
 //!    has assembled it or is doing so, and the newcomer takes the
 //!    session posture directly, waiting out only a peer's mid-assembly
 //!    work. The wait is bounded by the work itself, every step of
-//!    which already runs under a timeout — a process assembling
+//!    which already runs under a timeout, a process assembling
 //!    behind a cold first run waits out the provision it would
 //!    otherwise have raced, and a process arriving behind a live
 //!    session does not wait at all.
-//! 2. [`InstanceLock::share`] — downgrade to shared — for the
+//! 2. [`InstanceLock::share`], downgrade to shared, for the
 //!    session's life: use without exclusion.
-//! 3. On the way out, [`InstanceLock::is_sole`] — a non-blocking
-//!    upgrade — and stop only on `true`. A peer's shared hold fails
+//! 3. On the way out, [`InstanceLock::is_sole`], a non-blocking
+//!    upgrade, and stop only on `true`. A peer's shared hold fails
 //!    the upgrade, and the failed upgrade leaves this holder shared.
 //!
 //! No holder is ever in session without having passed (1), so a stop
@@ -38,8 +38,8 @@
 //! serialized behind the stop and re-ensures a stopped instance, which
 //! the assemblies already handle.
 //!
-//! The locks live under `XDG_RUNTIME_DIR` — per-user, tmpfs, wiped at
-//! boot: the right lifetime for "who is using this right now" — with a
+//! The locks live under `XDG_RUNTIME_DIR`, per-user, tmpfs, wiped at
+//! boot: the right lifetime for "who is using this right now", with a
 //! `/tmp` fallback for a broken setup. Lock files are never unlinked
 //! (unlinking a locked file forks the mutex: latecomers would open a
 //! fresh inode and hold nothing); they are zero bytes and there is one
@@ -48,7 +48,7 @@
 //! One hold serves the whole session: a re-assembly of the same
 //! instance while its session still lives reuses the registry's file
 //! instead of taking a second exclusive hold on the file this process
-//! already owns — `flock` counts open file descriptions, not
+//! already owns, `flock` counts open file descriptions, not
 //! processes, so that second hold would block against the session's
 //! own shared lock and hang. The registry holds the file weakly, so
 //! the hold's lifetime is exactly the session's: the last session
@@ -63,8 +63,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 /// One instance's lock: an advisory exclusive-or-shared hold on the
-/// instance's lock file. The descriptor is process-global — every
-/// [`InstanceLock`] of one path in one process shares it — so the
+/// instance's lock file. The descriptor is process-global, every
+/// [`InstanceLock`] of one path in one process shares it, so the
 /// states compose instead of contending with themselves.
 #[derive(Debug)]
 pub struct InstanceLock {
@@ -73,8 +73,8 @@ pub struct InstanceLock {
 
 impl InstanceLock {
     /// Takes the instance's mutation window: blocking exclusive, held
-    /// across the whole assembly. Blocks up to that work's own length —
-    /// the launch, the provision, the seed — and is the reason two
+    /// across the whole assembly. Blocks up to that work's own length,
+    /// the launch, the provision, the seed, and is the reason two
     /// rhema processes can never launch, device-add, or provision the
     /// same instance together.
     pub fn acquire(backend: &str, name: &str) -> io::Result<Self> {
@@ -86,7 +86,7 @@ impl InstanceLock {
             .and_then(Weak::upgrade)
         {
             // This process already holds the instance, and its lock
-            // state — shared, once assembled — is the session posture
+            // state, shared, once assembled, is the session posture
             // the re-assembly wants. Re-taking exclusive here would
             // block on the process's own descriptor.
             return Ok(Self { file: held });
@@ -106,12 +106,12 @@ impl InstanceLock {
         // provision, minutes at worst) must not pin the registry and
         // stall an unrelated instance's assembly in this process.
         if file.try_lock().is_err() {
-            // A peer holds the instance — either mid-assembly
+            // A peer holds the instance, either mid-assembly
             // (exclusive, and the shared take below waits out exactly
             // that work) or live in its session posture (shared, and
             // the take lands at once). Either way the instance is
             // assembled or becoming so: join it. Blocking on
-            // exclusive here would deadlock — a live peer never lifts
+            // exclusive here would deadlock, a live peer never lifts
             // its shared hold, and the mutation window is not this
             // process's to retake.
             file.lock_shared()?;
@@ -139,14 +139,14 @@ impl InstanceLock {
     }
 
     /// Downgrades to the session posture: shared. The downgrade always
-    /// succeeds — it is what every concurrent holder already holds.
+    /// succeeds, it is what every concurrent holder already holds.
     pub fn share(&self) -> io::Result<()> {
         self.file.lock_shared()
     }
 
     /// The stop-on-exit question: is this process the lock's last
-    /// holder? On `true` the hold has been upgraded to exclusive —
-    /// serialized against every comer behind it — and the caller
+    /// holder? On `true` the hold has been upgraded to exclusive,
+    /// serialized against every comer behind it, and the caller
     /// should stop the instance; on `false` a peer lives on, the hold
     /// stays shared, and the instance is not this exit's to stop.
     pub fn is_sole(&self) -> bool {
@@ -157,7 +157,7 @@ impl InstanceLock {
 /// The per-process registry of held lock files, held weakly: the
 /// path's descriptor while some session in this process still holds
 /// it, a dead entry once none does. One entry per instance the
-/// process ever used is the whole footprint — a lock file is zero
+/// process ever used is the whole footprint, a lock file is zero
 /// bytes, and a dead entry only costs its path.
 fn registry() -> &'static Mutex<HashMap<PathBuf, Weak<File>>> {
     static REGISTRY: OnceLock<Mutex<HashMap<PathBuf, Weak<File>>>> = OnceLock::new();
@@ -183,7 +183,7 @@ fn sanitize(name: &str) -> String {
 mod tests {
     use super::*;
 
-    /// Opens the lock file directly, the way a peer process would —
+    /// Opens the lock file directly, the way a peer process would,
     /// the tests' stand-in holders never touch the registry. The peer
     /// also makes the directory: a fresh machine has no
     /// `rhema/sandbox` under its runtime dir yet, and waiting for
@@ -207,7 +207,7 @@ mod tests {
     fn the_lock_path_lands_under_the_runtime_dir() {
         let path = InstanceLock::path("lxd", "rhema-sandbox-proj-0badc0de");
         // The file name carries both keys; the directory is the
-        // runtime dir's `rhema/sandbox` or the /tmp fallback — which
+        // runtime dir's `rhema/sandbox` or the /tmp fallback, which
         // one is the environment's answer, not the test's.
         assert_eq!(
             path.file_name().and_then(|name| name.to_str()),
@@ -217,7 +217,7 @@ mod tests {
         // A hand-written target with path separators cannot escape the
         // directory the lock lives in: separators become underscores
         // inside one flat filename, and the file lands beside every
-        // other lock. The dots survive — inert text in one component.
+        // other lock. The dots survive, inert text in one component.
         let hostile = InstanceLock::path("lxd", "../../etc/rhema");
         assert_eq!(hostile.parent(), path.parent());
         assert_eq!(
@@ -275,7 +275,7 @@ mod tests {
 
     #[test]
     fn acquire_waits_for_a_peer_exclusive_to_lift() {
-        // The peer holds exclusive on its own descriptor, directly —
+        // The peer holds exclusive on its own descriptor, directly,
         // the registry must not shortcut a genuine cross-process wait.
         let peer = open_direct("lxd", "wait-test");
         peer.lock().expect("the peer's exclusive");
@@ -295,7 +295,7 @@ mod tests {
 
     #[test]
     fn a_peer_session_posture_is_joined_not_waited_for() {
-        // The peer holds the session posture — shared, for its
+        // The peer holds the session posture, shared, for its
         // session's whole life. The second comer must join at once,
         // not block on an exclusive window the peer will never offer.
         // The peer is a raw descriptor, the way another process
@@ -317,7 +317,7 @@ mod tests {
 
     #[test]
     fn a_peer_mid_assembly_is_joined_once_it_lands() {
-        // The peer holds exclusive — mid-assembly. The joiner waits
+        // The peer holds exclusive, mid-assembly. The joiner waits
         // out the work and lands in the posture the peer downgrades
         // to, never taking the mutation window itself.
         let peer = open_direct("lxd", "join-mid-test");

@@ -9,7 +9,7 @@ pub enum ChatAction {
     None,
     /// Enter on the (possibly empty) input; the app drops empty and
     /// suppresses submits while a turn runs. The text is the session
-    /// form — paste payloads embedded at their anchors — which the app
+    /// form, paste payloads embedded at their anchors, which the app
     /// pushes to the transcript as-is and expands only where plain
     /// text is wanted (commands, the provider). The images ride beside
     /// the text, in their anchors' order.
@@ -23,7 +23,7 @@ pub enum ChatAction {
 
 /// One chip anchored in the input: the payload a [`ChatState::MARK`]
 /// carries. Text pastes and clipboard images anchor the same way and
-/// render the same — one atomic cell — and differ only in what submit
+/// render the same, one atomic cell, and differ only in what submit
 /// does with them.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Chip {
@@ -44,7 +44,7 @@ pub struct ChatState {
     /// attachment chip at the position its paste landed.
     pub input: String,
     /// The anchors' payloads, in the order their [`Self::MARK`] anchors
-    /// appear in `input` — a 1:1 pairing the edit paths keep true. Chips
+    /// appear in `input`, a 1:1 pairing the edit paths keep true. Chips
     /// render at their anchors; submit embeds the paste payloads in
     /// place and hands the images over beside the text.
     pub chips: Vec<Chip>,
@@ -71,7 +71,7 @@ pub(crate) struct CompletionCache {
 }
 
 impl ChatState {
-    /// Rows per PageUp/PageDown press — one mouse-wheel tick, so both
+    /// Rows per PageUp/PageDown press, one mouse-wheel tick, so both
     /// controls step the history identically.
     pub const SCROLL_STEP: usize = 3;
     /// A paste at or under this many lines joins the input inline;
@@ -80,7 +80,7 @@ impl ChatState {
     /// The object-replacement character: one attachment anchor in
     /// `input`. It is one cursor step, and backspace or delete on it
     /// removes the chip and its payload together. Only [`Self::paste`]
-    /// mints it, always paired with a payload — text arriving with
+    /// mints it, always paired with a payload, text arriving with
     /// marks of its own loses them, so a chip glyph copied back out of
     /// the box can never anchor empty.
     pub const MARK: char = rhema_core::paste::MARK;
@@ -107,7 +107,7 @@ impl ChatState {
     }
 
     /// A paste landed. Short enough, it joins the input inline; longer,
-    /// it becomes a chip anchored at the cursor — one cell in the box at
+    /// it becomes a chip anchored at the cursor, one cell in the box at
     /// the paste's place, full content on submit.
     pub fn paste(&mut self, text: &str) {
         let normalized = Self::normalize(text);
@@ -120,7 +120,7 @@ impl ChatState {
     }
 
     /// A clipboard image landed: always a chip anchored at the cursor,
-    /// never inline — an image has no inline form, and a prompt carries
+    /// never inline, an image has no inline form, and a prompt carries
     /// it as one cell beside the text, full payload on submit.
     pub fn paste_image(&mut self, image: rhema_core::Image) {
         self.chips.push(Chip::Image(image));
@@ -128,7 +128,7 @@ impl ChatState {
     }
 
     /// Terminal text made insertable: carriage returns normalize to
-    /// newlines, and anchor marks are dropped — a mark is only ever
+    /// newlines, and anchor marks are dropped, a mark is only ever
     /// minted by [`Self::paste`], paired with a payload.
     fn normalize(text: &str) -> String {
         rhema_core::paste::normalize(text)
@@ -142,7 +142,7 @@ impl ChatState {
     }
 
     /// Removes `input[start..end]` (byte offsets) and, with it, the
-    /// chip of every anchor in the range, paste or image — the 1:1
+    /// chip of every anchor in the range, paste or image, the 1:1
     /// mark-to-chip pairing survives any deletion.
     fn delete_range(&mut self, start: usize, end: usize) {
         let dropped = self.input[start..end].matches(Self::MARK).count();
@@ -154,7 +154,7 @@ impl ChatState {
     }
 
     /// What a submit sends: the typed input with every paste embedded at
-    /// its anchor, and the images beside it in anchor order — the
+    /// its anchor, and the images beside it in anchor order, the
     /// session's record of the prompt. The transcript renders each embed
     /// as its chip, and the model sees the plain expansion
     /// (`rhema_core::paste::expand`, applied at the provider seam), never
@@ -181,7 +181,7 @@ impl ChatState {
         (rhema_core::paste::embed(&marked, &pastes), images)
     }
 
-    /// Inserts `text` at the cursor, newlines and all — the bracketed
+    /// Inserts `text` at the cursor, newlines and all, the bracketed
     /// paste path. Carriage returns normalize to newlines, since a
     /// terminal paste may carry either.
     pub fn insert_str(&mut self, text: &str) {
@@ -192,7 +192,7 @@ impl ChatState {
         self.palette_index = 0;
     }
 
-    /// The cursor's logical line index, 0-based — the input window's
+    /// The cursor's logical line index, 0-based, the input window's
     /// anchor. A test seam only: production observes the cursor through
     /// the rendering, never through these.
     #[cfg(test)]
@@ -293,7 +293,7 @@ impl ChatState {
         // Ctrl-v (with or without shift) is paste in terminals that do
         // not bind it themselves: the clipboard is read directly, the
         // same content a bracketed paste would have carried. A clipboard
-        // holds one thing or the other — an image is tried first and the
+        // holds one thing or the other, an image is tried first and the
         // text falls through.
         if key.code == KeyCode::Char('v')
             && key.modifiers.contains(KeyModifiers::CONTROL)
@@ -308,7 +308,7 @@ impl ChatState {
         }
         // AltGr lands as CONTROL|ALT on most terminals outside the kitty
         // protocol: a printable char carrying both is composed text, not
-        // a combo — on French AZERTY, `@` is AltGr+0.
+        // a combo, on French AZERTY, `@` is AltGr+0.
         if key.modifiers.contains(KeyModifiers::CONTROL)
             && !(key.modifiers.contains(KeyModifiers::ALT) && matches!(key.code, KeyCode::Char(_)))
         {
@@ -383,7 +383,7 @@ impl ChatState {
                 self.cursor = start + len;
                 ChatAction::None
             }
-            // The palette owns the vertical arrows while it has rows —
+            // The palette owns the vertical arrows while it has rows,
             // commands, models under `/model`, profiles under
             // `/profile`, or the path entries under the cursor's token.
             KeyCode::Up | KeyCode::Down
@@ -424,7 +424,7 @@ impl ChatState {
                         }
                         PaletteRow::Model { provider, id, .. } => {
                             self.chips.clear();
-                            // The argument is the fully-qualified name —
+                            // The argument is the fully-qualified name,
                             // the only shape `/model` accepts, since a
                             // bare id cannot name its provider.
                             self.input = format!("/model {provider}/{id}");

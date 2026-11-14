@@ -1,7 +1,7 @@
 //! Embedded pastes in message text: the compact record a UI keeps so a
 //! multi-line paste can travel as one chip.
 //!
-//! A paste is written as [`MARK`], its payload, [`MARK`] — one logical
+//! A paste is written as [`MARK`], its payload, [`MARK`], one logical
 //! unit inside an otherwise plain string. The form is the session's
 //! record of the prompt: UIs render each embed as a chip (id, size),
 //! and [`expand`] restores the plain text the model must see, so the
@@ -51,7 +51,7 @@ pub fn parts(text: &str) -> Vec<Part<'_>> {
     parts
 }
 
-/// Expands embedded pastes back to plain text — the form a provider
+/// Expands embedded pastes back to plain text, the form a provider
 /// sees. Malformed marks pass through untouched.
 pub fn expand(text: &str) -> String {
     let mut full = String::with_capacity(text.len());
@@ -65,7 +65,7 @@ pub fn expand(text: &str) -> String {
 }
 
 /// Normalizes text that travels inside an embed or beside marks:
-/// carriage returns to newlines, stray marks dropped — the scan must
+/// carriage returns to newlines, stray marks dropped, the scan must
 /// stay unambiguous.
 pub fn normalize(text: &str) -> String {
     text.replace("\r\n", "\n")

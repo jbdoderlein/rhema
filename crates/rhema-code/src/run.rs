@@ -4,12 +4,12 @@
 //! TERMINAL OWNERSHIP: the UI thread is the only user of the terminal. The
 //! turn and fetch tasks report through the event channel; they never
 //! write. Raw mode + alternate screen are entered once here and restored
-//! on EVERY exit path — after the event loop returns, and again in the
+//! on EVERY exit path, after the event loop returns, and again in the
 //! panic hook (restore is idempotent enough: failures are ignored), so a
 //! panic never leaves the user inside the alternate screen. A watcher
 //! thread repeats the restore for the fatal signals that unwind
-//! nothing — the SIGHUP of an ssh drop or a closed window, SIGTERM,
-//! SIGINT — and startup clears whatever a run without this teardown
+//! nothing, the SIGHUP of an ssh drop or a closed window, SIGTERM,
+//! SIGINT, and startup clears whatever a run without this teardown
 //! left pushed, so one leaked state never compounds.
 
 use std::io::{IsTerminal, stdout};
@@ -72,7 +72,7 @@ fn resolve_base_system(path: Option<&std::path::Path>) -> Option<String> {
 
 /// Moves the config's stored literal keys into the system keychain,
 /// best effort, rewriting the file so the move is recorded. Machines
-/// without a keychain keep their literals — the pre-keychain behavior,
+/// without a keychain keep their literals, the pre-keychain behavior,
 /// retried here on every start.
 fn migrate_stored_keys(config: &mut Config) {
     let moved = config.migrate_secrets(&KeyringSecretStore::named(
@@ -88,15 +88,15 @@ fn migrate_stored_keys(config: &mut Config) {
 }
 
 /// Runs the frontend: the ACP server, the `run` one-shot, or the
-/// full-screen TUI — the subcommand decides, and bare `rhema` is the TUI
+/// full-screen TUI, the subcommand decides, and bare `rhema` is the TUI
 /// only when a terminal is attached.
 pub async fn run(args: Args) -> anyhow::Result<()> {
     // The ACP branch first: stdin/stdout are the protocol wire, so no
-    // terminal detection may run — a served agent never has a tty.
+    // terminal detection may run, a served agent never has a tty.
     match args.command {
         Some(crate::args::Command::Acp(acp)) => return run_acp(acp),
         // The MCP CLI owns the process: its exit code IS ours, and
-        // its stdout/stderr contract is the model's output contract —
+        // its stdout/stderr contract is the model's output contract,
         // nothing rhema adds to either. The argv rides with the mode
         // as element zero, the dispatch's convention.
         Some(crate::args::Command::Mcp { args: rest }) => {
@@ -141,7 +141,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     // catching early.
     if !stdout().is_terminal() {
         anyhow::bail!(
-            "stdout is not a terminal: nothing to start interactively — \
+            "stdout is not a terminal: nothing to start interactively, \
              use `rhema run` for the one-shot runner"
         );
     }
@@ -163,13 +163,13 @@ fn run_acp(args: crate::args::AcpArgs) -> anyhow::Result<()> {
 
 /// The prompt's two optional sections for a workspace, the session's
 /// sandbox kind, and the model it runs: the user's global `USER.md`
-/// verbatim when present, and the environment report — host facts for a
+/// verbatim when present, and the environment report, host facts for a
 /// local session, the honest notice for a sandboxed one, because host
 /// facts would be lies about a container. `None` and `local` are the
 /// local case; any other stored kind names the sandbox the notice
 /// carries. The third element is the probe's absence list, the user's
 /// view of the same run: a local session names the tools it misses, a
-/// sandboxed one claims none — the host's gaps are not a sandbox's.
+/// sandboxed one claims none, the host's gaps are not a sandbox's.
 /// The one gate: the agent's assembly and the `system show` preview
 /// both read here, so what is previewed is what turns send.
 pub(crate) fn prompt_sections(
@@ -197,7 +197,7 @@ pub(crate) fn prompt_sections(
 }
 
 /// The process exit code for a failed run: 2 when the failure is the
-/// model backend's — a rate limit, a dead endpoint, an auth rejection —
+/// model backend's, a rate limit, a dead endpoint, an auth rejection,
 /// so a wrapper can tell a quota wall from a rhema bug and decide on its
 /// own when to retry; 1 for everything else. Codes above 1 are shell
 /// convention for distinct failures.
@@ -223,7 +223,7 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
     // The wizard runs when no config existed or the last wizard never
     // finished (`onboarded: Some(false)`), and when `rhema onboard` said
     // so. An existing config from before the wizard has no marker and
-    // reads as onboarded — upgrading never replays it. The marker is
+    // reads as onboarded, upgrading never replays it. The marker is
     // written up front so a wizard abandoned halfway (a key added, then
     // a ctrl-c) reopens here next start instead of reading as complete.
     let config_existed = rhema_config::Home::discover()
@@ -238,7 +238,7 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
         || matches!(args.command, Some(crate::args::Command::Onboard));
     if onboard && config.onboarded != Some(false) {
         config.onboarded = Some(false);
-        // A bundled skill that ships off starts in the disabled set —
+        // A bundled skill that ships off starts in the disabled set,
         // the set is the only switch, so its default state must be
         // recorded, or seeding would read it as on.
         for skill in crate::bundled::BUNDLED_SKILLS {
@@ -250,7 +250,7 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
     }
     migrate_stored_keys(&mut config);
     // The bundled skills seed into the global directory before anything
-    // discovers them — the wizard's skills step and the agent's prompt
+    // discovers them, the wizard's skills step and the agent's prompt
     // both read the same folders. Best effort: a read-only config
     // directory only means fewer skills.
     if let Ok(dir) = rhema_config::Home::discover().map(|home| home.skills())
@@ -271,7 +271,7 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
     ));
     // Without an explicit --profile the session starts on the profile
     // this workspace last used, or on the default/first one that can
-    // serve turns — a logged-in profile never opens the login screen.
+    // serve turns, a logged-in profile never opens the login screen.
     // The stored provider choice then decides which backend runs; a
     // missing key still leaves the backend unresolved so the login
     // screen runs.
@@ -355,8 +355,8 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
     // The file this conversation persists to: a resumed run continues
     // its own file, a fresh one gets a name from the sessions cache.
     // This is the checkpoint target every turn's streams commit into,
-    // so an exit in the middle of the first turn — a crash, a kill, a
-    // quit — still leaves something to resume. Allocation only picks
+    // so an exit in the middle of the first turn, a crash, a kill, a
+    // quit, still leaves something to resume. Allocation only picks
     // the name; nothing is written until a turn commits.
     let session_file = match &args.resume {
         Some(path) => Some(path.clone()),
@@ -386,8 +386,8 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
     // Where bash runs: the offered list is this machine's and this
     // profile's, the choice the same tiered resolution the picker
     // offers (`RHEMA_SANDBOX`/stored, else the workspace's remembered
-    // kind, else local), and a non-local choice assembles — through the
-    // headless path's shared `assemble` — before the first paint. A
+    // kind, else local), and a non-local choice assembles, through the
+    // headless path's shared `assemble`, before the first paint. A
     // failed assembly degrades to the host with a warning: a
     // remembered daemon that is down must not keep the UI from opening.
     let sandbox_machines = crate::sandbox::SandboxMachines::probe();
@@ -513,7 +513,7 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
     // ctrl-j.
     // Associated text is not optional here: all-keys mode alone strips
     // text from the stream, and an AltGr key's codepoint is its base
-    // key — `@` on AZERTY (AltGr+0) arrives as `à` plus Ctrl+Alt. Only
+    // key, `@` on AZERTY (AltGr+0) arrives as `à` plus Ctrl+Alt. Only
     // the associated-text field names the composed character, so a
     // text-driven reader without it loses every AltGr character and
     // dead key. The parser decoding it lives in the patched crossterm
@@ -526,8 +526,8 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
     // has to restore: the shell must not keep raw mode on, or the
     // alternate screen. `restore_terminal` is idempotent and swallows
     // its own errors, so running it here is safe whatever landed.
-    // A run that died without its teardown — a SIGKILL, a crash from
-    // before the signal watcher, another program's leak — may have
+    // A run that died without its teardown, a SIGKILL, a crash from
+    // before the signal watcher, another program's leak, may have
     // left capture modes on; clear them before this run pushes its
     // own, or the new state sits on top of the old leak and the
     // shell's next exit is broken twice over.
@@ -571,7 +571,7 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
     // Best-effort save for /resume, after the terminal is back: an empty
     // session saves nothing, and a failed save warns without failing the
     // exit. The save goes to the file the turns checkpointed, so one
-    // conversation is one entry. A turn still out owns the agent — the
+    // conversation is one entry. A turn still out owns the agent, the
     // freshest state is the checkpoint file its stream commits wrote,
     // and writing the pre-turn snapshot the app still holds over it
     // would erase the interrupted turn, so nothing is exported here.
@@ -609,7 +609,7 @@ fn restore_terminal() {
     // The pops are the canonical bare `CSI < u` (crossterm's command
     // emits the numbered `CSI <1u`, which a terminal may ignore), and
     // the trailing push of zero flags masks any entry the pops could not
-    // remove — the effective encoding lands on legacy either way. All
+    // remove, the effective encoding lands on legacy either way. All
     // of it runs on the alternate screen, where the push happened.
     use std::io::Write;
     let _ = write!(stdout(), "\x1b[<u");
@@ -638,8 +638,8 @@ fn restore_terminal() {
 }
 
 /// Watches the fatal signals that bypass both the event loop and the
-/// panic hook — the SIGHUP of an ssh drop or a closed terminal window,
-/// SIGTERM, SIGINT — and restores the terminal before dying with the
+/// panic hook, the SIGHUP of an ssh drop or a closed terminal window,
+/// SIGTERM, SIGINT, and restores the terminal before dying with the
 /// shell's `128 + signal` code. Without it a dropped connection leaves
 /// the emulator holding every mode the run pushed: a captured mouse
 /// that pours `^[[<…M` motion reports into the next shell, raw mode,
@@ -677,7 +677,7 @@ fn install_signal_restore() {
 /// and the kitty keyboard protocol live in the emulator, and the
 /// shell behind it drowns in `^[[<…M` motion reports. Every disable
 /// here is a no-op when nothing leaked, and this run re-pushes the
-/// modes it needs right after — this only stops a leak from
+/// modes it needs right after, this only stops a leak from
 /// compounding into a second broken run.
 fn heal_terminal() {
     // The same spellings restore_terminal tears down with: the bare
@@ -708,7 +708,7 @@ fn install_panic_hook() {
 
 /// The UI thread's loop: draw, drain the event channel, run the app's
 /// tick (subagent finishes and their notifications), poll crossterm.
-/// Nothing here ever blocks on a task — that is the approval bridge's
+/// Nothing here ever blocks on a task, that is the approval bridge's
 /// deadlock-safety invariant (see `crate::approval`).
 async fn event_loop(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
@@ -726,8 +726,8 @@ async fn event_loop(
     // ids carry: the frame below re-states its want every draw, and a
     // change moves the placements or clears them. Each piece owns a
     // stable placement slot, and restating a slot moves and resizes
-    // it — the protocol replaces the pair in place, no flicker and no
-    // delete — so a scrolled transcript writes placements only. A
+    // it, the protocol replaces the pair in place, no flicker and no
+    // delete, so a scrolled transcript writes placements only. A
     // fill change alone re-transmits the five sprites under the same
     // ids, and the re-transmit drops the layer's placements, which
     // the same frame's re-states rebuild.
@@ -755,7 +755,7 @@ async fn event_loop(
         // under the text layer), and the cells repaint around them.
         // The sprites transmit once a fill color; a scrolled
         // transcript moves and resizes only placements, in place, and
-        // a piece that leaves the viewport drops its own slot — never
+        // a piece that leaves the viewport drops its own slot, never
         // the global delete, whose semantics a terminal may widen past
         // the spec and take the sprites' data with it. Two fills, two
         // sets: the prompt's accent card and the notification's
@@ -773,7 +773,7 @@ async fn event_loop(
                 // not once per fill: a retransmit swaps the pixels and
                 // leaves the placements keyed on the id alone, so it
                 // costs a few kilobytes and heals any state a terminal
-                // lost — ghostty before 7f62fe70a frees an image's
+                // lost, ghostty before 7f62fe70a frees an image's
                 // data on a placement delete that matched nothing,
                 // after which every placement of it failed with a
                 // silent ENOENT (the case of the sheared bottom
@@ -881,11 +881,11 @@ async fn event_loop(
 }
 
 /// The placements the frame's card no longer holds: the slots that
-/// dropped, and — just as stale — the slots that changed sprite. A
+/// dropped, and, just as stale, the slots that changed sprite. A
 /// placement is the pair of the image id and the slot; a slot that
 /// renumbers onto a different sprite (a bubble scrolled out and the
 /// next bubble's piece inherited its slot) would leave the old pair
-/// on screen forever if only the slot were compared — the ghost
+/// on screen forever if only the slot were compared, the ghost
 /// corners a scroll used to trail behind the card.
 fn stale_placements(
     placed: &[crate::ui::BubblePiece],
@@ -958,8 +958,8 @@ fn dispatch(
             let (steer, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
             // The status names the prompt until a tool call takes over.
             status.note_prompt(&text);
-            // Auto-approved for now: the Approval seam — and the modal
-            // wired through it — is where command allowlists will land.
+            // Auto-approved for now: the Approval seam, and the modal
+            // wired through it, is where command allowlists will land.
             app.begin_turn(cancel, steer, None);
             spawn_turn(
                 agent,
@@ -1044,7 +1044,7 @@ fn dispatch(
         }
         Effect::EditSubagent(path) => {
             // Blocking here is the point: the editor owns the terminal,
-            // so nothing of the app — draw, input, tasks — can run
+            // so nothing of the app, draw, input, tasks, can run
             // until it is back. The app is on the settings screen, not
             // mid-turn; the runtime's background work stalls with it.
             if let Err(err) = edit_in_editor(terminal, &path) {
@@ -1059,7 +1059,7 @@ fn dispatch(
 /// alternate screen and the input modes the editor cannot share are
 /// dropped first and re-established after, mirroring `run_tui`'s
 /// setup and `restore_terminal`'s teardown. The draw cache is
-/// invalidated — the re-entered alternate screen is fresh, and a diff
+/// invalidated, the re-entered alternate screen is fresh, and a diff
 /// against the old one would repaint half a screen. The editor's
 /// error, if any, is the return.
 fn edit_in_editor(

@@ -1,18 +1,18 @@
 //! Copilot's slice of the OpenAI chat-completions wire: only the
 //! internal-user endpoint parsing that is Copilot's alone.
 //!
-//! The shared chat-completions vocabulary — request building, chunk
-//! assembly, the SSE drain — lives in
+//! The shared chat-completions vocabulary, request building, chunk
+//! assembly, the SSE drain, lives in
 //! [`rhema_provider_openai_compatible`], and Copilot speaks that crate's
 //! own [`OPENAI_COMPATIBLE`](rhema_provider_openai_compatible::wire::OPENAI_COMPATIBLE)
 //! dialect verbatim: the proxy takes the OpenAI spellings of effort and
-//! reasoning replay as-is. Everything else — roles, image parts,
-//! tool-call fragment assembly, the `[DONE]` sentinel — is the shared
+//! reasoning replay as-is. Everything else, roles, image parts,
+//! tool-call fragment assembly, the `[DONE]` sentinel, is the shared
 //! dialect's behavior, documented there.
 //!
 //! What remains here is the seat side: `GET {api}/copilot_internal/user`,
 //! GitHub's internal (undocumented, editor-load-bearing) seat endpoint,
-//! from which only the premium quota this crate needs is parsed — every
+//! from which only the premium quota this crate needs is parsed, every
 //! field defaulting, so a shape drift maps to no allowance, never to a
 //! wrong badge.
 
@@ -23,8 +23,8 @@ use serde_json::Value;
 // --- Allowance: the internal user endpoint -> normalized ---
 
 /// The `GET {api}/copilot_internal/user` response. The endpoint is
-/// GitHub's internal one — undocumented, but stable enough that editor
-/// integrations build on it — so only the premium quota this crate
+/// GitHub's internal one, undocumented, but stable enough that editor
+/// integrations build on it, so only the premium quota this crate
 /// needs is parsed, every field defaulting: a shape drift maps to no
 /// allowance, never to a wrong badge.
 #[derive(Debug, Default, Deserialize)]

@@ -90,7 +90,7 @@ pub(crate) fn prompt_response(stop: StopReason, app: &App, id: &str) -> PromptRe
 }
 
 /// The wall clock, RFC 3339 with milliseconds, UTC: the timestamp
-/// shape `SessionInfoUpdate` documents. No time dependency — the
+/// shape `SessionInfoUpdate` documents. No time dependency, the
 /// civil-from-days arithmetic is the whole trick.
 pub(crate) fn rfc3339_now() -> String {
     let now = SystemTime::now()
@@ -137,7 +137,7 @@ pub(crate) fn option_name(card: &rhema_provider::ModelCard) -> String {
 }
 
 /// A model select choice's description: the provider kind serving the
-/// model, then the card's facts — pricing and context window — when
+/// model, then the card's facts, pricing and context window, when
 /// the card knows them. The same line the TUI's picker renders; a
 /// client shows it beside the choice's name.
 pub(crate) fn card_description(provider: &str, card: &rhema_provider::ModelCard) -> String {

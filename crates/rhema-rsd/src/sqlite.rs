@@ -1,7 +1,7 @@
 //! The durable [`Store`]: SQLite, spec §7's minimum viable store.
 //!
 //! One row per [`ResourceKey`]. The whole [`KeyRecord`] travels as one JSON
-//! document in the row, so a save is a single statement — whole-record
+//! document in the row, so a save is a single statement, whole-record
 //! atomicity and the revision compare-and-swap fall out of SQLite's own
 //! statement atomicity (`INSERT` for a must-not-exist create, `UPDATE ...
 //! WHERE revision = ?` for a guarded write), and the `resource_key`,
@@ -10,7 +10,7 @@
 //! behind the [`Store`] seam; this one replays the exact behavioral suite
 //! via the `store-contract` feature.
 //!
-//! Durability before return — the [`Store`] contract's last invariant — is
+//! Durability before return, the [`Store`] contract's last invariant, is
 //! SQLite's: every save autocommits under `synchronous=FULL`, so a crash
 //! after `save` returns cannot lose the transition. WAL mode keeps a
 //! concurrent reader (ops queries, a second process) from blocking the

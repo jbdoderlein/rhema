@@ -1,8 +1,8 @@
 //! Automatic retries for transient model failures.
 //!
 //! [`Retrying`] wraps any [`ModelProvider`]: a request that failed with a
-//! retryable error — a transport timeout, a network failure, or a
-//! server-side status (see [`ProviderError::is_retryable`]) — is
+//! retryable error, a transport timeout, a network failure, or a
+//! server-side status (see [`ProviderError::is_retryable`]), is
 //! re-issued with backoff from a bounded ladder. Every turn provider the
 //! frontends assemble rides one, so a provider hiccup costs a pause
 //! instead of the whole turn.
@@ -19,26 +19,26 @@
 //! Three rules keep an exchange honest:
 //!
 //! - A request whose stream already streamed **text** never starts
-//!   over — it *continues*. The wire offers no resume: the next
+//!   over, it *continues*. The wire offers no resume: the next
 //!   attempt instead carries the streamed text back as a trailing
 //!   assistant message, the model writes on from where the link died,
 //!   and the answer the caller finally receives stitches the streamed
 //!   prefix ahead of the continuation's blocks. Nothing durable is ever
 //!   generated twice, so a flaky link costs a pause, not the answer.
-//!   The continuation rides the same ladder — a link too flaky to
-//!   finish still surfaces its error once the ladder runs out — and
+//!   The continuation rides the same ladder, a link too flaky to
+//!   finish still surfaces its error once the ladder runs out, and
 //!   the abandoned attempts' token tallies are lost with them (the
 //!   final attempt's usage is the turn's).
-//! - A stream that died before any durable text — thinking deltas and
-//!   half-parsed tool-call arguments only — has nothing to continue
+//! - A stream that died before any durable text, thinking deltas and
+//!   half-parsed tool-call arguments only, has nothing to continue
 //!   from: no sentence exists for the model to take over, and an
 //!   empty assistant message is not an anchor. The retry starts over
 //!   instead of failing: the next attempt re-issues the request as it
 //!   came, so what the caller watched but that never rides history may
-//!   be generated again. The durable answer still never repeats —
+//!   be generated again. The durable answer still never repeats,
 //!   streamed text takes the continuation above, never a restart.
-//! - A request that "succeeds" without producing anything — a provider
-//!   that closed the stream before its first chunk — counts as dead like
+//! - A request that "succeeds" without producing anything, a provider
+//!   that closed the stream before its first chunk, counts as dead like
 //!   any error and retries. If every attempt comes back empty, the
 //!   exchange fails naming that fact, rather than completing a turn
 //!   nobody saw.
@@ -53,8 +53,8 @@ use rhema_core::{
 };
 
 /// The waits before each retry of a dead network link: two quick tries
-/// catch an instant recovery nearly free, and the tail — six and a half
-/// minutes all told, six attempts — rides out a reassociation or a real
+/// catch an instant recovery nearly free, and the tail, six and a half
+/// minutes all told, six attempts, rides out a reassociation or a real
 /// outage. The exchange fails when the ladder runs out.
 const DEFAULT_NETWORK_LADDER: &[Duration] = &[
     Duration::from_secs(1),
@@ -112,8 +112,8 @@ impl Retrying {
     /// An explicit policy: `network_ladder` holds the waits between the
     /// retries of a dead link, `server_ladder` those of a struggling
     /// server and of an exchange that came back empty. Each ladder's
-    /// length sets its attempt count — the exchange always runs once,
-    /// and an empty ladder means no retries — so the policy can never
+    /// length sets its attempt count, the exchange always runs once,
+    /// and an empty ladder means no retries, so the policy can never
     /// silently do nothing.
     pub fn with_ladders(
         inner: Arc<dyn ModelProvider>,
@@ -138,7 +138,7 @@ impl Retrying {
 
 /// The pause between retries. A seam because runtimes differ: tokio's
 /// timers do not exist in every host (workerd gives wasm no Rust-side
-/// timers to fire), so a host injects its own — the same ladder, a
+/// timers to fire), so a host injects its own, the same ladder, a
 /// different sleep.
 #[async_trait]
 pub trait Sleeper: Send + Sync {
@@ -146,7 +146,7 @@ pub trait Sleeper: Send + Sync {
     async fn sleep(&self, duration: Duration);
 }
 
-/// The tokio pause — today's behavior, the default sleeper.
+/// The tokio pause, today's behavior, the default sleeper.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TokioSleeper;
 
@@ -160,7 +160,7 @@ impl Sleeper for TokioSleeper {
 /// Counts the content events reaching the real sink and keeps the text
 /// among them; the retry guards read the count to know whether an
 /// attempt was seen, and the continuation builds its anchor from the
-/// text. Content is every event but the usage tally — the adapters emit
+/// text. Content is every event but the usage tally, the adapters emit
 /// `Usage` ahead of the first delta, and a caller that watched only a
 /// tally watched nothing.
 struct CountingSink<'a> {
@@ -197,7 +197,7 @@ impl ModelProvider for Retrying {
     ) -> Result<ModelOutput, ProviderError> {
         // Attempts spent per ladder, the first included. Entry `n` of
         // a ladder is the wait that follows its own `n + 1`th failure,
-        // and a miss means the policy is out of tries on that ladder —
+        // and a miss means the policy is out of tries on that ladder,
         // so the ladder's length, not a separate count, bounds the
         // exchange. The ladders stay independent: one network failure
         // must not eat a server-ladder slot or its waits misread.
@@ -206,7 +206,7 @@ impl ModelProvider for Retrying {
         // The text every attempt of this exchange has streamed: what
         // the caller has already read, and what a continuation anchors
         // on. `carried` is the part streamed before the current
-        // attempt — on a success it stitches back ahead of the
+        // attempt, on a success it stitches back ahead of the
         // attempt's own blocks, on a failure it rides the next request
         // as the anchor.
         let mut streamed = String::new();
@@ -274,8 +274,8 @@ impl ModelProvider for Retrying {
                         return Err(err);
                     }
                     // A cut the caller watched but that streamed no
-                    // durable text — thinking and half-parsed call
-                    // fragments only — has no anchor: nothing exists
+                    // durable text, thinking and half-parsed call
+                    // fragments only, has no anchor: nothing exists
                     // for the model to take over. It still retries, as
                     // the plain restart below: no text streamed, so
                     // `carried` stays empty and the next attempt
@@ -354,7 +354,7 @@ mod tests {
         UsageThenTimeout,
         /// Success; the string is the whole reply ("" = empty).
         Succeed(&'static str),
-        /// A success whose message is a tool call alone — no leading
+        /// A success whose message is a tool call alone, no leading
         /// text block for the stitch to merge into.
         SucceedWithCalls,
     }
@@ -584,7 +584,7 @@ mod tests {
     async fn a_cut_before_any_durable_text_restarts_the_exchange() {
         // Tool-call fragments streamed but no sentence started: there
         // is nothing for the model to take over, so the retry starts
-        // over — the next attempt re-issues the request as it came,
+        // over, the next attempt re-issues the request as it came,
         // without an anchor. The fragments never ride history, so
         // regenerating them costs a pause, not a corrupted answer.
         let scripted = Arc::new(Scripted::new(vec![
@@ -802,7 +802,7 @@ mod tests {
             Attempt::Network,
             Attempt::Succeed("back"),
         ]));
-        // The waits sum to 70ms — the network ladder ran to its end and
+        // The waits sum to 70ms, the network ladder ran to its end and
         // the fourth attempt answered. The server ladder here would
         // have given up one attempt earlier.
         let retrying = Retrying::with_ladders(
@@ -827,8 +827,8 @@ mod tests {
 
     #[tokio::test]
     async fn a_struggling_server_gets_the_short_ladder() {
-        // Three timeouts burn the server ladder out — two waits, three
-        // attempts — where the same failures on a dead link would have
+        // Three timeouts burn the server ladder out, two waits, three
+        // attempts, where the same failures on a dead link would have
         // had one more try coming.
         let scripted = Arc::new(Scripted::new(vec![Attempt::Timeout; 3]));
         let retrying = Retrying::with_ladders(

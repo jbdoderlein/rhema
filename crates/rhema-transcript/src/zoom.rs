@@ -2,7 +2,7 @@
 //!
 //! The view summarizes old ranges; zoom opens them. It reads the same
 //! mirror the decorator refreshes, so what it returns is the log as the
-//! last request carried it — which is every message the model has been
+//! last request carried it, which is every message the model has been
 //! shown an id for. Read-only: a `Safe` replay, per the resolver
 //! contract.
 
@@ -21,8 +21,8 @@ use crate::view::Transcript;
 pub const ZOOM_MAX_BYTES: usize = 8 * 1024;
 
 /// The most bytes one zoom call renders before it refuses. A range
-/// bigger than this cannot be paged — paging needs the bytes before
-/// `at` rendered too — and a narrower `n` is the way. Sixty-four
+/// bigger than this cannot be paged, paging needs the bytes before
+/// `at` rendered too, and a narrower `n` is the way. Sixty-four
 /// pages: no honest range comes near it, and a model asking for the
 /// whole log in one call stops here instead of holding the mirror's
 /// lock while it all renders.
@@ -35,7 +35,7 @@ pub struct Zoom {
 }
 
 impl Zoom {
-    /// The resolver reading `transcript` — the mirror the view
+    /// The resolver reading `transcript`, the mirror the view
     /// decorator refreshes. Build both sides with [`crate::attach`].
     pub fn new(transcript: Arc<Mutex<Transcript>>) -> Self {
         Self { transcript }
@@ -152,7 +152,7 @@ impl Zoom {
             return ToolResult::failure(
                 &call.id,
                 format!(
-                    "zoom: {id}+{} renders past the byte budget — \
+                    "zoom: {id}+{} renders past the byte budget, \
                      zoom a narrower range (smaller n)",
                     range.n
                 ),
@@ -206,7 +206,7 @@ impl Zoom {
     }
 }
 
-/// The largest char boundary at or below `at` — the model supplies raw
+/// The largest char boundary at or below `at`, the model supplies raw
 /// byte offsets, and UTF-8 cannot be cut mid-character.
 fn snapped_back(text: &str, at: usize) -> usize {
     let mut at = at.min(text.len());

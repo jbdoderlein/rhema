@@ -2,7 +2,7 @@
 //!
 //! The sink owns the turn's streaming surface. Text and thinking deltas
 //! stream as message chunks; a tool call is announced pending when it
-//! starts, its arguments accumulate silently (ACP has no arg deltas —
+//! starts, its arguments accumulate silently (ACP has no arg deltas,
 //! `rawInput` is set once, complete), and the result closes the call
 //! with a title built from the assembled arguments, so editors show the
 //! actual command instead of the tool name. A running command's output
@@ -12,8 +12,8 @@
 //!
 //! The sink also meters what the session spends: `Event::StepEnd`
 //! carries the step's token usage, which lands in the session's shared
-//! [`SessionMeter`] and on the wire as a `UsageUpdate` — tokens in
-//! context, the model's window, cumulative cost — whenever the model
+//! [`SessionMeter`] and on the wire as a `UsageUpdate`, tokens in
+//! context, the model's window, cumulative cost, whenever the model
 //! card knows the window. `serve` reads the same meter to attach the
 //! session's cumulative totals to the `session/prompt` response.
 
@@ -31,7 +31,7 @@ use rhema_provider::Pricing;
 /// Cumulative token and cost accounting for one session, shared by the
 /// turns that run on it: each step adds its usage, each turn reads the
 /// totals for its `session/prompt` response. The numbers are the
-/// session's, not the turn's — a turn's steps re-read the growing
+/// session's, not the turn's, a turn's steps re-read the growing
 /// history, so per-turn inputs would double-count the conversation.
 #[derive(Debug, Default)]
 pub(crate) struct SessionMeter {
@@ -43,7 +43,7 @@ pub(crate) struct SessionMeter {
     cached_read_tokens: u64,
     /// USD the session has cost, at the card's rates.
     cost_usd: f64,
-    /// Tokens the most recent step left in context — its prompt plus
+    /// Tokens the most recent step left in context, its prompt plus
     /// its reply, the shape of the next request. Zero before the first
     /// step.
     context_used: u64,
@@ -246,7 +246,7 @@ impl EventSink for AcpSink {
             Event::Usage(_) => {}
             Event::StepStart { .. } => {}
             // The retry wait is the TUI's countdown material; the
-            // client sees the step's outcome — recovery or final error.
+            // client sees the step's outcome, recovery or final error.
             Event::RetryWait { .. } => {}
         }
     }

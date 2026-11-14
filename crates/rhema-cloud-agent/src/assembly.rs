@@ -5,7 +5,7 @@
 //! from durable storage, the skills seeded into the sandbox, the
 //! approval policy. [`AgentAssembly::assemble`] builds a
 //! [`CodingAgent`](rhema_coding_agent::CodingAgent) whose shell runs in
-//! the sandbox and whose construction touches no host path — the
+//! the sandbox and whose construction touches no host path, the
 //! workspace string is meaningful only inside the sandbox.
 #![forbid(unsafe_code)]
 
@@ -40,7 +40,7 @@ pub enum ApprovalPolicy {
 }
 
 impl ApprovalPolicy {
-    /// The approval hook answering from this policy alone — the
+    /// The approval hook answering from this policy alone, the
     /// fail-safe the turn installs; interactive sessions gate ahead of
     /// it through [`crate::gate::ClientGate`].
     pub fn approval(&self) -> Arc<dyn Approval> {
@@ -89,7 +89,7 @@ pub struct AgentAssembly {
     /// default template.
     pub base_system: Option<String>,
     /// Skills collected from durable storage and already seeded into
-    /// the sandbox workspace — each `Skill::path` must resolve inside
+    /// the sandbox workspace, each `Skill::path` must resolve inside
     /// [`Self::workspace`], because the model reads the bodies through
     /// the shell.
     pub skills: Vec<Skill>,
@@ -123,7 +123,7 @@ impl AgentAssembly {
         CodingAgent::new(provider, config)
     }
 
-    /// Builds the agent resuming `session` — the checkpoint a previous
+    /// Builds the agent resuming `session`, the checkpoint a previous
     /// instance persisted before eviction.
     pub fn assemble_from_session(
         &self,
@@ -135,7 +135,7 @@ impl AgentAssembly {
         rhema_coding_agent::CodingAgent::from_session(provider, config, session)
     }
 
-    /// The config the assembly builds, with its shell — factored so a
+    /// The config the assembly builds, with its shell, factored so a
     /// resume and a fresh start assemble identically.
     fn config(
         &self,
@@ -147,7 +147,7 @@ impl AgentAssembly {
         ));
         // The gate rides as the extension resolver: it shadows `bash`
         // with the shell's own spec, decides, and delegates. The shell
-        // stays the tool of record — spec, caps, error shaping.
+        // stays the tool of record, spec, caps, error shaping.
         let gate = Arc::new(crate::gate::ClientGate::new(
             shell.clone(),
             self.approval.clone(),
@@ -187,7 +187,7 @@ impl AgentAssembly {
             // sent are the whole story.
             home: None,
             // Commands run in the deployment's remote sandbox, so the
-            // environment section claims no host facts — the notice
+            // environment section claims no host facts, the notice
             // names where bash runs and defers to the sandbox itself.
             environment: Some(rhema_coding_agent::remote_notice(
                 "cloud",

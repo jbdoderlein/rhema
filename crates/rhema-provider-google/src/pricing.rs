@@ -2,8 +2,8 @@
 //!
 //! The ListModels API carries no pricing, so this is a curated table.
 //! Source: ai.google.dev/gemini-api/docs/pricing (fetched 2026-10-06);
-//! pro entries are the ≤200K-token tier, and the 3.6–3.8 flash prices are
-//! the promo rate valid through 2026-12-31. Prices drift — update here
+//! pro entries are the ≤200K-token tier, and the 3.6-3.8 flash prices are
+//! the promo rate valid through 2026-12-31. Prices drift, update here
 //! when they do; unknown models simply show no cost.
 
 use rhema_provider::Pricing;

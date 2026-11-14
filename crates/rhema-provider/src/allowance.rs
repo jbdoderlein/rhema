@@ -1,7 +1,7 @@
 //! The subscription allowance an adapter reports for its account: what
 //! is left of the plan, shaped for a status line. Adapters own the
-//! figures — the unit and the plan's vocabulary are theirs alone to
-//! know — and consumers print them as given.
+//! figures, the unit and the plan's vocabulary are theirs alone to
+//! know, and consumers print them as given.
 
 /// One provider's subscription allowance: the remaining spend, with its
 /// unit, and what the unit is. Dollars on prepaid credit, metered
@@ -12,7 +12,7 @@ pub struct Allowance {
     /// `"238/300"`.
     pub amount: String,
     /// What the unit is, one word: `"premium"` for a cycle's metered
-    /// requests. Empty when the amount speaks for itself — a badge
+    /// requests. Empty when the amount speaks for itself, a badge
     /// already drawn beside it says money.
     pub kind: String,
 }

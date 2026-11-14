@@ -1,7 +1,7 @@
 //! The [`GoogleProvider`]: HTTP and SSE transport for the Gemini
 //! Generative Language API.
 //!
-//! Auth is by API key sent in the `x-goog-api-key` header — never a query
+//! Auth is by API key sent in the `x-goog-api-key` header, never a query
 //! parameter, so the key never lands in URLs or access logs. Only streaming
 //! (`:streamGenerateContent?alt=sse`) is spoken; every call streams and
 //! assembles. Transport failures map onto
@@ -14,9 +14,9 @@
 //! fails the same way, with the body's `error.message` when present.
 //!
 //! Timeouts are layered: the client bounds connection setup (10s) and each
-//! stream read (90s — a stall guard, not a duration cap, because a long
+//! stream read (90s, a stall guard, not a duration cap, because a long
 //! generation is legitimate), and non-streaming calls (the models list)
-//! additionally carry a 20s overall request timeout. Streaming calls get no
+//! also carry a 20s overall request timeout. Streaming calls get no
 //! total timeout for the same reason.
 
 use std::time::Duration;
@@ -79,7 +79,7 @@ impl GoogleProvider {
         }
     }
 
-    /// Overrides the base URL (trailing slashes trimmed) — for tests against
+    /// Overrides the base URL (trailing slashes trimmed), for tests against
     /// a mock server.
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into().trim_end_matches('/').to_owned();
@@ -119,7 +119,7 @@ fn feed_chunk(
 impl ModelListing for GoogleProvider {
     /// Every text chat model the key can see, following pagination until
     /// the list is exhausted. The ListModels API also reports embeddings,
-    /// video, speech, and image models — those cannot drive a coding agent
+    /// video, speech, and image models, those cannot drive a coding agent
     /// and are filtered here, by Gemini-catalog knowledge that never rides
     /// on the shared [`ModelCard`]. `models/` is stripped from
     /// `ModelCard::id`, and the curated table prices each row the listing

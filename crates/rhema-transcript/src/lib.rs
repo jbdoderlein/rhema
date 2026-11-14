@@ -2,21 +2,21 @@
 //!
 //! Every step sends `session.history.clone()` (SPEC.md §4): cost grows
 //! with the session, and the context window ends the session that
-//! outgrows it. This crate splits what was fused. The **log** — the
-//! caller's `Session` — stays complete; the **view** — what a request
-//! carries — is a projection built per request under a byte budget.
+//! outgrows it. This crate splits what was fused. The **log**, the
+//! caller's `Session`, stays complete; the **view**, what a request
+//! carries, is a projection built per request under a byte budget.
 //! Old messages are represented by the stepped compaction block,
 //! nothing is deleted anywhere, and `zoom` is the model's way back to
 //! any original.
 //!
-//! - [`tree`] — the slot algebra: message ranges `(id, n)`
-//! - [`summary`] — the extractive line text: heads and counts, no
+//! - [`tree`]: the slot algebra: message ranges `(id, n)`
+//! - [`summary`]: the extractive line text: heads and counts, no
 //!   model calls
-//! - [`compact`] — the stepped compaction engine: the append-only
+//! - [`compact`]: the stepped compaction engine: the append-only
 //!   block, the summarizer seam, the model worker
-//! - [`view`] — the request view: the provider decorator, the mirror,
+//! - [`view`]: the request view: the provider decorator, the mirror,
 //!   the budget, the benchmark stats
-//! - [`zoom`] — the `zoom` tool
+//! - [`zoom`]: the `zoom` tool
 //!
 //! The design is `specs/rhema-transcript.md`.
 
@@ -45,7 +45,7 @@ use std::sync::{Arc, Mutex};
 /// transcript.
 ///
 /// The mirror starts empty; the first request fills it. Sections keep
-/// their extractive stand-ins — pass a summarizer to
+/// their extractive stand-ins, pass a summarizer to
 /// [`attach_with_summarizer`] for the model fill.
 pub fn attach(
     inner: Arc<dyn rhema_core::ModelProvider>,

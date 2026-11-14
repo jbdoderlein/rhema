@@ -1,7 +1,7 @@
 //! The extractive line text: what the view says about messages it does
 //! not carry whole.
 //!
-//! Everything here is mechanical — heads and counts read off the
+//! Everything here is mechanical, heads and counts read off the
 //! messages themselves. No model call belongs to the transcript in v1
 //! (spec §7.4): the lines cost no latency and cannot be wrong about
 //! what happened, only short. A later compactor replaces exactly the
@@ -229,7 +229,7 @@ pub(crate) fn summarize_range(messages: &[Message], range: Range) -> ((usize, us
 
 /// The whole render of one message, as `zoom(id, 1)` returns it: user
 /// and assistant text verbatim, tool calls and results spelled out.
-/// Uncapped — the zoom pages.
+/// Uncapped, the zoom pages.
 pub fn render_message(message: &Message) -> String {
     let mut out = String::new();
     for content in &message.content {

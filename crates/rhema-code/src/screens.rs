@@ -1,4 +1,4 @@
-//! The three screens' input handling and outcome logic — pure state, no
+//! The three screens' input handling and outcome logic, pure state, no
 //! terminal. The one exception is the chat palette's path rows, which
 //! list the filesystem. The renderer reads these structs;
 //! [`crate::app`] routes their actions into transitions and effects.

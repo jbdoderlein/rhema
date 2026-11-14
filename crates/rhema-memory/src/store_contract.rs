@@ -8,8 +8,8 @@
 //!
 //! The rank-order assertions live in
 //! [`rank_orders_terms_recency_and_tags`], kept out of [`run_all`]
-//! deliberately: a store with a different ranking method — the semantic
-//! ranker the framework spec defers to later — must be able to replay
+//! deliberately: a store with a different ranking method, the semantic
+//! ranker the framework spec defers to later, must be able to replay
 //! the whole order-agnostic suite unchanged. Swapping the ranker may
 //! never break a caller.
 
@@ -150,7 +150,7 @@ pub fn tags_are_normalized(store: &dyn MemoryStore) {
     );
 }
 
-/// A search spans exactly the scopes it names — a workspace record never
+/// A search spans exactly the scopes it names, a workspace record never
 /// surfaces in another workspace's search.
 pub fn search_respects_scopes(store: &dyn MemoryStore) {
     store
@@ -498,8 +498,8 @@ pub fn supersede_keeps_the_record_and_hides_it(store: &dyn MemoryStore) {
 }
 
 /// On a widened search a live record outranks a dead one with the same
-/// keyword hits. Order-sensitive, so — like
-/// [`rank_orders_terms_recency_and_tags`] — it is *not* part of
+/// keyword hits. Order-sensitive, so, like
+/// [`rank_orders_terms_recency_and_tags`], it is *not* part of
 /// [`run_all`]: a store with a different ranking method cannot replay it.
 pub fn superseded_records_never_outrank_active(store: &dyn MemoryStore) {
     let old = store
@@ -551,7 +551,7 @@ pub fn retract_records_the_reason(store: &dyn MemoryStore) {
     ));
 }
 
-/// Verification moves only `verified_at` — the belief is re-confirmed,
+/// Verification moves only `verified_at`, the belief is re-confirmed,
 /// not rewritten.
 pub fn verify_sets_verified_at_only(store: &dyn MemoryStore) {
     let record = store
@@ -681,7 +681,7 @@ pub fn due_for_review_reports_stale_and_expired(store: &dyn MemoryStore) {
     );
 }
 
-/// Runs the order-sensitive rank assertions against `store` — the
+/// Runs the order-sensitive rank assertions against `store`, the
 /// complement to [`run_all`] for rankers that honor the documented
 /// ordering (tag hits over body hits, recency ties by id, live over
 /// dead).

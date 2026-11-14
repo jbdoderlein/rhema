@@ -1,19 +1,19 @@
-//! rhema-identity — the agent accounts layer.
+//! rhema-identity, the agent accounts layer.
 //!
 //! The accounts a deployment holds: one [`Account`] per identity on a
 //! service (`"github"`, `"gitlab"`, an SMTP host, a CLI tool's host), with
-//! a username and exactly one [`Secret`] — an API token or a stored
+//! a username and exactly one [`Secret`], an API token or a stored
 //! password. Neutral by design: no forge vocabulary, no model seam, no
-//! tools. Consumers compose it — the claw daemon mounts the store under
+//! tools. Consumers compose it, the claw daemon mounts the store under
 //! its own toolset and routes, and points its forge clients at
 //! [`IdentityStore::secret`].
 //!
 //! The contract is **use-never-read**: [`IdentityStore::secret`] exists
-//! for *code* that acts with a credential — a client authenticating, a
-//! login being performed — never for anything that answers a model. This
+//! for *code* that acts with a credential, a client authenticating, a
+//! login being performed, never for anything that answers a model. This
 //! crate ships no tool surface at all, so the guarantee is structural:
 //! the model can only ever see [`Account`], which has no secret field.
-//! Consumers must keep it that way — a tool that echoes a secret into a
+//! Consumers must keep it that way, a tool that echoes a secret into a
 //! transcript breaks the contract the store cannot enforce.
 //!
 //! Secrets live where the backend puts them: the SQLite store keeps them
@@ -26,11 +26,11 @@
 //! writes, serialized by the implementation, durable on return.
 //!
 //! Layout:
-//! - [`record`] — `Account`, `AccountDraft`, `Secret`, `SecretKind`, ids
-//! - [`store`] — the `IdentityStore` contract and `IdentityError`
-//! - [`volatile`] — the in-process `VolatileIdentityStore`
-//! - [`sqlite`] — the durable `SqliteIdentityStore`
-//! - [`store_contract`] — the replayable behavioral suite (`store-contract` feature)
+//! - [`record`]: `Account`, `AccountDraft`, `Secret`, `SecretKind`, ids
+//! - [`store`]: the `IdentityStore` contract and `IdentityError`
+//! - [`volatile`]: the in-process `VolatileIdentityStore`
+//! - [`sqlite`]: the durable `SqliteIdentityStore`
+//! - [`store_contract`]: the replayable behavioral suite (`store-contract` feature)
 
 #![forbid(unsafe_code)]
 

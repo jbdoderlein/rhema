@@ -1,5 +1,5 @@
 //! The application state machine: screens, transitions, and the routing of
-//! keypresses and UI events. Pure logic — effects that touch the network
+//! keypresses and UI events. Pure logic, effects that touch the network
 //! or spawn turns are returned to the runner (`crate::run`), which owns
 //! the runtime and the terminal.
 
@@ -75,7 +75,7 @@ pub struct App {
     /// The active backend's subscription allowance, when one was
     /// fetched: the backend's config name rides along, so a report of a
     /// backend the session has since left never shows. A failed fetch
-    /// clears the badge — a stale figure reads as truth.
+    /// clears the badge, a stale figure reads as truth.
     pub subscription: Option<(&'static str, Option<Allowance>)>,
     /// The profile this session runs under: the `--profile` flag over the
     /// stored active profile. `/profile` switches it mid-session.
@@ -95,7 +95,7 @@ pub struct App {
     /// whose jobs run where this process cannot see them.
     pub jobs: Option<crate::jobs::JobsHandle>,
     /// The subagent job registry the current agent's tool resolver
-    /// starts jobs into — the wire's handle, replaced at every agent
+    /// starts jobs into, the wire's handle, replaced at every agent
     /// rebuild, exactly when the old registry dies with its agent. The
     /// status strip renders one live line per job from it.
     pub subagents: Option<rhema_subagents::SubagentHandle>,
@@ -121,7 +121,7 @@ pub struct App {
     pub error: Option<String>,
     /// Whether the failed turn can be re-run: the last finished turn
     /// errored and nothing has run since. A submit, a cancel, a success,
-    /// and a conversation change (`/clear`, `/resume`) clear it — the
+    /// and a conversation change (`/clear`, `/resume`) clear it, the
     /// request `/retry` re-issues must be the last thing this
     /// conversation did. An agent rebuild keeps it on purpose: a model,
     /// instance, or profile switch carries the same conversation, and
@@ -130,14 +130,14 @@ pub struct App {
     /// The quit confirmation overlay is up.
     pub confirm_quit: bool,
     /// The cancel handle of the running login flow; `None` while idle.
-    /// Dropping it ends the flow task — the watch receiver errors out —
+    /// Dropping it ends the flow task, the watch receiver errors out,
     /// exactly what Esc and a completed flow both want.
     pub login_cancel: Option<tokio::sync::watch::Sender<bool>>,
     /// The file this conversation persists to: `--resume`'s own file, a
     /// resumed-through-/resume file, or the fresh name the runner
     /// allocated. The exit save updates it in place instead of growing a
     /// second entry, and every turn checkpoints into it as its streams
-    /// land. `None` once /clear drops the conversation — the next turn
+    /// land. `None` once /clear drops the conversation, the next turn
     /// allocates a new file for what follows.
     pub session_file: Option<PathBuf>,
     /// Set by the runner to end the event loop.
@@ -163,7 +163,7 @@ pub struct App {
     /// just copied. Keys, the wheel, and a fresh click clear it.
     pub(crate) selection: Option<selection::Selection>,
     /// The session's assembled sandbox, when `bash` runs on one:
-    /// `None` is the local fast path — every agent build applies this
+    /// `None` is the local fast path, every agent build applies this
     /// when set, so a mid-session rebuild never drops it.
     pub sandboxed: Option<crate::sandbox::Sandboxed>,
     /// The machine half of the availability probe: the facts the
@@ -171,14 +171,14 @@ pub struct App {
     /// paying the CLI probes again.
     pub sandbox_machines: crate::sandbox::SandboxMachines,
     /// The MCP server names this session muted, seeded from the
-    /// config's `disabled_mcp_servers` — the skills set's twin, a
+    /// config's `disabled_mcp_servers`, the skills set's twin, a
     /// config field since the wire landed. The toggle writes both
     /// this live copy and the config.
     pub disabled_mcp_servers: std::collections::BTreeSet<String>,
     /// What this machine offers the session's current profile: the
     /// picker's rows and the select path's availability gate. Derived
     /// from the machine facts at startup and re-derived at every
-    /// profile switch — ssh and http answer on the profile's own
+    /// profile switch, ssh and http answer on the profile's own
     /// section, not the machine's alone.
     pub sandbox_offered: crate::sandbox::SandboxAvailability,
     /// The sandbox assembly in flight, if any: the picker's choice is
@@ -186,11 +186,11 @@ pub struct App {
     /// wait for it; the answer arrives as `UiEvent::SandboxAssembled`.
     pub assembling: Option<SandboxChoice>,
     /// The self-update state: what the version check and the install
-    /// run last reported. Outlives the settings screen — the opener
+    /// run last reported. Outlives the settings screen, the opener
     /// syncs it into the Update page, and every result syncs it back.
     pub update: crate::screens::UpdatePage,
     /// The probed tools this machine misses, the startup strip's feed.
-    /// Set at construction and at every re-assembly — a rebuild
+    /// Set at construction and at every re-assembly, a rebuild
     /// re-probes, so installing a tool and switching the model clears
     /// the strip alike. Rendered while the conversation has not
     /// started: once it has, the model's own environment section
@@ -215,7 +215,7 @@ pub struct App {
     pub graphics: bool,
     /// Whether the terminal draws the prompt card through the graphics
     /// protocol: the protocol is there, the palette has a card color,
-    /// and the terminal honors the text layer — kitty and Ghostty
+    /// and the terminal honors the text layer, kitty and Ghostty
     /// place images under text, WezTerm draws them over it, so there
     /// the card stays off and the frame keeps its see-through
     /// interior. Fixed at startup with [`Self::graphics`].
@@ -224,7 +224,7 @@ pub struct App {
 
 /// How many steered nudges may sit queued between the turn's step
 /// boundaries. The channel is bounded: nothing drains it mid-step, and
-/// a held key under repeat fires submits faster than any step — a full
+/// a held key under repeat fires submits faster than any step, a full
 /// queue refuses the nudge instead of pinning an unbounded buffer.
 pub(crate) const STEER_QUEUE_CAP: usize = 64;
 
@@ -255,7 +255,7 @@ pub struct TurnState {
     /// any late answer a no-op.
     answers: Option<ApprovalAnswerer>,
     /// A command is executing while the turn runs; `false` while the
-    /// model itself is streaming — thinking.
+    /// model itself is streaming, thinking.
     pub processing: bool,
     /// The running turn's reasoning trace, tail only: the status strip
     /// previews its last rows, and it clears the moment real output
@@ -267,13 +267,13 @@ pub struct TurnState {
     /// transcript or the session history.
     pub tool_output: String,
     /// When the running command's first output chunk landed: the
-    /// preview stays hidden until the command has earned it — a second
+    /// preview stays hidden until the command has earned it, a second
     /// of runtime or a second line.
     pub tool_output_at: Option<std::time::Instant>,
     /// The provider retry wait in flight, if one was announced: a
     /// transient failure happened and the ladder is counting down to
-    /// the next attempt. Any further event ends it — the next attempt
-    /// is speaking — and `finished` clears it with the rest.
+    /// the next attempt. Any further event ends it, the next attempt
+    /// is speaking, and `finished` clears it with the rest.
     pub retry_wait: Option<TurnRetryWait>,
 }
 
@@ -408,7 +408,7 @@ impl App {
     /// model should open the chat but the agent cannot be built.
     ///
     /// The first screen is the onboarding wizard when the runner says
-    /// this is a first run (`setup.onboard`) — and the chat in every
+    /// this is a first run (`setup.onboard`), and the chat in every
     /// other case, including a config with no usable backend or no
     /// stored model: the footer names what is missing in red, the
     /// commands to fix it are one keystroke away, and nothing gates the
@@ -496,7 +496,7 @@ impl App {
                     missing = missing_tools;
                     Screen::Chat
                 }
-                // No model yet — or no usable backend at all — still
+                // No model yet, or no usable backend at all, still
                 // opens the chat: the footer says "no model" in red and
                 // the submit box names the fix, /model or /login.
                 _ => Screen::Chat,

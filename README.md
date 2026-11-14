@@ -38,17 +38,17 @@ curl -fsSL https://get.rhema.rs/code | sh                  # Linux, macOS, git b
 irm https://get.rhema.rs/code.ps1 | iex                    # Windows PowerShell
 ```
 
-On Windows, the agent's shell commands run through Git Bash — install
+On Windows, the agent's shell commands run through Git Bash. Install
 [Git for Windows](https://git-scm.com/download/win) first.
 
 See <a href="./crates/rhema-code/README.md">Rhema Code README.md</a> for more.
 
 ### Rhema Claw
 
-Still Work-In-Progress.
+Still work in progress.
 Rhema Claw is the resident tier of the framework: a claw-shaped daemon
 that watches forges and calendar feeds, dispatches work to its agents,
-and serves a chat surface over HTTP — with a web UI and an Android
+and serves chat over HTTP, with a web UI and an Android
 client talking to it. It lives in its own repository:
 <https://git.vhaudiquet.fr/vhaudiquet/rhema-claw>.
 

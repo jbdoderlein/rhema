@@ -2,13 +2,13 @@
 //!
 //! [`ShellTools`] is one [`ToolResolver`], not a registry: the same spec
 //! goes to the model every step. `bash` runs its command with `bash -c`
-//! and the workspace root as working directory — reading, listing, and
+//! and the workspace root as working directory, reading, listing, and
 //! editing are shell work, not separate tools. The output streams are
 //! capped and the command killed after a timeout; the exit code rides on
 //! the result for the UI. Every call consults the approval hook installed
 //! for the current turn; tool resolution happens synchronously inside a
 //! turn, so a per-turn swap of that hook is race-free. No hook installed
-//! means calls are rejected — the fail-safe default.
+//! means calls are rejected, the fail-safe default.
 //!
 //! Where the command actually runs is the [`ShellExecutor`] seam
 //! ([`crate::exec`]): this host's `bash -c` child processes by default, a
@@ -32,8 +32,8 @@ use rhema_core::{
 use crate::approval::Approval;
 use crate::exec::{Executed, ShellError, ShellExecutor};
 
-/// Command output streams are each cut at this size — in bytes and in
-/// lines, whichever is hit first — keeping the tail: errors and final
+/// Command output streams are each cut at this size, in bytes and in
+/// lines, whichever is hit first, keeping the tail: errors and final
 /// results live at the end of a command's output.
 const BASH_OUTPUT_LIMIT: usize = 50 * 1024;
 const BASH_OUTPUT_LINES: usize = 2000;
@@ -95,7 +95,7 @@ impl ShellTools {
     }
 
     /// Tools rooted at `workspace` whose commands run with `env`
-    /// layered over the inherited environment — how a frontend hands
+    /// layered over the inherited environment, how a frontend hands
     /// its agent's tools a connection (a daemon URL, a scoped token, a
     /// PATH addition) without touching the process environment. A wired
     /// [`crate::vision`] macro rides the same map: its staging
@@ -107,7 +107,7 @@ impl ShellTools {
             .with_vision_inbox(env.get(crate::vision::VAR_STAGING).map(PathBuf::from))
     }
 
-    /// Tools rooted at `workspace` whose commands run on `exec` — the
+    /// Tools rooted at `workspace` whose commands run on `exec`, the
     /// seam a remote-shell frontend comes in through.
     pub fn with_executor(workspace: impl Into<PathBuf>, exec: Arc<dyn ShellExecutor>) -> Self {
         Self {
@@ -118,7 +118,7 @@ impl ShellTools {
         }
     }
 
-    /// Lights the vision inbox up explicitly — the seam a resolver that
+    /// Lights the vision inbox up explicitly, the seam a resolver that
     /// runs its own inner `ShellTools` (the subagents extension) uses to
     /// inherit its parent's inbox, since it builds on
     /// [`Self::with_executor`], which reads no env map.
@@ -139,7 +139,7 @@ impl ShellTools {
     }
 
     /// The executor commands run on. A resolver that runs its own inner
-    /// `ShellTools` — the subagents extension — builds the inner one on
+    /// `ShellTools`, the subagents extension, builds the inner one on
     /// the same executor, so subagents land where the turn's commands
     /// land.
     pub fn executor(&self) -> Arc<dyn ShellExecutor> {
@@ -154,8 +154,8 @@ impl ShellTools {
     }
 
     /// The approval hook installed for the current turn, if any. A
-    /// resolver that runs its own inner `ShellTools` — the subagents
-    /// extension — reads this to inherit the turn's policy rather than
+    /// resolver that runs its own inner `ShellTools`, the subagents
+    /// extension, reads this to inherit the turn's policy rather than
     /// holding a hook of its own.
     pub fn current_approval(&self) -> Option<Arc<dyn Approval>> {
         self.pending
@@ -319,7 +319,7 @@ fn render_truncated(bytes: &[u8], limit: usize, max_lines: usize) -> String {
         }
     }
     let cut = byte_cut.max(line_cut);
-    let mut text = format!("[output truncated — {} bytes elided]\n", cut);
+    let mut text = format!("[output truncated, {} bytes elided]\n", cut);
     text.push_str(&String::from_utf8_lossy(&bytes[cut..]));
     text
 }
@@ -358,7 +358,7 @@ mod truncation_tests {
         let bytes = vec![b'a'; 100_000];
         let text = render_truncated(&bytes, 1024, 2000);
         assert!(
-            text.starts_with("[output truncated — 98976 bytes elided]"),
+            text.starts_with("[output truncated, 98976 bytes elided]"),
             "{text}"
         );
         let kept = text.split_once('\n').map(|(_, tail)| tail).unwrap_or("");
@@ -371,7 +371,7 @@ mod truncation_tests {
         let text = render_truncated(bytes.as_bytes(), 50 * 1024, 2000);
         // The last 2000 rows minus one: the cut lands after row 1000's
         // newline, so rows 1001..2999 survive.
-        assert!(text.starts_with("[output truncated — "), "{text}");
+        assert!(text.starts_with("[output truncated, "), "{text}");
         assert!(text.contains("row 1001\n"), "{text}");
         assert!(text.contains("row 2999\n"), "{text}");
         assert!(!text.contains("row 1000\n"), "{text}");

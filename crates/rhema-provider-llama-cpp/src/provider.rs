@@ -2,7 +2,7 @@
 //! `llama-server` OpenAI-compatible API.
 //!
 //! One `POST {base}/v1/chat/completions` with `stream: true` per exchange;
-//! the optional API key rides in the `Authorization: Bearer` header — never
+//! the optional API key rides in the `Authorization: Bearer` header, never
 //! a query parameter, so it never lands in URLs or access logs. Transport
 //! failures map onto [`ProviderError`]: timeouts to
 //! [`ProviderError::Timeout`], other network failures to
@@ -51,7 +51,7 @@ impl std::fmt::Debug for LlamaCppProvider {
 
 impl LlamaCppProvider {
     /// A provider against `base_url` (trailing slashes trimmed) with no
-    /// authentication — the default `llama-server` setup.
+    /// authentication, the default `llama-server` setup.
     pub fn new(base_url: impl Into<String>) -> Self {
         let base_url = base_url.into().trim_end_matches('/').to_owned();
         Self {
@@ -60,7 +60,7 @@ impl LlamaCppProvider {
             base_url,
             // A dead server must fail fast: connects cap at 10s, and a
             // stream that stops producing bytes for 90s is dead too.
-            // Streaming calls get no total timeout — generations can run
+            // Streaming calls get no total timeout, generations can run
             // for minutes.
             http: reqwest::Client::builder()
                 .connect_timeout(std::time::Duration::from_secs(10))
@@ -171,7 +171,7 @@ impl ModelListing for LlamaCppProvider {
     /// [`ModelCard`] rows (`GET /v1/models`; llama.cpp lists the one
     /// loaded model). A single-model server also gets its context from
     /// `/props`; in router mode, models that are loaded and still silent
-    /// about their context are asked per model (bounded — never for
+    /// about their context are asked per model (bounded, never for
     /// unloaded entries, which some servers would autoload just to
     /// answer).
     ///

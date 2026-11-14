@@ -2,7 +2,7 @@
 //!
 //! The template language is Jinja, which prompt templates across the
 //! LLM ecosystem already speak. [`render_system`] is the standard
-//! shape — `{{ workspace }}`, the discovered `skills`, the advertised
+//! shape, `{{ workspace }}`, the discovered `skills`, the advertised
 //! `tools`; [`render_template`] is the same engine over a caller's own
 //! variables, so an agent with other per-dispatch values (the claw's
 //! SOUL/USER sections, say) renders with the one syntax and the one
@@ -25,7 +25,7 @@ pub use minijinja::Error as TemplateError;
 
 /// One wired MCP server, as the prompt's `mcp` section carries it: the
 /// stub's name, the command the model types, and the user-written
-/// description. Content comes from config only — an MCP server never
+/// description. Content comes from config only, an MCP server never
 /// gets prose into the system prompt beyond its own yaml line.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct McpServerLine {
@@ -43,7 +43,7 @@ pub struct McpServerLine {
 /// `description`, and `path` fields, and `tools` holds the advertised
 /// tool specs as `name`, `description`, and `parameters` (the JSON
 /// schema, renderable with `json` for prompt text or `tojson` where the
-/// output feeds HTML) — all there for `{% for %}`/`{% if %}`. Undefined
+/// output feeds HTML), all there for `{% for %}`/`{% if %}`. Undefined
 /// variables render empty; syntax and filter errors return with
 /// template positions.
 ///
@@ -70,7 +70,7 @@ pub fn render_system(
 }
 
 /// [`render_system`] with the two optional prompt sections: `environment`
-/// — machine facts the frontend probed where commands run — and `user` —
+///, machine facts the frontend probed where commands run, and `user`,
 /// the user's own preferences file, verbatim. Both ride the template as
 /// plain string variables (`{{ environment }}`, `{% if user %}`), so the
 /// template decides whether and where they appear; `None` renders the
@@ -116,7 +116,7 @@ fn json(value: Value) -> Result<String, TemplateError> {
     })
 }
 
-/// Renders `template` over `context` — the same engine and whitespace
+/// Renders `template` over `context`, the same engine and whitespace
 /// rules as [`render_system`], with the caller's own variables. A
 /// value's own text is inserted verbatim, never re-parsed, so a
 /// section's braces survive; the template name in errors is `system`.
@@ -136,7 +136,7 @@ pub fn render_template(
     // `json` is `tojson` without the HTML-safe escaping: `tojson`
     // escapes `<`, `>`, `&`, and `'` as `\u003c`-style sequences so the
     // output can ride a script tag, and a prompt's schema column is not
-    // HTML — the escapes cost tokens and reach the model as
+    // HTML, the escapes cost tokens and reach the model as
     // `this session\u0027s`. The names are distinct so a user template
     // that wants the HTML-safe spelling keeps it.
     env.add_filter("json", json);
@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn a_for_loop_renders_its_body_once_per_skill() {
         let out = render_system(
-            "{% for skill in skills %}- {{ skill.name }}: {{ skill.description }} — cat {{ skill.path }}\n{% endfor %}",
+            "{% for skill in skills %}- {{ skill.name }}: {{ skill.description }}, cat {{ skill.path }}\n{% endfor %}",
             Path::new("/ws"),
             &[skill("a", "da"), skill("b", "db")],
             &[],
@@ -199,14 +199,14 @@ mod tests {
         .unwrap();
         assert_eq!(
             out,
-            "- a: da — cat /cfg/skills/a/SKILL.md\n- b: db — cat /cfg/skills/b/SKILL.md\n"
+            "- a: da, cat /cfg/skills/a/SKILL.md\n- b: db, cat /cfg/skills/b/SKILL.md\n"
         );
     }
 
     #[test]
     fn a_for_loop_renders_its_body_once_per_tool_with_the_schema() {
         let out = render_system(
-            "{% for tool in tools %}- {{ tool.name }}: {{ tool.description }} — {{ tool.parameters | tojson }}\n{% endfor %}",
+            "{% for tool in tools %}- {{ tool.name }}: {{ tool.description }}, {{ tool.parameters | tojson }}\n{% endfor %}",
             Path::new("/ws"),
             &[],
             &[tool("t", "dt")],
@@ -214,7 +214,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             out,
-            "- t: dt — {\"properties\": {\"command\": {\"type\": \"string\"}}, \"required\": [\"command\"], \"type\": \"object\"}\n"
+            "- t: dt, {\"properties\": {\"command\": {\"type\": \"string\"}}, \"required\": [\"command\"], \"type\": \"object\"}\n"
         );
     }
 
@@ -363,7 +363,7 @@ mod tests {
     fn absent_sections_render_nothing_like_undefined_variables() {
         // A `None` section serializes to minijinja's undefined: the
         // guarding `{% if %}` stays false and the template's own lines
-        // survive alone — the same render a template that never named
+        // survive alone, the same render a template that never named
         // the sections produces.
         let template = "open\n{% if user %}{{ user }}\n{% endif %}close";
         let without = render_system_with_sections(

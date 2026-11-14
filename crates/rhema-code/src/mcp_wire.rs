@@ -1,12 +1,12 @@
 //! MCP wiring for the local frontends: one bridge, one provisioned
-//! env, one set of prompt lines — per session key, held for the
+//! env, one set of prompt lines, per session key, held for the
 //! process.
 //!
 //! The gate is the spec's §10 rule: a sandboxed session wires
 //! nothing, so nothing advertises what cannot run (`ExecRequest`
 //! carries no environment, a provisioned map could not reach the
 //! executor anyway). Rewiring on a profile switch leaves the old
-//! session's servers idling — the manager's children are stateful by
+//! session's servers idling, the manager's children are stateful by
 //! design, and a playwright browser outliving a profile switch is a
 //! feature, not a leak.
 
@@ -23,7 +23,7 @@ use rhema_config::mcp::McpConfig;
 /// session temp dir that owns the socket's directory.
 pub(crate) struct Entry {
     wiring: rhema_mcp::Wiring,
-    /// Held for the directory's lifetime — the socket file and the
+    /// Held for the directory's lifetime, the socket file and the
     /// CLI's `RHEMA_MCP_TMP` live under it; nothing reads the path
     /// again.
     #[allow(dead_code)]
@@ -43,7 +43,7 @@ impl Entry {
 }
 
 /// The registry: one entry per session key. A key is the profile's
-/// identity — switching profiles rewires; staying on one reuses the
+/// identity, switching profiles rewires; staying on one reuses the
 /// bridge and its already-spawned servers.
 static WIRED: OnceLock<Mutex<BTreeMap<String, Arc<Entry>>>> = OnceLock::new();
 
@@ -53,7 +53,7 @@ fn registry() -> &'static Mutex<BTreeMap<String, Arc<Entry>>> {
 
 /// The merged config for one session: the global file plus the
 /// profile's own entries, profile entries winning by name (the more
-/// specific scope). Notices from both folds ride along — they are
+/// specific scope). Notices from both folds ride along, they are
 /// user-config diagnostics and belong in the startup log.
 pub(crate) fn merged_config(profile: &Profile) -> McpConfig {
     let global = McpConfig::load();
@@ -76,7 +76,7 @@ pub(crate) fn merged_config(profile: &Profile) -> McpConfig {
 
 /// Drops one session's wiring: the bridge stops, its spawned servers
 /// die, the next `wire_for_session` on this key builds fresh. The
-/// settings screen calls this when a server is ADDED or REMOVED —
+/// settings screen calls this when a server is ADDED or REMOVED,
 /// the tool surface changed, so the cached wiring is stale by
 /// definition. (The mute toggle deliberately does NOT rewire: its
 /// prompt-side filter hides the row without killing every other
@@ -86,7 +86,7 @@ pub(crate) fn rewire(session_key: &str) {
         // Removing drops the Arc<Entry>; if the old agent held no
         // other reference the bridge dies here, before the rebuild's
         // wire_for_session spawns a fresh one. An in-flight turn's
-        // calls fail against the dead socket and the model retries —
+        // calls fail against the dead socket and the model retries,
         // the same shape as any server death.
         reg.remove(session_key);
     }
@@ -94,7 +94,7 @@ pub(crate) fn rewire(session_key: &str) {
 
 /// The wiring for one session, reusing an existing one on the same
 /// key. `None` when nothing is configured, everything is muted, or
-/// the session is sandboxed — all three mean "advertise nothing".
+/// the session is sandboxed, all three mean "advertise nothing".
 pub(crate) fn wire_for_session(
     session_key: &str,
     profile: &Profile,
@@ -135,7 +135,7 @@ pub(crate) fn wire_for_session(
     }
     if wiring.lines.is_empty() {
         // Everything configured is muted: no wiring to keep. Dropping
-        // is the teardown — the Wiring's own Drop stops the bridge.
+        // is the teardown, the Wiring's own Drop stops the bridge.
         drop(wiring);
         return None;
     }

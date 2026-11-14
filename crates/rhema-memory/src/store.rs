@@ -1,11 +1,11 @@
-//! The memory contract: put, get, search, forget — plus the lifecycle a
+//! The memory contract: put, get, search, forget, plus the lifecycle a
 //! record can go through without ever being erased (supersede, retract,
 //! verify, due for review).
 //!
 //! Sync, like `rhema-rsd`'s `Store`: the operations are short local reads
 //! and writes, and the async seam is the tool resolver above the store.
 //! The ranking inside [`MemoryStore::search`] is deliberately
-//! unspecified — every caller treats results as ranked-best-first and
+//! unspecified, every caller treats results as ranked-best-first and
 //! nothing else, which is what lets a semantic ranker replace the keyword
 //! one without a signature change (specs/rhema-memory.md §3).
 
@@ -29,19 +29,19 @@ pub trait MemoryStore: Send + Sync {
 
     /// Best-first under the store's ranking; an empty query means recent.
     /// Default rules surface only records that were active and inside
-    /// their validity window — dead records through
+    /// their validity window, dead records through
     /// [`MemoryQuery::include_superseded`], any instant through
     /// [`MemoryQuery::as_of`].
     fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryRecord>, MemoryError>;
 
-    /// Remove by id; `Ok(false)` when absent — not an error. Deletion is
+    /// Remove by id; `Ok(false)` when absent, not an error. Deletion is
     /// for secrets and junk; facts a model or human no longer believes go
     /// through [`MemoryStore::supersede`] or [`MemoryStore::retract`].
     fn forget(&self, id: &str) -> Result<bool, MemoryError>;
 
     /// Marks `id` superseded by `by`: the record stays, its body intact,
-    /// its status recording what replaced it and when. The caller — never
-    /// the engine — declares the relation; an unknown id is
+    /// its status recording what replaced it and when. The caller, never
+    /// the engine, declares the relation; an unknown id is
     /// [`MemoryError::UnknownId`].
     fn supersede(&self, id: &str, by: &str) -> Result<MemoryRecord, MemoryError>;
 
@@ -54,8 +54,8 @@ pub trait MemoryStore: Send + Sync {
     /// [`MemoryError::UnknownId`].
     fn verify(&self, id: &str) -> Result<MemoryRecord, MemoryError>;
 
-    /// The active records due for review at `now` — past their decay
-    /// interval or past their horizon — most overdue first. The engine
+    /// The active records due for review at `now`, past their decay
+    /// interval or past their horizon, most overdue first. The engine
     /// schedules nothing: a caller chooses the cadence and does the work.
     fn due_for_review(&self, now: u64) -> Result<Vec<ReviewItem>, MemoryError>;
 }
@@ -75,15 +75,15 @@ pub enum MemoryError {
         /// The cap that rejected it.
         limit: usize,
     },
-    /// An id outside the store's shape — non-empty, at most 64 chars,
-    /// `[0-9A-Za-z-]` — was rejected before any lookup.
+    /// An id outside the store's shape, non-empty, at most 64 chars,
+    /// `[0-9A-Za-z-]`, was rejected before any lookup.
     #[error("invalid id {id:?}")]
     InvalidId {
         /// The rejected id.
         id: String,
     },
-    /// A subject key outside the shape — lowercase `a-z0-9/_-`, at most
-    /// 128 chars — was rejected before any lookup.
+    /// A subject key outside the shape, lowercase `a-z0-9/_-`, at most
+    /// 128 chars, was rejected before any lookup.
     #[error("invalid subject {subject:?}")]
     InvalidSubject {
         /// The rejected subject.

@@ -2,7 +2,7 @@
 //!
 //! `rhema-sandbox-local`, `rhema-sandbox-docker`, and
 //! `rhema-sandbox-ssh` each spawn one child and read two pipes; this
-//! module is the half they have in common — the stream pump with its
+//! module is the half they have in common, the stream pump with its
 //! capped tails, the cancel loop that kills the local child, the
 //! `timeout` exit codes, the fs routes of the fs-sharing family, and
 //! the textual path guard for the backends whose paths another machine
@@ -21,14 +21,14 @@ use crate::{ExecOutcome, ExecRequest, SandboxError};
 
 /// The stream tail a finished command keeps, the shim's
 /// `MAX_STREAM_BYTES`: a runaway command cannot flood memory, and the
-/// tool applies its display caps again on top (spec §3 — caps are
+/// tool applies its display caps again on top (spec §3, caps are
 /// per-implementation policy; this implementation keeps the shim's).
 pub const MAX_STREAM_BYTES: usize = 50 * 1024;
 
 /// How often the cancelled flag is sampled while output is quiet. An
 /// `AtomicBool` carries no wakeup, so a silent command would otherwise
 /// never observe a flip; this tick is the cancellation check, not a
-/// timer kill — the budget belongs to the `timeout` prefix.
+/// timer kill, the budget belongs to the `timeout` prefix.
 const CANCEL_TICK: Duration = Duration::from_millis(100);
 
 /// The file the tarball seed is staged under before `tar` unpacks it.
@@ -37,8 +37,8 @@ const CANCEL_TICK: Duration = Duration::from_millis(100);
 pub const STAGING: &str = ".rhema-seed.tar.gz";
 
 /// Reads the `timeout` prefix's exit status. 124 is the budget
-/// expiring — GNU timeout's own code, also when `--kill-after` had to
-/// escalate to a kill (it still exits 124) — and reads as
+/// expiring, GNU timeout's own code, also when `--kill-after` had to
+/// escalate to a kill (it still exits 124), and reads as
 /// [`SandboxError::Timeout`]. 137 is a SIGKILL from outside the
 /// budget, most often the machine's out-of-memory killer: reporting it
 /// as a timeout would have the model widen the budget and re-run the
@@ -111,13 +111,13 @@ pub async fn run_child(
     })
 }
 
-/// Reads `stream` line by line, sending every complete line — tagged
-/// with its stream — through `tx`, and keeping the capped tail for the
+/// Reads `stream` line by line, sending every complete line, tagged
+/// with its stream, through `tx`, and keeping the capped tail for the
 /// result. A detached task: it ends with the pipe, whether the command
 /// finishes or is killed, and its tail joins at the end.
 ///
 /// The lines are read as bytes and lossily decoded: a command whose
-/// output is not valid UTF-8 must degrade to replacement characters —
+/// output is not valid UTF-8 must degrade to replacement characters,
 /// `AsyncBufReadExt::lines` errors on the bad line and the `while let`
 /// would silently drop that line and every one after it, trading most
 /// of the output for one encoding slip.
@@ -139,7 +139,7 @@ where
             let eof = loop {
                 match reader.fill_buf().await {
                     // EOF: the pending bytes, if any, are a final line
-                    // without its newline — deliver them below.
+                    // without its newline, deliver them below.
                     Ok([]) => break true,
                     Ok(available) => {
                         // The newline index and byte counts come out
@@ -177,7 +177,7 @@ where
             if dropped > 0 {
                 // The overrun bytes were consumed but not kept: the
                 // stream stays framed and the elision is visible.
-                let marker = format!("[line truncated — {dropped} bytes dropped]");
+                let marker = format!("[line truncated, {dropped} bytes dropped]");
                 let _ = tx.send((is_stderr, marker.clone()));
                 append_capped(&mut tail, marker.as_bytes());
                 append_capped(&mut tail, b"\n");
@@ -191,7 +191,7 @@ where
 }
 
 /// The most bytes one delivered line may hold in memory. A command
-/// that never emits a newline — a spinner, `yes | tr -d '\n'` — would
+/// that never emits a newline, a spinner, `yes | tr -d '\n'`, would
 /// otherwise pin its whole output in the line buffer; [`read_until`]
 /// grows without bound. The overrun is consumed but not kept, and a
 /// marker line follows the truncated one, so framing survives and the
@@ -199,7 +199,7 @@ where
 pub const MAX_LINE_BYTES: usize = 1024 * 1024;
 
 /// Appends `bytes` to `tail`, keeping at most the last
-/// [`MAX_STREAM_BYTES`] — the cap is applied as the bytes land, so a
+/// [`MAX_STREAM_BYTES`], the cap is applied as the bytes land, so a
 /// runaway command never holds more than the tail.
 fn append_capped(tail: &mut Vec<u8>, bytes: &[u8]) {
     tail.extend_from_slice(bytes);
@@ -209,7 +209,7 @@ fn append_capped(tail: &mut Vec<u8>, bytes: &[u8]) {
     }
 }
 
-/// Kills the child now and reaps it — the explicit half of
+/// Kills the child now and reaps it, the explicit half of
 /// `kill_on_drop`, so a cancelled run's command does not outlive the
 /// call.
 async fn kill(child: &mut tokio::process::Child) {
@@ -217,10 +217,10 @@ async fn kill(child: &mut tokio::process::Child) {
     let _ = child.wait().await;
 }
 
-/// Guards a path some other filesystem interprets — a container's, a
+/// Guards a path some other filesystem interprets, a container's, a
 /// remote's. There is no local root to resolve against, so the check
 /// is textual: the path must be absolute and may carry no `..`
-/// component (the empty path is refused too — there is no root here
+/// component (the empty path is refused too, there is no root here
 /// for it to mean). The paths are model-influenced; this is the guard.
 pub fn check_remote_path(path: &str) -> Result<(), SandboxError> {
     if !path.starts_with('/') {
@@ -255,7 +255,7 @@ pub fn under_workspace(workspace: &str, path: &str) -> String {
     }
 }
 
-/// Shell-quotes one argument, single-quote style — the shim's
+/// Shell-quotes one argument, single-quote style, the shim's
 /// `shquote`, restated wherever an argument crosses a shell: the seed
 /// command lines, and every remote operand `ssh` hands its far-end
 /// shell to reparse.
@@ -273,8 +273,8 @@ pub async fn read_through(root: &FsRoot, path: &str) -> Result<Vec<u8>, SandboxE
 }
 
 /// The fs-sharing family's write route: map through the root, make the
-/// parent directories — the shim's put creates them, and the skills
-/// seeding writes two levels deep — then write the bytes.
+/// parent directories, the shim's put creates them, and the skills
+/// seeding writes two levels deep, then write the bytes.
 pub async fn write_through(root: &FsRoot, path: &str, contents: &[u8]) -> Result<(), SandboxError> {
     let mapped = root.map(path)?;
     if let Some(parent) = mapped.parent() {
@@ -364,7 +364,7 @@ mod tests {
         let (_, marker) = rx.recv().await.expect("the marker arrives");
         assert_eq!(
             marker,
-            format!("[line truncated — {} bytes dropped]", 2 * 1024 * 1024)
+            format!("[line truncated, {} bytes dropped]", 2 * 1024 * 1024)
         );
         assert!(rx.try_recv().is_err(), "nothing else was delivered");
         // The tail keeps the marker, not the whole line.

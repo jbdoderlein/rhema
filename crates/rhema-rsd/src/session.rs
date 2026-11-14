@@ -2,8 +2,8 @@
 //! caller-owned session.
 //!
 //! One [`Session`] per [`ResourceKey`](crate::ResourceKey), forever. It wraps
-//! [`rhema_core::Session`] — the history the step engine appends to plus the
-//! driver's opaque blob — and adds the RSD fields from spec §5. Fully
+//! [`rhema_core::Session`], the history the step engine appends to plus the
+//! driver's opaque blob, and adds the RSD fields from spec §5. Fully
 //! serializable: checkpointing round-trips the whole struct through the
 //! store, which is why the wrap adds only plain data.
 
@@ -25,7 +25,7 @@ pub struct Session {
     /// driver state. The dispatcher never interprets it.
     pub core: CoreSession,
     /// The handler's current working plan, when it keeps one. Opaque to the
-    /// dispatcher — plain JSON so it round-trips.
+    /// dispatcher, plain JSON so it round-trips.
     pub plan: Option<serde_json::Value>,
     /// Pointer to physical state a handler wants to find again on resume:
     /// a git worktree path, a branch name, a file list.

@@ -1,8 +1,8 @@
 //! llama.cpp's dialect of the OpenAI chat-completions wire, plus the
 //! models/props parsing that is llama.cpp's alone.
 //!
-//! The shared chat-completions vocabulary — request building, chunk
-//! assembly, the SSE drain — lives in
+//! The shared chat-completions vocabulary, request building, chunk
+//! assembly, the SSE drain, lives in
 //! [`rhema_provider_openai_compatible`]; this crate teaches it the few
 //! things llama.cpp does differently and reuses the rest:
 //!
@@ -10,15 +10,15 @@
 //!   request field): no effort parameter is ever sent.
 //! - An assistant turn never replays its chain of thought: llama.cpp
 //!   re-derives reasoning per step, and rejects the reasoning fields.
-//!   `ToolCall::provider_data` is ignored entirely — llama.cpp call ids
+//!   `ToolCall::provider_data` is ignored entirely, llama.cpp call ids
 //!   are plain strings that round-trip on the wire, so there is nothing
 //!   opaque to carry.
 //! - A malformed streamed arguments payload wraps as
 //!   `{"_llama_args_text": <raw>}` so the call still round-trips.
 //!
-//! Everything else — roles, content parts for images, tool-call
+//! Everything else, roles, content parts for images, tool-call
 //! fragment assembly by index, the `[DONE]` sentinel, usage on the
-//! final chunk — is the shared dialect's behavior, documented there.
+//! final chunk, is the shared dialect's behavior, documented there.
 //!
 //! What remains here is the listing side: `/v1/models` shapes that
 //! drifted across llama.cpp versions and modes, and `/props` context
@@ -56,9 +56,9 @@ pub struct WireModel {
 
 impl From<LlamaModel> for ModelCard {
     /// `supports_vision` stays `None`: the server exposes no modality
-    /// metadata — neither `/v1/models` nor `/props` carries any, and vision
+    /// metadata, neither `/v1/models` nor `/props` carries any, and vision
     /// is a property of the loaded `mmproj` projector rather than of the
-    /// model id — so unknown is the only honest verdict.
+    /// model id, so unknown is the only honest verdict.
     fn from(model: LlamaModel) -> Self {
         Self {
             display_name: model.id.clone(),

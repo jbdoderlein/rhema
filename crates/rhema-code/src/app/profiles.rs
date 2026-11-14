@@ -36,7 +36,7 @@ impl App {
 
     /// The footer's sandbox badge: the kind `bash` runs under, or the
     /// instance's name when the profile's active pointer names the
-    /// instance this kind resolves to. Local reads as a fact too — the
+    /// instance this kind resolves to. Local reads as a fact too, the
     /// fast path is a choice, not an absence.
     pub fn sandbox_badge(&self) -> String {
         let choice = self.active_sandbox();
@@ -50,7 +50,7 @@ impl App {
     }
 
     /// `/sandbox <name>`: a configured instance's name runs `bash` in
-    /// it — the Sandbox page's enter, which points the section's active
+    /// it, the Sandbox page's enter, which points the section's active
     /// instance at the name; anything else parses as a kind, the
     /// picker's select with the kind spelled out. An unknown name is
     /// declined in-band.
@@ -75,12 +75,12 @@ impl App {
     }
 
     /// Switches where the session's `bash` runs: the kind persists on
-    /// the session's profile's `sandbox` section (the kind only — the
+    /// the session's profile's `sandbox` section (the kind only, the
     /// url, host, container, and token keep whatever the config stored),
     /// the workspace remembers it, and the running agent's tools are
     /// rebuilt on the shared assembly. `local` rebuilds inline; every
     /// other kind assembles off the UI thread and answers as
-    /// `UiEvent::SandboxAssembled` — until then the current tools keep
+    /// `UiEvent::SandboxAssembled`, until then the current tools keep
     /// running. A kind this machine does not offer is declined in-band.
     pub fn choose_sandbox(&mut self, choice: SandboxChoice) -> Vec<Effect> {
         if self.turn.running {
@@ -105,7 +105,7 @@ impl App {
                 .push_notice(&format!("bash already runs on {}", choice.stored_name()));
             return Vec::new();
         }
-        // Kind only: the rest of the section is the config's to keep —
+        // Kind only: the rest of the section is the config's to keep,
         // the picker does not edit urls, hosts, or tokens.
         self.config
             .set_for_profile(self.session_profile.as_deref(), |profile| {
@@ -142,7 +142,7 @@ impl App {
     }
 
     /// Swaps the session's assembled sandbox, stopping the outgoing
-    /// one first: a switch to another instance — or back to local — is
+    /// one first: a switch to another instance, or back to local, is
     /// an exit for the outgoing session's hold, and its stop-on-exit
     /// answer belongs to this moment, not to the process's end.
     pub(crate) fn replace_sandboxed(&mut self, assembled: Option<crate::sandbox::Sandboxed>) {
@@ -152,8 +152,8 @@ impl App {
         self.sandboxed = assembled;
     }
 
-    /// Rebuilds the running agent carrying the conversation over — the
-    /// profile-switch idiom — so the session's sandbox state takes
+    /// Rebuilds the running agent carrying the conversation over, the
+    /// profile-switch idiom, so the session's sandbox state takes
     /// effect on the tool's executor at once, then notices.
     pub(crate) fn rebuild_for_sandbox(&mut self, notice: &str) {
         // The machine changed: the report re-states where bash runs.
@@ -167,8 +167,8 @@ impl App {
     /// Switches the session to a profile: re-resolves the backend from
     /// that profile's settings, rebuilds the agent carrying the session
     /// over, and notices. The choice is per-session, never persisted. A
-    /// profile without usable credentials still switches — the session's
-    /// identity is what moves — but the old provider goes with the old
+    /// profile without usable credentials still switches, the session's
+    /// identity is what moves, but the old provider goes with the old
     /// profile: turns wait for /login rather than leaking the previous
     /// profile's key.
     pub fn switch_profile(&mut self, name: &str) -> Vec<Effect> {
@@ -192,7 +192,7 @@ impl App {
         // Profiles are isolated, `bash` included: the offered set
         // re-derives for the profile moving in, and where its own
         // `sandbox` section says `bash` runs is where this session's
-        // `bash` goes — local when the profile names nothing, never a
+        // `bash` goes, local when the profile names nothing, never a
         // sandbox the profile just left behind.
         self.sandbox_offered = self.sandbox_machines.offered_for(&effective);
         let wanted = profile_sandbox(&effective, &self.sandbox_offered);
@@ -218,7 +218,7 @@ impl App {
             // memory naming a keyless profile would only fall through.
             // The agent drops with the provider: a turn here would run
             // on the profile just left. The sandbox leaves with the
-            // profile too — nothing keyless can run a turn in it.
+            // profile too, nothing keyless can run a turn in it.
             if !keep {
                 self.replace_sandboxed(None);
             }
@@ -334,8 +334,8 @@ impl App {
     }
 
     /// The add-profile dialog's accepted name: a fresh, empty profile
-    /// joins the registry — provider, model, and key stay unset, the
-    /// Providers page's login flow fills those in — and the snapshot
+    /// joins the registry, provider, model, and key stay unset, the
+    /// Providers page's login flow fills those in, and the snapshot
     /// follows. The session does not move: creation is not a switch.
     pub(crate) fn create_profile(&mut self) -> Vec<Effect> {
         let name = match &self.screen {
@@ -429,8 +429,8 @@ impl App {
     }
 
     /// The add-sandbox dialog's accepted kind and value: the kind's
-    /// field lands on the session profile's `sandbox` section — the
-    /// container, the host, or the url — and the snapshot follows.
+    /// field lands on the session profile's `sandbox` section, the
+    /// container, the host, or the url, and the snapshot follows.
     /// Storing never activates: enter on a kind row runs `bash` there.
     pub(crate) fn submit_sandbox_instance(&mut self) -> Vec<Effect> {
         let kind = match &self.screen {
@@ -442,7 +442,7 @@ impl App {
         };
         // The instance carries no target: the concrete name is the
         // workspace's to set, derived at assembly time and stable
-        // across sessions. The row's name is the kind's — first free,
+        // across sessions. The row's name is the kind's, first free,
         // `docker-2` once `docker` is taken. Storing never activates.
         let mut name = kind.stored_name().to_owned();
         let mut suffix = 2;
@@ -511,7 +511,7 @@ impl App {
         Vec::new()
     }
 
-    /// Enter on a Sandbox page instance row: run `bash` in it — the
+    /// Enter on a Sandbox page instance row: run `bash` in it, the
     /// same flow `/sandbox <kind>` runs, with the section's active
     /// pointer naming the instance so the assembly reads its target.
     /// The session's kind moves only when the instance's kind differs;
@@ -593,7 +593,7 @@ impl App {
     }
 
     /// `d` on a Profiles page row: forget the profile. The one this
-    /// session runs on stays — the session's identity is not dropped
+    /// session runs on stays, the session's identity is not dropped
     /// from under it, and that refusal is also what keeps the registry
     /// from emptying. The workspace memory forgets the name with the
     /// registry, the way a rename does.
@@ -606,7 +606,7 @@ impl App {
         };
         if self.session_profile.as_deref() == Some(name.as_str()) {
             self.transcript
-                .push_notice("the profile this session runs on cannot be removed — switch first");
+                .push_notice("the profile this session runs on cannot be removed, switch first");
             return Vec::new();
         }
         self.config.profiles.remove(&name);
@@ -630,8 +630,8 @@ impl App {
     }
 
     /// `c` on a Profiles page row: the name color moves to the next
-    /// entry of the default wheel — the theme's auto first, then each
-    /// default hex — and persists. The page's swatch is the record;
+    /// entry of the default wheel, the theme's auto first, then each
+    /// default hex, and persists. The page's swatch is the record;
     /// no notice.
     pub(crate) fn cycle_profile_color(&mut self) -> Vec<Effect> {
         let Some(name) = (match &self.screen {
@@ -672,12 +672,12 @@ impl App {
     }
 
     /// Enter on a logged-in instance: it becomes the profile's active
-    /// one, and the agent rebuilds carrying the conversation over — a
+    /// one, and the agent rebuilds carrying the conversation over, a
     /// picker when no model is stored yet, the chat otherwise.
     pub(crate) fn activate_instance(&mut self) -> Vec<Effect> {
         if self.turn.running {
             self.transcript
-                .push_notice("a turn is running — the switch waits for it to finish");
+                .push_notice("a turn is running, the switch waits for it to finish");
             return Vec::new();
         }
         let tab = match &self.screen {
@@ -716,7 +716,7 @@ impl App {
         self.options.thinking = effective.thinking_effort();
         let Some(mut backend) = Backend::from_profile(&effective, self.secret_store()) else {
             self.error = Some(format!(
-                "no usable credentials for {} — /login first",
+                "no usable credentials for {}, /login first",
                 instance.provider
             ));
             return Vec::new();
@@ -728,7 +728,7 @@ impl App {
             Some(agent) => agent.session().clone(),
             None => self.session.clone(),
         };
-        let label = format!("{} — {name}", backend.config_name());
+        let label = format!("{}, {name}", backend.config_name());
         // The agent builds on the new provider, so it installs first.
         self.provider = Some(backend.provider());
         self.backend = Some(backend);
@@ -760,7 +760,7 @@ impl App {
     }
 
     /// `d` on a logged-in instance: forget it. When it was the active
-    /// one, the backend re-resolves from what remains — another instance
+    /// one, the backend re-resolves from what remains, another instance
     /// of the provider, or none.
     pub(crate) fn remove_instance(&mut self) -> Vec<Effect> {
         let tab = match &self.screen {
@@ -774,7 +774,7 @@ impl App {
             return Vec::new();
         };
         // The keychain entry goes with the instance: a removed login
-        // must not leave its key in the chain. Best effort — a store
+        // must not leave its key in the chain. Best effort, a store
         // that refuses leaves the entry; it holds no live reference.
         let mut removed = None;
         self.config.set_for_profile(Some(&tab), |settings| {
@@ -846,10 +846,10 @@ impl App {
     }
 
     /// Records the session's profile as the last one this workspace
-    /// chose or ran with — an explicit `/profile` switch or a turn's
-    /// start — so the next launch here opens on it. Written only on
+    /// chose or ran with, an explicit `/profile` switch or a turn's
+    /// start, so the next launch here opens on it. Written only on
     /// change; a failure surfaces in the status strip like every other
-    /// config write — neither the switch nor the turn is blocked by it.
+    /// config write, neither the switch nor the turn is blocked by it.
     pub(crate) fn remember_profile(&mut self) {
         let Some(profile) = self.session_profile.clone() else {
             return;

@@ -27,7 +27,7 @@ pub enum ResumeAction {
 
 /// The resume picker: one highlighted row, arrows to move, enter to
 /// load, esc back to the chat. Sessions for one workspace only, newest
-/// first — the listing decided that before the screen existed.
+/// first, the listing decided that before the screen existed.
 #[derive(Debug)]
 pub struct ResumeScreen {
     /// The rows, newest first.
@@ -122,8 +122,8 @@ pub enum PickerAction {
 
 /// One pickable model, tagged with its provider's config name and the
 /// instance it came from: the row prefix, the filter's provider match,
-/// and the switch target on choose. A profile may hold several logins —
-/// including several of one provider — so a catalog spans both.
+/// and the switch target on choose. A profile may hold several logins,
+/// including several of one provider, so a catalog spans both.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CatalogModel {
     /// The provider's config name (`google`, `openrouter`, ...).
@@ -168,8 +168,8 @@ impl PickerScreen {
     }
 
     /// The models this coding agent can drive: chat-capable rows. The
-    /// adapters only hand out text chat models — the id markers that
-    /// decide "text" are per-provider catalog knowledge — so this is just
+    /// adapters only hand out text chat models, the id markers that
+    /// decide "text" are per-provider catalog knowledge, so this is just
     /// the defensive line against a row without the chat marker.
     fn usable(model: &ModelCard) -> bool {
         model.supports_chat()
@@ -187,8 +187,8 @@ impl PickerScreen {
     }
 
     /// The models matching the filter: case-insensitive substring on the
-    /// rendered row — `provider/id`, so `openrouter/` names the provider's
-    /// whole catalog and `openrouter/anthropic` narrows inside it — or on
+    /// rendered row, `provider/id`, so `openrouter/` names the provider's
+    /// whole catalog and `openrouter/anthropic` narrows inside it, or on
     /// the display name, in the sorted order.
     pub fn filtered(&self) -> Vec<&CatalogModel> {
         let needle = self.filter.to_lowercase();
@@ -217,7 +217,7 @@ impl PickerScreen {
 
     /// Handles one keypress. Typing filters by default: printable keys
     /// extend the filter, arrows navigate, enter picks. Esc always
-    /// leaves — the filter is transient, nothing to clear first — and
+    /// leaves, the filter is transient, nothing to clear first, and
     /// returns to the chat. `q` stays a filter character on purpose:
     /// models are named (qwen).
     pub fn handle_key(&mut self, key: KeyEvent) -> PickerAction {

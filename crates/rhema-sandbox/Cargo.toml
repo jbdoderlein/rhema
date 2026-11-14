@@ -13,8 +13,8 @@ default = []
 # Opt-in, not default: test machinery does not ship in a plain build.
 mock = ["dep:tokio", "tokio/sync"]
 # The process-spawning backend family's shared machinery (`exec_util.rs`,
-# `fsroot.rs`), which the sibling backend crates — rhema-sandbox-local,
-# -docker, -ssh — build on: the child processes and their pumped pipes,
+# `fsroot.rs`), which the sibling backend crates, rhema-sandbox-local,
+# -docker, -ssh, build on: the child processes and their pumped pipes,
 # the cancel tick's timer, and plain fs for the file routes. `sync` rides
 # with the dependency itself (the pump's channel); `macros` and `rt` come
 # with the workspace pin.

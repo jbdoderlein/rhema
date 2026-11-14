@@ -1,28 +1,28 @@
-//! rhema-sandbox — the sandbox seam: the `Sandbox` contract, the
+//! rhema-sandbox, the sandbox seam: the `Sandbox` contract, the
 //! workspace `bash` runs in, and the `ShellSandbox` adapter.
 //!
-//! One seam any frontend can aim at any machine — the host, a
-//! container, a VM, a box over SSH, a cloud sandbox — chosen by
+//! One seam any frontend can aim at any machine, the host, a
+//! container, a VM, a box over SSH, a cloud sandbox, chosen by
 //! configuration, never by which crate a frontend was born in. The
-//! family mirrors the provider family: this crate is its base — the
+//! family mirrors the provider family: this crate is its base, the
 //! contract ([`Sandbox`]), the [`ShellSandbox`] adapter, the wire
 //! protocol ([`protocol`]), the seeding helper ([`seed_workspace`]),
 //! the scripted mock ([`mock`], the `mock` feature), the instances'
 //! cross-process lock ([`shared`]), and, behind the `spawn` feature,
 //! the process-spawning family's shared machinery
 //! ([`exec_util`], [`fsroot`]). The backends are sibling crates: the
-//! process family — `rhema-sandbox-local`, the commands as host
+//! process family, `rhema-sandbox-local`, the commands as host
 //! processes rooted at one host directory; `rhema-sandbox-docker`, the
 //! bind-mounted container driven through the `docker` CLI;
-//! `rhema-sandbox-ssh`, the daemonless remote over `ssh` — plus
+//! `rhema-sandbox-ssh`, the daemonless remote over `ssh`, plus
 //! `rhema-sandbox-http`, the protocol's HTTPS client, and
 //! `rhema-sandbox-server`, the `rhema-sandboxd` daemon. In the cloud
-//! deployment the seam is a Cloudflare Sandbox — a container bound to
+//! deployment the seam is a Cloudflare Sandbox, a container bound to
 //! the session's Durable Object, persisted across turns and idle
 //! sleeps.
 //!
 //! The trait is object-safe and async, with `Send` futures like every
-//! seam in this tree, and carries no platform dependency — no
+//! seam in this tree, and carries no platform dependency, no
 //! wasm-bindgen, no fetch, no `worker`: the platform lives in the
 //! transport that wraps it, not here. [`ShellSandbox`] adapts the seam
 //! onto [`ShellExecutor`](rhema_agent_tools::ShellExecutor), so the
@@ -68,8 +68,8 @@ pub struct ExecRequest {
     /// A string, not a `PathBuf`: the path is meaningful only inside the
     /// sandbox's filesystem, and no host should be tempted to touch it.
     pub cwd: String,
-    /// Wall-clock budget. The sandbox kills the command — and every
-    /// process it started — past it, and reports
+    /// Wall-clock budget. The sandbox kills the command, and every
+    /// process it started, past it, and reports
     /// [`SandboxError::Timeout`].
     pub timeout: Duration,
 }
@@ -92,7 +92,7 @@ pub struct ExecOutcome {
 /// the next session re-seeds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceSeed {
-    /// `git clone <url> .` into the workspace root — the repository
+    /// `git clone <url> .` into the workspace root, the repository
     /// becomes the workspace.
     GitClone(String),
     /// A gzipped tarball, base64-encoded, unpacked at the workspace
@@ -131,7 +131,7 @@ pub trait Sandbox: Send + Sync {
     /// `progress` as they land (v1 transports may deliver the whole
     /// output at completion; the callback shape is the contract either
     /// way). A flip of `cancelled` stops the run where the transport
-    /// can observe it — before the command starts, and between chunks.
+    /// can observe it, before the command starts, and between chunks.
     async fn exec(
         &self,
         request: ExecRequest,
@@ -148,7 +148,7 @@ pub trait Sandbox: Send + Sync {
     async fn read_file(&self, path: &str) -> Result<Vec<u8>, SandboxError>;
 
     /// Writes (or replaces) a file in the workspace. This is how the
-    /// session's skills and SYSTEM.md reach the sandbox — the model
+    /// session's skills and SYSTEM.md reach the sandbox, the model
     /// reads them through `bash`, like any other file.
     async fn write_file(&self, path: &str, contents: &[u8]) -> Result<(), SandboxError>;
 }

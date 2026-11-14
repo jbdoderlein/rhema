@@ -7,7 +7,7 @@ use super::*;
 /// The preparation script: marker-gated and idempotent. The marker
 /// records the list it installed, so a list change re-runs the
 /// install; a failed install writes no marker, so the next assembly
-/// tries again. Runs as the instance's root — apt is system work,
+/// tries again. Runs as the instance's root, apt is system work,
 /// and nothing here touches the mounted tree.
 pub(crate) fn provision_script() -> String {
     format!(
@@ -29,7 +29,7 @@ echo "$w" > "$m"
 /// once.
 const PROVISION_BUDGET_SECS: &str = "300";
 
-/// Instances this process has already prepared or attempted — the
+/// Instances this process has already prepared or attempted, the
 /// per-assembly marker check is one `exec` a turn, and the cache
 /// makes it zero.
 pub(crate) fn provision_attempted(backend: &str, name: &str) -> bool {
@@ -44,8 +44,8 @@ pub(crate) fn provision_attempted(backend: &str, name: &str) -> bool {
 }
 
 /// Runs the preparation script in the instance. A failure is a
-/// degraded sandbox, not a dead one — the session runs and the tools
-/// say what exists when probed — so the caller ignores the error and
+/// degraded sandbox, not a dead one, the session runs and the tools
+/// say what exists when probed, so the caller ignores the error and
 /// the absent marker retries on the next assembly.
 pub(crate) fn lxd_provision_argv(name: &str) -> Vec<String> {
     vec![
@@ -76,10 +76,10 @@ pub(crate) fn docker_provision_argv(name: &str) -> Vec<String> {
 
 /// Stands the container up when it is not already running:
 /// `docker inspect` answers, and a stopped or absent container is met
-/// with `docker run -d … sleep infinity` — a bind mount of the
+/// with `docker run -d … sleep infinity`, a bind mount of the
 /// workspace at its own path, held open between runs, plus the two
 /// global skills trees read-only when they exist. Posture, plainly:
-/// process hygiene, not a security boundary — the container's commands
+/// process hygiene, not a security boundary, the container's commands
 /// reach the same fs the local path would.
 ///
 /// The CLI's waits are blocking, so the work hops to the blocking
@@ -125,7 +125,7 @@ fn ensure_container_blocking(
             prepare_instance("docker", name, &docker_provision_argv(name));
             return Ok(());
         }
-        // Present with a stale mount set — a container from before
+        // Present with a stale mount set, a container from before
         // the skills bind, say. A start can never gain a mount, so
         // the container is recreated; running under the assembly's
         // exclusive lock, no peer session is live to lose it. What
@@ -158,7 +158,7 @@ fn ensure_container_blocking(
     Ok(())
 }
 
-/// The container's mounts as `docker inspect` prints them — `None` when
+/// The container's mounts as `docker inspect` prints them, `None` when
 /// the container does not exist. A missing binary or refusing daemon
 /// reads as absence: the `run` below fails with the same word.
 pub(crate) fn docker_mounts(name: &str) -> anyhow::Result<Option<String>> {
@@ -173,9 +173,9 @@ pub(crate) fn docker_mounts(name: &str) -> anyhow::Result<Option<String>> {
 }
 
 /// Whether the container's mounts cover this assembly's needs: the
-/// workspace bind, and — when each global skills directory exists —
+/// workspace bind, and, when each global skills directory exists,
 /// its read-only bind. Matched by the inspect JSON's `"Source"`
-/// entries — the host side, the same string the run argv names — so a
+/// entries, the host side, the same string the run argv names, so a
 /// workspace that is a prefix of some other mount's path cannot pass
 /// for its own bind. A path the JSON's escaping mangles reads as
 /// missing: the container is recreated with the correct mounts, the
@@ -203,7 +203,7 @@ pub(crate) fn source_entry(path: &str) -> String {
 
 /// The run argv: `docker run -d --name <name> -v <ws>:<ws>
 /// [-v <skills>:<skills>:ro] [-v <agents>:<agents>:ro]
-/// debian:trixie sleep infinity` — the workspace bind is the
+/// debian:trixie sleep infinity`, the workspace bind is the
 /// container's filesystem story, the two global skills binds ride
 /// read-only when their directories exist.
 pub(crate) fn docker_run_argv(
@@ -232,7 +232,7 @@ pub(crate) fn docker_run_argv(
     argv
 }
 
-/// One bind-mount argument: `src:src`, `:ro` when read-only — source
+/// One bind-mount argument: `src:src`, `:ro` when read-only, source
 /// and destination agree, the same 1:1 posture the lxd device takes.
 pub(crate) fn bind_mount(source: &str, readonly: bool) -> String {
     if readonly {
@@ -270,13 +270,13 @@ pub(crate) fn container_running(name: &str) -> anyhow::Result<bool> {
 
 /// Stands the LXD instance up when it is not already running:
 /// `lxc list` answers whether it exists, an existing one is started,
-/// an absent one is launched — `--vm` for a virtual machine, else a
-/// container — from the stock `ubuntu:24.04` image. First launches
+/// an absent one is launched, `--vm` for a virtual machine, else a
+/// container, from the stock `ubuntu:24.04` image. First launches
 /// wait on the image download the same way the docker path waits on
 /// its pull; the assembly is the one place that patience is spent.
 /// The idmap entry the workspace's owner needs: the tree on the
 /// device belongs to the host's uid, and an unprivileged container's
-/// default map turns that into nobody — the mount attaches and no
+/// default map turns that into nobody, the mount attaches and no
 /// one inside can read it. `both <uid> <gid>` carries the pair in
 /// both directions, so exec's `--user` is the tree's own owner.
 pub(crate) fn wanted_idmap(uid: u32, gid: u32) -> String {
@@ -284,7 +284,7 @@ pub(crate) fn wanted_idmap(uid: u32, gid: u32) -> String {
 }
 
 /// The launch argv: `launch [--vm] ubuntu:24.04 <name> -c
-/// raw.idmap=both <uid> <gid>` — the map set at birth, when it
+/// raw.idmap=both <uid> <gid>`, the map set at birth, when it
 /// applies on the first boot for free.
 pub(crate) fn lxd_launch_argv(name: &str, vm: bool, uid: u32, gid: u32) -> Vec<String> {
     let mut argv = vec![
@@ -329,7 +329,7 @@ pub(crate) fn lxc_output(args: &[&str]) -> anyhow::Result<std::process::Output> 
         .map_err(|err| anyhow::anyhow!("lxc {} failed: {err}", args.join(" ")))
 }
 
-/// The lxc CLI's waits are blocking — `launch` can take minutes — so
+/// The lxc CLI's waits are blocking, `launch` can take minutes, so
 /// the work hops to the blocking pool; the assembly's scheduler keeps
 /// its worker.
 pub(crate) async fn ensure_lxd_instance(
@@ -357,7 +357,7 @@ fn ensure_lxd_instance_blocking(name: &str, vm: bool, uid: u32, gid: u32) -> any
     if state == "RUNNING" {
         prepare_instance("lxd", name, &lxd_provision_argv(name));
         // An instance launched before the map existed stays
-        // unreadable until it carries the entry: repair in place —
+        // unreadable until it carries the entry: repair in place,
         // the setting lands on the next boot, so this restarts once
         // and never again.
         let have = idmap_of(name)?;
@@ -430,13 +430,13 @@ pub(crate) fn idmap_of(name: &str) -> anyhow::Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
-/// Adds the workspace's `disk` device — and each global skills
+/// Adds the workspace's `disk` device, and each global skills
 /// directory's, read-only, when it exists: `lxc config device add
-/// <name> <device> disk source=<dir> path=<dir>` — the 1:1 mirrors
+/// <name> <device> disk source=<dir> path=<dir>`, the 1:1 mirrors
 /// that make the sandbox-side paths the host paths themselves.
 /// Containers only; a virtual machine takes no host-path mount and
 /// rides the attached posture instead.
-/// The device attach is an lxc CLI wait — blocking, so it hops to the
+/// The device attach is an lxc CLI wait, blocking, so it hops to the
 /// blocking pool like the rest of the ensure path.
 pub(crate) async fn ensure_lxd_mount(
     name: &str,
@@ -520,7 +520,7 @@ pub(crate) fn lxd_device(
 }
 
 /// The add argv: `config device add <name> <device> disk
-/// source=<dir> path=<dir> [readonly=true]` — read-only for the
+/// source=<dir> path=<dir> [readonly=true]`, read-only for the
 /// skills device, the user's own config the instance must read but
 /// never write.
 pub(crate) fn lxd_device_argv(name: &str, device: &str, dir: &str, readonly: bool) -> Vec<String> {

@@ -23,7 +23,7 @@ pub struct DispatcherConfig {
     pub lease_ttl_millis: u64,
     /// How long a key may wait in the FIFO admission queue. On expiry the
     /// entry re-enters the normal debounce path as if its event had just
-    /// arrived — queued work is re-planned against current state, never
+    /// arrived, queued work is re-planned against current state, never
     /// silently dropped.
     pub admission_ttl_millis: u64,
 }

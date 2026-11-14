@@ -1,7 +1,7 @@
 //! The settings contract between rhema and its frontends.
 //!
 //! rhema is a framework: the agent driver, the providers, the sandbox
-//! and MCP wiring — and any number of frontends built on top, each one
+//! and MCP wiring, and any number of frontends built on top, each one
 //! owning the user-facing product. This crate is what they agree on:
 //! the [`Settings`] every frontend must be able to store and read,
 //! whatever file, directory, or format it keeps them in; the [`Store`]
@@ -10,8 +10,8 @@
 //! OS keychain backend is namespaced per frontend, so two frontends
 //! never share credentials by accident.
 //!
-//! The reference frontend keeps its whole file — the [`Settings`]
-//! section beside its own UI section — at
+//! The reference frontend keeps its whole file, the [`Settings`]
+//! section beside its own UI section, at
 //! `$XDG_CONFIG_HOME/rhema/config.yaml`, written with `0600`
 //! permissions since the section can hold credentials. A different
 //! frontend keeps them under its own directory, in its own format: it
@@ -20,17 +20,17 @@
 //! `examples/godcode.rs` for that story in one runnable file.
 //!
 //! Which profile a session runs under is chosen per invocation
-//! (`--profile`) or per session (`/profile`) — it is never stored as a
+//! (`--profile`) or per session (`/profile`), it is never stored as a
 //! global switch, so parallel instances (work and personal side by
 //! side) never fight over one toggle.
 //!
-//! A profile holds any number of named [`ProviderInstance`]s — two
-//! llama.cpp servers, a work and a personal Copilot sub — with one of
+//! A profile holds any number of named [`ProviderInstance`]s, two
+//! llama.cpp servers, a work and a personal Copilot sub, with one of
 //! them active (`provider` + `instance`).
 //!
 //! A key lives in one of two places: the OS keychain, which the
 //! settings reference by an opaque `secret_ref` ([`secrets`]), or the
-//! store itself as the literal `api_key` — the fallback on machines
+//! store itself as the literal `api_key`, the fallback on machines
 //! with no reachable keychain. [`Profile::place_key`] and
 //! [`Settings::migrate_secrets`] prefer the keychain and only fall
 //! back to the literal when the store refuses; resolution reads the
@@ -40,7 +40,7 @@
 //! `GOOGLE_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`,
 //! `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `ZAI_API_KEY`,
 //! `GITHUB_COPILOT_TOKEN`, `RHEMA_SANDBOX`, `RHEMA_SANDBOX_URL`,
-//! `RHEMA_SANDBOX_TOKEN`) always win over the stored value — a stored
+//! `RHEMA_SANDBOX_TOKEN`) always win over the stored value, a stored
 //! entry is the fallback, not the override.
 
 #![forbid(unsafe_code)]
@@ -59,7 +59,7 @@ use rhema_core::request::ThinkingEffort;
 use serde::{Deserialize, Serialize};
 
 /// Debug helper for credential fields: `Some("[…]")` when a value is
-/// present, `None` otherwise — presence without the value, so a
+/// present, `None` otherwise, presence without the value, so a
 /// `{:?}` of any config shape can never print a live key.
 fn redacted(value: &Option<String>) -> Option<&'static str> {
     value.as_ref().map(|_| "[…]")
@@ -68,8 +68,8 @@ fn redacted(value: &Option<String>) -> Option<&'static str> {
 /// Why a config operation failed.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    /// Neither `HOME` nor `USERPROFILE` is set, so the user home — and
-    /// every convention that hangs off it, the config base included —
+    /// Neither `HOME` nor `USERPROFILE` is set, so the user home, and
+    /// every convention that hangs off it, the config base included,
     /// cannot be located.
     #[error("cannot locate the home directory: HOME and USERPROFILE are both unset")]
     NoHome,
@@ -86,7 +86,7 @@ pub enum ConfigError {
 }
 
 /// Which request shape a provider instance speaks, when the choice is
-/// the user's to make. Today only the `openai` kind reads it — the one
+/// the user's to make. Today only the `openai` kind reads it, the one
 /// kind whose dialect its route alone cannot imply: OpenAI itself
 /// serves the Responses API, an arbitrary OpenAI-compatible server
 /// only promises chat completions, and the stored choice overrides the
@@ -94,10 +94,10 @@ pub enum ConfigError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderApi {
-    /// The Chat Completions API (`POST {base}/chat/completions`) — the
+    /// The Chat Completions API (`POST {base}/chat/completions`), the
     /// dialect every OpenAI-compatible server answers.
     Chat,
-    /// The Responses API (`POST {base}/responses`) — the modern shape,
+    /// The Responses API (`POST {base}/responses`), the modern shape,
     /// where a tool result's images can ride the result itself.
     Responses,
 }
@@ -113,9 +113,9 @@ impl ProviderApi {
 }
 
 /// One logged-in provider instance: a named credential set for a single
-/// provider kind. A profile may hold any number of them — two llama.cpp
+/// provider kind. A profile may hold any number of them, two llama.cpp
 /// servers, two OpenAI-compatible endpoints, a work and a personal
-/// Copilot sub — keyed by a user-chosen name; the instance's `provider`
+/// Copilot sub, keyed by a user-chosen name; the instance's `provider`
 /// says which adapter speaks for it.
 #[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "snake_case", deny_unknown_fields)]
@@ -159,21 +159,21 @@ impl fmt::Debug for ProviderInstance {
 }
 
 /// One named place `bash` can run: a user-chosen name over a kind and
-/// whatever that kind needs — the sandbox twin of
+/// whatever that kind needs, the sandbox twin of
 /// [`ProviderInstance`]. `local` needs no record: the local instance
 /// exists by doing nothing.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SandboxInstance {
     /// Which kind runs here: `docker`, `lxd`, `ssh`, `http`, or
-    /// `ecrou`. Stored as given — unknown spellings are the
+    /// `ecrou`. Stored as given, unknown spellings are the
     /// consumer's to resolve or reject.
     pub kind: String,
     /// What the kind names its instance by: the docker container, the
     /// LXD instance, the ssh host, or the http URL. Whitespace-only
     /// values count as unset at use time.
     pub target: Option<String>,
-    /// Whether an `lxd` instance is a virtual machine — the launch
+    /// Whether an `lxd` instance is a virtual machine, the launch
     /// flag the assembly stands it up with. Unset is a container, and
     /// every other kind ignores it.
     pub vm: Option<bool>,
@@ -182,7 +182,7 @@ pub struct SandboxInstance {
 /// Where `bash` runs when a frontend honors the stored choice: the
 /// [`Profile`] section behind the sandbox kinds `local`, `docker`,
 /// `ssh`, and `http`. Every field is stored as a string and validated
-/// by the consumer — the same stance as every stored name:
+/// by the consumer, the same stance as every stored name:
 /// rhema-config stores, the frontend parses. A profile
 /// without this section and a `kind: local` section are the same
 /// behavior: today's local process executor.
@@ -190,22 +190,22 @@ pub struct SandboxInstance {
 #[serde(default, rename_all = "snake_case", deny_unknown_fields)]
 pub struct SandboxSettings {
     /// The stored choice: `local`, `docker`, `lxd`, `ssh`, `http`, or
-    /// `ecrou`. The name is stored as given — unknown spellings are
+    /// `ecrou`. The name is stored as given, unknown spellings are
     /// the consumer's to resolve or reject.
     pub kind: Option<String>,
     /// The name of the active sandbox instance in
-    /// [`Profile::sandbox_instances`] — the one `bash` runs in. Must
+    /// [`Profile::sandbox_instances`], the one `bash` runs in. Must
     /// name an instance of `kind` to count; `None` is the section's
     /// own single-instance form (the facts below), the shape this map
     /// grew out of.
     pub active: Option<String>,
     /// The `http` sandbox's base URL.
     pub url: Option<String>,
-    /// A literal bearer token for the `http` sandbox — the fallback
+    /// A literal bearer token for the `http` sandbox, the fallback
     /// where no keychain answers, never the first choice.
     pub token: Option<String>,
     /// The keychain entry holding the `http` token, resolved through
-    /// the [`secrets`] seam — [`ProviderInstance::secret_ref`]'s
+    /// the [`secrets`] seam, [`ProviderInstance::secret_ref`]'s
     /// pattern. A literal `token` and a live `token_ref` never hold
     /// the same secret at rest.
     pub token_ref: Option<String>,
@@ -214,11 +214,11 @@ pub struct SandboxSettings {
     pub host: Option<String>,
     /// The `docker` container to exec in.
     pub container: Option<String>,
-    /// The `lxd` instance to exec in — container or virtual machine,
+    /// The `lxd` instance to exec in, container or virtual machine,
     /// the type riding `vm` (spec §9: one driver and a launch flag,
     /// not two kinds).
     pub instance: Option<String>,
-    /// Whether the `lxd` instance is a virtual machine — the launch
+    /// Whether the `lxd` instance is a virtual machine, the launch
     /// flag the assembly stands the instance up with. Unset is a
     /// container.
     pub vm: Option<bool>,
@@ -256,7 +256,7 @@ impl fmt::Debug for SandboxSettings {
 /// One named set of provider settings. Profiles are isolated: work never
 /// inherits personal's model or keys, and vice versa.
 ///
-/// Credentials live in [`Profile::instances`] — named
+/// Credentials live in [`Profile::instances`], named
 /// [`ProviderInstance`]s. Unknown keys are rejected: a typo'd `model`
 /// must not silently read as unset.
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -266,7 +266,7 @@ pub struct Profile {
     /// `anthropic`, `openai`, `deepseek`, `zai`, `opencode`,
     /// `copilot`, or `chatgpt`.
     pub provider: Option<String>,
-    /// The name of the active instance in [`Profile::instances`] — the
+    /// The name of the active instance in [`Profile::instances`], the
     /// one whose backend serves turns. Must name an instance of
     /// `provider` to count.
     pub instance: Option<String>,
@@ -279,7 +279,7 @@ pub struct Profile {
     pub color: Option<String>,
     /// How much reasoning the model should do: `low`, `medium`, `high`,
     /// or `default` (the provider decides). Unset, null, and unparseable
-    /// all read as `medium` — a level is always named, because
+    /// all read as `medium`, a level is always named, because
     /// always-thinking models left to their defaults spend the whole
     /// output budget on reasoning and answer with nothing.
     pub thinking: Option<String>,
@@ -288,7 +288,7 @@ pub struct Profile {
     /// are the same behavior; the choice machinery engages only
     /// non-local kinds.
     pub sandbox: Option<SandboxSettings>,
-    /// The named places `bash` can run, keyed by a user-chosen name —
+    /// The named places `bash` can run, keyed by a user-chosen name,
     /// the sandbox twin of [`Profile::instances`]. Absent from the
     /// file while empty: most profiles never leave `local`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -298,7 +298,7 @@ pub struct Profile {
     /// design: work and personal carry different servers, and a
     /// server installed through one profile's menu appears nowhere
     /// else. Resolved through [`crate::mcp::McpConfig::from_entries`]
-    /// at agent-wiring time — a malformed entry is skipped with a
+    /// at agent-wiring time, a malformed entry is skipped with a
     /// notice, never a config failure. Absent from the file while
     /// empty; entries' `env` and `headers` values are secrets at rest
     /// and redact in [`Debug`].
@@ -325,7 +325,7 @@ impl fmt::Debug for Profile {
 impl Profile {
     /// The provider this profile serves turns on: `RHEMA_PROVIDER`, then
     /// the stored `provider`. Whitespace-only values count as unset. The
-    /// name is returned as given — unknown spellings are the consumer's
+    /// name is returned as given, unknown spellings are the consumer's
     /// to resolve or reject.
     pub fn provider_name(&self) -> Option<String> {
         resolve_key(
@@ -337,7 +337,7 @@ impl Profile {
 
     /// The API key `provider` serves: the matching instance's key,
     /// environment tier included; env-only when the profile holds no
-    /// instance of it. The provider name is the adapter spelling —
+    /// instance of it. The provider name is the adapter spelling,
     /// `google`, `llama-cpp`, `openrouter`, `anthropic`, `openai`,
     /// `deepseek`, `zai`, `opencode`, `copilot`, `chatgpt`.
     pub fn api_key(&self, provider: &str, secrets: Option<&dyn SecretStore>) -> Option<String> {
@@ -375,7 +375,7 @@ impl Profile {
 
     /// The profile's thinking level: the stored name parsed, with unset,
     /// null, and unparseable all reading as [`ThinkingEffort::Medium`].
-    /// Only an explicit `default` keeps the provider's own behavior — a
+    /// Only an explicit `default` keeps the provider's own behavior, a
     /// session never silently runs on "send nothing".
     pub fn thinking_effort(&self) -> ThinkingEffort {
         self.thinking
@@ -443,7 +443,7 @@ impl Profile {
     }
 
     /// Inserts or replaces the named instance. The caller keeps
-    /// `provider`/`instance` coherent — a new active instance must be
+    /// `provider`/`instance` coherent, a new active instance must be
     /// named in `instance` and its kind in `provider`.
     pub fn upsert_instance(&mut self, name: &str, instance: ProviderInstance) {
         self.instances.insert(name.to_owned(), instance);
@@ -462,7 +462,7 @@ impl Profile {
 
     /// The sandbox instance a non-local `kind` runs in: the active one
     /// when it is of that kind, else the first stored instance of it,
-    /// else `None` — the section's own facts (or the derived name) are
+    /// else `None`, the section's own facts (or the derived name) are
     /// the caller's fallback, the single-instance form this map grew
     /// out of.
     pub fn sandbox_instance_for(&self, kind: &str) -> Option<(&str, &SandboxInstance)> {
@@ -479,7 +479,7 @@ impl Profile {
     }
 
     /// Inserts or replaces the named sandbox instance. The caller
-    /// keeps `sandbox.kind`/`sandbox.active` coherent — a new active
+    /// keeps `sandbox.kind`/`sandbox.active` coherent, a new active
     /// instance must be of the stored kind.
     pub fn place_sandbox_instance(&mut self, name: impl Into<String>, instance: SandboxInstance) {
         self.sandbox_instances.insert(name.into(), instance);
@@ -514,7 +514,7 @@ impl Profile {
 
     /// The stored key of one instance without the environment tier:
     /// the keychain entry `secret_ref` names, then the literal. A
-    /// store that cannot be reached reads as "not in the store" — the
+    /// store that cannot be reached reads as "not in the store", the
     /// next tier serves, never a lost credential.
     pub fn stored_instance_key(
         &self,
@@ -537,7 +537,7 @@ impl Profile {
     }
 
     /// The key an instance serves: the provider's environment variables
-    /// first, then the stored key — keychain, then literal.
+    /// first, then the stored key, keychain, then literal.
     /// Whitespace-only values count as unset at every tier.
     pub fn instance_api_key(
         &self,
@@ -552,8 +552,8 @@ impl Profile {
     }
 
     /// Places a just-entered key on the named instance: the keychain,
-    /// when the store accepts it — the instance then carries only its
-    /// `secret_ref` — else the literal, the shape machines without a
+    /// when the store accepts it, the instance then carries only its
+    /// `secret_ref`, else the literal, the shape machines without a
     /// store have always held. `None` when no instance bears `name`.
     pub fn place_key(
         &mut self,
@@ -622,7 +622,7 @@ impl Profile {
 
     /// The sandbox kind this profile runs `bash` on: `RHEMA_SANDBOX`,
     /// then the stored `kind`. Whitespace-only values count as unset.
-    /// The name is returned as given — `local`, `docker`, `ssh`,
+    /// The name is returned as given, `local`, `docker`, `ssh`,
     /// `http`, and `ecrou` are the spellings the sandbox design names;
     /// unknown ones are the consumer's to resolve or reject.
     pub fn sandbox_kind(&self) -> Option<String> {
@@ -658,7 +658,7 @@ impl Profile {
     /// The stored sandbox token without the environment tier: the
     /// keychain entry `token_ref` names first, then the literal
     /// `token`. A store that cannot be reached reads as "not in the
-    /// store" — the next tier serves, never a lost token. Callers that
+    /// store", the next tier serves, never a lost token. Callers that
     /// run their own environment precedence read this instead of
     /// [`Profile::sandbox_token`].
     pub fn stored_sandbox_token(&self, secrets: Option<&dyn SecretStore>) -> Option<String> {
@@ -678,7 +678,7 @@ impl Profile {
             .filter(|token| !token.is_empty())
     }
 
-    /// The `ssh` destination as stored — `user@host` or an ssh alias,
+    /// The `ssh` destination as stored, `user@host` or an ssh alias,
     /// passed to `ssh` as-is. Stored only, no environment tier: a
     /// stray variable must not silently move where commands run.
     /// Whitespace-only values count as unset.
@@ -690,7 +690,7 @@ impl Profile {
             .filter(|host| !host.is_empty())
     }
 
-    /// The `docker` container to exec in, as stored. Stored only — no
+    /// The `docker` container to exec in, as stored. Stored only, no
     /// environment tier, the same stance as [`Profile::sandbox_host`].
     /// Whitespace-only values count as unset.
     pub fn sandbox_container(&self) -> Option<String> {
@@ -701,7 +701,7 @@ impl Profile {
             .filter(|c| !c.is_empty())
     }
 
-    /// The `lxd` instance to exec in, as stored. Stored only — the
+    /// The `lxd` instance to exec in, as stored. Stored only, the
     /// same stance as [`Profile::sandbox_container`]. Whitespace-only
     /// values count as unset.
     pub fn sandbox_instance(&self) -> Option<String> {
@@ -718,7 +718,7 @@ impl Profile {
         self.sandbox.as_ref().and_then(|s| s.vm).unwrap_or(false)
     }
 
-    /// The `ecrou` image every boot resolves, as stored. Stored only —
+    /// The `ecrou` image every boot resolves, as stored. Stored only,
     /// the same stance as [`Profile::sandbox_container`].
     /// Whitespace-only values count as unset.
     pub fn sandbox_image(&self) -> Option<String> {
@@ -748,7 +748,7 @@ pub enum KeyLocation {
     /// `secret_ref`.
     Keychain,
     /// The config file itself: no keychain answered, so the literal
-    /// stayed — the shape the file has always held.
+    /// stayed, the shape the file has always held.
     File,
 }
 
@@ -768,7 +768,7 @@ pub struct ProviderInfo {
     /// priority order.
     pub env_keys: &'static [&'static str],
     /// Whether the provider has a login flow: a credential the user
-    /// enters or a device grant answers for. `false` for llama.cpp —
+    /// enters or a device grant answers for. `false` for llama.cpp,
     /// a server is an address to point at, not a subscription.
     pub login: bool,
     /// The fix a frontend without a login screen names when no
@@ -777,14 +777,14 @@ pub struct ProviderInfo {
     /// The model the provider runs when neither the user nor the
     /// frontend names one: an id the adapter keeps answering for,
     /// chosen once here so every frontend falls back the same way.
-    /// A safety net, not the normal path — the login and picker
+    /// A safety net, not the normal path, the login and picker
     /// flows store a model.
     pub default_model: &'static str,
 }
 
 /// The provider registry, in the order the pickers list them. A
 /// provider joins with all of itself: spelling, credential rule,
-/// default model — the facts every frontend needs, written once.
+/// default model, the facts every frontend needs, written once.
 pub const PROVIDERS: &[ProviderInfo] = &[
     ProviderInfo {
         name: "google",
@@ -858,7 +858,7 @@ pub const PROVIDERS: &[ProviderInfo] = &[
     },
 ];
 
-/// The model a provider runs when nothing stored names one — the
+/// The model a provider runs when nothing stored names one, the
 /// registry row's [`ProviderInfo::default_model`]. A name no row
 /// answers to reads as google's, the same default an unset provider
 /// gets; callers that reject unknown spellings do so before asking.
@@ -880,13 +880,13 @@ fn provider_env_names(provider: &str) -> &'static [&'static str] {
 
 /// The framework's own section of the settings: what any frontend
 /// built on rhema must be able to store and read, whatever document
-/// it co-locates them in. Everything beyond this — themes, palettes,
-/// onboarding state, per-workspace reopen memory — is the frontend's
+/// it co-locates them in. Everything beyond this, themes, palettes,
+/// onboarding state, per-workspace reopen memory, is the frontend's
 /// own section, in the frontend's own file.
 ///
 /// Unknown keys are rejected: a typo'd key must not silently read as
 /// its default. A frontend embedding the section into a bigger
-/// document inherits the same strictness for these keys — a typo in
+/// document inherits the same strictness for these keys, a typo in
 /// the framework's vocabulary is loud wherever it lands.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "snake_case", deny_unknown_fields)]
@@ -917,7 +917,7 @@ pub struct Settings {
     /// leaves the `subagent` tool's catalog and the prompt; the
     /// built-in included, so a set holding every name drops the tool
     /// whole. Frontends may still list disabled definitions, greyed
-    /// out — only discovery filters them.
+    /// out, only discovery filters them.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub disabled_subagents: BTreeSet<String>,
 }
@@ -951,7 +951,7 @@ impl Default for Settings {
 impl Settings {
     /// The settings that apply for `flag` (or `personal` when absent).
     ///
-    /// ISOLATION: a profile's section is authoritative — work never
+    /// ISOLATION: a profile's section is authoritative, work never
     /// inherits personal's model or keys. An unknown name resolves to an
     /// empty profile; the caller decides how to present that (the
     /// frontend says "no provider; log in").
@@ -973,7 +973,7 @@ impl Settings {
 
     /// Moves every stored literal key into the keychain, instance by
     /// instance, best effort: one the store refuses stays literal.
-    /// Returns the number moved. Idempotent — an instance already
+    /// Returns the number moved. Idempotent, an instance already
     /// carrying only its `secret_ref` is skipped, so calling this on
     /// every load costs one refused read per key at most.
     pub fn migrate_secrets(&mut self, secrets: &dyn SecretStore) -> usize {
@@ -1005,7 +1005,7 @@ impl Settings {
     /// Loads the settings from the reference file; a missing file is
     /// the default settings, not an error. A frontend with a file of
     /// its own parses its document and hands the framework its
-    /// section — [`Store`] is the seam.
+    /// section, [`Store`] is the seam.
     pub fn load() -> Result<Settings, ConfigError> {
         YamlStore::discover()?.load()
     }
@@ -1013,7 +1013,7 @@ impl Settings {
     /// Persists to the reference file, creating the directory `0700`
     /// and the file `0600` on Unix because the section can hold
     /// credentials. Both modes are re-asserted on every save, so a
-    /// file that predates the rule — or was widened elsewhere —
+    /// file that predates the rule, or was widened elsewhere,
     /// tightens again.
     pub fn save(&self) -> Result<(), ConfigError> {
         YamlStore::discover()?.save(self)
@@ -1034,18 +1034,18 @@ impl Settings {
 
 /// The directory conventions a session reads: where the settings
 /// file, the user-wide skills, the subagent definitions, and the base
-/// system prompt live — plus the user home, because the `.agents`
+/// system prompt live, plus the user home, because the `.agents`
 /// skills-sharing convention lives there and nowhere else. The state
 /// and cache roots ride along: runtime artifacts (a daemon's sqlite,
 /// saved sessions) belong to the same family and the same bases.
 ///
 /// The family rule: the products of the rhema family share the XDG
-/// bases and nest below the family name — the reference frontend at
+/// bases and nest below the family name, the reference frontend at
 /// `<config-base>/rhema`, the claw below it (`claw.yaml`,
 /// `state/rhema/claw`), the ACP adapter's session cache below that.
 /// A frontend from outside the family relocates the whole set
 /// ([`Home::relocated`]): `~/.godcode` for its config, and its own
-/// name under the state and cache bases — nothing of godcode's lands
+/// name under the state and cache bases, nothing of godcode's lands
 /// under `rhema/`. The cross-agent convention stays machine-global
 /// either way: `~/.agents/skills` is every tool's, not any frontend's.
 /// Nothing downstream reaches for the environment again; it asks the
@@ -1053,17 +1053,17 @@ impl Settings {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Home {
     /// The user's home directory: where the `.agents/skills` sharing
-    /// convention lives — every tool's skills, not any frontend's.
+    /// convention lives, every tool's skills, not any frontend's.
     pub home: PathBuf,
     /// The config base: `<config-base>/rhema` for the reference
     /// layout, the frontend's own directory for a relocated one.
     pub config: PathBuf,
     /// The state root: `$XDG_STATE_HOME/rhema`, else
-    /// `~/.local/state/rhema` — runtime artifacts the user expects to
+    /// `~/.local/state/rhema`, runtime artifacts the user expects to
     /// survive a restart, the family's own directory of them.
     pub state: PathBuf,
     /// The cache root: `$XDG_CACHE_HOME/rhema`, else `~/.cache/rhema`
-    /// — artifacts that may be lost without grief, saved sessions
+    ///, artifacts that may be lost without grief, saved sessions
     /// among them.
     pub cache: PathBuf,
 }
@@ -1094,9 +1094,9 @@ impl Home {
     /// A relocated config base under the discovered home: the seam
     /// for a frontend from outside the family. Skills, subagents, and
     /// the base prompt follow the config base; its state and cache
-    /// take the frontend's own name under their bases — the config
+    /// take the frontend's own name under their bases, the config
     /// base's final component, leading dot stripped (`~/.godcode`
-    /// keeps godcode out of `rhema/`) — and the `.agents` convention
+    /// keeps godcode out of `rhema/`), and the `.agents` convention
     /// stays machine-global.
     pub fn relocated(config: PathBuf) -> Result<Self, ConfigError> {
         let name = frontend_name(&config);
@@ -1116,7 +1116,7 @@ impl Home {
         })
     }
 
-    /// All roots explicit — containers and tests, where no
+    /// All roots explicit, containers and tests, where no
     /// environment variable may answer. State and cache take the
     /// config base's name under the home's default XDG shapes, the
     /// same derivation [`Self::relocated`] applies to bases it
@@ -1131,10 +1131,10 @@ impl Home {
         }
     }
 
-    /// The reference layout under an explicit home — the seam for a
+    /// The reference layout under an explicit home, the seam for a
     /// test isolating itself from the machine: `config` under
     /// `<home>/.config/rhema`, state under `<home>/.local/state/rhema`,
-    /// cache under `<home>/.cache/rhema` — the shapes
+    /// cache under `<home>/.cache/rhema`, the shapes
     /// [`Self::discover`] resolves, no environment variable consulted.
     pub fn under_home(home: &Path) -> Self {
         Self {
@@ -1175,14 +1175,14 @@ impl Home {
     /// The editable base system prompt (`<config>/SYSTEM.md`). A
     /// `system edit` command seeds it with the built-in default,
     /// a `system restore` restores it; nothing is ever written at
-    /// runtime — the file is an opt-in override.
+    /// runtime, the file is an opt-in override.
     pub fn system_prompt(&self) -> PathBuf {
         self.config.join("SYSTEM.md")
     }
 }
 
 /// The user's home directory: `$HOME`, falling back to `$USERPROFILE`
-/// — windows does not set `HOME` (git-bash and MSYS do, cmd and
+///, windows does not set `HOME` (git-bash and MSYS do, cmd and
 /// powershell never), so the windows convention answers second. Public:
 /// every convention outside this crate that hangs off the home (the
 /// sessions' cache dir, for one) resolves it the same one way.
@@ -1215,7 +1215,7 @@ fn reference_config_base() -> Result<PathBuf, ConfigError> {
 
 /// The settings-storage seam: where the [`Settings`] section comes
 /// from and goes. The framework ships the YAML file store; a frontend
-/// that owns its own document — its own directory, its own format —
+/// that owns its own document, its own directory, its own format,
 /// implements this over its embed of the section, and nothing
 /// downstream knows a file or a format exists.
 pub trait Store: Send + Sync {
@@ -1224,16 +1224,16 @@ pub trait Store: Send + Sync {
     fn load(&self) -> Result<Settings, ConfigError>;
     /// Persists the settings. A frontend co-locating the section with
     /// its own keys re-serializes its whole document around it, so the
-    /// document's other sections survive — best effort, as file
+    /// document's other sections survive, best effort, as file
     /// semantics allow.
     fn save(&self, settings: &Settings) -> Result<(), ConfigError>;
 }
 
 /// The reference [`Store`]: `config.yaml` in YAML, the shape the file
-/// has always had. Atomic and `0600` — the section can hold literal
-/// credentials — with the directory created `0700`; both modes are
-/// re-asserted on every save, so a file that predates the rule — or
-/// was widened elsewhere — tightens again.
+/// has always had. Atomic and `0600`, the section can hold literal
+/// credentials, with the directory created `0700`; both modes are
+/// re-asserted on every save, so a file that predates the rule, or
+/// was widened elsewhere, tightens again.
 #[derive(Debug, Clone)]
 pub struct YamlStore {
     /// The file the section round-trips through.
@@ -1342,7 +1342,7 @@ impl SettingsDocument {
 }
 
 /// The platform a frontend hands the framework: the directory
-/// conventions, the settings store, and the keychain namespace — the
+/// conventions, the settings store, and the keychain namespace, the
 /// three decisions that belong to the frontend, collected at one
 /// construction site so nothing downstream resolves a path, a file,
 /// or a service name on its own.
@@ -1685,7 +1685,7 @@ profiles:
         assert_eq!(instance.api.unwrap().as_str(), "responses");
 
         // The file spelling parses back, and an instance without the
-        // field — every config written before the choice existed —
+        // field, every config written before the choice existed,
         // reads as unset.
         let raw = "instances:\n  proxy:\n    provider: openai\n    api: responses\n";
         let parsed = serde_yaml::from_str::<Profile>(raw).unwrap();
@@ -2283,7 +2283,7 @@ profiles:
             key_of(&profile, Some(&UnreachableStore)).as_deref(),
             Some("file-key")
         );
-        // No store at all — the pre-keychain callers — same answer.
+        // No store at all, the pre-keychain callers, same answer.
         assert_eq!(key_of(&profile, None).as_deref(), Some("file-key"));
     }
 
@@ -2565,7 +2565,7 @@ profiles:
         assert_eq!(bare.sandbox_host(), None);
         assert_eq!(bare.sandbox_container(), None);
 
-        // Blank stored values count as unset — host and container too,
+        // Blank stored values count as unset, host and container too,
         // which have no env tier to fall through to.
         let blank = sandboxed_profile(SandboxSettings {
             kind: Some("  ".into()),
@@ -2597,7 +2597,7 @@ profiles:
             Some("file-token")
         );
         // The entry lands: the keychain outranks the literal. (The env
-        // tier outranks both — the resolver test above.)
+        // tier outranks both, the resolver test above.)
         store.set("ref-sandbox", "chain-token").unwrap();
         assert_eq!(
             profile.stored_sandbox_token(Some(&store)).as_deref(),
@@ -2617,7 +2617,7 @@ profiles:
             profile.stored_sandbox_token(Some(&store)).as_deref(),
             Some("file-token")
         );
-        // No store at all — the pre-keychain callers — same answer.
+        // No store at all, the pre-keychain callers, same answer.
         assert_eq!(
             profile.stored_sandbox_token(None).as_deref(),
             Some("file-token")
@@ -2649,8 +2649,8 @@ profiles:
             home.agents_skills(),
             PathBuf::from("/home/u/.agents/skills")
         );
-        // State and cache take the frontend's own name — a dot dir
-        // names it without the dot — so nothing of godcode's lands
+        // State and cache take the frontend's own name, a dot dir
+        // names it without the dot, so nothing of godcode's lands
         // under the family's `rhema/`.
         assert_eq!(home.state, PathBuf::from("/home/u/.local/state/godcode"));
         assert_eq!(home.cache, PathBuf::from("/home/u/.cache/godcode"));
@@ -2667,7 +2667,7 @@ profiles:
     #[test]
     fn settings_round_trip_through_a_foreign_store() {
         // The seam a second frontend implements: the section moves in
-        // and out of any document, here a JSON envelope — the
+        // and out of any document, here a JSON envelope, the
         // framework never sees the format.
         struct GodCodeStore(std::sync::Mutex<String>);
 

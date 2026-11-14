@@ -2,7 +2,7 @@
 //!
 //! The model speaks markdown; raw source is noise in a terminal. The whole
 //! accumulated response is parsed at draw time with pulldown-cmark and
-//! mapped onto styled lines — streaming stays append-only, and the wrap
+//! mapped onto styled lines, streaming stays append-only, and the wrap
 //! pass downstream still counts rows exactly. Palette: code in electric
 //! cyan, code blocks on slate, quotes and rules dim; no syntax highlighting
 //! inside code blocks (syntect later if wanted).
@@ -14,9 +14,9 @@ use ratatui::text::{Line, Span};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 /// Renders one assistant response (its full markdown source) into styled
-/// lines at `width` columns — tables lay their columns out against it.
+/// lines at `width` columns, tables lay their columns out against it.
 /// Plain text passes through untouched. Code reads in the accent's text
-/// tone on a surface well — the transcript well is sunken, so code steps
+/// tone on a surface well, the transcript well is sunken, so code steps
 /// one tier up.
 pub fn render_markdown(source: &str, theme: &Theme, width: usize) -> Vec<Line<'static>> {
     let mut renderer = MarkdownRenderer::new(theme, width);
@@ -67,7 +67,7 @@ struct MarkdownRenderer<'a> {
     /// for unordered ones. A stack, because a nested list must not
     /// clobber its parent's counter; its length is the nesting depth.
     counters: Vec<Option<u64>>,
-    /// The content column of each open item — its marker's own width
+    /// The content column of each open item, its marker's own width
     /// included. A paragraph that follows a blank row inside an item
     /// starts here, so it stays visually inside the bullet instead of
     /// drifting back to the margin.
@@ -85,7 +85,7 @@ struct MarkdownRenderer<'a> {
     table_cell: Option<String>,
     /// The design tokens; colors never come from literals (rule 1).
     theme: &'a Theme,
-    /// The columns tables lay out against — the transcript's width.
+    /// The columns tables lay out against, the transcript's width.
     width: usize,
 }
 
@@ -136,7 +136,7 @@ impl<'a> MarkdownRenderer<'a> {
             Event::Start(Tag::List(start)) => {
                 self.flush_line();
                 // A top-level list steps away from the text before it; a
-                // sublist hugs its parent item — the blank row is what
+                // sublist hugs its parent item, the blank row is what
                 // made nesting read as same-level items. The paragraph
                 // that introduces the sublist already asked for a blank
                 // row at its own end, so the hug means taking it back.
@@ -245,7 +245,7 @@ impl<'a> MarkdownRenderer<'a> {
                     cell.push_str(&text);
                 } else if self.in_code_block {
                     // One parser Text event per source line inside a fence.
-                    // Every row — blank ones too — carries the slate to the
+                    // Every row, blank ones too, carries the slate to the
                     // full width: a block reads as one solid slab, not as
                     // patches that stop where each line's text stops.
                     for (i, row) in text.split('\n').enumerate() {
@@ -274,7 +274,7 @@ impl<'a> MarkdownRenderer<'a> {
                         .push(self.style.apply(text.to_string(), self.theme));
                 }
             }
-            // A soft break joins the paragraph with a space — models
+            // A soft break joins the paragraph with a space, models
             // hard-wrap prose mid-sentence (some streams even pad chunks
             // with newlines), and slicing every source line into its own
             // row shreds such output. An explicit hard break still cuts
@@ -315,8 +315,8 @@ impl<'a> MarkdownRenderer<'a> {
     }
 
     /// Pads the line being started to the innermost open item's content
-    /// column. A line the renderer already began — an item's marker, a
-    /// quote's rail, a soft break's join — keeps its own shape; only a
+    /// column. A line the renderer already began, an item's marker, a
+    /// quote's rail, a soft break's join, keeps its own shape; only a
     /// fresh row inside an item is padded.
     fn indent_line(&mut self) {
         if self.spans.is_empty()
@@ -411,7 +411,7 @@ fn wrap_cell(cell: &str, width: usize) -> Vec<String> {
 
 /// A table laid out at the terminal's width: columns fit their content
 /// when there is room, share what remains when there is not, and cell
-/// content wraps onto continuation rows — model output is never cut.
+/// content wraps onto continuation rows, model output is never cut.
 fn render_table(header: &[String], rows: &[Vec<String>], width: usize) -> Vec<Line<'static>> {
     let cols = header
         .len()

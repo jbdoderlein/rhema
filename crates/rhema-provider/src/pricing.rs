@@ -19,7 +19,7 @@ impl Pricing {
     /// bills: input, output, and the cached share of the input.
     ///
     /// Cached prompt tokens bill at a fraction of base input
-    /// everywhere — Anthropic reads ~10%, OpenAI 50%, DeepSeek and
+    /// everywhere, Anthropic reads ~10%, OpenAI 50%, DeepSeek and
     /// Gemini ~25%; the cross-provider middle stands in where no exact
     /// rate is published. Cache writes ride the full input bucket.
     pub fn cost(&self, input_tokens: u64, output_tokens: u64, cached_input_tokens: u64) -> f64 {

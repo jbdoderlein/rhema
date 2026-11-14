@@ -5,8 +5,8 @@ use super::*;
 
 /// The commands whose names start with the slash token in `input`, in
 /// table order. `/` alone matches everything; an input that is not a
-/// command at all matches nothing. Reads the command table — the single
-/// source of truth — so a row exists for the palette the moment it
+/// command at all matches nothing. Reads the command table, the single
+/// source of truth, so a row exists for the palette the moment it
 /// dispatches.
 pub fn filtered_commands(input: &str) -> Vec<&'static crate::commands::CommandSpec> {
     if !input.starts_with('/') {
@@ -60,7 +60,7 @@ pub struct PaletteSandbox {
     /// The instance's name, the value completion inserts.
     pub name: String,
     /// The kind the instance runs: `docker`, `lxd`, `ssh`, `http`,
-    /// `ecrou` — stored as configured.
+    /// `ecrou`, stored as configured.
     pub kind: String,
     /// What the kind names its instance by, when configured.
     pub target: Option<String>,
@@ -103,7 +103,7 @@ pub enum PaletteRow {
         /// What the row says about the word, after it.
         description: &'static str,
     },
-    /// A sandbox under `/sandbox` — a configured instance or a kind;
+    /// A sandbox under `/sandbox`, a configured instance or a kind;
     /// completing fills the argument.
     Sandbox {
         /// The word completion inserts: an instance's name or a kind's.
@@ -118,7 +118,7 @@ pub enum PaletteRow {
         token_start: usize,
         /// End of the token (char offset), exclusive.
         token_end: usize,
-        /// The entry's name, with a trailing `/` on directories — the
+        /// The entry's name, with a trailing `/` on directories, the
         /// row's label.
         name: String,
         /// Whether the entry is a directory.
@@ -132,9 +132,9 @@ pub enum PaletteRow {
 /// The palette's rows for an input: command names while the input
 /// matches one, the models matching the `/model` argument, the profiles
 /// matching the `/profile` argument, the sandboxes matching the
-/// `/sandbox` argument, or — when none of those fire — the filesystem
+/// `/sandbox` argument, or, when none of those fire, the filesystem
 /// entries under the cursor's path token. The argument filters follow
-/// the picker's rules — the rendered row text, case-insensitive.
+/// the picker's rules, the rendered row text, case-insensitive.
 pub fn palette_rows(
     input: &str,
     cursor: usize,
@@ -357,7 +357,7 @@ pub(crate) fn path_token(input: &str, cursor: usize) -> Option<(usize, usize)> {
 
 /// The token split for completion: the directory part as typed (through
 /// the final `/`), the stem the entries must match, and the directory
-/// to list — `~` expands to the home directory, an empty part to the
+/// to list, `~` expands to the home directory, an empty part to the
 /// working directory. None when the token names no path.
 pub(crate) fn split_path_token(token: &str) -> Option<(String, String, PathBuf)> {
     if token == "~" {
@@ -385,7 +385,7 @@ pub(crate) fn split_path_token(token: &str) -> Option<(String, String, PathBuf)>
 }
 
 /// A model's palette description: the display name with the picker's
-/// facts — pricing, the vision verdict, and the context window — when
+/// facts, pricing, the vision verdict, and the context window, when
 /// the catalog knows them. The verdict is tri-state like the catalog's:
 /// `None` says nothing, because unknown is not a verdict.
 pub(crate) fn model_description(model: &ModelCard, icons: &crate::icons::Icons) -> String {

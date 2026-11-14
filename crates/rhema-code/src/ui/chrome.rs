@@ -1,7 +1,7 @@
 //! The shared chrome of rhema's full-screen menus: the panel they sit
 //! in, the row markers they select with, the rule under a heading.
 //! Settings, the pickers, and the onboarding wizard all draw through
-//! here, so a border style or marker glyph changes everywhere at once —
+//! here, so a border style or marker glyph changes everywhere at once,
 //! the coherence is in the calls, not in five copies of a block
 //! builder.
 
@@ -82,7 +82,7 @@ pub fn marker(selected: bool, theme: &Theme) -> Span<'static> {
     Span::raw(if selected { "❯ " } else { "  " }).fg(theme.accent_text)
 }
 
-/// A horizontal rule the width of its pane, in the strong border tone —
+/// A horizontal rule the width of its pane, in the strong border tone,
 /// the divider under a heading.
 pub fn rule(width: usize, theme: &Theme) -> Span<'static> {
     Span::raw("─".repeat(width)).fg(theme.border_strong)

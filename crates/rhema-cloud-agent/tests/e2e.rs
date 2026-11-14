@@ -1,5 +1,5 @@
 //! The offline end-to-end: the scripted sandbox and the scripted
-//! provider drive the cloud turn loop on the host — a full turn with a
+//! provider drive the cloud turn loop on the host, a full turn with a
 //! bash call through the approval round-trip, a denial that never
 //! reaches the sandbox, and a crash mid-command whose resume reports
 //! the call interrupted instead of re-running it. This is the behavior
@@ -44,7 +44,7 @@ fn bash_then_done(call_id: &str, command: &str, final_text: &str) -> MockProvide
 }
 
 /// The approval round-trip the WebSocket layer drives: each ask pairs
-/// the call with a one-shot the client answers — both directions cross
+/// the call with a one-shot the client answers, both directions cross
 /// await points, never a shared-blocking wait.
 struct TestChannel {
     requests: mpsc::UnboundedSender<(ToolCall, oneshot::Sender<bool>)>,
@@ -60,8 +60,8 @@ impl ApprovalChannel for TestChannel {
 }
 
 /// One assembled agent plus the handles the test plays the client
-/// with. `checkpoints` receives the session at every commit hook call —
-/// what the DO persists to its storage — and `committed` fires then.
+/// with. `checkpoints` receives the session at every commit hook call,
+/// what the DO persists to its storage, and `committed` fires then.
 struct Rig {
     agent: rhema_coding_agent::CodingAgent,
     sandbox: Arc<ScriptedSandbox>,
@@ -177,8 +177,8 @@ async fn a_full_turn_runs_bash_in_the_sandbox_through_the_round_trip() {
     assert_eq!(result.code, Some(0));
 
     // The commit hook fires at each stream boundary: the tool-use step
-    // three times — the input alone, then the call without any result
-    // (the crash-resume snapshot), then the call with its result — and
+    // three times, the input alone, then the call without any result
+    // (the crash-resume snapshot), then the call with its result, and
     // the end-turn step twice more (its input, its answer).
     let checkpoints = rig.checkpoints.lock().unwrap();
     assert_eq!(
@@ -236,7 +236,7 @@ async fn a_denied_call_never_reaches_the_sandbox() {
     assert_eq!(result.content, "rejected by user approval");
 }
 
-/// Records every request's messages, then answers from a script — the
+/// Records every request's messages, then answers from a script, the
 /// resume test's way to assert what the model was shown.
 struct Recording {
     requests: std::sync::Mutex<Vec<Vec<Message>>>,
@@ -257,7 +257,7 @@ impl ModelProvider for Recording {
 
 #[tokio::test]
 async fn a_crash_mid_command_resumes_with_the_call_reported_interrupted() {
-    // The turn commits, parks inside the command, and dies — the
+    // The turn commits, parks inside the command, and dies, the
     // workspace's view of a container eviction between commit and
     // result.
     let mut rig = rig(Arc::new(bash_then_done("c1", "long build", "ignored")));
@@ -359,7 +359,7 @@ async fn seeded_skills_reach_the_prompt_without_a_filesystem() {
         )
         .await
         .unwrap();
-    // The DO collects the skill list itself — from what it seeded —
+    // The DO collects the skill list itself, from what it seeded,
     // and hands it to the assembly; nothing reads the host's disk.
     let skills = vec![Skill {
         name: "deploy".into(),

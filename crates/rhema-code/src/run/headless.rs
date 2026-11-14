@@ -1,5 +1,5 @@
 //! The one-shot runner: `rhema run` turns one prompt with no
-//! terminal — the sink that maps model events to stdout/stderr, the
+//! terminal, the sink that maps model events to stdout/stderr, the
 //! provider default models, and the checkpoint a failed turn leaves
 //! for `--resume`.
 
@@ -70,8 +70,8 @@ pub(crate) fn read_prompt_from_stdin() -> anyhow::Result<String> {
 /// The headless one-shot: resolve the backend, run one turn, print the
 /// reply to stdout and everything else to stderr. Built for pipes.
 ///
-/// The program-status record covers the whole run — credential
-/// resolution included — and is what survives it: `done` or `error`,
+/// The program-status record covers the whole run, credential
+/// resolution included, and is what survives it: `done` or `error`,
 /// never cleared (see `crate::status`). A usage failure (no prompt)
 /// exits before any record exists.
 pub(crate) async fn run_headless(args: RunArgs) -> anyhow::Result<()> {
@@ -164,7 +164,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
         ..rhema_coding_agent::CodingAgentConfig::new(&model, &workspace)
     };
     // Where bash runs: the sandbox choice engages only off `local`, and
-    // before the subagent wire below — their inner shell inherits the
+    // before the subagent wire below, their inner shell inherits the
     // executor installed here (ShellTools::executor()), while their
     // definition discovery stays host-side, so the sandbox-side
     // workspace string lands on the config after the wire.
@@ -221,7 +221,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     let bash_env = vision_wiring
         .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
         .or(bash_env);
-    // MCP: the same local-only gate the TUI applies — a sandboxed
+    // MCP: the same local-only gate the TUI applies, a sandboxed
     // executor cannot reach the socket, so it advertises nothing.
     if let Some(entry) = crate::mcp_wire::wire_for_session(
         &profile,
@@ -252,8 +252,8 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     // machine facts for a local session, the sandbox's notice for a
     // mounted one. Before the subagent wire, so the subagents stamp
     // the same sections into their own prompts. The absence list is
-    // the user's stderr note — the headless runner's whole user
-    // surface — naming the tools this host misses and the ask that
+    // the user's stderr note, the headless runner's whole user
+    // surface, naming the tools this host misses and the ask that
     // installs them, conversationally, through the approval gate.
     let (environment, user, missing) = crate::run::prompt_sections(
         &workspace,
@@ -311,9 +311,9 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     let approval: Arc<dyn Approval> = Arc::new(rhema_coding_agent::AllowAll);
 
     // The checkpoint, opt-in headless: when `--save` names a file, the
-    // engine hands the session over at every stream boundary — before
+    // engine hands the session over at every stream boundary, before
     // each request, after the assistant message lands and before the
-    // first tool runs, after each step's results — so a crash or a kill
+    // first tool runs, after each step's results, so a crash or a kill
     // mid-round, mid-stream included, leaves a resumable file there,
     // which the next `--resume`'s revive closes, instead of no record at
     // all.
@@ -339,7 +339,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     let served: anyhow::Result<()> = match outcome {
         Ok(output) => {
             // Checkpoint after the completed turn: the file's freshest
-            // complete state — the stream commits already brought it
+            // complete state, the stream commits already brought it
             // here, this re-writes it with the final usage attached.
             if let Some(path) = &save
                 && let Err(err) = agent.save_session_to(path)
@@ -351,7 +351,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
                 model,
                 crate::screens::format_tokens(Some(crate::app::context_tokens(&output.usage)))
             );
-            // The workspace remembers the sandbox kind that just served it —
+            // The workspace remembers the sandbox kind that just served it,
             // the twin of the profile memory above. Best effort, the same
             // style: a failed write warns without failing the run.
             if config.last_sandbox_in(&workspace).as_deref() != Some(choice.stored_name()) {
@@ -365,8 +365,8 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
         Err(err) => {
             // The run dies here, but the work need not: the streamed reply
             // is already on stdout and the tool traffic on stderr, and the
-            // partial session — everything the turn built up to the
-            // failure — lands in a checkpoint the next `--resume` picks
+            // partial session, everything the turn built up to the
+            // failure, lands in a checkpoint the next `--resume` picks
             // up. A provider death mid-delegation is recoverable, not a
             // black hole.
             let path = save
@@ -389,7 +389,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
         }
     };
     // Stop-on-exit for the one-shot: a headless run is a session like
-    // the TUI's, and the last holder out — here, always this process —
+    // the TUI's, and the last holder out, here, always this process,
     // stops a derived instance. A setup failure before the turn (an
     // unreadable `--resume`, a backend that will not build) leaves the
     // instance for the next assembly to find: the safe direction is
@@ -401,8 +401,8 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
 }
 
 /// Where a failed headless turn leaves its partial session when no
-/// `--save` was named: under the workspace's `.rhema` — the directory
-/// rhema already owns — stamped with the unix time so one failure never
+/// `--save` was named: under the workspace's `.rhema`, the directory
+/// rhema already owns, stamped with the unix time so one failure never
 /// overwrites the record of a previous one.
 pub(crate) fn failed_checkpoint_path(workspace: &std::path::Path) -> std::path::PathBuf {
     let secs = std::time::SystemTime::now()

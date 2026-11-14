@@ -1,20 +1,20 @@
-//! The dialogs: the sandbox add, the instance add and its stages, and the profile add — the state machines behind the forms.
+//! The dialogs: the sandbox add, the instance add and its stages, and the profile add, the state machines behind the forms.
 
 use super::*;
 
 /// One row of the settings Sandbox page: one kind of the v1 set, its
-/// stored fact, and the marks. One instance per kind — the profile's
+/// stored fact, and the marks. One instance per kind, the profile's
 /// `sandbox` section holds a single set of fields, so adding an
 /// instance of a kind means filling that kind's field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxRow<'a> {
-    /// The instance's name — `local` for the host's own row, empty on
+    /// The instance's name, `local` for the host's own row, empty on
     /// the add row.
     pub name: &'a str,
     /// The kind the instance runs: `local` on the host's own row.
     pub kind: crate::args::SandboxChoice,
-    /// What the kind execs in — the container, the LXD instance, the
-    /// host, the url — or the hint naming what the add flow asks for.
+    /// What the kind execs in, the container, the LXD instance, the
+    /// host, the url, or the hint naming what the add flow asks for.
     pub detail: String,
     /// Whether this machine offered the kind at the startup probe
     /// (`local` always).
@@ -40,11 +40,11 @@ pub enum SandboxDialogAction {
 
 /// The kinds the Sandbox page lists, in the spec's canonical order.
 /// The ready set only: `local` and `docker`. ssh and http are not
-/// ready features — ssh has no carry story for the working tree yet,
-/// http presumes a `sandboxd` to reach — so they stay out of sight
+/// ready features, ssh has no carry story for the working tree yet,
+/// http presumes a `sandboxd` to reach, so they stay out of sight
 /// here and remain config-file citizens: store their section in
 /// `config.yaml` and `/sandbox <kind>` runs them when offered.
-/// The kinds the add dialog offers: the page's kinds minus `local` —
+/// The kinds the add dialog offers: the page's kinds minus `local`,
 /// the local instance exists by doing nothing.
 pub const SANDBOX_ADD_KINDS: &[crate::args::SandboxChoice] = &[
     crate::args::SandboxChoice::Docker,
@@ -53,11 +53,11 @@ pub const SANDBOX_ADD_KINDS: &[crate::args::SandboxChoice] = &[
 ];
 
 /// The pop-in dialog over the Sandbox page: pick the kind and be
-/// done. No target is asked — the concrete name is the workspace's
+/// done. No target is asked, the concrete name is the workspace's
 /// to set, derived at assembly time and stable across sessions, so
 /// the stored instance is "docker for whatever workspace I am in".
-/// Naming an existing instance — pinning a container, an LXD VM, a
-/// host — is config.yaml's edit. Storing is the app's; the dialog
+/// Naming an existing instance, pinning a container, an LXD VM, a
+/// host, is config.yaml's edit. Storing is the app's; the dialog
 /// collects nothing else.
 #[derive(Debug)]
 pub struct AddSandboxDialog {
@@ -145,13 +145,13 @@ pub enum DialogStage {
     /// The request shape for a custom OpenAI-compatible endpoint:
     /// chat completions or the Responses API.
     ChooseApi,
-    /// The credential input — llama.cpp and a custom OpenAI-compatible
+    /// The credential input, llama.cpp and a custom OpenAI-compatible
     /// endpoint ask a URL first, then a key.
     EnterCredential,
     /// An interactive flow (device code and friends) is running: its
     /// instruction and progress render from the dialog's `flow_*`
     /// fields, Esc cancels, and the credential arrives through the
-    /// app — the dialog never sees the protocol.
+    /// app, the dialog never sees the protocol.
     Flow,
 }
 
@@ -169,7 +169,7 @@ pub enum DialogStatus {
 
 /// The request shapes a custom OpenAI-compatible endpoint can speak,
 /// as the choice stage shows them: label first, stored value second.
-/// Chat completions leads — it is what the system assumes for a custom
+/// Chat completions leads, it is what the system assumes for a custom
 /// endpoint, so enter-without-looking keeps the behavior the route
 /// rule would have chosen.
 pub const API_CHOICES: [(&str, rhema_config::ProviderApi); 2] = [
@@ -195,7 +195,7 @@ pub struct PendingInstance {
 }
 
 /// The pop-in dialog over the Providers page: the provider list for a
-/// new instance, then its name, then its key or server URL — the login
+/// new instance, then its name, then its key or server URL, the login
 /// flow, mounted on the settings menu.
 #[derive(Debug)]
 pub struct AddInstanceDialog {
@@ -216,7 +216,7 @@ pub struct AddInstanceDialog {
     /// validation.
     pub pending: Option<PendingInstance>,
     /// The credential stage's second prompt: llama.cpp and a custom
-    /// OpenAI-compatible endpoint ask a URL first, then a key — when
+    /// OpenAI-compatible endpoint ask a URL first, then a key, when
     /// set, the input line is that key.
     pub second_input: bool,
     /// The flow's instruction, once the running flow has reported one
@@ -228,12 +228,12 @@ pub struct AddInstanceDialog {
     /// last action the user took on the link. Cleared when the flow
     /// sends a fresh instruction or progress note.
     pub flow_notice: Option<String>,
-    /// When the flow stage began — the clock the progress spinner
+    /// When the flow stage began, the clock the progress spinner
     /// animates off, and the marker for "contacting the provider"
     /// before the flow's first update lands.
     pub flow_started: Option<std::time::Instant>,
     /// The instance names taken when the dialog opened: the name
-    /// suggestion dedupes against them. A snapshot, not a window — the
+    /// suggestion dedupes against them. A snapshot, not a window, the
     /// dialog is modal, nothing else can rename under it.
     instances: BTreeMap<String, rhema_config::ProviderInstance>,
 }
@@ -307,7 +307,7 @@ impl AddInstanceDialog {
     }
 
     /// Enter (or a click) on the provider list: descend into the name
-    /// input — or the interactive flow, for the providers that log in
+    /// input, or the interactive flow, for the providers that log in
     /// that way.
     pub fn choose_provider(&mut self) -> DialogAction {
         if self.stage != DialogStage::SelectProvider {
@@ -400,8 +400,8 @@ impl AddInstanceDialog {
     }
 
     /// A bracketed paste landed on a text input. A name, a key, or a
-    /// server URL is a single line: control characters — newlines above
-    /// all, the trailing one a stray copy loves to carry — are dropped.
+    /// server URL is a single line: control characters, newlines above
+    /// all, the trailing one a stray copy loves to carry, are dropped.
     pub fn paste(&mut self, text: &str) {
         if matches!(
             self.stage,
@@ -486,7 +486,7 @@ impl AddInstanceDialog {
     }
 
     /// Records the highlighted request shape and descends into the key
-    /// input — the stage the URL prompt would have led to.
+    /// input, the stage the URL prompt would have led to.
     fn choose_api(&mut self) -> DialogAction {
         let Some(pending) = self.pending.as_mut() else {
             return DialogAction::None;
@@ -530,8 +530,8 @@ impl AddInstanceDialog {
     }
 
     /// Keys while naming the instance: enter accepts a non-blank name
-    /// and descends into the credential input — or starts the provider's
-    /// interactive flow, for the providers that log in that way — esc
+    /// and descends into the credential input, or starts the provider's
+    /// interactive flow, for the providers that log in that way, esc
     /// returns to the provider list.
     fn handle_name_key(&mut self, key: KeyEvent) -> DialogAction {
         match key.code {
@@ -580,8 +580,8 @@ impl AddInstanceDialog {
         }
     }
 
-    /// Keys while typing the credential: enter validates — after
-    /// capturing the first prompt's URL for the providers that ask one —
+    /// Keys while typing the credential: enter validates, after
+    /// capturing the first prompt's URL for the providers that ask one,
     /// esc returns to the name input.
     fn handle_credential_key(&mut self, key: KeyEvent) -> DialogAction {
         match key.code {
@@ -756,8 +756,8 @@ impl AddProfileDialog {
     }
 
     /// A bracketed paste landed on the input. A name is a single line:
-    /// control characters — newlines above all, the trailing one a
-    /// stray copy loves to carry — are dropped.
+    /// control characters, newlines above all, the trailing one a
+    /// stray copy loves to carry, are dropped.
     pub fn paste(&mut self, text: &str) {
         self.input.extend(text.chars().filter(|c| !c.is_control()));
     }

@@ -1,6 +1,6 @@
 //! The system clipboard: ctrl-v as a paste key where the terminal does
 //! not bind it itself, and the transcript selection's copy. A fresh
-//! handle per use — the connection is not held open between presses.
+//! handle per use, the connection is not held open between presses.
 //!
 //! Desktop sessions write through `arboard`; a terminal-only session
 //! (a pipe, an ssh hop, a TTY with no X11 or Wayland display) has no
@@ -46,8 +46,8 @@ pub fn read() -> Option<String> {
 }
 
 /// The clipboard's image, when one is reachable: the RGBA pixels are
-/// re-encoded as PNG — the one format every provider accepts and the
-/// neutral carrier for whatever the copy came from — and travel as bare
+/// re-encoded as PNG, the one format every provider accepts and the
+/// neutral carrier for whatever the copy came from, and travel as bare
 /// base64, the form [`rhema_core::Image`] carries. Missing or failed
 /// reads are `None`, exactly like [`read`]: a clipboard that holds text,
 /// or nothing, is not an image.
@@ -76,7 +76,7 @@ mod tests {
     use super::*;
 
     /// The clipboard itself has no test double: what is testable here is
-    /// the pure tail of the read — RGBA pixels in, base64 PNG out, the
+    /// the pure tail of the read, RGBA pixels in, base64 PNG out, the
     /// exact form a message block carries.
     #[test]
     fn a_copy_encodes_as_an_osc52_sequence() {
@@ -103,7 +103,7 @@ mod tests {
         );
     }
 
-    /// Pixels that do not fill their frame encode as nothing — the
+    /// Pixels that do not fill their frame encode as nothing, the
     /// length must match `width * height * 4`, or the shape is a lie.
     #[test]
     fn a_short_pixel_buffer_encodes_as_none() {

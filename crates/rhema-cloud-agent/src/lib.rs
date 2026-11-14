@@ -1,4 +1,4 @@
-//! rhema-cloud-agent — the coding-agent harness the cloud frontends
+//! rhema-cloud-agent, the coding-agent harness the cloud frontends
 //! share.
 //!
 //! A cloud frontend (a Durable Object, a container on a serverless
@@ -8,13 +8,13 @@
 //! ([`ClientGate`]), and `bash` running in someone else's machine (the
 //! [`Sandbox`] seam, [`ShellSandbox`] adapting it onto the shell
 //! executor). This crate is that layer, next to its per-vendor
-//! siblings — the seam crate of the provider family, applied to
+//! siblings, the seam crate of the provider family, applied to
 //! frontends: `rhema-cloudflare-code` (its own repository) assembles
 //! from here and adds only the transport, the store, and the glue its
 //! platform demands.
 //!
-//! The per-session configuration ([`SessionConfig`]) — model, base
-//! prompt, approval policy, workspace, seed, skills, step cap — lives
+//! The per-session configuration ([`SessionConfig`]), model, base
+//! prompt, approval policy, workspace, seed, skills, step cap, lives
 //! here too: the vendor crates persist it wherever their platform
 //! keeps durable bytes (a DO meta table) and hand it
 //! to the assembly.
@@ -36,8 +36,8 @@
 //! `worker`, no HTTP client. Everything compiles and tests on any
 //! host, and every module carries `#![forbid(unsafe_code)]`. The
 //! offline end-to-end (`tests/e2e.rs`, feature `mock`) drives a full
-//! turn — a bash call through the approval round-trip, a denial, a
-//! crash mid-command and its resume — with the scripted sandbox and
+//! turn, a bash call through the approval round-trip, a denial, a
+//! crash mid-command and its resume, with the scripted sandbox and
 //! the scripted provider; a frontend inherits the guarantees by using
 //! the same pieces.
 //!

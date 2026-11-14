@@ -5,7 +5,7 @@
 //! paste expansion does: the engine clones the session into the request
 //! untouched, the decorator projects it, the session keeps every
 //! message (SPEC.md §6). Requests carry the full history, so the
-//! decorator's mirror is exactly the log as of the last request — a
+//! decorator's mirror is exactly the log as of the last request, a
 //! resumed session rebuilds it wholesale on the first call.
 //!
 //! Past the budget the aged prefix is covered by the stepped
@@ -37,8 +37,8 @@ const WORKER_CONCURRENCY: usize = 4;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TranscriptSettings {
     /// The byte budget a request's messages aim for. The transcript
-    /// engages only past it — below, requests pass through
-    /// byte-identical — and the current turn may exceed it: the tail is
+    /// engages only past it, below, requests pass through
+    /// byte-identical, and the current turn may exceed it: the tail is
     /// never cut.
     pub max_view_bytes: usize,
     /// The bytes one section's messages aim for: the summarizer
@@ -52,7 +52,7 @@ pub struct TranscriptSettings {
     pub max_section_messages: usize,
     /// The bytes the committed block may reach before the oldest
     /// sections consolidate into one. Consolidation rewrites the
-    /// block — a full cache break — so it fires only past this cap,
+    /// block, a full cache break, so it fires only past this cap,
     /// and merges down to half of it before stopping.
     pub max_block_bytes: usize,
 }
@@ -62,7 +62,7 @@ impl Default for TranscriptSettings {
         Self {
             // Tool-heavy sessions (build logs, file dumps in results)
             // run oversized tails constantly; 256 KB keeps the
-            // allowance — and with it the stretch between flushes —
+            // allowance, and with it the stretch between flushes,
             // worth the name at that workload.
             max_view_bytes: 256_000,
             step_bytes: 24_000,
@@ -89,7 +89,7 @@ pub struct UsageBreakdown {
     /// Tool definitions plus the tool-call arguments re-sent in
     /// assistant messages.
     pub tool_calls_input_tokens: u64,
-    /// Tool results — the tools' output, re-sent as input.
+    /// Tool results, the tools' output, re-sent as input.
     pub tool_calls_output_tokens: u64,
     /// User text, the compaction block included.
     pub user_messages_tokens: u64,
@@ -122,7 +122,7 @@ impl UsageBreakdown {
     }
 }
 
-/// The log's own content by category, in estimated tokens — each
+/// The log's own content by category, in estimated tokens, each
 /// message counted once, the content the billed split re-sends once
 /// per request. Tool content has its own buckets, text and images go
 /// to the message's role, and a system message counts nowhere: the
@@ -197,7 +197,7 @@ pub struct TranscriptStats {
     /// The current turn's estimated tokens at the last request.
     #[serde(default)]
     pub tail_tokens: u64,
-    /// The log's wire bytes at the last request — what the
+    /// The log's wire bytes at the last request, what the
     /// conversation actually holds, each message counted once. The
     /// usage split below sums the same content once per request;
     /// this is the once.
@@ -207,7 +207,7 @@ pub struct TranscriptStats {
     /// counted once.
     #[serde(default)]
     pub log_content: LogContent,
-    /// Input tokens the providers reported, summed over requests —
+    /// Input tokens the providers reported, summed over requests,
     /// cached tokens included.
     pub input_tokens: u64,
     /// Of those, the tokens the provider served from its prompt cache.
@@ -221,7 +221,7 @@ pub struct TranscriptStats {
 impl TranscriptStats {
     /// The session's prompt-cache hit rate: cached input over all
     /// input. `None` before any usage was reported. The providers'
-    /// own numbers — the ground truth the stepped design optimizes.
+    /// own numbers, the ground truth the stepped design optimizes.
     pub fn cache_hit_rate(&self) -> Option<f64> {
         if self.input_tokens == 0 {
             None
@@ -234,7 +234,7 @@ impl TranscriptStats {
     /// stats read as one run with the pre-resume requests included:
     /// the run counters and the usage split sum, the cache rate keeps
     /// covering everything. The at-last-request snapshots describe
-    /// the mirror that measured them, so they stay this side's —
+    /// the mirror that measured them, so they stay this side's,
     /// except while this mirror has not looked at a log yet
     /// (`log_messages == 0`), where the snapshot is what a Usage page
     /// opened before the first request would otherwise render as
@@ -378,7 +378,7 @@ fn needle(body: &str) -> &str {
     &body[..end]
 }
 
-/// One request's wire bytes by category — the proportions the
+/// One request's wire bytes by category, the proportions the
 /// reported input tokens are spread over.
 #[derive(Debug, Clone, Copy, Default)]
 struct Shares {
@@ -391,7 +391,7 @@ struct Shares {
     assistant_text: usize,
 }
 
-/// Adds one message's estimated tokens by category into `content` — the
+/// Adds one message's estimated tokens by category into `content`, the
 /// per-message form of the split the counters and the usage shares
 /// both read. The same taxonomy the request shares spread the billed
 /// input over, minus the pieces that ride no message.
@@ -463,8 +463,8 @@ impl Transcript {
     }
 
     /// Folds a request's messages into the log: an extension of what is
-    /// already here extends it; anything else — a fresh session, a
-    /// resume — replaces it, and the compaction state rebuilds from
+    /// already here extends it; anything else, a fresh session, a
+    /// resume, replaces it, and the compaction state rebuilds from
     /// nothing (the first request re-derives it; nothing derived is
     /// ever persisted).
     pub fn observe(&mut self, messages: &[Message]) {
@@ -505,14 +505,14 @@ impl Transcript {
         // The saved sections are adopted only when they tile a prefix
         // of the log this mirror now holds: the resume then rides the
         // compaction the previous session already paid for, dense
-        // from the first request. Anything else — a truncated log, an
-        // edited session — falls back to the rebuild. A fresh
+        // from the first request. Anything else, a truncated log, an
+        // edited session, falls back to the rebuild. A fresh
         // mirror's first observe lands here too: its log was empty,
         // so the compare above took the extension branch.
         if let Some(saved) = self.saved.take() {
             let mut end = 0usize;
             // The sections ride the session file: the arithmetic is
-            // checked, and a wrap — like a gap or a bad length — just
+            // checked, and a wrap, like a gap or a bad length, just
             // fails the tiling and falls back to the rebuild.
             let tiles = !saved.is_empty()
                 && saved.iter().all(|section| {
@@ -530,9 +530,9 @@ impl Transcript {
                 self.cut = end;
             }
         }
-        // The pin map reads the committed state — which sections carry
+        // The pin map reads the committed state, which sections carry
         // bodies whole decides verbatim versus pointer at the next
-        // flush — so it rebuilds whenever the sections can have
+        // flush, so it rebuilds whenever the sections can have
         // changed, which includes resume adoption swapping all of
         // them.
         self.pinned = self
@@ -597,13 +597,13 @@ impl Transcript {
     }
 
     /// Zeroes the benchmark counters; the log and the compaction state
-    /// stay — the next request rebuilds both anyway. A conversation
+    /// stay, the next request rebuilds both anyway. A conversation
     /// cleared mid-agent starts its accounting over.
     pub fn reset_stats(&mut self) {
         self.stats = TranscriptStats::default();
     }
 
-    /// Sets the skills section's byte share of the system prompt —
+    /// Sets the skills section's byte share of the system prompt,
     /// measured by the agent that rendered it, since the section's
     /// shape is the template's to decide. Zero (the default) folds the
     /// whole system prompt into `system_prompt_tokens`.
@@ -614,8 +614,8 @@ impl Transcript {
     /// Sets the skills whose bodies pin whole into the block. A tool
     /// result carrying one becomes its own verbatim section at flush
     /// time instead of a digest; a re-read becomes a pointer to the
-    /// section already carrying the body. Safe to call at any point —
-    /// setting re-detects over the whole log — and normally called
+    /// section already carrying the body. Safe to call at any point,
+    /// setting re-detects over the whole log, and normally called
     /// once at wiring, from the same discovery the prompt rendered.
     pub fn set_skills(&mut self, skills: Vec<SkillText>) {
         self.skills = skills;
@@ -632,8 +632,8 @@ impl Transcript {
     /// The skill a tool result carries, if any: the length gate first
     /// (a shorter result cannot contain a body), then the head needle,
     /// then the whole body. Matching by content rather than by the
-    /// command means any read that returned the whole file qualifies —
-    /// `cat`, `sed`, a subagent's result — and no shell line is
+    /// command means any read that returned the whole file qualifies,
+    /// `cat`, `sed`, a subagent's result, and no shell line is
     /// parsed.
     fn carried_skill(&self, result: &ToolResult) -> Option<usize> {
         if result.content.len() < self.min_skill_body {
@@ -667,7 +667,7 @@ impl Transcript {
                 // The call directly before: exactly one ToolCall in
                 // the turn (a second call's result would orphan behind
                 // the pin), and it must be this result's id. Leading
-                // text blocks are fine — a real turn narrates.
+                // text blocks are fine, a real turn narrates.
                 let calls = || {
                     self.log[index - 1]
                         .content
@@ -788,7 +788,7 @@ impl Transcript {
 
     /// Commits an upgraded section text from a [`PendingSummary`] a
     /// worker task filled outside the request. `false` when the section no
-    /// longer matches — a concurrent plan rebuilt it — and the text is
+    /// longer matches, a concurrent plan rebuilt it, and the text is
     /// dropped: every intermediate state stays a valid view.
     pub fn commit_summary(&mut self, pending: &PendingSummary, text: String) -> bool {
         let Some(section) = self.sections.get(pending.section) else {
@@ -813,8 +813,8 @@ impl Transcript {
     }
 
     /// The flush planner: decides whether the budget is breached, and
-    /// if so moves the cut and commits the new sections — extractive
-    /// stand-ins first — returning the summaries a [`Summarizer`]
+    /// if so moves the cut and commits the new sections, extractive
+    /// stand-ins first, returning the summaries a [`Summarizer`]
     /// should upgrade. Between flushes this touches nothing: the block
     /// is append-only by construction.
     ///
@@ -831,7 +831,7 @@ impl Transcript {
         let allowance = self.settings.max_view_bytes.saturating_sub(tail_bytes);
 
         // The minimum band: walk back from the tail over whole
-        // messages while they fit. The walk stops at the cut — the
+        // messages while they fit. The walk stops at the cut, the
         // block never un-commits.
         let mut c_min = tail_start;
         let mut budget = allowance;
@@ -847,7 +847,7 @@ impl Transcript {
         if c_min > self.cut {
             // Breach. Overshoot to half the allowance: the band after
             // the flush leaves a whole hysteresis of growth before the
-            // next one, so flushes — the only prefix breaks — stay
+            // next one, so flushes, the only prefix breaks, stay
             // far apart.
             let half = allowance / 2;
             let mut c_new = c_min;
@@ -855,7 +855,7 @@ impl Transcript {
             // The smallest position whose remaining band fits half:
             // walk forward while the band still exceeds it. The break
             // on `next > half` was the inverse and left the band at
-            // the full allowance — flushes every request.
+            // the full allowance, flushes every request.
             while c_new < tail_start && band > half {
                 band -= self.sizes[c_new];
                 c_new += 1;
@@ -876,7 +876,7 @@ impl Transcript {
         pending
     }
 
-    /// The view of the log: `None` passes it through unchanged — below
+    /// The view of the log: `None` passes it through unchanged, below
     /// the budget, or nothing sectioned yet. Past it, the block
     /// followed by the whole band from the cut.
     ///
@@ -937,8 +937,8 @@ impl Transcript {
     }
 
     /// The last user message's index, clamped to the cut: the tail is
-    /// never under the block. No user message at all — an
-    /// assistant-only history — and everything from the cut on is the
+    /// never under the block. No user message at all, an
+    /// assistant-only history, and everything from the cut on is the
     /// tail.
     fn tail_index(&self) -> usize {
         let user = self
@@ -1079,8 +1079,8 @@ impl Transcript {
     }
 
     /// Consolidates the block past its cap: the two oldest sections
-    /// merge into one — the union range re-derived from the log, not
-    /// from the summaries — until the block is at half the cap. Each
+    /// merge into one, the union range re-derived from the log, not
+    /// from the summaries, until the block is at half the cap. Each
     /// merge returns a pending summary for the model fill. Rare and
     /// stepped: this is the one append-only exception, and it is a
     /// full cache break when it fires.
@@ -1148,7 +1148,7 @@ impl Transcript {
 /// request's messages through the stepped view, and refreshes the
 /// shared mirror first. A configured [`Summarizer`] upgrades the new
 /// sections' stand-ins in a background task after the request went
-/// out — never inside it, never under the mirror's lock, so a slow or
+/// out, never inside it, never under the mirror's lock, so a slow or
 /// failing worker delays nothing.
 pub struct TranscriptView {
     inner: Arc<dyn ModelProvider>,
@@ -1157,7 +1157,7 @@ pub struct TranscriptView {
 }
 
 impl TranscriptView {
-    /// The wrapper over `inner`, mirroring into `transcript` — the same
+    /// The wrapper over `inner`, mirroring into `transcript`, the same
     /// mirror a [`crate::zoom::Zoom`] resolver reads. Build both from
     /// one mirror, or let [`crate::attach`] do it. No summarizer: new
     /// sections keep their extractive stand-ins.
@@ -1403,7 +1403,7 @@ mod tests {
         // Sections are addressed `id+n|`, tiling from the log's start.
         assert!(text.contains("0+"), "{text}");
 
-        // The tail — the last user message — is present whole.
+        // The tail, the last user message, is present whole.
         let last = view.last().unwrap();
         assert_eq!(*last, Message::text(Role::User, "and now summarize"));
         assert!(view.len() < messages.len(), "the view is shorter");
@@ -1458,7 +1458,7 @@ mod tests {
         let stats = transcript.stats();
         assert_eq!(stats.flushes, 1);
         // The band the flush leaves behind sits at or below half the
-        // allowance — the overshoot — not at the full allowance.
+        // allowance, the overshoot, not at the full allowance.
         let allowance = 128_000 - stats.tail_bytes;
         let band = stats.band_bytes - stats.tail_bytes;
         assert!(
@@ -1558,7 +1558,7 @@ mod tests {
         assert_eq!(transcript.sections[0].text, "## Goals Met\n- all");
         assert_eq!(transcript.sections[0].origin, SectionOrigin::Model);
 
-        // A stale pending — the range moved on — is dropped.
+        // A stale pending, the range moved on, is dropped.
         // The context is irrelevant to the commit's range check.
         let stale = PendingSummary {
             section: pending[0].section,
@@ -2072,7 +2072,7 @@ mod tests {
         };
 
         // A mirror that has not looked at a log yet shows the saved
-        // run whole — the counters and, until its first request, the
+        // run whole, the counters and, until its first request, the
         // snapshot too.
         let mut fresh = TranscriptStats::default();
         fresh.carry(&saved);
@@ -2117,7 +2117,7 @@ mod tests {
     }
 
     /// The log-size snapshot: what the conversation holds, each
-    /// message counted once, refreshed on every request — pass-through
+    /// message counted once, refreshed on every request, pass-through
     /// ones included. The usage split's once-counted counterpart.
     #[test]
     fn the_log_bytes_snapshot_counts_the_log_once() {
@@ -2138,7 +2138,7 @@ mod tests {
 
     /// The content split: the log's estimated tokens by category, each
     /// message counted once. For this fixture the categories tile the
-    /// log — no images, no system or tool-role text — so they sum to
+    /// log, no images, no system or tool-role text, so they sum to
     /// the log's whole estimate.
     #[test]
     fn the_content_split_counts_each_message_once() {

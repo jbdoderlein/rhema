@@ -4,11 +4,11 @@
 //!
 //! LAYOUT: `<base>/<session-id>.json`, where base is the rhema
 //! family's cache root plus `acp-sessions` ([`base_dir`] resolves it
-//! through rhema-config's `Home`) — the same nesting the TUI's saved
+//! through rhema-config's `Home`), the same nesting the TUI's saved
 //! sessions use. A frontend outside the family names its own base
 //! through `AcpOptions::session_dir`. A cache, like the TUI's saved
 //! sessions: losing it loses history, never settings. The file is a bare
-//! `Session` in the same JSON `--resume` takes — one format, every
+//! `Session` in the same JSON `--resume` takes, one format, every
 //! reader. Client-supplied ids are validated before they ever touch a
 //! path: only `[-._0-9A-Za-z]` passes, so an id is a file name, never a
 //! traversal.
@@ -22,7 +22,7 @@ use rhema_core::Session;
 pub fn base_dir() -> io::Result<PathBuf> {
     match rhema_config::Home::discover() {
         // The family's cache root, the ACP adapter's directory below
-        // it — the claw's nest under `rhema/` is deliberate; an
+        // it, the claw's nest under `rhema/` is deliberate; an
         // embedder from outside the family names its own base through
         // `AcpOptions::session_dir`.
         Ok(home) => Ok(home.cache.join("acp-sessions")),
@@ -32,7 +32,7 @@ pub fn base_dir() -> io::Result<PathBuf> {
 
 /// Whether `id` is a safe file-name component: every byte inside
 /// `[-._0-9A-Za-z]` and neither empty nor overly long. ACP session ids
-/// are agent-assigned, but `session/load` hands one back — treat it as
+/// are agent-assigned, but `session/load` hands one back, treat it as
 /// input.
 pub fn valid_id(id: &str) -> bool {
     !id.is_empty()

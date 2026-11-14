@@ -16,7 +16,7 @@ fn the_choice_resolves_from_the_layered_kind() {
     assert_eq!(choice_from_kind(Some("docker")), SandboxChoice::Docker);
     assert_eq!(choice_from_kind(Some("http")), SandboxChoice::Http);
     // An explicit local, nothing set, and an unparseable spelling
-    // all read as the fast path — the zero-flag invocation never
+    // all read as the fast path, the zero-flag invocation never
     // breaks because of a typo'd config.
     assert_eq!(choice_from_kind(Some("local")), SandboxChoice::Local);
     assert_eq!(choice_from_kind(None), SandboxChoice::Local);
@@ -269,7 +269,7 @@ fn the_run_argv_binds_the_workspace_and_the_read_only_skills() {
 fn the_stop_answers_whether_the_command_ran_and_succeeded() {
     // The PATH's `true` and `false` are the cheapest stand-ins for
     // `docker stop`/`lxc stop`: the three outcomes a shutdown can
-    // see — clean, failed, never started — each have a shape.
+    // see, clean, failed, never started, each have a shape.
     assert_eq!(stop_instance("true", &[]).ok(), Some(true));
     assert_eq!(stop_instance("false", &[]).ok(), Some(false));
     assert!(stop_instance("rhema-no-such-program", &[]).is_err());

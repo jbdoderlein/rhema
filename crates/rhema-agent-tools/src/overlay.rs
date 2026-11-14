@@ -3,8 +3,8 @@
 //! [`Overlay`] merges a primary resolver (the built-ins) with an extra
 //! one (an extension's tools): the model sees one spec list, and a call
 //! goes to whichever side offers the name. An extra shadows a primary of
-//! the same name — the extension wins, both in the list the model sees
-//! and in dispatch — so a frontend can replace a built-in without
+//! the same name, the extension wins, both in the list the model sees
+//! and in dispatch, so a frontend can replace a built-in without
 //! touching the primary.
 
 use std::sync::Arc;

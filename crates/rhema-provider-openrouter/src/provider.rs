@@ -2,12 +2,12 @@
 //! and account endpoints, with completions driven through the shared
 //! dialect core
 //! ([`rhema_provider_openai_compatible`]) speaking OpenRouter's
-//! Responses API by default (`POST {base}/responses` — their
+//! Responses API by default (`POST {base}/responses`, their
 //! documented first dialect, where a tool result's images ride its
 //! `function_call_output` as content parts) and chat completions under
 //! [`OpenRouterProvider::with_api`](`Api::Chat`)
 //!
-//! Auth is by API key in the `Authorization: Bearer` header — never a query
+//! Auth is by API key in the `Authorization: Bearer` header, never a query
 //! parameter, so the key never lands in URLs or access logs. Every request
 //! also carries OpenRouter's recommended app-attribution headers
 //! ([`APP_REFERER`], [`APP_TITLE`]). Transport failures map onto
@@ -19,9 +19,9 @@
 //! too.
 //!
 //! Timeouts are layered: the client bounds connection setup (10s) and each
-//! stream read (90s — a stall guard, not a duration cap, because a long
+//! stream read (90s, a stall guard, not a duration cap, because a long
 //! generation is legitimate), and non-streaming calls (the models list)
-//! additionally carry a 20s overall request timeout. Streaming calls get no
+//! also carry a 20s overall request timeout. Streaming calls get no
 //! total timeout for the same reason.
 
 use std::time::Duration;
@@ -103,7 +103,7 @@ impl OpenRouterProvider {
         }
     }
 
-    /// Overrides the base URL (trailing slashes trimmed) — for tests against
+    /// Overrides the base URL (trailing slashes trimmed), for tests against
     /// a mock server.
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into().trim_end_matches('/').to_owned();
@@ -111,9 +111,9 @@ impl OpenRouterProvider {
         self
     }
 
-    /// Chooses the request shape: the Responses API by default —
+    /// Chooses the request shape: the Responses API by default,
     /// OpenRouter's documented first dialect, where a tool result's
-    /// images ride its `function_call_output` as content parts — or
+    /// images ride its `function_call_output` as content parts, or
     /// chat completions for a caller pinning the older shape. The
     /// choice lives here, not on the transport, so the transport
     /// rebuild of [`Self::with_base_url`] keeps it.
@@ -124,7 +124,7 @@ impl OpenRouterProvider {
     }
 
     /// The account's prepaid credit: `GET /credits` for the account's
-    /// total and spend, `GET /auth/key` for the calling key's own cap —
+    /// total and spend, `GET /auth/key` for the calling key's own cap,
     /// the [`Allowance`] is the smaller headroom of the two. Both
     /// endpoints authenticate with the API key; an empty key answers
     /// 401 and the call fails.
