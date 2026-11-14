@@ -27,6 +27,10 @@ pub const FILE: &str = "SUBAGENT.md";
 /// The step budget when a definition sets no `max_steps`.
 pub const DEFAULT_MAX_STEPS: u32 = 256;
 
+/// The largest `SUBAGENT.md` discovery will read, for the same reason
+/// [`rhema_agent_tools::skills::MAX_SKILL_BYTES`] caps skills.
+pub const MAX_DEFINITION_BYTES: u64 = 1024 * 1024;
+
 /// One discovered subagent definition.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubagentDef {
@@ -107,8 +111,24 @@ fn collect_into(dir: &Path, by_name: &mut BTreeMap<String, SubagentDef>) {
         return;
     };
     for entry in entries.filter_map(Result::ok) {
+        // A symlinked directory is not a definition folder: the file
+        // below may point anywhere.
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        if !kind.is_dir() {
+            continue;
+        }
         let path = entry.path();
         let file = path.join(FILE);
+        // A regular file, never a symlink or a device: repository
+        // content can name either.
+        let Ok(metadata) = std::fs::symlink_metadata(&file) else {
+            continue;
+        };
+        if !metadata.file_type().is_file() || metadata.len() > MAX_DEFINITION_BYTES {
+            continue;
+        }
         let Ok(raw) = std::fs::read_to_string(&file) else {
             continue;
         };
@@ -204,6 +224,34 @@ mod tests {
         assert_eq!(defs[0].model, None);
         assert_eq!(defs[0].max_steps, None);
         assert_eq!(defs[0].max_steps(), DEFAULT_MAX_STEPS);
+    }
+
+    #[test]
+    fn an_oversized_definition_is_not_read() {
+        let global = tempfile::tempdir().unwrap();
+        let folder = global.path().join("huge");
+        std::fs::create_dir_all(&folder).unwrap();
+        let mut raw = b"---\ndescription: huge\n---\nbody\n".to_vec();
+        raw.resize(MAX_DEFINITION_BYTES as usize + 1, b'x');
+        std::fs::write(folder.join(FILE), raw).unwrap();
+
+        let defs = discover(Some(global.path()), Path::new("/nowhere"));
+        assert_eq!(defs.len(), 1, "the built-in only");
+        assert_eq!(defs[0].name, "general-purpose");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_definition_is_not_followed() {
+        let global = tempfile::tempdir().unwrap();
+        let real = write_def(global.path(), "real", &simple("the real trigger"));
+        let linked = global.path().join("linked");
+        std::fs::create_dir_all(&linked).unwrap();
+        std::os::unix::fs::symlink(&real, linked.join(FILE)).unwrap();
+
+        let defs = discover(Some(global.path()), Path::new("/nowhere"));
+        let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(names, vec!["general-purpose", "real"]);
     }
 
     #[test]

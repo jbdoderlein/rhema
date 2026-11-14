@@ -248,9 +248,10 @@ enum State {
         model: Option<String>,
     },
     /// Its report exists (capped at production) and stays cached until
-    /// the registry drops. `fetched` retires the announcements (the
-    /// cache stays); `announced` retires the notification line for a
-    /// frontend that took it to run as a prompt.
+    /// the registry drops or [`MAX_RETAINED_JOBS`] evicts it. `fetched`
+    /// retires the announcements (the cache stays until eviction);
+    /// `announced` retires the notification line for a frontend that
+    /// took it to run as a prompt.
     Finished {
         outcome: Result<String, JobFailure>,
         fetched: bool,
@@ -279,6 +280,13 @@ pub struct Registry {
     inner: Mutex<RegistryInner>,
     permits: Arc<tokio::sync::Semaphore>,
 }
+
+/// The most jobs one registry retains, working or finished. Finished
+/// reports are the unbounded part: a session that delegates every few
+/// turns would keep every report for its whole life. When the cap is
+/// crossed, the oldest fetched report goes first, then the oldest
+/// finished one. Working jobs are never evicted.
+const MAX_RETAINED_JOBS: usize = 20;
 
 /// The most finished-but-untaken events one registry holds. The
 /// frontend drains [`Registry::take_finished`] every frame; the cap
@@ -406,6 +414,7 @@ impl Registry {
             fetched: false,
             announced: false,
         };
+        trim_finished_jobs(&mut inner);
         while inner.finished.len() >= MAX_FINISHED {
             let _ = inner.finished.remove(0);
             inner.dropped += 1;
@@ -595,7 +604,8 @@ impl Registry {
     /// The subscription the UI renders: one entry per working job,
     /// queued or running. A finished job leaves the snapshot at once
     /// (the finish notice carries the outcome) and its report stays on
-    /// the fetch until the registry drops.
+    /// the fetch until the registry drops or the retention cap evicts
+    /// it.
     pub fn status(&self) -> Vec<JobStatus> {
         let inner = self.lock();
         let mut jobs: Vec<(&str, &Job)> = inner
@@ -632,6 +642,37 @@ impl Registry {
 
     fn lock(&self) -> std::sync::MutexGuard<'_, RegistryInner> {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// Drops finished jobs until the map is within [`MAX_RETAINED_JOBS`].
+/// A fetched report is dead weight once the caller read it, so those
+/// go first; if every finished job is still unread, the oldest goes
+/// anyway. A working job is never a candidate.
+fn trim_finished_jobs(inner: &mut RegistryInner) {
+    while inner.jobs.len() > MAX_RETAINED_JOBS {
+        let fetched = inner
+            .jobs
+            .iter()
+            .filter_map(|(id, job)| match job.state {
+                State::Finished { fetched: true, .. } => Some((job.seq, id.clone())),
+                _ => None,
+            })
+            .min_by_key(|(seq, _)| *seq);
+        let victim = fetched.or_else(|| {
+            inner
+                .jobs
+                .iter()
+                .filter_map(|(id, job)| match job.state {
+                    State::Finished { .. } => Some((job.seq, id.clone())),
+                    _ => None,
+                })
+                .min_by_key(|(seq, _)| *seq)
+        });
+        let Some((_, id)) = victim else {
+            break;
+        };
+        inner.jobs.remove(&id);
     }
 }
 
@@ -771,6 +812,32 @@ mod tests {
         );
         assert!(registry.status().is_empty());
         assert!(registry.notifications().is_empty());
+    }
+
+    #[test]
+    fn the_registry_keeps_at_most_the_cap_in_finished_reports() {
+        let registry = registry();
+        let first = registry.mint("scout");
+        registry.finish(&first.id, Ok("the first report".to_owned()));
+        let mut newest = first.id.clone();
+        for _ in 1..(MAX_RETAINED_JOBS + 1) {
+            newest = registry.mint("scout").id;
+            registry.finish(&newest, Ok("the report".to_owned()));
+        }
+
+        assert_eq!(
+            registry.fetch(&first.id),
+            Fetched::Unknown,
+            "the oldest report was evicted at the cap"
+        );
+        assert_eq!(
+            registry.fetch(&newest),
+            Fetched::Report {
+                name: "scout".into(),
+                report: "the report".into()
+            },
+            "the newest report survives"
+        );
     }
 
     #[test]
