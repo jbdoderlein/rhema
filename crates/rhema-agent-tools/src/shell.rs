@@ -70,7 +70,8 @@ impl ShellTools {
             "Run a shell command (`bash -c`) with the workspace root as \
              working directory. Reading, listing, and editing files are \
              shell work. Output is capped and the exit status reported; a \
-             non-zero exit comes back as an error. Requires user approval.",
+             non-zero exit comes back as an error. Commands run in the \
+             session's sandbox.",
             json!({
                 "type": "object",
                 "properties": {

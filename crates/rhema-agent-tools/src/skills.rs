@@ -16,6 +16,11 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+/// The largest `SKILL.md` discovery will read. A skill body is prompt
+/// material, not a data store; the cap keeps a cloned repository from
+/// stalling startup with a huge or endless file.
+pub const MAX_SKILL_BYTES: u64 = 1024 * 1024;
+
 /// One discovered skill.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Skill {
@@ -70,8 +75,25 @@ fn collect_into(dir: &Path, by_name: &mut BTreeMap<String, Skill>) {
         return;
     };
     for entry in entries.filter_map(Result::ok) {
+        // A symlinked directory is not a skill folder: the file below
+        // may point anywhere.
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        if !kind.is_dir() {
+            continue;
+        }
         let path = entry.path();
         let file = path.join("SKILL.md");
+        // Only a regular file, never a symlink: a cloned repo can
+        // point one at a device or a file outside the tree, and
+        // discovery must not follow it.
+        let Ok(metadata) = std::fs::symlink_metadata(&file) else {
+            continue;
+        };
+        if !metadata.file_type().is_file() || metadata.len() > MAX_SKILL_BYTES {
+            continue;
+        }
         let Ok(raw) = std::fs::read_to_string(&file) else {
             continue;
         };
@@ -161,6 +183,32 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn an_oversized_skill_is_not_read() {
+        let global = tempfile::tempdir().unwrap();
+        let folder = global.path().join("huge");
+        std::fs::create_dir_all(&folder).unwrap();
+        let mut raw = b"---\ndescription: huge\n---\n".to_vec();
+        raw.resize(MAX_SKILL_BYTES as usize + 1, b'x');
+        std::fs::write(folder.join("SKILL.md"), raw).unwrap();
+
+        assert!(discover(None, Some(global.path()), Path::new("/nowhere")).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_skill_is_not_followed() {
+        let global = tempfile::tempdir().unwrap();
+        let real = write_skill(global.path(), "real", "the real trigger");
+        let linked = global.path().join("linked");
+        std::fs::create_dir_all(&linked).unwrap();
+        std::os::unix::fs::symlink(&real, linked.join("SKILL.md")).unwrap();
+
+        let skills = discover(None, Some(global.path()), Path::new("/nowhere"));
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "real");
     }
 
     #[test]
