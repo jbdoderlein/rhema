@@ -3594,3 +3594,68 @@ fn a_run_of_notifications_is_one_block_of_stacked_cards() {
     assert_eq!(bubbles.len(), 2, "one card per finish");
     assert!(bubbles.iter().all(|geometry| geometry.left == 0));
 }
+
+/// The web search page draws one line per provider and exactly one
+/// add line: the sentinel closing the rows vec must not render as
+/// its own `·  ·` ghost between the two.
+#[test]
+fn the_websearch_page_renders_no_ghost_add_row() {
+    let mut settings = crate::screens::SettingsScreen::new();
+    settings.section = SettingsSection::WebSearch;
+    settings.websearch = crate::screens::websearch_rows(
+        &std::collections::BTreeMap::from([
+            (
+                "Exa".to_owned(),
+                rhema_config::WebSearchInstance {
+                    provider: "exa".to_owned(),
+                    api_key: None,
+                    secret_ref: None,
+                },
+            ),
+            (
+                "Tavily".to_owned(),
+                rhema_config::WebSearchInstance {
+                    provider: "tavily".to_owned(),
+                    api_key: None,
+                    secret_ref: None,
+                },
+            ),
+        ]),
+        &["Exa".to_owned(), "Tavily".to_owned()],
+    );
+
+    let mut hits = Vec::new();
+    let mut terminal = Terminal::new(TestBackend::new(80, 40)).unwrap();
+    terminal
+        .draw(|frame| render_settings(frame, &settings, &DARK, &crate::icons::UNICODE, &mut hits))
+        .unwrap();
+    let text: String = (0..40)
+        .map(|y| {
+            (0..80)
+                .map(|x| terminal.backend().buffer()[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        text.contains("1. Exa · exa"),
+        "the provider rows render\n{text}"
+    );
+    assert!(text.contains("2. Tavily · tavily"));
+    assert_eq!(
+        text.matches("Add a provider").count(),
+        1,
+        "one add line, the loop's ghost gone\n{text}"
+    );
+    assert!(
+        !text.contains("·  ·"),
+        "no sentinel line between the providers and the add row\n{text}"
+    );
+    // The add line is the only PageRow hit at the row after the
+    // providers: no doubled click target.
+    let add_hits = hits
+        .iter()
+        .filter(|(_, hit)| matches!(hit, SettingsHit::PageRow(2)))
+        .count();
+    assert_eq!(add_hits, 1, "one click target on the add row\n{text}");
+}

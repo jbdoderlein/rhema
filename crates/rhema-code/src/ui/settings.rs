@@ -723,6 +723,12 @@ pub(crate) fn settings_page(
             }
             let mut row_hits = Vec::new();
             for (index, row) in settings.websearch.iter().enumerate() {
+                // The add row is the sentinel closing the vec; the
+                // hand-built line below renders it, the loop draws
+                // providers only.
+                if row.add {
+                    continue;
+                }
                 let selected = index == settings.row;
                 row_hits.push((lines.len(), SettingsHit::PageRow(index)));
                 // The position is the chain's truth: `search` walks
@@ -742,7 +748,10 @@ pub(crate) fn settings_page(
                 ]);
                 lines.push(settings_row(line, selected, theme));
             }
-            let add = settings.websearch.len();
+            // The add row is the sentinel closing the vec: its index
+            // is the last, not the len — a len index is out of range,
+            // and the click would land nowhere.
+            let add = settings.websearch.len().saturating_sub(1);
             let selected = settings.row == add;
             row_hits.push((lines.len(), SettingsHit::PageRow(add)));
             lines.push(settings_row(
