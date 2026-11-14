@@ -364,12 +364,12 @@ async fn the_real_binary_walks_the_discovery_story() -> Result<(), String> {
 
     // The agent builds its own ShellTools over the wiring's env map,
     // the production shape, `BASH_ENV` and the bridge token included.
-    let mut config = CodingAgentConfig::new("mock-model", workspace.path());
+    let mut config = CodingAgentConfig::new(provider.clone(), "mock-model", workspace.path());
     config.skills = Some(Vec::new());
     config.transcript = None;
     config.shell_env = wiring.shell_env.clone();
     config.mcp_servers = wiring.lines.clone();
-    let mut agent = CodingAgent::new(provider.clone(), config).map_err(|e| e.to_string())?;
+    let mut agent = CodingAgent::new(config).map_err(|e| e.to_string())?;
 
     let output = agent
         .turn("validate the fake file", &mut NullSink, Arc::new(AllowAll))

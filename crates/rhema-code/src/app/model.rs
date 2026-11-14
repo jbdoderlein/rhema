@@ -720,7 +720,7 @@ impl App {
             self.jobs.as_ref().map(crate::jobs::JobsHandle::steering),
         );
         Ok((
-            CodingAgent::from_session(provider, agent_config, session)?,
+            CodingAgent::from_session(agent_config, session)?,
             subagents,
             missing,
         ))

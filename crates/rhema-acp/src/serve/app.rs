@@ -240,6 +240,7 @@ impl App {
 
     pub(crate) fn agent_config(
         &self,
+        provider: Arc<dyn ModelProvider>,
         thinking: ThinkingEffort,
         model: &str,
         workspace: &std::path::Path,
@@ -251,7 +252,7 @@ impl App {
                 .unwrap_or(CodingAgentConfig::DEFAULT_MAX_TURN_STEPS),
             thinking,
             base_system: self.base_system.clone(),
-            ..CodingAgentConfig::new(model, workspace)
+            ..CodingAgentConfig::new(provider, model, workspace)
         };
         // The `bash` tool does its own I/O here (no fs/terminal
         // callbacks), so commands run on this host and the vision
@@ -494,8 +495,7 @@ impl App {
                 .session()
                 .clone();
             let agent = CodingAgent::from_session(
-                provider.clone(),
-                self.agent_config(slot.thinking, &model, &slot.workspace),
+                self.agent_config(provider.clone(), slot.thinking, &model, &slot.workspace),
                 session,
             )
             .map_err(|err| Error::internal_error().data(err.to_string()))?;
@@ -543,8 +543,7 @@ impl App {
                 .session()
                 .clone();
             let agent = CodingAgent::from_session(
-                slot.provider.clone(),
-                self.agent_config(effort, &slot.model, &slot.workspace),
+                self.agent_config(slot.provider.clone(), effort, &slot.model, &slot.workspace),
                 session,
             )
             .map_err(|err| Error::internal_error().data(err.to_string()))?;

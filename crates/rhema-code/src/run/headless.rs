@@ -134,6 +134,10 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     // fix, because headless has no login screen to fall through to.
     let backend = Backend::from_profile_or_help(&effective, Some(&secrets))
         .map_err(|message| anyhow::anyhow!("{message}"))?;
+    // One provider instance serves the main agent and the subagent
+    // wrapper: a token-backed adapter keeps one refreshed credential,
+    // not a copy per seam.
+    let provider = backend.provider();
     let model = args.model.clone().unwrap_or_else(|| {
         effective.model.clone().unwrap_or_else(|| {
             // The provider registry owns the fallback: one table,
@@ -161,7 +165,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
         base_system: base_system.clone(),
         disabled_skills: config.skills_disabled.clone(),
         disabled_subagents: config.disabled_subagents.clone(),
-        ..rhema_coding_agent::CodingAgentConfig::new(&model, &workspace)
+        ..rhema_coding_agent::CodingAgentConfig::new(provider.clone(), &model, &workspace)
     };
     // Where bash runs: the sandbox choice engages only off `local`, and
     // before the subagent wire below, their inner shell inherits the
@@ -292,11 +296,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
             missing.join(", ")
         );
     }
-    // One provider instance serves the main agent and the subagent
-    // wrapper: a token-backed adapter keeps one refreshed credential,
-    // not a copy per seam.
-    let provider = backend.provider();
-    let (mut agent_config, _subagents) = rhema_subagents::wire(provider.clone(), agent_config);
+    let (mut agent_config, _subagents) = rhema_subagents::wire(agent_config);
     // The steering slot takes both feeds: subagent finishes first,
     // then background jobs', one chained source.
     if let Some(jobs) = &jobs {
@@ -322,7 +322,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
             .with_context(|| format!("cannot resume session: {}", path.display()))?,
         None => Session::default(),
     };
-    let mut agent = CodingAgent::from_session(provider, agent_config, session)?;
+    let mut agent = CodingAgent::from_session(agent_config, session)?;
     // Auto-approved for now: the Approval seam is where command
     // allowlists will land.
     let approval: Arc<dyn Approval> = Arc::new(rhema_coding_agent::AllowAll);

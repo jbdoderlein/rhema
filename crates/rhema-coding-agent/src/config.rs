@@ -57,10 +57,17 @@ impl Steering for SteeringChain {
 pub type SubagentProviders =
     Arc<dyn Fn(&str) -> Option<Arc<dyn rhema_core::ModelProvider>> + Send + Sync>;
 
-/// Everything a [`CodingAgent`](crate::CodingAgent) needs besides the
-/// provider.
+/// Everything a [`CodingAgent`](crate::CodingAgent) needs: the backend
+/// it runs on, the model, and the settings that shape its turns.
 #[derive(Clone)]
 pub struct CodingAgentConfig {
+    /// The model backend the agent runs on. [`CodingAgent::new`] wraps
+    /// it (paste expansion, the transcript view) before the engine
+    /// calls it; the field keeps the provider the config was built
+    /// with, so a clone of the config builds another agent safely.
+    ///
+    /// [`CodingAgent::new`]: crate::CodingAgent::new
+    pub provider: Arc<dyn rhema_core::ModelProvider>,
     /// Model identifier, passed through to
     /// [`ChatParams`](rhema_core::ChatParams).
     pub model: String,
@@ -210,6 +217,7 @@ impl std::fmt::Debug for CodingAgentConfig {
         // The resolvers are trait objects and stay opaque: their
         // presence is the debug-worthy fact, not their internals.
         f.debug_struct("CodingAgentConfig")
+            .field("provider", &"<dyn ModelProvider>")
             .field("model", &self.model)
             .field("system", &self.system)
             .field("base_system", &self.base_system)
@@ -238,9 +246,15 @@ impl CodingAgentConfig {
     /// for unattended turns on expensive models.
     pub const DEFAULT_MAX_TURN_STEPS: u32 = 2048;
 
-    /// Config naming `model`, rooted at `workspace`, defaults elsewhere.
-    pub fn new(model: impl Into<String>, workspace: impl Into<PathBuf>) -> Self {
+    /// Config running `provider` on `model`, rooted at `workspace`,
+    /// defaults elsewhere.
+    pub fn new(
+        provider: Arc<dyn rhema_core::ModelProvider>,
+        model: impl Into<String>,
+        workspace: impl Into<PathBuf>,
+    ) -> Self {
         Self {
+            provider,
             model: model.into(),
             system: None,
             base_system: None,

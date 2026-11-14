@@ -119,8 +119,8 @@ impl AgentAssembly {
         provider: Arc<dyn ModelProvider>,
         sandbox_executor: Arc<dyn ShellExecutor>,
     ) -> Result<CodingAgent, CodingAgentError> {
-        let (config, _shell) = self.config(sandbox_executor);
-        CodingAgent::new(provider, config)
+        let (config, _shell) = self.config(provider, sandbox_executor);
+        CodingAgent::new(config)
     }
 
     /// Builds the agent resuming `session`, the checkpoint a previous
@@ -131,14 +131,15 @@ impl AgentAssembly {
         sandbox_executor: Arc<dyn ShellExecutor>,
         session: rhema_core::Session,
     ) -> Result<CodingAgent, CodingAgentError> {
-        let (config, _shell) = self.config(sandbox_executor);
-        rhema_coding_agent::CodingAgent::from_session(provider, config, session)
+        let (config, _shell) = self.config(provider, sandbox_executor);
+        rhema_coding_agent::CodingAgent::from_session(config, session)
     }
 
     /// The config the assembly builds, with its shell, factored so a
     /// resume and a fresh start assemble identically.
     fn config(
         &self,
+        provider: Arc<dyn ModelProvider>,
         sandbox_executor: Arc<dyn ShellExecutor>,
     ) -> (CodingAgentConfig, Arc<ShellTools>) {
         let shell = Arc::new(ShellTools::with_executor(
@@ -154,6 +155,7 @@ impl AgentAssembly {
             self.channel.clone(),
         ));
         let config = CodingAgentConfig {
+            provider,
             model: self.model.clone(),
             system: None,
             base_system: self.base_system.clone(),

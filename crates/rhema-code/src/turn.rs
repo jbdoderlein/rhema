@@ -516,10 +516,11 @@ mod mock_tests {
             entered: tokio::sync::Notify::new(),
             calls: std::sync::atomic::AtomicU32::new(0),
         });
-        let agent = CodingAgent::new(
+        let agent = CodingAgent::new(CodingAgentConfig::new(
             Arc::clone(&provider) as Arc<dyn ModelProvider>,
-            CodingAgentConfig::new("test-model", std::env::temp_dir()),
-        )
+            "test-model",
+            std::env::temp_dir(),
+        ))
         .unwrap();
         spawn_turn(
             agent,
@@ -629,10 +630,11 @@ mod mock_tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let (_, cancelled) = watch_cancel();
         let provider = Arc::new(FailsThenSucceeds::default());
-        let agent = CodingAgent::new(
+        let agent = CodingAgent::new(CodingAgentConfig::new(
             Arc::clone(&provider) as Arc<dyn ModelProvider>,
-            CodingAgentConfig::new("test-model", std::env::temp_dir()),
-        )
+            "test-model",
+            std::env::temp_dir(),
+        ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
         spawn_turn(
@@ -700,12 +702,13 @@ mod mock_tests {
     async fn a_turn_streams_into_the_transcript_and_returns_the_agent() {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let (cancel, cancelled) = watch_cancel();
-        let agent = CodingAgent::new(
+        let agent = CodingAgent::new(CodingAgentConfig::new(
             Arc::new(rhema_core::MockProvider::new([scripted_output(
                 "hello agent",
             )])),
-            CodingAgentConfig::new("test-model", std::env::temp_dir()),
-        )
+            "test-model",
+            std::env::temp_dir(),
+        ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
         spawn_turn(
@@ -735,10 +738,11 @@ mod mock_tests {
         let (cancel, cancelled) = watch_cancel();
         let dir = tempfile::tempdir().unwrap();
         let save = dir.path().join("session.json");
-        let agent = CodingAgent::new(
+        let agent = CodingAgent::new(CodingAgentConfig::new(
             Arc::new(rhema_core::MockProvider::new([scripted_output("done")])),
-            CodingAgentConfig::new("test-model", std::env::temp_dir()),
-        )
+            "test-model",
+            std::env::temp_dir(),
+        ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
         spawn_turn(
@@ -762,10 +766,11 @@ mod mock_tests {
     async fn cancelling_mid_stream_returns_the_agent_with_the_prompt_only() {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let (cancel, cancelled) = watch_cancel();
-        let agent = CodingAgent::new(
+        let agent = CodingAgent::new(CodingAgentConfig::new(
             Arc::new(HangingProvider),
-            CodingAgentConfig::new("test-model", std::env::temp_dir()),
-        )
+            "test-model",
+            std::env::temp_dir(),
+        ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
         spawn_turn(
@@ -813,10 +818,11 @@ mod mock_tests {
         let (cancel, cancelled) = watch_cancel();
         let dir = tempfile::tempdir().unwrap();
         let save = dir.path().join("session.json");
-        let agent = CodingAgent::new(
+        let agent = CodingAgent::new(CodingAgentConfig::new(
             Arc::new(rhema_core::MockProvider::new(vec![sleeping_tool_output()])),
-            CodingAgentConfig::new("test-model", std::env::temp_dir()),
-        )
+            "test-model",
+            std::env::temp_dir(),
+        ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
         spawn_turn(

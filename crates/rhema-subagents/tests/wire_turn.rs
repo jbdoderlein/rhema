@@ -127,12 +127,12 @@ async fn a_job_finishing_mid_turn_is_announced_at_the_next_step_boundary() {
         shell.clone(),
         "parent-model",
     ));
-    let mut config = CodingAgentConfig::new("m", std::env::temp_dir());
+    let mut config = CodingAgentConfig::new(provider.clone(), "m", std::env::temp_dir());
     config.base_system = Some("the parent's system prompt".into());
     config.tools = Some(shell);
     config.extra_resolver = Some(tools.clone());
     config.steering = Some(tools.handle().steering());
-    let mut agent = CodingAgent::new(provider.clone(), config).unwrap();
+    let mut agent = CodingAgent::new(config).unwrap();
 
     agent
         .turn("delegate the look", &mut NullSink, Arc::new(AllowAll))
@@ -206,14 +206,14 @@ async fn a_wired_agent_starts_notifies_and_fetches_by_job_id() {
     );
     // The wire's shape: the tool resolver and the steering read the one
     // registry.
-    let mut config = CodingAgentConfig::new("m", std::env::temp_dir());
+    let mut config = CodingAgentConfig::new(provider.clone(), "m", std::env::temp_dir());
     // The marker the provider tells the parent's requests by: the base
     // prompt rides into the rendered system.
     config.base_system = Some("the parent's system prompt".into());
     config.tools = Some(shell);
     config.extra_resolver = Some(tools.clone());
     config.steering = Some(tools.handle().steering());
-    let mut agent = CodingAgent::new(provider.clone(), config).unwrap();
+    let mut agent = CodingAgent::new(config).unwrap();
 
     // Turn 1: the start call answers in-band with a job id; the job
     // runs in the background, across the turn's end.

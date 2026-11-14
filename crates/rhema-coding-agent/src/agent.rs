@@ -179,14 +179,14 @@ impl CodingAgent {
     /// template rendered by [`crate::prompt::render_system`] unless
     /// `config.system` replaces it. A base prompt that fails to render
     /// fails the construction.
-    pub fn new(
-        provider: Arc<dyn rhema_core::ModelProvider>,
-        config: CodingAgentConfig,
-    ) -> Result<Self, CodingAgentError> {
+    pub fn new(config: CodingAgentConfig) -> Result<Self, CodingAgentError> {
         // The paste expansion rides the provider seam, not the engine:
         // the session keeps the compact form, and this one wrapper is
-        // every request path's way out.
-        let provider: Arc<dyn rhema_core::ModelProvider> = Arc::new(ExpandPastes::new(provider));
+        // every request path's way out. The config keeps the provider
+        // it was built with, so a clone of it builds another agent
+        // safely; the agent owns the wrapped chain.
+        let provider: Arc<dyn rhema_core::ModelProvider> =
+            Arc::new(ExpandPastes::new(config.provider.clone()));
         let tools = config.tools.clone().unwrap_or_else(|| {
             Arc::new(ShellTools::with_env(
                 config.workspace.clone(),
@@ -354,7 +354,6 @@ impl CodingAgent {
     /// before the report existed) stamps the config's render and
     /// carries it forward.
     pub fn from_session(
-        provider: Arc<dyn rhema_core::ModelProvider>,
         mut config: CodingAgentConfig,
         session: Session,
     ) -> Result<Self, CodingAgentError> {
@@ -366,7 +365,7 @@ impl CodingAgent {
         {
             config.environment = Some(stamped.to_owned());
         }
-        let mut agent = Self::new(provider, config)?;
+        let mut agent = Self::new(config)?;
         agent.session = session;
         agent.stamp_environment();
         Ok(agent)
@@ -738,10 +737,11 @@ mod paste_tests {
             &[payload.to_owned()],
         );
         let recording = Arc::new(Recording(Mutex::new(Vec::new())));
-        let mut agent = CodingAgent::new(
+        let mut agent = CodingAgent::new(CodingAgentConfig::new(
             recording.clone(),
-            CodingAgentConfig::new("m", std::env::temp_dir()),
-        )
+            "m",
+            std::env::temp_dir(),
+        ))
         .unwrap();
         agent
             .turn(&embedded, &mut NoopSink, Arc::new(AllowAll))
@@ -786,10 +786,11 @@ mod paste_tests {
     }
 
     fn blocks_agent(recording: &Arc<RecordingBlocks>) -> CodingAgent {
-        CodingAgent::new(
+        CodingAgent::new(CodingAgentConfig::new(
             recording.clone(),
-            CodingAgentConfig::new("m", std::env::temp_dir()),
-        )
+            "m",
+            std::env::temp_dir(),
+        ))
         .unwrap()
     }
 
@@ -932,9 +933,9 @@ mod extra_tools_tests {
         let scripted = Arc::new(Scripted(Mutex::new(Vec::new())));
         let config = CodingAgentConfig {
             extra_resolver: Some(Arc::new(Echo)),
-            ..CodingAgentConfig::new("m", std::env::temp_dir())
+            ..CodingAgentConfig::new(scripted.clone(), "m", std::env::temp_dir())
         };
-        let mut agent = CodingAgent::new(scripted.clone(), config).unwrap();
+        let mut agent = CodingAgent::new(config).unwrap();
         let output = agent
             .turn("use the tool", &mut NoopSink, Arc::new(AllowAll))
             .await
@@ -975,10 +976,11 @@ mod extra_tools_tests {
     async fn the_default_advertises_zoom_and_none_skips_it() {
         // Default: the built-ins plus zoom, the prompt naming it too.
         let scripted = Arc::new(Scripted(Mutex::new(Vec::new())));
-        let mut agent = CodingAgent::new(
+        let mut agent = CodingAgent::new(CodingAgentConfig::new(
             scripted.clone(),
-            CodingAgentConfig::new("m", std::env::temp_dir()),
-        )
+            "m",
+            std::env::temp_dir(),
+        ))
         .unwrap();
         agent
             .turn("hi", &mut NoopSink, Arc::new(AllowAll))
@@ -1002,9 +1004,9 @@ mod extra_tools_tests {
         let scripted = Arc::new(Scripted(Mutex::new(Vec::new())));
         let config = CodingAgentConfig {
             transcript: None,
-            ..CodingAgentConfig::new("m", std::env::temp_dir())
+            ..CodingAgentConfig::new(scripted.clone(), "m", std::env::temp_dir())
         };
-        let mut agent = CodingAgent::new(scripted.clone(), config).unwrap();
+        let mut agent = CodingAgent::new(config).unwrap();
         agent
             .turn("hi", &mut NoopSink, Arc::new(AllowAll))
             .await
@@ -1113,10 +1115,10 @@ mod environment_stamp_tests {
         fn emit(&mut self, _event: Event<'_>) {}
     }
 
-    fn config(report: &str) -> CodingAgentConfig {
+    fn config(provider: Arc<dyn ModelProvider>, report: &str) -> CodingAgentConfig {
         CodingAgentConfig {
             environment: Some(report.to_owned()),
-            ..CodingAgentConfig::new("m", std::env::temp_dir())
+            ..CodingAgentConfig::new(provider, "m", std::env::temp_dir())
         }
     }
 
@@ -1124,7 +1126,7 @@ mod environment_stamp_tests {
     /// any turn: the first checkpoint already carries it.
     #[test]
     fn a_fresh_conversation_stamps_at_construction() {
-        let agent = CodingAgent::new(Arc::new(Ender), config("REPORT-A")).unwrap();
+        let agent = CodingAgent::new(config(Arc::new(Ender), "REPORT-A")).unwrap();
         assert_eq!(
             agent
                 .session()
@@ -1141,7 +1143,7 @@ mod environment_stamp_tests {
     /// the system prompt and break the prefix cache.
     #[tokio::test]
     async fn a_resumed_conversation_keeps_its_stamped_report() {
-        let mut first = CodingAgent::new(Arc::new(Ender), config("REPORT-A")).unwrap();
+        let mut first = CodingAgent::new(config(Arc::new(Ender), "REPORT-A")).unwrap();
         first
             .turn("hi", &mut NoopSink, Arc::new(AllowAll))
             .await
@@ -1151,7 +1153,7 @@ mod environment_stamp_tests {
         // Whatever the rebuilt config carries, a model switch, a
         // profile switch, a resume, the conversation's bytes stand.
         let second =
-            CodingAgent::from_session(Arc::new(Ender), config("REPORT-B"), session).unwrap();
+            CodingAgent::from_session(config(Arc::new(Ender), "REPORT-B"), session).unwrap();
         let prompt = second.system().expect("the agent has a prompt");
         assert!(prompt.contains("REPORT-A"), "{prompt}");
         assert!(!prompt.contains("REPORT-B"), "{prompt}");
@@ -1170,7 +1172,7 @@ mod environment_stamp_tests {
     /// render and carries it forward from there.
     #[tokio::test]
     async fn a_pre_report_session_stamps_the_fresh_render_once() {
-        let mut first = CodingAgent::new(Arc::new(Ender), config("REPORT-A")).unwrap();
+        let mut first = CodingAgent::new(config(Arc::new(Ender), "REPORT-A")).unwrap();
         first
             .turn("hi", &mut NoopSink, Arc::new(AllowAll))
             .await
@@ -1182,7 +1184,7 @@ mod environment_stamp_tests {
         };
 
         let second =
-            CodingAgent::from_session(Arc::new(Ender), config("REPORT-B"), session).unwrap();
+            CodingAgent::from_session(config(Arc::new(Ender), "REPORT-B"), session).unwrap();
         let prompt = second.system().expect("the agent has a prompt");
         assert!(prompt.contains("REPORT-B"), "{prompt}");
         assert_eq!(
@@ -1206,7 +1208,7 @@ mod environment_stamp_tests {
             ..Session::default()
         };
         let agent =
-            CodingAgent::from_session(Arc::new(Ender), config("REPORT-A"), session).unwrap();
+            CodingAgent::from_session(config(Arc::new(Ender), "REPORT-A"), session).unwrap();
         let state = &agent.session().driver_state;
         assert_eq!(
             state.get("someone-elses"),
@@ -1223,7 +1225,7 @@ mod environment_stamp_tests {
             driver_state: serde_json::json!("a driver's opaque shape"),
             ..Session::default()
         };
-        let agent = CodingAgent::from_session(Arc::new(Ender), config("REPORT-A"), opaque).unwrap();
+        let agent = CodingAgent::from_session(config(Arc::new(Ender), "REPORT-A"), opaque).unwrap();
         assert_eq!(
             agent.session().driver_state,
             serde_json::json!("a driver's opaque shape"),
@@ -1308,10 +1310,9 @@ mod transcript_tests {
         let recording = Arc::new(Recording(Mutex::new(Vec::new())));
         let config = CodingAgentConfig {
             transcript: None,
-            ..CodingAgentConfig::new("m", std::env::temp_dir())
+            ..CodingAgentConfig::new(recording.clone(), "m", std::env::temp_dir())
         };
-        let mut agent =
-            CodingAgent::from_session(recording.clone(), config, big_history(5)).unwrap();
+        let mut agent = CodingAgent::from_session(config, big_history(5)).unwrap();
         agent
             .turn("next", &mut NoopSink, Arc::new(AllowAll))
             .await
@@ -1331,10 +1332,9 @@ mod transcript_tests {
                 max_view_bytes: 4_000,
                 ..rhema_transcript::TranscriptSettings::default()
             }),
-            ..CodingAgentConfig::new("m", std::env::temp_dir())
+            ..CodingAgentConfig::new(recording.clone(), "m", std::env::temp_dir())
         };
-        let mut agent =
-            CodingAgent::from_session(recording.clone(), config, big_history(5)).unwrap();
+        let mut agent = CodingAgent::from_session(config, big_history(5)).unwrap();
         // The prompt advertises zoom: the tool and the prompt cannot drift.
         let prompt = agent
             .system()

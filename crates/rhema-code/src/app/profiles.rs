@@ -258,7 +258,7 @@ impl App {
             self.secrets.as_ref(),
             self.jobs.as_ref().map(crate::jobs::JobsHandle::steering),
         );
-        match CodingAgent::from_session(provider.clone(), agent_config, session) {
+        match CodingAgent::from_session(agent_config, session) {
             Ok(mut agent) => {
                 // The benchmark moves with the conversation, the way
                 // the cost does: the old agent's counters fold into

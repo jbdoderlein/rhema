@@ -8,6 +8,20 @@ use super::*;
 use crate::args::SandboxChoice;
 use rhema_sandbox::mock::ScriptedSandbox;
 
+/// A backend the config needs to exist; these tests never run a turn.
+struct Unused;
+
+#[rhema_core::async_trait]
+impl rhema_core::ModelProvider for Unused {
+    async fn complete(
+        &self,
+        _req: rhema_core::ModelRequest,
+        _sink: &mut dyn rhema_core::EventSink,
+    ) -> Result<rhema_core::ModelOutput, rhema_core::ProviderError> {
+        Err(rhema_core::ProviderError::Other("unused provider".into()))
+    }
+}
+
 #[test]
 fn the_choice_resolves_from_the_layered_kind() {
     // The env tier is injected as the value Profile::sandbox_kind
@@ -569,7 +583,7 @@ fn the_assembly_applies_tools_before_and_workspace_after_the_wire_order() {
         instance_lock: None,
         managed: None,
     };
-    let mut config = CodingAgentConfig::new("m", Path::new("/host/ws"));
+    let mut config = CodingAgentConfig::new(Arc::new(Unused), "m", Path::new("/host/ws"));
     assert!(config.tools.is_none());
     assembled.apply_tools(&mut config);
     assert_eq!(

@@ -782,6 +782,7 @@ pub(crate) fn shadow_builtin(global: &Path, name: &str) -> std::io::Result<PathB
 }
 
 fn agent_config(
+    provider: Arc<dyn ModelProvider>,
     options: &RunOptions,
     model: Option<String>,
     disabled_skills: &std::collections::BTreeSet<String>,
@@ -794,7 +795,7 @@ fn agent_config(
         base_system: options.base_system.clone(),
         disabled_skills: disabled_skills.clone(),
         disabled_subagents: disabled_subagents.clone(),
-        ..CodingAgentConfig::new(model.unwrap_or_default(), &options.workspace)
+        ..CodingAgentConfig::new(provider, model.unwrap_or_default(), &options.workspace)
     }
 }
 
@@ -841,7 +842,13 @@ pub(crate) fn session_agent_config(
     rhema_subagents::SubagentHandle,
     Vec<String>,
 ) {
-    let mut config = agent_config(options, model, disabled_skills, disabled_subagents);
+    let mut config = agent_config(
+        provider.clone(),
+        options,
+        model,
+        disabled_skills,
+        disabled_subagents,
+    );
     // The subagent tool's cross-provider `model` spellings resolve
     // through the same per-kind answers the model picker's catalog
     // reads: one backend per kind, built off this profile's stored
@@ -915,7 +922,7 @@ pub(crate) fn session_agent_config(
         config.mcp_servers = entry.lines().to_vec();
     }
     config.disabled_mcp_servers = disabled_mcp.clone();
-    let (mut config, subagents) = rhema_subagents::wire(provider, config);
+    let (mut config, subagents) = rhema_subagents::wire(config);
     // One steering slot, two feeds: the subagent registry drains
     // first, the background-shell feed second, so the announcements
     // coalesce into one message in a stable order. Either alone rides

@@ -64,10 +64,11 @@ async fn the_default_system_prompt_names_the_canonical_workspace() {
     let root = tempfile::tempdir().unwrap();
     let workspace = std::fs::canonicalize(root.path()).unwrap();
     let provider = recorder();
-    let mut agent = CodingAgent::new(
+    let mut agent = CodingAgent::new(CodingAgentConfig::new(
         provider.clone(),
-        CodingAgentConfig::new("mock-model", root.path()),
-    )
+        "mock-model",
+        root.path(),
+    ))
     .unwrap();
     let mut sink = NullSink;
 
@@ -94,9 +95,9 @@ async fn a_base_system_prompt_replaces_the_default_and_fills_the_workspace() {
     let provider = recorder();
     let config = CodingAgentConfig {
         base_system: Some("BASE in {{ workspace }}.".into()),
-        ..CodingAgentConfig::new("mock-model", root.path())
+        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path())
     };
-    let mut agent = CodingAgent::new(provider.clone(), config).unwrap();
+    let mut agent = CodingAgent::new(config).unwrap();
     let mut sink = NullSink;
 
     agent
@@ -134,9 +135,9 @@ async fn a_base_system_with_a_for_loop_renders_each_skill_through_it() {
             "{% for skill in skills %}load {{ skill.name }} from {{ skill.path }} when {{ skill.description }} applies\n{% endfor %}TAIL {{ workspace }}"
                 .into(),
         ),
-        ..CodingAgentConfig::new("mock-model", root.path())
+        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path())
     };
-    let mut agent = CodingAgent::new(provider.clone(), config).unwrap();
+    let mut agent = CodingAgent::new(config).unwrap();
     let mut sink = NullSink;
 
     agent
@@ -173,9 +174,9 @@ async fn a_base_system_with_a_for_loop_renders_each_tool_through_it() {
             "{% for tool in tools %}call {{ tool.name }}: {{ tool.description }} with {{ tool.parameters | tojson }}\n{% endfor %}TAIL {{ workspace }}"
                 .into(),
         ),
-        ..CodingAgentConfig::new("mock-model", root.path())
+        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path())
     };
-    let mut agent = CodingAgent::new(provider.clone(), config).unwrap();
+    let mut agent = CodingAgent::new(config).unwrap();
     let mut sink = NullSink;
 
     agent
@@ -201,9 +202,9 @@ async fn a_base_system_that_fails_to_render_fails_the_construction() {
     let provider = recorder();
     let config = CodingAgentConfig {
         base_system: Some("{% if skills %} never closed".into()),
-        ..CodingAgentConfig::new("mock-model", root.path())
+        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path())
     };
-    let err = match CodingAgent::new(provider, config) {
+    let err = match CodingAgent::new(config) {
         Err(err) => err,
         Ok(_) => panic!("an unclosed block is a loud error, not a start"),
     };
@@ -219,9 +220,9 @@ async fn config_system_replaces_the_default() {
     let provider = recorder();
     let config = CodingAgentConfig {
         system: Some("custom prompt".into()),
-        ..CodingAgentConfig::new("mock-model", root.path())
+        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path())
     };
-    let mut agent = CodingAgent::new(provider.clone(), config).unwrap();
+    let mut agent = CodingAgent::new(config).unwrap();
     let mut sink = NullSink;
 
     agent
@@ -238,9 +239,9 @@ fn the_agent_exposes_its_rendered_system_prompt() {
     let provider = recorder();
     let config = CodingAgentConfig {
         system: Some("custom prompt".into()),
-        ..CodingAgentConfig::new("mock-model", root.path())
+        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path())
     };
-    let agent = CodingAgent::new(provider, config).unwrap();
+    let agent = CodingAgent::new(config).unwrap();
     assert_eq!(agent.system(), Some("custom prompt"));
 }
 
@@ -306,10 +307,11 @@ async fn the_stamped_prompt_is_what_the_agent_sends() {
     let root = tempfile::tempdir().unwrap();
     let workspace = std::fs::canonicalize(root.path()).unwrap();
     let provider = recorder();
-    let mut agent = CodingAgent::new(
+    let mut agent = CodingAgent::new(CodingAgentConfig::new(
         provider.clone(),
-        CodingAgentConfig::new("mock-model", root.path()),
-    )
+        "mock-model",
+        root.path(),
+    ))
     .unwrap();
     let mut sink = NullSink;
 

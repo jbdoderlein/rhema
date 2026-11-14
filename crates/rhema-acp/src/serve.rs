@@ -195,10 +195,12 @@ async fn serve_connection(
                         ));
                     };
                     let provider = backend.provider.clone();
-                    let agent = CodingAgent::new(
+                    let agent = CodingAgent::new(app.agent_config(
                         backend.provider,
-                        app.agent_config(app.thinking(), &backend.model, &request.cwd),
-                    )
+                        app.thinking(),
+                        &backend.model,
+                        &request.cwd,
+                    ))
                     .map_err(|err| Error::internal_error().data(err.to_string()))?;
                     let id = app.fresh_id();
                     let catalog = app.catalog().await;
@@ -259,8 +261,12 @@ async fn serve_connection(
                         })?;
                     let provider = backend.provider.clone();
                     let agent = CodingAgent::from_session(
-                        backend.provider,
-                        app.agent_config(app.thinking(), &backend.model, &request.cwd),
+                        app.agent_config(
+                            backend.provider,
+                            app.thinking(),
+                            &backend.model,
+                            &request.cwd,
+                        ),
                         session,
                     )
                     .map_err(|err| Error::internal_error().data(err.to_string()))?;

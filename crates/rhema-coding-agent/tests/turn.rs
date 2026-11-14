@@ -60,7 +60,7 @@ async fn a_turn_writes_the_file_and_keeps_the_history_shape() {
         end_turn_output("wrote notes.txt"),
     ]));
     let mut agent =
-        CodingAgent::new(provider, CodingAgentConfig::new("mock-model", root.path())).unwrap();
+        CodingAgent::new(CodingAgentConfig::new(provider, "mock-model", root.path())).unwrap();
     let mut sink = NullSink;
 
     let output = agent
@@ -97,7 +97,7 @@ async fn a_second_turn_continues_the_same_session() {
         end_turn_output("done two"),
     ]));
     let mut agent =
-        CodingAgent::new(provider, CodingAgentConfig::new("mock-model", root.path())).unwrap();
+        CodingAgent::new(CodingAgentConfig::new(provider, "mock-model", root.path())).unwrap();
     let mut sink = NullSink;
 
     agent
@@ -129,9 +129,9 @@ async fn a_turn_past_the_step_budget_fails_with_max_iterations() {
     ]));
     let config = CodingAgentConfig {
         max_turn_steps: 2,
-        ..CodingAgentConfig::new("mock-model", root.path())
+        ..CodingAgentConfig::new(provider, "mock-model", root.path())
     };
-    let mut agent = CodingAgent::new(provider, config).unwrap();
+    let mut agent = CodingAgent::new(config).unwrap();
     let mut sink = NullSink;
 
     let err = agent
@@ -151,10 +151,11 @@ async fn session_round_trips_through_disk_and_resumes() {
         end_turn_output("first answer"),
         end_turn_output("second answer"),
     ]));
-    let mut agent = CodingAgent::new(
+    let mut agent = CodingAgent::new(CodingAgentConfig::new(
         provider.clone(),
-        CodingAgentConfig::new("mock-model", root.path()),
-    )
+        "mock-model",
+        root.path(),
+    ))
     .unwrap();
     let mut sink = NullSink;
     agent
@@ -168,8 +169,7 @@ async fn session_round_trips_through_disk_and_resumes() {
     assert_eq!(&loaded, agent.session());
 
     let mut resumed = CodingAgent::from_session(
-        provider,
-        CodingAgentConfig::new("mock-model", root.path()),
+        CodingAgentConfig::new(provider, "mock-model", root.path()),
         loaded,
     )
     .unwrap();
@@ -194,7 +194,7 @@ async fn a_saved_session_round_trips_as_pretty_json() {
     let root = tempfile::tempdir().unwrap();
     let provider = Arc::new(MockProvider::new(vec![end_turn_output("hi")]));
     let mut agent =
-        CodingAgent::new(provider, CodingAgentConfig::new("mock-model", root.path())).unwrap();
+        CodingAgent::new(CodingAgentConfig::new(provider, "mock-model", root.path())).unwrap();
     let mut sink = NullSink;
     agent
         .turn("hello", &mut sink, Arc::new(AllowAll))
@@ -215,7 +215,7 @@ async fn a_saved_session_lands_private_and_leaves_no_temp() {
     let root = tempfile::tempdir().unwrap();
     let provider = Arc::new(MockProvider::new(vec![end_turn_output("hi")]));
     let mut agent =
-        CodingAgent::new(provider, CodingAgentConfig::new("mock-model", root.path())).unwrap();
+        CodingAgent::new(CodingAgentConfig::new(provider, "mock-model", root.path())).unwrap();
     let mut sink = NullSink;
     agent
         .turn("hello", &mut sink, Arc::new(AllowAll))

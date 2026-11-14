@@ -487,11 +487,7 @@ impl App {
                         setup.secrets.as_ref(),
                         jobs.as_ref().map(crate::jobs::JobsHandle::steering),
                     );
-                    agent = Some(CodingAgent::from_session(
-                        provider,
-                        agent_config,
-                        session.clone(),
-                    )?);
+                    agent = Some(CodingAgent::from_session(agent_config, session.clone())?);
                     subagents_handle = Some(subagents);
                     missing = missing_tools;
                     Screen::Chat

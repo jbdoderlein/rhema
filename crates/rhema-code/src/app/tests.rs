@@ -2482,10 +2482,11 @@ fn the_status_tracks_thinking_versus_running() {
     assert!(h.app.turn.processing);
 
     // The turn ends: idle, no phase.
-    let agent = CodingAgent::new(
+    let agent = CodingAgent::new(CodingAgentConfig::new(
         Arc::new(NeverDriven),
-        CodingAgentConfig::new("m-a", PathBuf::from(".")),
-    )
+        "m-a",
+        PathBuf::from("."),
+    ))
     .unwrap();
     h.app.on_event(UiEvent::TurnCancelled {
         agent: Box::new(agent),
@@ -2586,10 +2587,11 @@ fn esc_when_running_cancels_the_turn_and_flags_the_channel() {
     assert!(*cancelled.borrow(), "the turn task sees the flag");
 
     // The task's event closes the turn out.
-    let agent = CodingAgent::new(
+    let agent = CodingAgent::new(CodingAgentConfig::new(
         Arc::new(NeverDriven),
-        CodingAgentConfig::new("m-a", PathBuf::from(".")),
-    )
+        "m-a",
+        PathBuf::from("."),
+    ))
     .unwrap();
     h.app.on_event(UiEvent::TurnCancelled {
         agent: Box::new(agent),
@@ -2635,10 +2637,11 @@ fn esc_with_a_pending_modal_cancels_and_releases_the_blocked_call() {
 fn the_cancelled_event_hands_the_agent_back_with_a_notice() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     h.app.turn.running = true;
-    let agent = CodingAgent::new(
+    let agent = CodingAgent::new(CodingAgentConfig::new(
         Arc::new(NeverDriven),
-        CodingAgentConfig::new("m-a", PathBuf::from(".")),
-    )
+        "m-a",
+        PathBuf::from("."),
+    ))
     .unwrap();
     h.app.on_event(UiEvent::TurnCancelled {
         agent: Box::new(agent),
@@ -2678,7 +2681,7 @@ fn turn_finished_records_usage_and_errors() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     let make_agent = || {
         Box::new(
-            CodingAgent::new(Arc::new(NeverDriven), CodingAgentConfig::new("m-a", ".")).unwrap(),
+            CodingAgent::new(CodingAgentConfig::new(Arc::new(NeverDriven), "m-a", ".")).unwrap(),
         )
     };
     let usage = Usage {
@@ -5633,10 +5636,11 @@ fn the_status_tracker_follows_the_turn_lifecycle() {
         tracker.status_for(&h.app),
         crate::status::Status::Working { .. }
     ));
-    let agent = CodingAgent::new(
+    let agent = CodingAgent::new(CodingAgentConfig::new(
         Arc::new(NeverDriven),
-        CodingAgentConfig::new("m-a", std::env::temp_dir()),
-    )
+        "m-a",
+        std::env::temp_dir(),
+    ))
     .unwrap();
     h.app.turn.running = false;
     tracker.observe(&UiEvent::TurnFinished {

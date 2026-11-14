@@ -154,9 +154,9 @@ async fn a_turn_start_announcement_lands_before_the_user_input() {
     let steering = Scripted::new(vec![vec!["Subagent scout (job-3) has finished.".into()]]);
     let config = CodingAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new("m", std::env::temp_dir())
+        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir())
     };
-    let mut agent = CodingAgent::new(recorder.clone(), config).unwrap();
+    let mut agent = CodingAgent::new(config).unwrap();
     agent
         .turn("run it", &mut NullSink, Arc::new(AllowAll))
         .await
@@ -181,9 +181,9 @@ async fn a_mid_turn_announcement_lands_after_the_tool_round() {
     let steering = Scripted::new(vec![vec![], vec![notification.to_owned()], vec![], vec![]]);
     let config = CodingAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new("m", std::env::temp_dir())
+        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir())
     };
-    let mut agent = CodingAgent::new(recorder.clone(), config).unwrap();
+    let mut agent = CodingAgent::new(config).unwrap();
     agent
         .turn("run it", &mut NullSink, Arc::new(AllowAll))
         .await
@@ -210,9 +210,9 @@ async fn an_unfetched_finish_is_announced_once_per_turn() {
     let steering = Arc::new(Stubborn("Subagent scout (job-3) has finished.".into()));
     let config = CodingAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new("m", std::env::temp_dir())
+        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir())
     };
-    let mut agent = CodingAgent::new(recorder.clone(), config).unwrap();
+    let mut agent = CodingAgent::new(config).unwrap();
     agent
         .turn("run it", &mut NullSink, Arc::new(AllowAll))
         .await
@@ -241,9 +241,9 @@ async fn several_finishes_coalesce_into_one_message() {
     ]]);
     let config = CodingAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new("m", std::env::temp_dir())
+        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir())
     };
-    let mut agent = CodingAgent::new(recorder.clone(), config).unwrap();
+    let mut agent = CodingAgent::new(config).unwrap();
     agent
         .turn("run it", &mut NullSink, Arc::new(AllowAll))
         .await
@@ -262,9 +262,9 @@ async fn an_empty_drain_appends_nothing() {
     let steering = Scripted::new(vec![vec![], vec![]]);
     let config = CodingAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new("m", std::env::temp_dir())
+        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir())
     };
-    let mut agent = CodingAgent::new(recorder.clone(), config).unwrap();
+    let mut agent = CodingAgent::new(config).unwrap();
     agent
         .turn("run it", &mut NullSink, Arc::new(AllowAll))
         .await
@@ -284,9 +284,9 @@ async fn a_separate_turn_reannounces_the_same_unfetched_line() {
     let steering = Arc::new(Stubborn("Subagent scout (job-3) has finished.".into()));
     let config = CodingAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new("m", std::env::temp_dir())
+        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir())
     };
-    let mut agent = CodingAgent::new(recorder.clone(), config).unwrap();
+    let mut agent = CodingAgent::new(config).unwrap();
     agent
         .turn("first", &mut NullSink, Arc::new(AllowAll))
         .await
@@ -315,10 +315,11 @@ async fn a_separate_turn_reannounces_the_same_unfetched_line() {
 #[tokio::test]
 async fn without_steering_the_history_keeps_its_plain_shape() {
     let recorder = Recorder::new(1);
-    let mut agent = CodingAgent::new(
+    let mut agent = CodingAgent::new(CodingAgentConfig::new(
         recorder.clone(),
-        CodingAgentConfig::new("m", std::env::temp_dir()),
-    )
+        "m",
+        std::env::temp_dir(),
+    ))
     .unwrap();
     agent
         .turn("run it", &mut NullSink, Arc::new(AllowAll))
