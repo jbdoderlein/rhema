@@ -19,6 +19,8 @@
 //!   become [`ToolResult`] image blocks
 //! - [`jobs`]: the `job` macro: background shells the model starts now
 //!   and reads on a later turn
+//! - [`websearch`]: the `search` macro: ranked web results as shell
+//!   output, providers per profile tried in order
 //!
 //! # Skills
 //!
@@ -47,6 +49,7 @@ pub mod revive;
 pub mod shell;
 pub mod skills;
 pub mod vision;
+pub mod websearch;
 
 pub use approval::{AllowAll, Approval, DenyAll};
 #[cfg(feature = "local-shell")]
