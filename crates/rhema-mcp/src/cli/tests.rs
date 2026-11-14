@@ -98,6 +98,18 @@ fn media_blocks_become_files_or_placeholders() {
     assert!(path.ends_with(&expected_name), "{path}");
     assert_eq!(std::fs::read(path).unwrap(), png_bytes);
     assert_eq!(content[1].get("bytes").unwrap(), &json!(png_bytes.len()));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let file_mode = std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        let dir_mode = std::fs::metadata(dir.path().join("media"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(file_mode, 0o600, "media bytes stay private");
+        assert_eq!(dir_mode, 0o700, "the media dir stays private");
+    }
     // The undecodable payload decodes to nothing: the placeholder
     // reports the decoded count, honestly zero.
     assert!(

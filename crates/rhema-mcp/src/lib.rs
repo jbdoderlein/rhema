@@ -32,6 +32,8 @@ pub mod protocol;
 pub mod provision;
 pub mod wire;
 
-pub use client::{Cancel, Client, ClientError, HttpParams, StdioParams, Transport};
+pub use client::{
+    Cancel, Client, ClientError, HttpParams, MAX_HTTP_BODY_BYTES, StdioParams, Transport,
+};
 pub use manager::{ManagerError, McpManager, ServerStatus, SlotSummary};
 pub use wire::{Wiring, wire};

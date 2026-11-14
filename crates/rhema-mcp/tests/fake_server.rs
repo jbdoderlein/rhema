@@ -18,7 +18,7 @@ use std::io::Write as _;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use rhema_mcp::{Cancel, Client, ClientError, HttpParams, StdioParams};
+use rhema_mcp::{Cancel, Client, ClientError, HttpParams, MAX_HTTP_BODY_BYTES, StdioParams};
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::TcpStream;
@@ -72,6 +72,9 @@ const TESTS: &[(&str, AsyncTest)] = &[
     ("stdio_handshake_timeout", || {
         Box::pin(stdio_handshake_timeout())
     }),
+    ("stdio_failed_handshake_kills_the_child", || {
+        Box::pin(stdio_failed_handshake_kills_the_child())
+    }),
     ("garbage_line_kills_connection", || {
         Box::pin(garbage_line_kills_connection())
     }),
@@ -98,6 +101,10 @@ const TESTS: &[(&str, AsyncTest)] = &[
         Box::pin(http_404_reinitializes_exactly_once())
     }),
     ("http_sse_answer", || Box::pin(http_sse_answer())),
+    ("http_handshake_timeout", || {
+        Box::pin(http_handshake_timeout())
+    }),
+    ("http_body_cap", || Box::pin(http_body_cap())),
     ("manager_caches_the_catalog_per_connection", || {
         Box::pin(manager_caches_the_catalog_per_connection())
     }),
@@ -141,6 +148,7 @@ fn play(script: &str) {
         "die" => die_scenario(),
         "cancelled" => cancelled_scenario(),
         "marker" => marker_scenario(),
+        "ignoreeof" => ignore_eof_scenario(),
         "counting" => counting_scenario(),
         "dieaftertools" => die_after_tools_scenario(),
         _ => happy_scenario(),
@@ -457,8 +465,8 @@ fn die_after_tools_scenario() {
 }
 
 /// Appends this process's pid to the marker file (its path comes
-/// from [`MARKER_ENV`]), then plays happy.
-fn marker_scenario() {
+/// from [`MARKER_ENV`]).
+fn write_marker() {
     if let Ok(Ok(mut file)) = std::env::var(MARKER_ENV).map(|path| {
         std::fs::OpenOptions::new()
             .append(true)
@@ -467,7 +475,20 @@ fn marker_scenario() {
     }) {
         let _ = writeln!(file, "{}", std::process::id());
     }
+}
+
+/// Appends this process's pid, then plays happy.
+fn marker_scenario() {
+    write_marker();
     happy_scenario();
+}
+
+/// Appends this process's pid and ignores stdin forever: the child a
+/// failed handshake must kill, because dropping this side's handles
+/// only closes its stdin.
+fn ignore_eof_scenario() {
+    write_marker();
+    std::thread::sleep(Duration::from_secs(30));
 }
 
 // ---------------------------------------------------------------------
@@ -899,6 +920,17 @@ async fn connect_http(url: &str) -> Result<Client, ClientError> {
     .await
 }
 
+async fn connect_http_with_timeout(url: &str, timeout: Duration) -> Result<Client, ClientError> {
+    Client::connect_http_with_timeout(
+        HttpParams {
+            url: url.to_owned(),
+            headers: BTreeMap::new(),
+        },
+        timeout,
+    )
+    .await
+}
+
 // ---------------------------------------------------------------------
 // HTTP tests
 // ---------------------------------------------------------------------
@@ -1036,6 +1068,106 @@ async fn http_sse_answer() -> Result<(), String> {
     }
     if ledger.lock().expect("ledger").len() != 3 {
         return Err("unexpected request count".to_owned());
+    }
+    Ok(())
+}
+
+/// A failed handshake must not leave the child alive: dropping the
+/// client closes stdin, and a server that ignores EOF needs the kill.
+async fn stdio_failed_handshake_kills_the_child() -> Result<(), String> {
+    #[cfg(not(unix))]
+    {
+        return Ok(());
+    }
+    #[cfg(unix)]
+    {
+        let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
+        let marker = dir.path().join("pid");
+        let mut params = fake_stdio_params("ignoreeof");
+        params
+            .env
+            .insert(MARKER_ENV.to_owned(), marker.to_string_lossy().into_owned());
+        let err = Client::connect_stdio(params, Duration::from_millis(150))
+            .await
+            .err()
+            .ok_or("the handshake should time out")?;
+        if !matches!(err, ClientError::Timeout) {
+            return Err(format!("wrong error: {err}"));
+        }
+        let pid = wait_for_marker(&marker).await?;
+        for _ in 0..40 {
+            if !process_alive(pid) {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        Err(format!("child {pid} survived the failed handshake"))
+    }
+}
+
+/// Waits for the marker file to name a pid.
+async fn wait_for_marker(path: &std::path::Path) -> Result<u32, String> {
+    for _ in 0..100 {
+        if let Ok(text) = std::fs::read_to_string(path)
+            && let Ok(pid) = text.trim().parse()
+        {
+            return Ok(pid);
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    Err("the fake server never wrote its pid".to_owned())
+}
+
+#[cfg(unix)]
+fn process_alive(pid: u32) -> bool {
+    std::process::Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+#[cfg(not(unix))]
+fn process_alive(_pid: u32) -> bool {
+    false
+}
+
+/// A handshake that never gets an answer stops at the startup budget.
+async fn http_handshake_timeout() -> Result<(), String> {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .map_err(|e| e.to_string())?;
+    let addr = listener.local_addr().map_err(|e| e.to_string())?;
+    let hold = tokio::spawn(async move {
+        let Ok((stream, _)) = listener.accept().await else {
+            return;
+        };
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        drop(stream);
+    });
+    let err = connect_http_with_timeout(&format!("http://{addr}/mcp"), Duration::from_millis(150))
+        .await
+        .err()
+        .ok_or("the handshake should time out")?;
+    hold.abort();
+    if !matches!(err, ClientError::Timeout) {
+        return Err(format!("wrong error: {err}"));
+    }
+    Ok(())
+}
+
+/// An HTTP body over the transport cap is refused before parsing.
+async fn http_body_cap() -> Result<(), String> {
+    let huge = "x".repeat(MAX_HTTP_BODY_BYTES + 1);
+    let (_ledger, url) = spawn_stub(vec![http_ok(&huge, &[])]).await;
+    let err = connect_http(&url)
+        .await
+        .err()
+        .ok_or("the oversize body should fail")?;
+    let ClientError::Protocol(reason) = err else {
+        return Err(format!("wrong error: {err}"));
+    };
+    if !reason.contains("4 MiB") {
+        return Err(format!("the error should name the cap: {reason}"));
     }
     Ok(())
 }

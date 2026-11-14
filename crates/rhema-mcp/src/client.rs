@@ -39,6 +39,15 @@ pub const MAX_LINE_BYTES: usize = 4 * 1024 * 1024;
 /// The stderr ring size kept for a stdio server's death report.
 pub const STDERR_TAIL_BYTES: usize = 8 * 1024;
 
+/// The hard cap on one HTTP response body, or one SSE event's data:
+/// the HTTP transport's counterpart to [`MAX_LINE_BYTES`]. A server
+/// that sends more has stopped framing.
+pub const MAX_HTTP_BODY_BYTES: usize = MAX_LINE_BYTES;
+
+/// The startup budget [`Client::connect_http`] uses when the caller
+/// names none.
+pub const DEFAULT_HTTP_STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Why a connection died.
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
@@ -313,6 +322,8 @@ enum KillSignal {
     /// The child's stdout ended: it is exiting on its own, reap it
     /// and report the death with its stderr tail.
     StreamEnded,
+    /// The handshake failed: no client will use this child, kill it.
+    Abort,
 }
 
 /// Why pending requests are being failed.
@@ -332,14 +343,17 @@ pub struct Client {
     http: Option<HttpState>,
 }
 
+/// The pooled HTTP client, HTTPS-capable through rustls.
+type HttpClient = hyper_util::client::legacy::Client<
+    hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
+    http_body_util::Full<bytes::Bytes>,
+>;
+
 /// The HTTP transport's state: the pooled hyper client, the endpoint,
 /// config headers, and the negotiated session.
 #[derive(Clone)]
 struct HttpState {
-    client: hyper_util::client::legacy::Client<
-        hyper_util::client::legacy::connect::HttpConnector,
-        http_body_util::Full<bytes::Bytes>,
-    >,
+    client: HttpClient,
     url: hyper::Uri,
     headers: BTreeMap<String, String>,
     session: Arc<tokio::sync::Mutex<HttpSession>>,
@@ -410,13 +424,15 @@ impl Client {
         // Reader: routes lines to the pending map; signals the death
         // watcher on EOF or framing violation. The signal carries
         // which: a violation terminates the child, a stream end means
-        // the child is already going.
-        let (kill_tx, kill_rx) = oneshot::channel::<KillSignal>();
+        // the child is already going. An unbounded sender lets the
+        // handshake path abort the child too, on a failed or timed-out
+        // handshake.
+        let (kill_tx, mut kill_rx) = mpsc::unbounded_channel::<KillSignal>();
         let reader_shared = Arc::clone(&shared);
         tokio::spawn(reader_task(
             tokio::io::BufReader::new(stdout),
             reader_shared,
-            kill_tx,
+            kill_tx.clone(),
         ));
 
         // Death watcher: on child exit, fails pending with the
@@ -433,8 +449,8 @@ impl Client {
                         PendingReason::Exited { tail },
                     );
                 }
-                signal = kill_rx => match signal {
-                    Ok(KillSignal::Violation) => {
+                signal = kill_rx.recv() => match signal {
+                    Some(KillSignal::Violation) => {
                         let _ = child_for_wait.start_kill();
                         let _ = child_for_wait.wait().await;
                         // The reader marked the connection dead
@@ -446,7 +462,7 @@ impl Client {
                                 .unwrap_or(ClientError::Dead(DeadConnection::Violation))
                         });
                     }
-                    Ok(KillSignal::StreamEnded) => {
+                    Some(KillSignal::StreamEnded) => {
                         // Reap the exiting child and report the death
                         // with its tail; the wait above may also have
                         // resolved, in which case this is a no-op.
@@ -457,7 +473,11 @@ impl Client {
                             PendingReason::Exited { tail },
                         );
                     }
-                    Err(_closed) => {}
+                    Some(KillSignal::Abort) => {
+                        let _ = child_for_wait.start_kill();
+                        let _ = child_for_wait.wait().await;
+                    }
+                    None => {}
                 },
             }
         });
@@ -468,27 +488,49 @@ impl Client {
             writer: Some(writer),
             http: None,
         };
-        client.handshake(startup_timeout).await?;
+        if let Err(err) = client.handshake(startup_timeout).await {
+            // The client drops here, closing stdin. A server that
+            // ignores EOF would otherwise outlive the failed attempt;
+            // tell the watcher to kill and reap it.
+            let _ = kill_tx.send(KillSignal::Abort);
+            return Err(err);
+        }
         Ok(client)
     }
 
+    /// Connects over Streamable HTTP with the default startup budget.
+    ///
+    /// # Errors
+    ///
+    /// See [`Client::connect_http_with_timeout`].
+    pub async fn connect_http(params: HttpParams) -> Result<Self, ClientError> {
+        Self::connect_http_with_timeout(params, DEFAULT_HTTP_STARTUP_TIMEOUT).await
+    }
+
     /// Connects over Streamable HTTP: performs the handshake POSTs
-    /// and stores the session.
+    /// and stores the session, all inside `startup_timeout`.
     ///
     /// # Errors
     ///
     /// URL parse failure, transport failure, a failed handshake
-    /// exchange, or an unsupported revision.
-    pub async fn connect_http(params: HttpParams) -> Result<Self, ClientError> {
+    /// exchange, an unsupported revision, or a handshake that outlived
+    /// `startup_timeout`.
+    pub async fn connect_http_with_timeout(
+        params: HttpParams,
+        startup_timeout: Duration,
+    ) -> Result<Self, ClientError> {
         let url: hyper::Uri = params
             .url
             .parse()
             .map_err(|err| ClientError::Http(format!("endpoint url: {err}")))?;
-        let client: hyper_util::client::legacy::Client<
-            hyper_util::client::legacy::connect::HttpConnector,
-            http_body_util::Full<bytes::Bytes>,
-        > = hyper_util::client::legacy::Client::builder(hyper_util::rt::TokioExecutor::new())
-            .build_http();
+        let connector = hyper_rustls::HttpsConnectorBuilder::new()
+            .with_webpki_roots()
+            .https_or_http()
+            .enable_http1()
+            .build();
+        let client: HttpClient =
+            hyper_util::client::legacy::Client::builder(hyper_util::rt::TokioExecutor::new())
+                .build(connector);
         let state = HttpState {
             client,
             url,
@@ -507,7 +549,10 @@ impl Client {
             writer: None,
             http: Some(state),
         };
-        me.handshake_http().await?;
+        match tokio::time::timeout(startup_timeout, me.handshake_http()).await {
+            Ok(result) => result?,
+            Err(_elapsed) => return Err(ClientError::Timeout),
+        }
         Ok(me)
     }
 
@@ -853,12 +898,25 @@ fn cancelled_line(id: u64) -> String {
     RpcNotification::new(method::CANCELLED, Some(params)).to_line()
 }
 
-/// Drains a response body into its bytes.
+/// Drains a response body into its bytes, refusing one over
+/// [`MAX_HTTP_BODY_BYTES`]: HTTP has no framing cap of its own, and a
+/// configured server is still a server that can misbehave.
 async fn collect_body(body: hyper::body::Incoming) -> Result<bytes::Bytes, ClientError> {
-    BodyExt::collect(body)
-        .await
-        .map(|collected| collected.to_bytes())
-        .map_err(|err| ClientError::Http(err.to_string()))
+    let mut body = body;
+    let mut bytes: Vec<u8> = Vec::new();
+    while let Some(frame) = body.frame().await {
+        let frame = frame.map_err(|err| ClientError::Http(err.to_string()))?;
+        let Ok(chunk) = frame.into_data() else {
+            continue;
+        };
+        if bytes.len().saturating_add(chunk.len()) > MAX_HTTP_BODY_BYTES {
+            return Err(ClientError::Protocol(
+                "http response body exceeded the 4 MiB cap",
+            ));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes::Bytes::from(bytes))
 }
 
 /// Parses a body as a JSON-RPC response envelope.
@@ -993,7 +1051,7 @@ async fn writer_task(
 async fn reader_task(
     mut reader: tokio::io::BufReader<tokio::process::ChildStdout>,
     shared: Arc<Shared>,
-    kill_tx: oneshot::Sender<KillSignal>,
+    kill_tx: mpsc::UnboundedSender<KillSignal>,
 ) {
     let die = |shared: &Shared, reason: PendingReason| {
         shared.fail_all(ClientError::Dead(DeadConnection::Violation), reason);
@@ -1149,6 +1207,8 @@ async fn sse_answer(body: hyper::body::Incoming, id: u64) -> Result<Value, Clien
     let mut body = body;
     let mut buffer: Vec<u8> = Vec::new();
     let mut data_lines: Vec<String> = Vec::new();
+    let mut data_bytes: usize = 0;
+    let mut total: usize = 0;
     loop {
         let chunk = match body.frame().await {
             Some(Ok(frame)) => match frame.into_data() {
@@ -1163,6 +1223,12 @@ async fn sse_answer(body: hyper::body::Incoming, id: u64) -> Result<Value, Clien
                 ));
             }
         };
+        total = total.saturating_add(chunk.len());
+        if total > MAX_HTTP_BODY_BYTES {
+            return Err(ClientError::Protocol(
+                "http response body exceeded the 4 MiB cap",
+            ));
+        }
         buffer.extend_from_slice(&chunk);
         while let Some(pos) = buffer.iter().position(|&b| b == b'\n') {
             let mut line: Vec<u8> = buffer.drain(..=pos).collect();
@@ -1177,8 +1243,14 @@ async fn sse_answer(body: hyper::body::Incoming, id: u64) -> Result<Value, Clien
                     return Ok(answer);
                 }
                 data_lines.clear();
+                data_bytes = 0;
             } else if let Some(data) = line.strip_prefix("data:") {
-                data_lines.push(data.trim_start().to_owned());
+                let data = data.trim_start();
+                data_bytes = data_bytes.saturating_add(data.len());
+                if data_bytes > MAX_HTTP_BODY_BYTES {
+                    return Err(ClientError::Protocol("an SSE event exceeded the 4 MiB cap"));
+                }
+                data_lines.push(data.to_owned());
             }
             // Other SSE fields (`event:`, `id:`, `retry:`) pass by.
         }

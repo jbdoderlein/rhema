@@ -311,10 +311,13 @@ impl McpManager {
                 .await
             }
             rhema_config::mcp::McpTransport::Http { url, headers } => {
-                Client::connect_http(HttpParams {
-                    url: url.clone(),
-                    headers: headers.clone(),
-                })
+                Client::connect_http_with_timeout(
+                    HttpParams {
+                        url: url.clone(),
+                        headers: headers.clone(),
+                    },
+                    startup_timeout,
+                )
                 .await
             }
         };

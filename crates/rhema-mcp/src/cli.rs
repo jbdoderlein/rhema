@@ -450,9 +450,9 @@ fn substitute_media(envelope: &mut Value, env: &CliEnv) {
         let written = env.tmp.as_ref().and_then(|tmp| {
             let ext = media_ext(mime)?;
             let dir = tmp.join("media");
-            std::fs::create_dir_all(&dir).ok()?;
+            rhema_config::privacy::private_dir(&dir).ok()?;
             let path = dir.join(format!("{}.{ext}", sha256_hex(&bytes)));
-            std::fs::write(&path, &bytes).ok()?;
+            rhema_config::privacy::private_write(&path, &bytes).ok()?;
             Some(path)
         });
         *block = match written {
