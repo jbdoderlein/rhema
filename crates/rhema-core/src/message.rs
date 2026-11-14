@@ -67,6 +67,26 @@ impl Message {
         content.extend(images.into_iter().map(Content::Image));
         Self { role, content }
     }
+
+    /// A user message carrying `text`; the shorthand for
+    /// `Message::text(Role::User, text)`.
+    pub fn user(text: impl Into<String>) -> Self {
+        Self::text(Role::User, text)
+    }
+}
+
+impl From<&str> for Message {
+    /// A bare string is a user message; see [`Message::user`].
+    fn from(text: &str) -> Self {
+        Self::user(text)
+    }
+}
+
+impl From<String> for Message {
+    /// An owned string is a user message; see [`Message::user`].
+    fn from(text: String) -> Self {
+        Self::user(text)
+    }
 }
 
 /// The image formats every target provider API accepts.

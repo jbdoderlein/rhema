@@ -171,6 +171,30 @@ pub trait ToolResolver: Send + Sync {
     }
 }
 
+#[async_trait]
+impl<T: ToolResolver + ?Sized> ToolResolver for Arc<T> {
+    fn specs(&self) -> Vec<crate::request::ToolSpec> {
+        (**self).specs()
+    }
+
+    fn replay_safety(&self, name: &str) -> ReplaySafety {
+        (**self).replay_safety(name)
+    }
+
+    async fn resolve(&self, call: ToolCall, ctx: &ToolContext) -> ToolResult {
+        (**self).resolve(call, ctx).await
+    }
+
+    async fn resolve_streaming(
+        &self,
+        call: ToolCall,
+        ctx: &ToolContext,
+        progress: &mut dyn ToolProgress,
+    ) -> ToolResult {
+        (**self).resolve_streaming(call, ctx, progress).await
+    }
+}
+
 /// The live status of a streaming tool call's inner work: what that work
 /// is doing now, the context its current model call carries, and what
 /// its model calls have spent, when the tool knows. Status, not

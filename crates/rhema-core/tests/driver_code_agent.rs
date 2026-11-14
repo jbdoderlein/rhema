@@ -105,6 +105,41 @@ async fn run_turn_drives_tool_use_to_a_final_answer() {
 }
 
 #[tokio::test]
+async fn turn_takes_a_user_string_and_builds_with_concrete_seams() {
+    // Both seams arrive as concrete values, not Arcs; `model` is the
+    // shorthand for `params.model`; a bare string is a user message.
+    let mut agent = Agent::builder()
+        .provider(MockProvider::new(vec![
+            tool_use_output(call("call_1", "echo", json!({ "text": "hi" }))),
+            end_turn_output("all done"),
+        ]))
+        .resolver(EchoResolver)
+        .model("mock-model")
+        .build()
+        .unwrap();
+    let mut session = Session::default();
+
+    let out = agent
+        .turn(
+            "run the echo tool",
+            &mut session,
+            &mut NullSink,
+            &ToolContext::default(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(out.stop_reason, StopReason::EndTurn);
+    assert_eq!(out.message, Message::text(Role::Assistant, "all done"));
+    assert_eq!(session.history[0], Message::user("run the echo tool"));
+    let roles: Vec<Role> = session.history.iter().map(|m| m.role).collect();
+    assert_eq!(
+        roles,
+        [Role::User, Role::Assistant, Role::Tool, Role::Assistant]
+    );
+}
+
+#[tokio::test]
 async fn run_turn_is_bounded_by_max_iterations() {
     let mut agent = Agent::builder()
         .provider(Arc::new(MockProvider::new((0..3).map(|i| {

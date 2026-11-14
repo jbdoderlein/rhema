@@ -7,8 +7,9 @@
 //! hook again (commit-before-execute), resolve each call in order, append
 //! its `Tool`-role result, hand the session to the hook a third time (the
 //! stream's outcome durable), and emit `StepEnd`. Tool errors never abort;
-//! they are in-band `is_error` results. [`run_turn`] is the provided
-//! coding-agent driver, not part of the primitive.
+//! they are in-band `is_error` results. [`Agent::turn`] and [`run_turn`]
+//! are the provided loop over steps; the step boundary stays the
+//! primitive a driver can persist, cancel, or steer around.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -285,6 +286,41 @@ impl Agent {
         Ok(Step { output: out })
     }
 
+    /// The default iteration cap of [`Agent::turn`]: a runaway-loop
+    /// guard, not a task budget. A driver with its own policy passes a
+    /// different cap to [`Agent::turn_with_limit`].
+    pub const DEFAULT_TURN_STEPS: u32 = 32;
+
+    /// A whole turn: append `input`, then step until the model answers
+    /// without asking for tools, up to [`Self::DEFAULT_TURN_STEPS`].
+    ///
+    /// `input` is a user message; a `&str` or `String` is accepted, and
+    /// so is a [`Message`] carrying images or a different role. The loop
+    /// is the common case; [`Agent::step`] remains the primitive, one
+    /// exchange that stops even when the model asked for tools.
+    pub async fn turn(
+        &mut self,
+        input: impl Into<Message>,
+        session: &mut Session,
+        sink: &mut dyn EventSink,
+        ctx: &ToolContext,
+    ) -> Result<ModelOutput, AgentError> {
+        self.turn_with_limit(input, session, sink, ctx, Self::DEFAULT_TURN_STEPS)
+            .await
+    }
+
+    /// [`Agent::turn`] with the loop guard chosen by the caller.
+    pub async fn turn_with_limit(
+        &mut self,
+        input: impl Into<Message>,
+        session: &mut Session,
+        sink: &mut dyn EventSink,
+        ctx: &ToolContext,
+        max_iterations: u32,
+    ) -> Result<ModelOutput, AgentError> {
+        run_turn(self, session, input.into(), sink, ctx, max_iterations).await
+    }
+
     /// The system prompt stamped into every request, as set by
     /// [`AgentBuilder::system`]; `None` when none was set.
     pub fn system(&self) -> Option<&str> {
@@ -305,6 +341,7 @@ pub struct AgentBuilder {
     provider: Option<Arc<dyn ModelProvider>>,
     resolver: Option<Arc<dyn ToolResolver>>,
     system: Option<String>,
+    model: Option<String>,
     params: Option<ChatParams>,
     commit: Option<CommitHook>,
 }
@@ -323,6 +360,7 @@ impl std::fmt::Debug for AgentBuilder {
                 &self.resolver.as_ref().map(|_| "<dyn ToolResolver>"),
             )
             .field("system", &self.system)
+            .field("model", &self.model)
             .field("params", &self.params)
             .field("commit", &self.commit.as_ref().map(|_| "<commit hook>"))
             .finish()
@@ -330,16 +368,26 @@ impl std::fmt::Debug for AgentBuilder {
 }
 
 impl AgentBuilder {
-    /// Sets the model backend (required).
-    pub fn provider(mut self, provider: Arc<dyn ModelProvider>) -> Self {
-        self.provider = Some(provider);
+    /// Sets the model backend (required). A concrete provider and an
+    /// `Arc` the caller already holds both pass unchanged: `Arc<T>` is a
+    /// `ModelProvider` when `T` is.
+    pub fn provider(mut self, provider: impl ModelProvider + 'static) -> Self {
+        self.provider = Some(Arc::new(provider));
         self
     }
 
     /// Sets the tool resolver; without one, `specs()` is empty and a `ToolUse`
-    /// stop resolves to an in-band error result.
-    pub fn resolver(mut self, resolver: Arc<dyn ToolResolver>) -> Self {
-        self.resolver = Some(resolver);
+    /// stop resolves to an in-band error result. A concrete resolver and
+    /// an `Arc` both pass, as with [`AgentBuilder::provider`].
+    pub fn resolver(mut self, resolver: impl ToolResolver + 'static) -> Self {
+        self.resolver = Some(Arc::new(resolver));
+        self
+    }
+
+    /// Sets the model identifier; shorthand for the `model` field of
+    /// [`params`](AgentBuilder::params), which still carries the rest.
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
         self
     }
 
@@ -366,11 +414,15 @@ impl AgentBuilder {
 
     /// Builds the agent; fails if no provider was set.
     pub fn build(self) -> Result<Agent, AgentError> {
+        let mut params = self.params.unwrap_or_default();
+        if let Some(model) = self.model {
+            params.model = model;
+        }
         Ok(Agent {
             provider: self.provider.ok_or(AgentError::MissingProvider)?,
             resolver: self.resolver,
             system: self.system,
-            params: self.params.unwrap_or_default(),
+            params,
             commit: self.commit,
             steps: 0,
         })
@@ -474,9 +526,11 @@ pub fn close_orphaned_calls(history: &mut Vec<Message>) -> Vec<String> {
     repaired
 }
 
-/// The provided coding-agent driver: push the user input, then loop steps
-/// until the model stops requesting tools. Not the primitive, the RSD
-/// driver (crate 2) has the same shape with different scaffolding.
+/// The loop in free-function form, for a caller that already holds a
+/// [`Message`]: push the input, then step until the model stops
+/// requesting tools. [`Agent::turn`] is the shorthand; the step boundary
+/// stays the primitive, and a driver with its own persistence or
+/// steering policy can own the loop instead.
 pub async fn run_turn(
     agent: &mut Agent,
     session: &mut Session,

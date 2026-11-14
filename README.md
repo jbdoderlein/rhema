@@ -52,66 +52,66 @@ and serves chat over HTTP, with a web UI and an Android
 client talking to it. It lives in its own repository:
 <https://git.vhaudiquet.fr/vhaudiquet/rhema-claw>.
 
-## rhema-core
+## rhema-coding-agent
 
-Here is a small example code using `rhema-core` to interact with a model:
+The coding agent is one assembly of the core: `ShellTools` as the
+resolver, plus approval, skills, transcript, MCP, and subagents.
 
 ```rust
-use std::sync::Arc;
+let mut agent = CodingAgent::new(CodingAgentConfig::new(
+    AnthropicProvider::new(key),   // any ModelProvider
+    "claude-sonnet-5-5",
+    workspace,
+    AllowAll,                      // or your Approval
+))?;
 
-use rhema_core::{
-    async_trait, run_turn, Agent, AgentError, ChatParams, Content, Event,
-    EventSink, Message, MockProvider, ModelOutput, Role, Session, StopReason,
-    ToolCall, ToolContext, ToolResolver, ToolResult, ToolSpec, Usage,
-};
+let reply = agent
+    .turn("fix the failing test", &mut Console::stdout())
+    .await?;
+```
 
-struct Echo;
+## rhema-core
 
-#[async_trait]
-impl ToolResolver for Echo {
-    fn specs(&self) -> Vec<ToolSpec> {
-        vec![ToolSpec::new("echo", "Echo the input back", serde_json::json!({}))]
-    }
-    async fn resolve(&self, call: ToolCall, _ctx: &ToolContext) -> ToolResult {
-        ToolResult::success(&call.id, call.args.to_string())
-    }
-}
+Rhema Core is the generic primitive: a provider, one `ToolResolver`, a
+session, and the step boundary. `provider`, `order_tools`, and `Print`
+below stand for your own implementations.
 
-// A sink that prints every event; replace with your UI/log/channel.
-struct Print;
-impl EventSink for Print {
-    fn emit(&mut self, event: Event<'_>) { println!("{event:?}"); }
-}
+### A whole turn
 
-// Any ModelProvider implementation; MockProvider is the scripted offline
-// one (feature `mock`). A real HTTP adapter is a rhema-provider-* crate.
-fn provider() -> Arc<dyn rhema_core::ModelProvider> {
-    Arc::new(MockProvider::new(vec![ModelOutput {
-        message: Message {
-            role: Role::Assistant,
-            content: vec![Content::Text("done".into())],
-        },
-        stop_reason: StopReason::EndTurn,
-        usage: Usage::default(),
-    }]))
-}
+```rust
+let mut agent = Agent::builder()
+    .provider(provider)            // any ModelProvider
+    .resolver(order_tools)         // your ToolResolver: check_stock, ...
+    .system("You fulfill orders.")
+    .model("model-id")
+    .build()?;
 
-#[tokio::main]
-async fn main() -> Result<(), AgentError> {
-    let mut agent = Agent::builder()
-        .provider(provider())
-        .resolver(Arc::new(Echo))
-        .system("you are a helpful agent")
-        .params(ChatParams::new("model-id")) // any id your provider accepts; the mock ignores it
-        .build()?;
-    let mut session = Session::default();
-    let ctx = ToolContext::default();
-    let input = Message::text(Role::User, "run the echo tool, then summarize");
-    let output = run_turn(&mut agent, &mut session, input, &mut Print, &ctx, 8).await?;
-    println!("{output:?}");
-    Ok(())
+let mut session = Session::default();
+let reply = agent
+    .turn("can we fulfill an order of 8 units of SKU-42?",
+          &mut session, &mut Print, &ToolContext::default())
+    .await?;
+```
+
+`turn` owns the loop: run the model, execute the tools it asks for, send
+the results back, until it answers.
+
+### One step
+
+```rust
+let mut session = Session::default();
+session.history.push(Message::user("can we fulfill an order of 8 units of SKU-42?"));
+
+let step = agent.step(&mut session, &mut Print, &ToolContext::default()).await?;
+
+// The model asked for a tool; the engine ran it. The next step sends the result back.
+if step.output.stop_reason == StopReason::ToolUse {
+    let reply = agent.step(&mut session, &mut Print, &ToolContext::default()).await?;
 }
 ```
+
+`step` is the primitive: one exchange, never a loop. You own the loop,
+so you can persist, cancel, or steer between rounds.
 
 Offline demo with zero network (the mock replays a scripted exchange):
 
