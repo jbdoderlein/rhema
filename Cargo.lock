@@ -3752,6 +3752,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rhema-websearch-exa"
+version = "0.2.6"
+dependencies = [
+ "async-trait",
+ "reqwest",
+ "rhema-websearch",
+ "serde",
+ "serde_json",
+ "tokio",
+ "wiremock",
+]
+
+[[package]]
 name = "ring"
 version = "0.17.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
