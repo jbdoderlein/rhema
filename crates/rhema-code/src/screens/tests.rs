@@ -2930,8 +2930,6 @@ fn the_websearch_rows_show_the_chain_order_and_the_inert_tail() {
     assert_eq!(rows[1].position, Some(2));
     assert_eq!(rows[2].position, None, "unordered is inert");
     assert!(!rows[2].ordered);
-    assert!(rows[0].key_stored, "a keychain ref counts as stored");
-    assert!(!rows[2].key_stored, "no tiers filled, nothing stored");
     assert!(rows[3].add);
 }
 

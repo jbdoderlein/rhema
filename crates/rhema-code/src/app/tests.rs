@@ -6924,6 +6924,65 @@ fn adding_a_websearch_provider_places_its_key_and_enrolls_it() {
 }
 
 #[test]
+fn a_second_provider_of_the_same_kind_joins_the_chain() {
+    // Three kinds on the dialog's list is a catalog, not a quota:
+    // the same vendor can be added again and again, each with its
+    // own key, the name stage numbering the suggestions.
+    let mut h = harness_with_secrets(None, None, Session::default());
+    h.app
+        .open_settings_at(crate::screens::SettingsSection::WebSearch);
+    // First pass: Exa, keep the suggested name, type a key.
+    h.app.on_key(key(KeyCode::Enter));
+    {
+        let crate::Screen::Settings(settings) = &mut h.app.screen else {
+            panic!("settings open");
+        };
+        let dialog = settings.websearch_dialog.as_mut().unwrap();
+        dialog.handle_key(key(KeyCode::Down)); // exa
+        dialog.handle_key(key(KeyCode::Enter));
+        dialog.handle_key(key(KeyCode::Enter)); // keep "Exa"
+        for c in "key-one".chars() {
+            dialog.handle_key(key(KeyCode::Char(c)));
+        }
+    }
+    h.app.on_key(key(KeyCode::Enter));
+    // Second pass: down to the add row (one provider row above it),
+    // Exa again, the suggestion reads "Exa 2".
+    h.app.on_key(key(KeyCode::Down));
+    h.app.on_key(key(KeyCode::Enter));
+    {
+        let crate::Screen::Settings(settings) = &mut h.app.screen else {
+            panic!("settings open");
+        };
+        let dialog = settings.websearch_dialog.as_mut().unwrap();
+        dialog.handle_key(key(KeyCode::Down));
+        dialog.handle_key(key(KeyCode::Enter));
+        assert_eq!(
+            dialog.input, "Exa 2",
+            "the suggestion numbers past the taken"
+        );
+        dialog.handle_key(key(KeyCode::Enter));
+        for c in "key-two".chars() {
+            dialog.handle_key(key(KeyCode::Char(c)));
+        }
+    }
+    h.app.on_key(key(KeyCode::Enter));
+    let stored = h.store.load().unwrap().effective(Some("personal"));
+    assert_eq!(
+        stored.websearch.len(),
+        2,
+        "two Exa instances, distinct names, one chain"
+    );
+    assert_eq!(stored.websearch["Exa"].provider, "exa");
+    assert_eq!(stored.websearch["Exa 2"].provider, "exa");
+    assert_eq!(
+        stored.websearch_order,
+        vec!["Exa".to_owned(), "Exa 2".to_owned()],
+        "each add enrolls at the chain's end, in add order"
+    );
+}
+
+#[test]
 fn the_websearch_order_moves_and_persists_without_a_rebuild() {
     let mut h = harness(None, None, Session::default());
     h.app.config.set_for_profile(Some("personal"), |p| {

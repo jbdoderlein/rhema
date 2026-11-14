@@ -13,10 +13,6 @@ pub struct WebSearchRow {
     /// Which adapter serves it: `brave`, `exa`, or `tavily`, stored
     /// as given.
     pub kind: String,
-    /// Whether a key is reachable from the stored form: a literal, a
-    /// keychain ref, or nothing (an env-only instance, the tiers
-    /// decide at use time, so the row shows the stored shape only).
-    pub key_stored: bool,
     /// Whether the instance sits in the chain order: an unordered one
     /// lists dim and inert, `search` never reaches it.
     pub ordered: bool,
@@ -42,7 +38,6 @@ pub fn websearch_rows(
             Some(WebSearchRow {
                 name: name.clone(),
                 kind: instance.provider.clone(),
-                key_stored: instance.api_key.is_some() || instance.secret_ref.is_some(),
                 ordered: true,
                 position: Some(index + 1),
                 add: false,
@@ -56,7 +51,6 @@ pub fn websearch_rows(
         rows.push(WebSearchRow {
             name: name.clone(),
             kind: instance.provider.clone(),
-            key_stored: instance.api_key.is_some() || instance.secret_ref.is_some(),
             ordered: false,
             position: None,
             add: false,
@@ -65,7 +59,6 @@ pub fn websearch_rows(
     rows.push(WebSearchRow {
         name: String::new(),
         kind: String::new(),
-        key_stored: false,
         ordered: false,
         position: None,
         add: true,
@@ -74,18 +67,13 @@ pub fn websearch_rows(
 }
 
 /// The kinds the add-provider dialog offers, in dialog order: the
-/// registry's spelling, the display name the name stage suggests
-/// (instance names are freeform, the Providers page's "Google Gemini"
-/// rule, not the agent-name rule), and the one-line gloss under it.
-pub const WEBSEARCH_KINDS: &[(&str, &str, &str)] = &[
-    (
-        "brave",
-        "Brave",
-        "Brave Search, pay-as-you-go, generous free tier",
-    ),
-    ("exa", "Exa", "Exa, neural search, pay-as-you-go"),
-    ("tavily", "Tavily", "Tavily, LLM-flavored search, free tier"),
-];
+/// registry's spelling and the display name the name stage suggests.
+/// A plain list, the Providers page's shape — a vendor is a row, a
+/// row can be picked again and again, the name stage numbers the
+/// suggestions, and nothing here bounds how many instances a profile
+/// holds.
+pub const WEBSEARCH_KINDS: &[(&str, &str)] =
+    &[("brave", "Brave"), ("exa", "Exa"), ("tavily", "Tavily")];
 
 /// Which half of the add-provider dialog is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

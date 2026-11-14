@@ -729,7 +729,7 @@ pub(crate) fn settings_page(
                 // 1.., first success wins. An unordered row lists
                 // dim, inert, and `[` enrolls it.
                 let dim = !row.ordered;
-                let mut line = Line::from(vec![
+                let line = Line::from(vec![
                     super::chrome::marker(selected, theme),
                     Span::raw(match row.position {
                         Some(position) => format!("{position}."),
@@ -740,9 +740,6 @@ pub(crate) fn settings_page(
                     Span::raw(row.name.clone()).fg(if dim { theme.text3 } else { theme.text }),
                     Span::raw(format!(" \u{b7} {}", row.kind)).fg(theme.text3),
                 ]);
-                if !row.key_stored {
-                    line.push_span(Span::raw(" \u{b7} no key stored").fg(theme.warn));
-                }
                 lines.push(settings_row(line, selected, theme));
             }
             let add = settings.websearch.len();
