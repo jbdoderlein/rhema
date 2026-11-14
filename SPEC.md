@@ -759,7 +759,13 @@ to lose, the exit code was the whole message, so here the delivery
 itself retires the line: the steering drain consumes what it
 returns, a steered finish never re-delivers as the idle prompt, and
 a line the idle take ran is gone from the drain too. The finish
-card is taken once for the transcript either way. The presentation:
+card is taken once for the transcript either way: the detection
+take owns the card, the delivery take owns the line. A finish the
+tick carded mid-turn that the driver never steered (minted after
+the turn's last step boundary, the drain points being loop start
+and each tool step) comes back after the turn ends as the idle
+prompt only, its card already standing; a fresh finish cards at
+delivery. Either way one card, one line to the model. The presentation:
 the transcript records every finish as its own card, left-aligned
 under a neutral per-palette fill, the third voice, neither the
 reader's prompt (right-aligned, accent tint) nor the response (the
@@ -785,6 +791,20 @@ only (the one-shot has no idle tick): a job outliving the run is
 the daemon's, visible to the next session only through `job ls`. A
 sandbox session wires no `job` function. Its shells run elsewhere,
 and it spawns no poller.
+
+**Self-stops.** A job the session ended through its own shim —
+`job stop`, `job rm`, `job shutdown` — is no finish at all: the
+model ordered the end, and the stop's own output is the
+confirmation, so a notice would spend a turn telling it what it
+just did. The ending verbs record the ids they stopped in a
+session-scoped file under the temp dir (append-only, one short
+write per record, removed when the session's handle drops); the
+poller reads the record before minting, so an ordered stop leaves
+the strip silently, and a job `shutdown` failed to stop still
+announces. The record is keyed by the session tag: a stop aimed at
+another session's job silences nothing on that side, and a stop
+from anywhere else — the user's own terminal, another session, the
+kernel — records nothing and announces as before.
 
 **Detection, exactly.** The poller keeps the jobs it saw running,
 first-seen order; a listing that fails to parse or a poll that

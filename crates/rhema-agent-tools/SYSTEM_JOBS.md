@@ -11,4 +11,6 @@ If work remains, keep going; the notice steers in at the next step boundary.
     job logs <id>             # its output so far
     job stop <id>             # stop it
 
+A job you stop yourself (`job stop`, `job shutdown`) sends no notice: the stop's own output is the confirmation then.
+
 Use it for anything long-running. A foreground call that waits on a server times out and wastes the turn.

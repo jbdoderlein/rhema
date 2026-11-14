@@ -11,6 +11,16 @@
 //! delivery shape over a listing instead of a registry, so a job the
 //! model started reaches it without a poll of its own.
 //!
+//! One end is no finish at all: a job the session stopped through its
+//! own shim (`job stop`, `job rm`, `job shutdown`) mints nothing. The
+//! model ordered that end, the stop's own output was the confirmation,
+//! and a notice would spend a turn telling it what it just did — the
+//! transcript's own account of this bug. The shim's ending verbs
+//! record the ids they stopped; the poller reads the session's record
+//! before minting, so an ordered stop leaves the strip silently while
+//! a stop from anywhere else — the user's terminal, another session,
+//! the kernel — still announces.
+//!
 //! A poll per tick, not a subscription: the backend does stream
 //! events (`gob events`), but the shim's listing is the whole
 //! interface the frontend reads, and a subscription would tie the
@@ -29,7 +39,7 @@
 //! rule telling the truth: a query-only drain protects a fetch, and
 //! a job has none.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -137,13 +147,21 @@ fn announcement(id: &str, command: &str, exit_code: Option<i32>) -> String {
 /// The transition pass, run once per listing: every job last seen
 /// running that the listing no longer reports as running has finished.
 /// A stopped row gives the exit code; a vanished row (removed under
-/// us) finishes with none. `running` keeps the first-seen order, so
-/// finishes mint oldest first.
-fn observe(running: &mut Vec<(String, JobRow)>, feed: &mut Feed, rows: &[JobRow]) {
+/// us) finishes with none. An id in `stopped` — the session's
+/// self-stop record — leaves the running set without minting: the
+/// end was the model's own order. `running` keeps the first-seen
+/// order, so finishes mint oldest first.
+fn observe(
+    running: &mut Vec<(String, JobRow)>,
+    feed: &mut Feed,
+    rows: &[JobRow],
+    stopped: &HashSet<String>,
+) {
     let mut alive: Vec<(String, JobRow)> = Vec::new();
     for (id, seen) in running.drain(..) {
         match rows.iter().find(|row| row.id == id) {
             Some(row) if row.status.starts_with("running") => alive.push((id, row.clone())),
+            _ if stopped.contains(&id) => {}
             Some(row) => feed.mint(seen, row.exit_code),
             None => feed.mint(seen, None),
         }
@@ -163,11 +181,15 @@ pub struct JobsHandle {
     entries: Arc<Mutex<Vec<JobEntry>>>,
     feed: Arc<Mutex<Feed>>,
     stop: Arc<AtomicBool>,
+    /// This session's tag: the self-stop record's name, removed when
+    /// the handle drops, the session's suppressions history with it.
+    session: String,
 }
 
 impl Drop for JobsHandle {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+        rhema_agent_tools::jobs::forget_stopped(&self.session);
     }
 }
 
@@ -180,6 +202,9 @@ impl JobsHandle {
         }
         let bin = std::env::current_exe().ok()?;
         let session = session_id().to_owned();
+        // A copy for the handle: the thread's own goes with the
+        // closure, and the record's cleanup reads it after both.
+        let own = session.clone();
         let entries = Arc::new(Mutex::new(Vec::new()));
         let feed = Arc::new(Mutex::new(Feed::default()));
         let stop = Arc::new(AtomicBool::new(false));
@@ -194,6 +219,7 @@ impl JobsHandle {
             entries,
             feed,
             stop,
+            session: own,
         })
     }
 
@@ -316,6 +342,7 @@ impl JobsHandle {
             entries: Arc::new(Mutex::new(entries)),
             feed: Arc::new(Mutex::new(Feed::default())),
             stop: Arc::new(AtomicBool::new(false)),
+            session: session_id().to_owned(),
         }
     }
 
@@ -335,6 +362,7 @@ impl JobsHandle {
                     .collect(),
             })),
             stop: Arc::new(AtomicBool::new(false)),
+            session: session_id().to_owned(),
         }
     }
 }
@@ -381,8 +409,18 @@ fn poll(
         let Ok(rows) = serde_json::from_slice::<Vec<JobRow>>(&output.stdout) else {
             continue;
         };
+        // The record only matters when a mint is possible: a job this
+        // process watched running has to leave first. The read rides
+        // the tick that spawns the listing already, one small file
+        // behind a poll that just forked, and stays outside the feed
+        // lock: a slow disk must not stall a take.
+        let stopped = if running.is_empty() {
+            HashSet::new()
+        } else {
+            rhema_agent_tools::jobs::stopped_ids(&session)
+        };
         if let Ok(mut feed) = feed.lock() {
-            observe(&mut running, &mut feed, &rows);
+            observe(&mut running, &mut feed, &rows, &stopped);
         }
         let now = Instant::now();
         first_seen.retain(|id, _| rows.iter().any(|row| &row.id == id));
@@ -429,7 +467,12 @@ mod tests {
     fn a_running_job_that_stops_mints_one_finish() {
         let mut running = vec![("abc".to_owned(), row("abc", "running", None))];
         let mut feed = Feed::default();
-        observe(&mut running, &mut feed, &[row("abc", "stopped", Some(1))]);
+        observe(
+            &mut running,
+            &mut feed,
+            &[row("abc", "stopped", Some(1))],
+            &HashSet::new(),
+        );
         assert!(running.is_empty(), "the job left the running set");
         assert_eq!(feed.pending.len(), 1);
         let finished = &feed.pending[0].finished;
@@ -445,10 +488,21 @@ mod tests {
     fn a_stopped_job_never_seen_running_mints_nothing() {
         let mut running = Vec::new();
         let mut feed = Feed::default();
-        observe(&mut running, &mut feed, &[row("abc", "stopped", Some(0))]);
+        let none = HashSet::new();
+        observe(
+            &mut running,
+            &mut feed,
+            &[row("abc", "stopped", Some(0))],
+            &none,
+        );
         assert!(feed.pending.is_empty(), "no watch, no finish");
         // A still-running job is taken up instead.
-        observe(&mut running, &mut feed, &[row("abc", "running", None)]);
+        observe(
+            &mut running,
+            &mut feed,
+            &[row("abc", "running", None)],
+            &none,
+        );
         assert!(feed.pending.is_empty());
         assert_eq!(running.len(), 1);
     }
@@ -457,7 +511,7 @@ mod tests {
     fn a_job_that_vanishes_from_the_listing_finishes_stopped() {
         let mut running = vec![("abc".to_owned(), row("abc", "running", None))];
         let mut feed = Feed::default();
-        observe(&mut running, &mut feed, &[]);
+        observe(&mut running, &mut feed, &[], &HashSet::new());
         assert_eq!(feed.pending.len(), 1);
         assert_eq!(feed.pending[0].finished.exit_code, None);
         assert_eq!(
@@ -480,6 +534,7 @@ mod tests {
                 row("aaa", "stopped", Some(0)),
                 row("bbb", "stopped", Some(2)),
             ],
+            &HashSet::new(),
         );
         let ids: Vec<&str> = feed
             .pending
@@ -487,6 +542,44 @@ mod tests {
             .map(|pending| pending.finished.id.as_str())
             .collect();
         assert_eq!(ids, vec!["aaa", "bbb"]);
+    }
+
+    #[test]
+    fn a_job_the_session_stopped_itself_mints_nothing() {
+        let mut running = vec![("abc".to_owned(), row("abc", "running", None))];
+        let mut feed = Feed::default();
+        let stopped: HashSet<String> = ["abc".to_owned()].into();
+        observe(
+            &mut running,
+            &mut feed,
+            &[row("abc", "stopped", Some(1))],
+            &stopped,
+        );
+        assert!(running.is_empty(), "the job still left the running set");
+        assert!(feed.pending.is_empty(), "no notice for an ordered stop");
+        // One the session did not stop still announces.
+        let mut running = vec![("def".to_owned(), row("def", "running", None))];
+        observe(
+            &mut running,
+            &mut feed,
+            &[row("def", "stopped", Some(0))],
+            &stopped,
+        );
+        assert_eq!(feed.pending.len(), 1);
+    }
+
+    #[test]
+    fn a_self_stopped_job_that_vanishes_mints_nothing() {
+        // A stop and a `job rm` inside one tick window leave no row to
+        // carry the fact: the record is consulted on the vanish too.
+        let mut running = vec![("abc".to_owned(), row("abc", "running", None))];
+        let mut feed = Feed::default();
+        let stopped: HashSet<String> = ["abc".to_owned()].into();
+        observe(&mut running, &mut feed, &[], &stopped);
+        assert!(
+            feed.pending.is_empty(),
+            "a removed job was ordered gone too"
+        );
     }
 
     #[test]

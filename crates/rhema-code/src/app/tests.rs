@@ -6045,6 +6045,53 @@ fn a_running_turn_shows_a_job_finish_card_and_leaves_one_delivery_to_the_driver(
     assert!(h.app.jobs.as_ref().unwrap().take_notifications().is_empty());
 }
 
+/// A finish the driver never steered — minted after the turn's last
+/// step boundary — comes back after the turn ends as the idle prompt
+/// only: the detection already recorded its card, so the delivery
+/// must not push it a second time, and a further tick starts nothing.
+#[test]
+fn a_finish_missed_by_the_steering_delivers_its_prompt_without_a_second_card() {
+    let mut h = harness(Some("key"), Some("m"), Session::default());
+    let line = "Background job abc (\"npm run dev\") has finished (exit 0).".to_owned();
+    let cards = |h: &Harness| {
+        h.app
+            .transcript
+            .lines()
+            .iter()
+            .filter(|entry| matches!(entry, Line::Notification(text) if *text == line))
+            .count()
+    };
+    h.app.jobs = Some(crate::jobs::JobsHandle::stub_with_finished(vec![
+        crate::jobs::JobFinished {
+            id: "abc".to_owned(),
+            command: "npm run dev".to_owned(),
+            exit_code: Some(0),
+            line: line.clone(),
+        },
+    ]));
+    // The finish lands while a turn runs: the card is the record.
+    h.app.turn.running = true;
+    assert!(h.app.on_tick().is_empty());
+    assert_eq!(cards(&h), 1, "the detection card");
+    // The turn ends without the driver draining: the idle tick
+    // delivers the line, and no second card.
+    h.app.turn.running = false;
+    let effects = h.app.on_tick();
+    let assert_matches = |effects: &[Effect]| {
+        assert_eq!(effects.len(), 1, "the idle tick starts one turn");
+        let Effect::StartTurn { text, images } = &effects[0] else {
+            panic!("the idle tick starts a turn, got {:?}", effects[0]);
+        };
+        assert_eq!(text, &line);
+        assert!(images.is_empty());
+    };
+    assert_matches(&effects);
+    assert_eq!(cards(&h), 1, "the delivery repeated the detection's card");
+    // A further tick starts nothing: the take retired the line.
+    assert!(h.app.on_tick().is_empty());
+    assert_eq!(cards(&h), 1);
+}
+
 /// Both feeds pending and the session idle: one prompt carries both
 /// announcements, subagents first, background jobs second, the
 /// steering chain's order, and neither feed swallowed by the other.

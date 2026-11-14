@@ -105,12 +105,18 @@ impl App {
     ///   step boundary;
     /// - with no turn running, the tick delivers: it takes the
     ///   pending lines, subagent lines first, then background jobs',
-    ///   the steering chain's order, records each as its own card,
-    ///   and runs the joined text as the next turn's prompt. The
-    ///   take retires the lines, so the driver's turn-start drain
-    ///   does not repeat what the prompt already said.
+    ///   the steering chain's order, records each undrawn finish as
+    ///   its own card, and runs the joined text as the next turn's
+    ///   prompt. The take retires the lines, so the driver's
+    ///   turn-start drain does not repeat what the prompt already
+    ///   said.
     ///
-    /// A finish is delivered exactly once per line: a job's steering
+    /// A finish is delivered exactly once per line, and its card is
+    /// recorded exactly once: the detection take owns the card, the
+    /// delivery take owns the line. A finish the tick carded mid-turn
+    /// that the driver never steered — minted after the turn's last
+    /// step boundary, say — comes back after the turn ends as the
+    /// idle prompt only, its card already standing. A job's steering
     /// drain consumes what it returns (the exit code was the whole
     /// message), and a subagent's is retired by the fetch or this
     /// take, the re-announce in between is the registry's crash
@@ -129,19 +135,18 @@ impl App {
         }
         let mut lines: Vec<String> = Vec::new();
         for feed in feeds {
-            let finishes = feed.take_finished_lines();
+            // The record: one card per finish, at detection if a turn
+            // runs, at delivery if the session is idle. This take
+            // answers only the finishes not carded yet, so a delivery
+            // that arrives after the detection never pushes its card a
+            // second time.
+            for line in feed.take_finished_lines() {
+                self.transcript.push_notification(&line);
+            }
             if promptable {
-                // The delivery is the record: one card per line.
-                for line in feed.take_notifications() {
-                    self.transcript.push_notification(&line);
-                    lines.push(line);
-                }
-            } else {
-                // The detection is the record; the delivery stays
-                // with the driver's steering.
-                for line in finishes {
-                    self.transcript.push_notification(&line);
-                }
+                // The delivery: everything still pending, carded here
+                // or at detection, rides the next turn's prompt.
+                lines.extend(feed.take_notifications());
             }
         }
         if !promptable || lines.is_empty() {

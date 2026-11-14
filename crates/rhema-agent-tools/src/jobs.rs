@@ -26,6 +26,13 @@
 //!   on it: two sessions in one workspace see their own jobs, `--dir` is
 //!   the deliberate shared view of one directory, and `--all` is the
 //!   machine's.
+//! - **The self-stop record.** The verbs that end a job (`stop`, `rm`,
+//!   `shutdown`) append the ids they stopped to a session-scoped file
+//!   under the temp dir, and the frontend's poller reads it
+//!   ([`stopped_ids`]) before minting a finish: a job the model ordered
+//!   stopped must not come back as a notice telling it what it just
+//!   did. The record is keyed by the session tag, so a stop aimed at
+//!   another session's job never silences that session's own feed.
 //! - **Refusal.** The backend's own dedupe reuses an identical running
 //!   command and rewrites its description, which would hand one session's
 //!   server to another. [`run_command`] lists first and refuses instead,
@@ -39,7 +46,7 @@
 //! Everything else is a forwarding shim, and stays one so the backend can
 //! be replaced without the prompt, the shim name, or the frontend moving.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -344,6 +351,74 @@ fn tagged(session: &str, command: &str) -> String {
     format!("[{session}] {command}")
 }
 
+/// The record of the jobs a session stopped through this shim: one id
+/// per line, in the temp dir, keyed by the session tag. The ending
+/// verbs append; the frontend's poller reads before minting. The file
+/// is append-only and never pruned: a record without its stop
+/// suppresses a mint for an id that never mints anyway, and a session's
+/// ids are short, so the file stays a list of a few tokens for the
+/// session's life.
+fn stopped_record_path(session: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("rhema-jobs-{session}-stopped"))
+}
+
+/// Appends `ids` to the record at `path`, one write: a short
+/// append-mode write lands whole or not at all, so a concurrent reader
+/// never sees a torn line.
+fn record_stopped_in(path: &Path, ids: &[String]) -> std::io::Result<()> {
+    use std::io::Write as _;
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
+    let mut text = String::new();
+    for id in ids {
+        text.push_str(id.trim());
+        text.push('\n');
+    }
+    file.write_all(text.as_bytes())
+}
+
+/// The ids recorded at `path`. An absent file records nothing; a line
+/// torn by a failing write simply never matches an id, and an id that
+/// never matches mints as before.
+fn stopped_ids_in(path: &Path) -> HashSet<String> {
+    std::fs::read_to_string(path)
+        .map(|text| text.lines().map(str::trim).map(str::to_owned).collect())
+        .unwrap_or_default()
+}
+
+/// Removes the record at `path`: the session is over, its suppressions
+/// are history. Best effort.
+fn forget_stopped_in(path: &Path) {
+    let _ = std::fs::remove_file(path);
+}
+
+/// Records the ids this session's verbs stopped, so the finish feed
+/// ([`stopped_ids`]) announces nothing for them: the model ordered
+/// those ends, its own commands were the confirmation. No session, no
+/// record.
+pub fn record_stopped(session: Option<&str>, ids: &[String]) {
+    let Some(session) = session.filter(|session| !session.is_empty()) else {
+        return;
+    };
+    let _ = record_stopped_in(&stopped_record_path(session), ids);
+}
+
+/// The ids this session stopped through the shim: what the frontend's
+/// poller consults before minting a finish.
+pub fn stopped_ids(session: &str) -> HashSet<String> {
+    stopped_ids_in(&stopped_record_path(session))
+}
+
+/// Forgets the record: the session's process is on its way out.
+pub fn forget_stopped(session: &str) {
+    forget_stopped_in(&stopped_record_path(session));
+}
+
 /// The `__jobs` mode's entry: the process's cwd and session come from the
 /// environment, the backend from [`BACKEND`].
 pub fn cli_run(argv: &[OsString]) -> i32 {
@@ -371,9 +446,9 @@ pub fn run_cli(argv: &[OsString], backend: &Path, cwd: &Path, session: Option<&s
         Some("run") => run_command(&argv[2..], backend, cwd, session),
         Some("ls" | "list") => ls_command(&argv[2..], backend, cwd, session),
         Some("logs") => forward(backend, cwd, "logs", &argv[2..]),
-        Some("stop") => forward(backend, cwd, "stop", &argv[2..]),
+        Some("stop") => stop_forward(backend, cwd, "stop", &argv[2..], session),
         Some("wait") => forward(backend, cwd, "await", &argv[2..]),
-        Some("rm" | "remove") => forward(backend, cwd, "remove", &argv[2..]),
+        Some("rm" | "remove") => stop_forward(backend, cwd, "remove", &argv[2..], session),
         Some("shutdown") => shutdown_command(backend, cwd, session),
         Some("help" | "--help" | "-h") | None => {
             println!("{USAGE}");
@@ -611,8 +686,9 @@ fn shutdown_command(backend: &Path, cwd: &Path, session: Option<&str>) -> i32 {
         Ok(jobs) => jobs,
         Err(code) => return code,
     };
-    let mut stopped = 0;
+    let mut stopped_count = 0;
     let mut failed = 0;
+    let mut stopped: Vec<String> = Vec::new();
     for job in jobs.iter().filter(|job| {
         job.status.starts_with("running")
             && owner_of(job.description.as_deref()).as_deref() == Some(session)
@@ -623,11 +699,17 @@ fn shutdown_command(backend: &Path, cwd: &Path, session: Option<&str>) -> i32 {
             .arg(&job.id)
             .output()
         {
-            Ok(out) if out.status.success() => stopped += 1,
+            Ok(out) if out.status.success() => {
+                stopped_count += 1;
+                stopped.push(job.id.clone());
+            }
             _ => failed += 1,
         }
     }
-    println!("stopped {stopped} job(s)");
+    // A job `shutdown` failed to stop is not recorded: whatever ends it
+    // later was not the model's doing, and its finish still announces.
+    record_stopped(Some(session), &stopped);
+    println!("stopped {stopped_count} job(s)");
     if failed > 0 {
         eprintln!("{NAME}: {failed} job(s) would not stop");
         return 1;
@@ -650,6 +732,29 @@ fn forward(backend: &Path, cwd: &Path, verb: &str, args: &[OsString]) -> i32 {
             EXIT_NO_BACKEND
         }
     }
+}
+
+/// `job stop` and `job rm`: the backend's verb, and on success the
+/// record. The args ride into the record as they came: a token that is
+/// not an id the backend stopped never mints a finish anyway, and a
+/// shape no parser could resolve (`job stop "$id"`) still passes
+/// through the forward whole.
+fn stop_forward(
+    backend: &Path,
+    cwd: &Path,
+    verb: &str,
+    args: &[OsString],
+    session: Option<&str>,
+) -> i32 {
+    let code = forward(backend, cwd, verb, args);
+    if code == 0 {
+        let ids: Vec<String> = args
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        record_stopped(session, &ids);
+    }
+    code
 }
 
 /// The backend's listing for one directory, parsed. The error is the exit

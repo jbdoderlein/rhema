@@ -299,6 +299,97 @@ fn shutdown_stops_only_this_sessions_running_jobs() {
 
 #[cfg(unix)]
 #[test]
+fn a_stop_records_the_id_for_its_session() {
+    let fake = Fake::new(&listing(&entry(
+        "abc",
+        "running",
+        "[sr1] npm run dev",
+        None,
+    )));
+    let argv = vec![
+        OsString::from("job"),
+        OsString::from("stop"),
+        OsString::from("abc"),
+    ];
+    assert_eq!(call(&fake, &argv, Some("sr1")), 0);
+    let recorded = stopped_ids_in(&stopped_record_path("sr1"));
+    assert!(recorded.contains("abc"), "the stop left no record");
+    forget_stopped_in(&stopped_record_path("sr1"));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_stop_the_backend_refused_is_not_recorded() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let state = dir.path().join("state.json");
+    std::fs::write(&state, "[]").expect("state");
+    let backend = script(
+        dir.path(),
+        "gob",
+        &format!(
+            "#!/bin/sh\ncase \"$1\" in\n  list) cat '{}'; exit 0;;\n  stop) exit 1;;\n  *) exit 0;;\nesac\n",
+            state.display()
+        ),
+    );
+    let argv = vec![
+        OsString::from("job"),
+        OsString::from("stop"),
+        OsString::from("abc"),
+    ];
+    assert_eq!(call_with(&backend, dir.path(), &argv, Some("sr2")), 1);
+    assert!(
+        stopped_ids_in(&stopped_record_path("sr2")).is_empty(),
+        "a refused stop recorded nothing"
+    );
+    forget_stopped_in(&stopped_record_path("sr2"));
+}
+
+#[cfg(unix)]
+#[test]
+fn shutdown_records_the_jobs_it_stopped() {
+    let fake = Fake::new(&listing(&format!(
+        "{},{}",
+        entry("abc", "running", "[sr3] npm run dev", None),
+        entry("def", "running", "[s2] cargo build", None),
+    )));
+    assert_eq!(
+        shutdown_command(&fake.backend, fake.dir.path(), Some("sr3")),
+        0
+    );
+    let recorded = stopped_ids_in(&stopped_record_path("sr3"));
+    assert!(recorded.contains("abc"), "the shutdown left no record");
+    assert!(
+        !recorded.contains("def"),
+        "another session's job recorded against this one"
+    );
+    forget_stopped_in(&stopped_record_path("sr3"));
+}
+
+#[cfg(unix)]
+#[test]
+fn an_absent_record_reads_as_nothing() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    assert!(
+        stopped_ids_in(&dir.path().join("absent")).is_empty(),
+        "no file, no ids"
+    );
+}
+
+#[cfg(unix)]
+fn call_with(backend: &Path, cwd: &Path, argv: &[OsString], session: Option<&str>) -> i32 {
+    let mut code = EXIT_NO_BACKEND;
+    for _ in 0..50 {
+        code = run_cli(argv, backend, cwd, session);
+        if code != EXIT_NO_BACKEND {
+            return code;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    code
+}
+
+#[cfg(unix)]
+#[test]
 fn a_missing_session_is_not_a_wired_shell() {
     let fake = Fake::new(&listing(""));
     let argv = vec![
