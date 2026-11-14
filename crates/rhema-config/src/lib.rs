@@ -158,6 +158,78 @@ impl fmt::Debug for ProviderInstance {
     }
 }
 
+/// One web search provider, a user-chosen name over a kind and a
+/// key, the [`ProviderInstance`] twin without the routing fields:
+/// search vendors have no base url to override and no request shape
+/// to pick in v1. Stored per profile under [`Profile::websearch`],
+/// tried in [`Profile::websearch_order`].
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "snake_case", deny_unknown_fields)]
+pub struct WebSearchInstance {
+    /// Which adapter serves this instance: `brave`, `exa`, or
+    /// `tavily`. Stored as given, unknown spellings are the
+    /// consumer's to resolve or reject (the registry does, at use
+    /// time, not load time).
+    pub provider: String,
+    /// The API key, when the keychain does not hold it. Environment
+    /// variables still win at use time.
+    pub api_key: Option<String>,
+    /// The keychain entry holding the key, when it is not in this
+    /// file: an opaque id under the frontend's keychain service,
+    /// resolved through the [`secrets`] seam. Written by
+    /// [`Profile::place_websearch_key`] and
+    /// [`Settings::migrate_secrets`]; a literal `api_key` and a live
+    /// `secret_ref` never hold the same key at rest.
+    pub secret_ref: Option<String>,
+}
+
+impl fmt::Debug for WebSearchInstance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WebSearchInstance")
+            .field("provider", &self.provider)
+            .field("api_key", &redacted(&self.api_key))
+            .field("secret_ref", &self.secret_ref)
+            .finish()
+    }
+}
+
+impl WebSearchInstance {
+    /// The key this instance serves: the provider kind's environment
+    /// variables first, then the stored key, keychain, then literal.
+    /// Whitespace-only values count as unset at every tier, the
+    /// provider-instance rule.
+    pub fn api_key(&self, secrets: Option<&dyn SecretStore>) -> Option<String> {
+        resolve_key(
+            |name| std::env::var(name).ok(),
+            websearch_env_names(&self.provider),
+            stored_websearch_key(self, secrets),
+        )
+    }
+}
+
+/// The stored key of one web search instance without the environment
+/// tier: the keychain entry `secret_ref` names, then the literal. A
+/// store that cannot be reached reads as "not in the store", the
+/// next tier serves, never a lost credential.
+fn stored_websearch_key(
+    instance: &WebSearchInstance,
+    secrets: Option<&dyn SecretStore>,
+) -> Option<String> {
+    if let (Some(store), Some(id)) = (secrets, instance.secret_ref.as_deref())
+        && let Ok(Some(key)) = store.get(id)
+    {
+        let trimmed = key.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_owned());
+        }
+    }
+    instance
+        .api_key
+        .clone()
+        .map(|key| key.trim().to_owned())
+        .filter(|key| !key.is_empty())
+}
+
 /// One named place `bash` can run: a user-chosen name over a kind and
 /// whatever that kind needs, the sandbox twin of
 /// [`ProviderInstance`]. `local` needs no record: the local instance
@@ -304,6 +376,19 @@ pub struct Profile {
     /// and redact in [`Debug`].
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub mcp_servers: BTreeMap<String, crate::mcp::McpServerEntry>,
+    /// The web search providers this profile's agents reach, keyed by
+    /// a user-chosen name, the [`ProviderInstance`] twin at search
+    /// scale. Per profile by design, work and personal carry
+    /// different vendors and keys. Absent from the file while empty;
+    /// entries' keys are secrets at rest and redact in [`Debug`].
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub websearch: BTreeMap<String, WebSearchInstance>,
+    /// The fallback order over [`Profile::websearch`], the chain the
+    /// search macro walks: first success wins, an entry naming no
+    /// instance is skipped, an instance missing from the order is
+    /// inert. Absent from the file while empty.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub websearch_order: Vec<String>,
 }
 
 impl fmt::Debug for Profile {
@@ -318,6 +403,8 @@ impl fmt::Debug for Profile {
             .field("sandbox", &self.sandbox)
             .field("sandbox_instances", &self.sandbox_instances)
             .field("mcp_servers", &self.mcp_servers.keys().collect::<Vec<_>>())
+            .field("websearch", &self.websearch)
+            .field("websearch_order", &self.websearch_order)
             .finish()
     }
 }
@@ -562,6 +649,55 @@ impl Profile {
         secrets: Option<&dyn SecretStore>,
     ) -> Option<KeyLocation> {
         let instance = self.instances.get_mut(name)?;
+        let trimmed = key.trim();
+        if trimmed.is_empty() || secrets.is_none() {
+            instance.api_key = Some(trimmed.to_owned());
+            return Some(KeyLocation::File);
+        }
+        let store = secrets.expect("checked above");
+        let id = instance
+            .secret_ref
+            .clone()
+            .unwrap_or_else(crate::secrets::fresh_id);
+        match store.set(&id, trimmed) {
+            Ok(()) => {
+                instance.secret_ref = Some(id);
+                instance.api_key = None;
+                Some(KeyLocation::Keychain)
+            }
+            // The keychain refused: the file keeps the key, the
+            // behavior it has always had. Nothing is lost.
+            Err(_) => {
+                instance.api_key = Some(trimmed.to_owned());
+                Some(KeyLocation::File)
+            }
+        }
+    }
+
+    /// The profile's web search chain: the instances of
+    /// [`Profile::websearch`] in [`Profile::websearch_order`], one
+    /// `(name, instance)` pair per run, entries naming no instance
+    /// skipped, instances missing from the order inert. The order is
+    /// the whole chain, not a priority hint; the caller resolves each
+    /// instance's key with [`WebSearchInstance::api_key`].
+    pub fn websearch_chain(&self) -> Vec<(String, &WebSearchInstance)> {
+        self.websearch_order
+            .iter()
+            .filter_map(|name| self.websearch.get(name).map(|entry| (name.clone(), entry)))
+            .collect()
+    }
+
+    /// Places a just-entered key on the named web search instance:
+    /// the keychain, when the store accepts it, the instance then
+    /// carries only its `secret_ref`, else the literal. `None` when
+    /// no instance bears `name`.
+    pub fn place_websearch_key(
+        &mut self,
+        name: &str,
+        key: &str,
+        secrets: Option<&dyn SecretStore>,
+    ) -> Option<KeyLocation> {
+        let instance = self.websearch.get_mut(name)?;
         let trimmed = key.trim();
         if trimmed.is_empty() || secrets.is_none() {
             instance.api_key = Some(trimmed.to_owned());
@@ -878,6 +1014,18 @@ fn provider_env_names(provider: &str) -> &'static [&'static str] {
         .unwrap_or(&[])
 }
 
+/// The environment variable names a web search kind's key rides: the
+/// vendors' own spellings, Brave's documented name first, the common
+/// shorthand second (`specs/rhema-websearch.md` §12.9).
+pub fn websearch_env_names(kind: &str) -> &'static [&'static str] {
+    match kind {
+        "brave" => &["BRAVE_SEARCH_API_KEY", "BRAVE_API_KEY"],
+        "exa" => &["EXA_API_KEY"],
+        "tavily" => &["TAVILY_API_KEY"],
+        _ => &[],
+    }
+}
+
 /// The framework's own section of the settings: what any frontend
 /// built on rhema must be able to store and read, whatever document
 /// it co-locates them in. Everything beyond this, themes, palettes,
@@ -980,6 +1128,25 @@ impl Settings {
         let mut moved = 0;
         for profile in self.profiles.values_mut() {
             for instance in profile.instances.values_mut() {
+                let Some(key) = instance
+                    .api_key
+                    .clone()
+                    .map(|key| key.trim().to_owned())
+                    .filter(|key| !key.is_empty())
+                else {
+                    continue;
+                };
+                let id = instance
+                    .secret_ref
+                    .clone()
+                    .unwrap_or_else(crate::secrets::fresh_id);
+                if secrets.set(&id, &key).is_ok() {
+                    instance.secret_ref = Some(id);
+                    instance.api_key = None;
+                    moved += 1;
+                }
+            }
+            for instance in profile.websearch.values_mut() {
                 let Some(key) = instance
                     .api_key
                     .clone()
@@ -1667,6 +1834,8 @@ profiles:
             )]),
             sandbox_instances: BTreeMap::new(),
             mcp_servers: BTreeMap::new(),
+            websearch: BTreeMap::new(),
+            websearch_order: Vec::new(),
             model: Some("gpt-5".into()),
             color: None,
             thinking: None,
@@ -1705,6 +1874,8 @@ profiles:
                 Profile {
                     sandbox_instances: BTreeMap::new(),
                     mcp_servers: BTreeMap::new(),
+                    websearch: BTreeMap::new(),
+                    websearch_order: Vec::new(),
                     provider: Some("llama-cpp".into()),
                     instance: Some("home server".into()),
                     instances: BTreeMap::from([
@@ -2778,5 +2949,155 @@ mod settings_document_tests {
         let path = dir.path().join("config.yaml");
         std::fs::write(&path, "icons: nerd\nprofiles: not-a-map\n").expect("writes the file");
         assert!(SettingsDocument::load_from(&path).is_err());
+    }
+    // ---- web search instances ---------------------------------
+
+    use crate::secrets::VolatileSecretStore;
+
+    fn websearch_instance(provider: &str) -> WebSearchInstance {
+        WebSearchInstance {
+            provider: provider.into(),
+            api_key: None,
+            secret_ref: None,
+        }
+    }
+
+    #[test]
+    fn the_websearch_chain_walks_the_order_and_skips_unknown_names() {
+        let mut profile = Profile::default();
+        profile
+            .websearch
+            .insert("brave-main".into(), websearch_instance("brave"));
+        profile
+            .websearch
+            .insert("exa-work".into(), websearch_instance("exa"));
+        profile.websearch_order = vec!["exa-work".into(), "ghost".into(), "brave-main".into()];
+        let chain = profile.websearch_chain();
+        let names: Vec<_> = chain.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(names, vec!["exa-work", "brave-main"]);
+    }
+
+    #[test]
+    fn an_instance_missing_from_the_order_is_inert() {
+        let mut profile = Profile::default();
+        profile
+            .websearch
+            .insert("brave-main".into(), websearch_instance("brave"));
+        assert!(profile.websearch_chain().is_empty());
+    }
+
+    #[test]
+    fn the_websearch_key_tiers_env_then_keychain_then_literal() {
+        // The environment tier, purely: the closure stands in for
+        // std::env, set_var is unsafe under the crate's forbid.
+        let env = |name: &str| (name == "TAVILY_API_KEY").then(|| " env-key ".to_owned());
+        assert_eq!(
+            resolve_key(
+                env,
+                websearch_env_names("tavily"),
+                Some(" file-key ".into())
+            )
+            .as_deref(),
+            Some("env-key")
+        );
+        // Then the keychain, then the literal, trims included.
+        let mut instance = websearch_instance("tavily");
+        instance.api_key = Some(" file-key ".into());
+        let store = VolatileSecretStore::new();
+        store.set("id-1", " chain-key ").unwrap();
+        instance.secret_ref = Some("id-1".into());
+        assert_eq!(instance.api_key(Some(&store)).as_deref(), Some("chain-key"));
+        instance.secret_ref = Some("id-missing".into());
+        assert_eq!(instance.api_key(Some(&store)).as_deref(), Some("file-key"));
+    }
+
+    #[test]
+    fn a_whitespace_key_counts_as_unset_at_every_websearch_tier() {
+        let mut instance = websearch_instance("exa");
+        instance.api_key = Some("   ".into());
+        assert_eq!(instance.api_key(None), None);
+        let store = VolatileSecretStore::new();
+        store.set("id-2", "  ").unwrap();
+        instance.secret_ref = Some("id-2".into());
+        assert_eq!(instance.api_key(Some(&store)), None);
+    }
+
+    #[test]
+    fn place_websearch_key_prefers_the_chain_and_falls_back_to_the_file() {
+        let mut profile = Profile::default();
+        profile
+            .websearch
+            .insert("brave-main".into(), websearch_instance("brave"));
+        let store = VolatileSecretStore::new();
+        assert_eq!(
+            profile.place_websearch_key("brave-main", " sk-new ", Some(&store)),
+            Some(KeyLocation::Keychain)
+        );
+        let instance = &profile.websearch["brave-main"];
+        assert_eq!(instance.api_key, None);
+        let id = instance.secret_ref.clone().unwrap();
+        assert_eq!(store.get(&id).unwrap().as_deref(), Some("sk-new"));
+        // No store, no working store: the file keeps the key.
+        assert_eq!(
+            profile.place_websearch_key("brave-main", " sk-file ", None),
+            Some(KeyLocation::File)
+        );
+        assert_eq!(
+            profile.websearch["brave-main"].api_key.as_deref(),
+            Some("sk-file")
+        );
+        // A name bearing no instance is None, not a silent insert.
+        assert_eq!(
+            profile.place_websearch_key("ghost", "k", Some(&store)),
+            None
+        );
+    }
+
+    #[test]
+    fn migrate_secrets_moves_websearch_literals_into_the_chain() {
+        let mut settings = Settings::default();
+        let mut profile = Profile::default();
+        let mut instance = websearch_instance("exa");
+        instance.api_key = Some("plain".into());
+        profile.websearch.insert("exa-work".into(), instance);
+        settings.profiles.insert("personal".into(), profile);
+        let store = VolatileSecretStore::new();
+        assert_eq!(settings.migrate_secrets(&store), 1);
+        let instance = &settings.profiles["personal"].websearch["exa-work"];
+        assert_eq!(instance.api_key, None);
+        let id = instance.secret_ref.clone().unwrap();
+        assert_eq!(store.get(&id).unwrap().as_deref(), Some("plain"));
+        // Idempotent: a second run moves nothing.
+        assert_eq!(settings.migrate_secrets(&store), 0);
+    }
+
+    #[test]
+    fn websearch_env_names_follow_the_vendors() {
+        assert_eq!(
+            websearch_env_names("brave"),
+            &["BRAVE_SEARCH_API_KEY", "BRAVE_API_KEY"]
+        );
+        assert_eq!(websearch_env_names("exa"), &["EXA_API_KEY"]);
+        assert_eq!(websearch_env_names("tavily"), &["TAVILY_API_KEY"]);
+        let empty: &[&str] = &[];
+        assert_eq!(websearch_env_names("kagi"), empty);
+    }
+
+    #[test]
+    fn the_websearch_instance_debug_redacts_the_key() {
+        let mut instance = websearch_instance("brave");
+        instance.api_key = Some("sk-secret".into());
+        let text = format!("{instance:?}");
+        assert!(!text.contains("sk-secret"), "{text}");
+        assert!(text.contains("[\u{2026}]"), "{text}");
+    }
+
+    #[test]
+    fn a_websearch_entry_round_trips_and_rejects_unknown_fields() {
+        let text = "provider: brave\napi_key: k\n";
+        let instance: WebSearchInstance = serde_yaml::from_str(text).unwrap();
+        assert_eq!(instance.provider, "brave");
+        let err = serde_yaml::from_str::<WebSearchInstance>("provider: brave\napi: nope\n");
+        assert!(err.is_err(), "unknown keys are loud");
     }
 }
