@@ -41,10 +41,20 @@ pub struct Probe {
     /// The executable the probe looks for and the report names — the
     /// command the model would type, not the project's name for it.
     pub executable: String,
-    /// Guidance that joins the report's notes only when `executable`
+    /// Guidance that joins the report's notes only when the family
     /// answered. Advice about a missing tool would be the stale kind.
+    /// The advice is data like the manifest's other texts: a Jinja
+    /// template, with `browser` bound to the executable that answered.
     #[serde(default)]
     pub advice: Option<String>,
+    /// Fallback executables tried after `executable`, first answer
+    /// winning. One entry stands for a family whose binary name
+    /// varies by install — chromium versus google-chrome versus a
+    /// fork like helium — and the report names the candidate that
+    /// answered: still the command the model would type. The same
+    /// shell-safety filter applies.
+    #[serde(default)]
+    pub alternatives: Vec<String>,
 }
 
 /// The report's data: the inventory, the OS name mapping, and the
@@ -95,6 +105,17 @@ fn shell_safe(executable: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
 }
 
+/// The executables one entry probes, in order: the entry's own name,
+/// then its alternatives — the shell-unsafe names dropped. Empty when
+/// nothing safe remains, and the entry never reaches the script.
+fn candidates(entry: &Probe) -> Vec<&str> {
+    std::iter::once(&entry.executable)
+        .chain(entry.alternatives.iter())
+        .filter(|name| shell_safe(name))
+        .map(String::as_str)
+        .collect()
+}
+
 /// The probe's whole budget: long enough for a cold tool list, short
 /// enough that a hung shell cannot stall a startup past it.
 const PROBE_BUDGET: Duration = Duration::from_secs(5);
@@ -107,29 +128,39 @@ const POLL_STEP: Duration = Duration::from_millis(10);
 /// expectation.
 const OUTPUT_CAP: usize = 4 * 1024;
 
-/// The probe script: OS, shell, one presence line per manifest entry —
-/// versions stay out; presence is the fact that changes how the model
+/// The probe script: OS, shell, one probe call per manifest entry — an
+/// entry with alternatives tries its executables in order, first
+/// present wins, the entry's own name answers when nothing did.
+/// Versions stay out; presence is the fact that changes how the model
 /// should work — and the workspace's git branch when it is a checkout,
 /// `detached` when HEAD is detached: the shape a PR checkout lands in.
 /// POSIX sh throughout — every executor in the tree runs `bash -c`.
 fn probe_script(manifest: &Manifest) -> String {
-    let tools: Vec<&str> = manifest
+    // One probe call per manifest entry: the family's executables in
+    // order, first present wins, the entry's own name answers when
+    // nothing did.
+    let calls: String = manifest
         .probe
         .iter()
-        .filter(|entry| shell_safe(&entry.executable))
-        .map(|entry| entry.executable.as_str())
-        .collect();
+        .map(candidates)
+        .filter(|cands| !cands.is_empty())
+        .map(|cands| format!("probe {}", cands.join(" ")))
+        .collect::<Vec<_>>()
+        .join("\n");
     format!(
         r#"
 uname -sm
 printf 'shell: %s\n' "${{SHELL:-unset}}"
-for t in {tools}; do
-  if command -v "$t" >/dev/null 2>&1; then
-    printf '%s: present\n' "$t"
-  else
-    printf '%s: absent\n' "$t"
-  fi
-done
+probe() {{
+  for t in "$@"; do
+    if command -v "$t" >/dev/null 2>&1; then
+      printf '%s: present\n' "$t"
+      return 0
+    fi
+  done
+  printf '%s: absent\n' "$1"
+}}
+{calls}
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   # `git branch --show-current` answers empty, and exits 0, on a
   # detached HEAD (a PR checkout, a tag, a bisect), so the name is
@@ -139,7 +170,6 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   printf 'git branch: %s\n' "$b"
 fi
 "#,
-        tools = tools.join(" ")
     )
 }
 
@@ -238,26 +268,43 @@ fn render_report(manifest: &Manifest, workspace: &Path, facts: &Facts, output: &
         .iter()
         .find_map(|l| l.strip_prefix("git branch: "))
         .map(str::to_owned);
-    let tools: Vec<serde_json::Value> = manifest
+    // Per entry, the candidate that answered the probe, in order —
+    // `None` when the whole family is absent. The tools line names the
+    // answerer (the command the model would type), falling to the
+    // entry's own name when nothing did.
+    let answered: Vec<Option<&str>> = manifest
         .probe
         .iter()
         .map(|entry| {
-            let present = rest
-                .iter()
-                .any(|l| *l == format!("{}: present", entry.executable));
-            json!({ "name": entry.executable, "state": if present { "present" } else { "absent" } })
+            candidates(entry)
+                .into_iter()
+                .find(|cand| rest.iter().any(|line| *line == format!("{cand}: present")))
+        })
+        .collect();
+    let tools: Vec<serde_json::Value> = manifest
+        .probe
+        .iter()
+        .zip(&answered)
+        .map(|(entry, answer)| {
+            json!({
+                "name": answer.unwrap_or(entry.executable.as_str()),
+                "state": if answer.is_some() { "present" } else { "absent" },
+            })
         })
         .collect();
     let notes: Vec<String> = manifest
         .probe
         .iter()
-        .filter(|entry| {
-            entry.advice.is_some()
-                && rest
-                    .iter()
-                    .any(|l| *l == format!("{}: present", entry.executable))
+        .zip(&answered)
+        .filter_map(|(entry, answer)| {
+            let advice = entry.advice.as_ref()?;
+            let answer = answer.as_deref()?;
+            let note = render_text(
+                advice,
+                &facts.context(manifest, json!({ "browser": answer })),
+            );
+            (!note.is_empty()).then_some(note)
         })
-        .filter_map(|entry| entry.advice.clone())
         .collect();
     let context = facts.context(
         manifest,
@@ -556,6 +603,51 @@ mod tests {
         assert!(without.contains("- rg: absent"), "{without}");
     }
 
+    /// An alternatives family answers under the candidate that
+    /// answered: the tools line and the advice's `browser` both carry
+    /// the command the model would type, not the family's canonical
+    /// name.
+    #[test]
+    fn alternatives_answer_under_the_candidate_that_answered() {
+        let manifest = manifest();
+        let facts = facts("m", "h");
+        let report = render_report(
+            manifest,
+            Path::new("/ws"),
+            &facts,
+            "Linux x86_64\nshell: /bin/bash\nrg: absent\nfd: absent\njq: absent\n\
+             yq: absent\nsd: absent\ncurl: absent\nchromium: absent\nhelium: present\n",
+        );
+        assert!(report.contains("- helium: present"), "{report}");
+        assert!(!report.contains("- chromium:"), "{report}");
+        assert!(report.contains("helium --headless"), "{report}");
+        assert!(!report.contains("chromium --headless"), "{report}");
+    }
+
+    /// The script probes a family in one call, order preserved, and
+    /// drops the names the shell-safety filter refuses.
+    #[test]
+    fn the_script_probes_alternatives_in_order_and_drops_unsafe_names() {
+        let manifest = Manifest {
+            os_names: BTreeMap::new(),
+            probe: vec![Probe {
+                executable: "chromium".into(),
+                advice: None,
+                alternatives: vec!["google-chrome".into(), "bad;name".into()],
+            }],
+            facts: String::new(),
+            report: String::new(),
+            notice: String::new(),
+            unavailable: String::new(),
+        };
+        let script = probe_script(&manifest);
+        assert!(
+            script.contains("probe chromium google-chrome\n"),
+            "{script}"
+        );
+        assert!(!script.contains("bad;name"), "{script}");
+    }
+
     /// The notice names the kind, the model, and the harness, and
     /// claims no host facts.
     #[test]
@@ -576,6 +668,7 @@ mod tests {
         manifest.probe.push(Probe {
             executable: "x; rm -rf /".into(),
             advice: None,
+            alternatives: Vec::new(),
         });
         let script = probe_script(&manifest);
         assert!(!script.contains("rm -rf"), "{script}");

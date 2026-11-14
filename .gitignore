@@ -3,3 +3,5 @@ Cargo.lock.bak
 *.snap
 .snapcraft/
 .zcode/
+/.rhema/chrome-profile/
+/.rhema/webshot.png

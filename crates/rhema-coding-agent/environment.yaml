@@ -34,6 +34,28 @@ probe:
     advice: >-
       Use `curl` to access APIs (`curl | jq` pattern), raw data pages (.md,.txt, etc.)
       and to download files. The rest of the web will likely not work.
+  # A family, not one binary: the alternatives try in order (order is
+  # preference) and the report names whichever answered, so the
+  # advice's {{ browser }} is always a command this machine has.
+  - executable: chromium
+    alternatives:
+      - chromium-browser
+      - google-chrome-stable
+      - google-chrome
+      - chrome
+      - helium
+      - microsoft-edge-stable
+      - brave
+    advice: >-
+      Frontend work can be checked visually: render a page to a PNG
+      headless, then view it with `see`. `{{ browser }} --headless
+      --no-sandbox --user-data-dir=.rhema/chrome-profile
+      --window-size=1280,800 --virtual-time-budget=5000
+      --screenshot=.rhema/webshot.png http://localhost:3000 && see
+      .rhema/webshot.png`. Keep the profile dir and the PNG inside the
+      workspace: snap-packaged browsers cannot write to /tmp or
+      ~/.cache. Gitignore both paths. The budget fast-forwards JS
+      timers so SPAs finish rendering; raise it for slow pages.
 
 # The session facts every shape carries — written once here and placed
 # by reference (`{{ facts }}`), never duplicated in the texts below.
