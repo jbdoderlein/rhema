@@ -1511,7 +1511,7 @@ mod scroll_tests {
             },
             ..Default::default()
         };
-        App::new(AppSetup {
+        let mut app = App::new(AppSetup {
             store: Arc::new(MemoryStore::default()),
             checkpoint: None,
             config,
@@ -1540,7 +1540,16 @@ mod scroll_tests {
                 save: None,
             },
         })
-        .unwrap()
+        .unwrap();
+        // `App::new` probes the host for missing tools, and the strip
+        // naming them rides the transcript canvas under the banner. On
+        // a machine without the probed tools the strip wraps into rows
+        // that fill this harness's 12-row viewport, and every screen
+        // assertion here answers for the strip, not the transcript.
+        // The harness pins an empty probe: hermetic across hosts; the
+        // strip's own test sets `missing_tools` back by hand.
+        app.missing_tools.clear();
+        app
     }
 
     fn screen_text(app: &mut App) -> String {
