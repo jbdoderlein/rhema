@@ -16,7 +16,13 @@
 //! The probe is synchronous on purpose — agent construction is sync —
 //! and best-effort: one `bash -c` under a short budget on a fixed
 //! script, a failure degrading to the `unavailable` text, never a
-//! failed startup. It describes the host, which is where commands run
+//! failed startup. The same parse answers twice over: the report for
+//! the prompt, and — through [`host_environment`] — the structured
+//! absence list a frontend may surface to its user. Which package
+//! holds a missing tool stays out of the report on purpose: that is
+//! the package manager's question, answered live when the user asks
+//! for the install, not a machine-dependent claim to memorize up
+//! front. It describes the host, which is where commands run
 //! unless a sandbox re-points them; a sandboxed session takes
 //! [`remote_notice`] instead, because host facts would be lies about a
 //! container. The report's date is stamped once at construction: it
@@ -173,16 +179,54 @@ fi
     )
 }
 
-/// The host report: what `bash` on this machine, rooted at `workspace`,
-/// would answer at startup — carrying `model`, the model the session
-/// runs, and `harness`, the frontend assembling it. Never fails: a
-/// probe that cannot run renders the unavailable text.
-pub fn host_report(workspace: &Path, model: &str, harness: &str) -> String {
+/// One host probe, both shapes it feeds: the report the prompt
+/// carries and the absence list a frontend surfaces itself. The probe
+/// runs once and parses once — a startup notice that wanted a second
+/// run would pay the probe budget twice for the same facts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostEnvironment {
+    /// The rendered report: what the prompt's environment section
+    /// carries, byte for byte.
+    pub report: String,
+    /// The probed entries whose whole family is absent, in report
+    /// order, named as the report names them — the executable the
+    /// model would type. Facts for the user's eyes (a startup notice,
+    /// an installer's tail), never the prompt's: which package holds
+    /// `fd` is the package manager's question, answered when the user
+    /// asks for the install, not a fact to memorize up front. A probe
+    /// that cannot run leaves it empty — an unprobed host claims no
+    /// absences either.
+    pub missing: Vec<String>,
+}
+
+/// The host environment: what `bash` on this machine, rooted at
+/// `workspace`, would answer at startup — carrying `model`, the model
+/// the session runs, and `harness`, the frontend assembling it. Never
+/// fails: a probe that cannot run renders the unavailable text and
+/// names nothing missing.
+pub fn host_environment(workspace: &Path, model: &str, harness: &str) -> HostEnvironment {
+    let manifest = manifest();
     let facts = facts(model, harness);
-    match run_probe(manifest(), workspace) {
-        Ok(output) => render_report(manifest(), workspace, &facts, &output),
-        Err(reason) => unavailable(&facts, &reason),
+    match run_probe(manifest, workspace) {
+        Ok(output) => {
+            let parsed = parse_probe(manifest, &output);
+            HostEnvironment {
+                report: render_report(manifest, workspace, &facts, &parsed),
+                missing: missing_tools(manifest, &parsed),
+            }
+        }
+        Err(reason) => HostEnvironment {
+            report: unavailable(&facts, &reason),
+            missing: Vec::new(),
+        },
     }
+}
+
+/// The host report alone — the prompt's view of
+/// [`host_environment`], for callers that carry no user-facing
+/// surface beside it.
+pub fn host_report(workspace: &Path, model: &str, harness: &str) -> String {
+    host_environment(workspace, model, harness).report
 }
 
 /// The section a sandboxed session renders instead of host facts: the
@@ -252,12 +296,29 @@ fn render_text(text: &str, context: &serde_json::Value) -> String {
     render_template(text, context).unwrap_or_default()
 }
 
-/// Shapes the probe's bounded stdout into the report over the manifest:
-/// the first two lines are the OS and the shell, the presence lines
-/// follow, and every answered executable with advice earns its note.
-fn render_report(manifest: &Manifest, workspace: &Path, facts: &Facts, output: &str) -> String {
+/// One probe's parsed stdout: the host lines and, per manifest entry,
+/// the candidate that answered. The parse is shared between the
+/// report and the absence list, so both read one probe run.
+struct ParsedProbe<'a> {
+    /// The raw `uname -sm` line; the report labels it.
+    os: String,
+    /// The login shell, `unknown` when the line did not answer.
+    shell: String,
+    /// The workspace's git branch, when the probe ran in a checkout.
+    branch: Option<String>,
+    /// Per entry, in manifest order, the candidate whose presence
+    /// line answered — `None` when the whole family is absent. The
+    /// report names the answerer (the command the model would type),
+    /// falling to the entry's own name when nothing did.
+    answered: Vec<Option<&'a str>>,
+}
+
+/// Parses the probe's bounded stdout: the first two lines are the OS
+/// and the shell, the presence lines follow, and every answered
+/// executable earns its report line and note from there.
+fn parse_probe<'a>(manifest: &'a Manifest, output: &str) -> ParsedProbe<'a> {
     let mut lines = output.lines().filter(|line| !line.trim().is_empty());
-    let os = os_label(manifest, lines.next().unwrap_or("unknown"));
+    let os = lines.next().unwrap_or("unknown").to_owned();
     let shell = lines
         .next()
         .and_then(|line| line.strip_prefix("shell: "))
@@ -268,11 +329,7 @@ fn render_report(manifest: &Manifest, workspace: &Path, facts: &Facts, output: &
         .iter()
         .find_map(|l| l.strip_prefix("git branch: "))
         .map(str::to_owned);
-    // Per entry, the candidate that answered the probe, in order —
-    // `None` when the whole family is absent. The tools line names the
-    // answerer (the command the model would type), falling to the
-    // entry's own name when nothing did.
-    let answered: Vec<Option<&str>> = manifest
+    let answered = manifest
         .probe
         .iter()
         .map(|entry| {
@@ -281,10 +338,45 @@ fn render_report(manifest: &Manifest, workspace: &Path, facts: &Facts, output: &
                 .find(|cand| rest.iter().any(|line| *line == format!("{cand}: present")))
         })
         .collect();
+    ParsedProbe {
+        os,
+        shell,
+        branch,
+        answered,
+    }
+}
+
+/// The entries whose whole family is absent, in report order, named as
+/// the report names them — the entry's own executable. The
+/// frontend's startup notice carries these; the prompt carries the
+/// same fact as the presence lines and needs no parallel list.
+fn missing_tools(manifest: &Manifest, parsed: &ParsedProbe<'_>) -> Vec<String> {
+    manifest
+        .probe
+        .iter()
+        .zip(&parsed.answered)
+        .filter(|(_, answer)| answer.is_none())
+        .map(|(entry, _)| entry.executable.clone())
+        .collect()
+}
+
+/// Shapes a parsed probe into the report over the manifest: the OS and
+/// shell lines, one presence line per manifest entry, and every
+/// answered executable with advice earns its note.
+fn render_report(
+    manifest: &Manifest,
+    workspace: &Path,
+    facts: &Facts,
+    parsed: &ParsedProbe<'_>,
+) -> String {
+    let os = os_label(manifest, &parsed.os);
+    let shell = parsed.shell.clone();
+    let branch = parsed.branch.clone();
+    let answered = &parsed.answered;
     let tools: Vec<serde_json::Value> = manifest
         .probe
         .iter()
-        .zip(&answered)
+        .zip(answered)
         .map(|(entry, answer)| {
             json!({
                 "name": answer.unwrap_or(entry.executable.as_str()),
@@ -295,7 +387,7 @@ fn render_report(manifest: &Manifest, workspace: &Path, facts: &Facts, output: &
     let notes: Vec<String> = manifest
         .probe
         .iter()
-        .zip(&answered)
+        .zip(answered)
         .filter_map(|(entry, answer)| {
             let advice = entry.advice.as_ref()?;
             let answer = answer.as_deref()?;
@@ -589,7 +681,10 @@ mod tests {
             manifest,
             Path::new("/ws"),
             &facts,
-            "Darwin arm64\nshell: /bin/zsh\nrg: present\nfd: absent\ngit branch: main\n",
+            &parse_probe(
+                manifest,
+                "Darwin arm64\nshell: /bin/zsh\nrg: present\nfd: absent\ngit branch: main\n",
+            ),
         );
         assert!(with.contains("Notes:"), "{with}");
         assert!(with.contains("Use `rg`"), "{with}");
@@ -597,7 +692,10 @@ mod tests {
             manifest,
             Path::new("/ws"),
             &facts,
-            "Darwin arm64\nshell: /bin/zsh\nrg: absent\nfd: absent\n",
+            &parse_probe(
+                manifest,
+                "Darwin arm64\nshell: /bin/zsh\nrg: absent\nfd: absent\n",
+            ),
         );
         assert!(!without.contains("Notes:"), "{without}");
         assert!(without.contains("- rg: absent"), "{without}");
@@ -615,13 +713,50 @@ mod tests {
             manifest,
             Path::new("/ws"),
             &facts,
-            "Linux x86_64\nshell: /bin/bash\nrg: absent\nfd: absent\njq: absent\n\
-             yq: absent\nsd: absent\ncurl: absent\nchromium: absent\nhelium: present\n",
+            &parse_probe(
+                manifest,
+                "Linux x86_64\nshell: /bin/bash\nrg: absent\nfd: absent\njq: absent\n\
+                 yq: absent\nsd: absent\ncurl: absent\nchromium: absent\nhelium: present\n",
+            ),
         );
         assert!(report.contains("- helium: present"), "{report}");
         assert!(!report.contains("- chromium:"), "{report}");
         assert!(report.contains("helium --headless"), "{report}");
         assert!(!report.contains("chromium --headless"), "{report}");
+    }
+
+    /// The absence list names the entries whose whole family is
+    /// absent, as the report spells them — the family's own name, not
+    /// the alternative that does not exist here — and nothing else. A
+    /// bare host lines answers names everything: every `command -v`
+    /// spoke, and each said no. A probe that cannot run is the other
+    /// extreme — [`host_environment`] leaves the list empty there,
+    /// because an unprobed host asserts nothing.
+    #[test]
+    fn the_missing_list_names_absent_families_as_the_report_does() {
+        let manifest = manifest();
+        let present = parse_probe(
+            manifest,
+            "Linux x86_64\nshell: /bin/bash\nrg: present\nfd: absent\njq: absent\n\
+             yq: absent\nsd: absent\ncurl: present\nchromium: absent\nchrome: present\n",
+        );
+        assert_eq!(
+            missing_tools(manifest, &present),
+            vec!["fd", "jq", "yq", "sd"],
+            "the answered chromium family and the present rg and curl stay out"
+        );
+        let bare = parse_probe(manifest, "Linux x86_64\nshell: /bin/bash\n");
+        assert_eq!(
+            missing_tools(manifest, &bare).len(),
+            manifest.probe.len(),
+            "a host where every probe said absent misses everything"
+        );
+        let failed = host_environment(Path::new("/definitely/not/here"), "m", "h");
+        assert!(
+            failed.missing.is_empty(),
+            "a failed probe claims no absences: {:?}",
+            failed.missing
+        );
     }
 
     /// The script probes a family in one call, order preserved, and

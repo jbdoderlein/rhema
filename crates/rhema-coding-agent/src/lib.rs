@@ -48,7 +48,7 @@ pub use agent::{
     stamped_system_with_sections, stamped_system_with_skills,
 };
 pub use config::{CodingAgentConfig, Steering, SteeringChain, SubagentProviders};
-pub use environment::{host_report, remote_notice};
+pub use environment::{host_environment, host_report, remote_notice};
 pub use prompt::{DEFAULT_SYSTEM_MD, default_system};
 // The toolkit the driver is built on, under this crate's name: every
 // downstream driver (TUI, ACP, the claw) keeps its import paths.
