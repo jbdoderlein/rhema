@@ -4,7 +4,7 @@
 //! tools and host the published installer uses; this crate carries no
 //! HTTP client of its own.
 
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write as _};
 use std::process::{Command, Stdio};
 
 /// The distribution host the manifest and the install script live on.
@@ -39,6 +39,10 @@ pub async fn fetch_latest_version() -> Result<String, String> {
 /// disk when this answers `Ok`; the running process keeps the old one
 /// until a restart.
 pub async fn run_installer() -> Result<String, String> {
+    // The script runs only after its published `<url>.sha256` sidecar
+    // matches. That catches a corrupted download or a swapped mirror
+    // response; it does not authenticate the distribution host, which
+    // needs a signed manifest and a trusted public key in this binary.
     #[cfg(windows)]
     let url = format!("{}/code.ps1", dist_base());
     #[cfg(not(windows))]
@@ -67,19 +71,22 @@ pub async fn run_installer() -> Result<String, String> {
 /// `Write-Host` text in redirected stdout.
 #[cfg(windows)]
 fn run_powershell_installer_blocking(url: &str) -> Result<String, String> {
-    let script = fetch_url_blocking(url)?;
-    let path = std::env::temp_dir().join(format!("rhema-install-{}.ps1", std::process::id()));
-    std::fs::write(&path, &script)
+    let script = fetch_verified_script(url)?;
+    let mut file = tempfile::Builder::new()
+        .prefix("rhema-install-")
+        .suffix(".ps1")
+        .tempfile()
+        .map_err(|err| format!("cannot create the install script: {err}"))?;
+    file.write_all(script.as_bytes())
         .map_err(|err| format!("cannot write the install script: {err}"))?;
     let out = Command::new("powershell.exe")
         .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
-        .arg(&path)
+        .arg(file.path())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
         .map_err(|err| format!("cannot run powershell.exe: {err}"));
-    let _ = std::fs::remove_file(&path);
     let out = out?;
     let text = format!(
         "{}{}",
@@ -174,33 +181,60 @@ fn fetch_url_blocking(url: &str) -> Result<String, String> {
     }
 }
 
+/// Fetches an install script and refuses it unless the published
+/// `<url>.sha256` sidecar matches. The sidecar rides the same host as
+/// the script, so this proves integrity, not authenticity.
+fn fetch_verified_script(url: &str) -> Result<String, String> {
+    let script = fetch_url_blocking(url)?;
+    let sidecar = fetch_url_blocking(&format!("{url}.sha256"))?;
+    verify_sha256(script.as_bytes(), &sidecar)?;
+    Ok(script)
+}
+
+/// Checks one file against a sha256 sidecar (`<hex>`, optionally
+/// followed by the file name). A missing or malformed sidecar is a
+/// failure: an unverifiable installer must not run.
+fn verify_sha256(bytes: &[u8], sidecar: &str) -> Result<(), String> {
+    use sha2::Digest as _;
+    let expected = sidecar
+        .split_whitespace()
+        .next()
+        .ok_or_else(|| "the installer checksum is empty".to_owned())?;
+    if expected.len() != 64 || !expected.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("the installer checksum is malformed".to_owned());
+    }
+    let actual: String = sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    if !actual.eq_ignore_ascii_case(expected) {
+        return Err(format!(
+            "the installer checksum does not match: expected {expected}, got {actual}"
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(not(windows))]
 fn run_installer_blocking(url: &str) -> Result<String, String> {
-    // The URL rides as a positional parameter, never spliced into the
-    // shell text. The script lands in a temp file rather than piping
-    // straight into `sh` so curl's exit code reaches us, a `curl | sh`
-    // swallows a failed fetch behind an empty-input shell that exits 0.
-    let child = Command::new("sh")
-        .arg("-c")
-        .arg(
-            "tmp=$(mktemp) || exit 1\n\
-             if command -v curl >/dev/null 2>&1; then\n\
-               curl -fsSL \"$1\" -o \"$tmp\"\n\
-             else\n\
-               wget -qO \"$tmp\" \"$1\"\n\
-             fi || { rm -f \"$tmp\"; exit 1; }\n\
-             sh \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc",
-        )
-        .arg("sh")
-        .arg(url)
+    // Fetch, verify, then run the local file. The URL never rides
+    // inside shell text, and a `curl | sh` cannot swallow a failed
+    // fetch behind an empty-input shell that exits 0.
+    let script = fetch_verified_script(url)?;
+    let mut file = tempfile::Builder::new()
+        .prefix("rhema-install-")
+        .suffix(".sh")
+        .tempfile()
+        .map_err(|err| format!("cannot create the install script: {err}"))?;
+    file.write_all(script.as_bytes())
+        .map_err(|err| format!("cannot write the install script: {err}"))?;
+    let out = Command::new("sh")
+        .arg(file.path())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()
+        .output()
         .map_err(|err| format!("cannot run sh: {err}"))?;
-    let out = child
-        .wait_with_output()
-        .map_err(|err| format!("cannot wait for the installer: {err}"))?;
     let text = tail(&String::from_utf8_lossy(&out.stdout), OUTPUT_TAIL_BYTES);
     if out.status.success() {
         Ok(text)
@@ -312,6 +346,18 @@ mod tests {
             parse_stable("not json").is_err(),
             "a non-JSON body is a failure, not a version"
         );
+    }
+
+    #[test]
+    fn an_installer_checksum_must_match_its_sidecar() {
+        // sha256("abc")
+        let sum = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        assert!(verify_sha256(b"abc", sum).is_ok());
+        assert!(verify_sha256(b"abc", &format!("{sum}  code\n")).is_ok());
+        assert!(verify_sha256(b"abc", &sum.to_ascii_uppercase()).is_ok());
+        assert!(verify_sha256(b"abcd", sum).is_err());
+        assert!(verify_sha256(b"abc", "not-a-checksum").is_err());
+        assert!(verify_sha256(b"abc", "").is_err());
     }
 
     #[test]
