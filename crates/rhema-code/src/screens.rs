@@ -20,6 +20,7 @@ mod providers;
 mod settings;
 #[cfg(test)]
 mod tests;
+mod websearch;
 
 pub use chat::{ChatAction, ChatState, Chip};
 pub use dialogs::{
@@ -44,4 +45,8 @@ pub use providers::{LoginProvider, PROVIDERS, ProviderCategory, ProviderEntry, p
 pub use settings::{
     InstanceRow, SettingsAction, SettingsScreen, SettingsSection, SkillRow, SkillSource,
     SubagentRow, SubagentSource, UpdateCheck, UpdateInstall, UpdatePage,
+};
+pub use websearch::{
+    AddWebSearchDialog, WEBSEARCH_KINDS, WebSearchDialogAction, WebSearchDialogStage, WebSearchRow,
+    websearch_rows,
 };

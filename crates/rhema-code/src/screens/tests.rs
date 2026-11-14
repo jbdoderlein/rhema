@@ -3,6 +3,7 @@
 
 use super::palette::{model_description, path_token};
 use super::*;
+use crate::screens::{WebSearchDialogAction, WebSearchDialogStage};
 
 use crate::args::SandboxChoice;
 use crate::sandbox::SandboxAvailability;
@@ -2876,4 +2877,208 @@ fn the_add_mcp_dialog_walks_the_http_flow_with_headers() {
         dialog.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL)),
         McpDialogAction::None
     );
+}
+
+// ---- web search page ----
+
+fn websearch_screen(
+    instances: BTreeMap<String, rhema_config::WebSearchInstance>,
+    order: &[&str],
+) -> SettingsScreen {
+    let mut settings = SettingsScreen::new();
+    settings.section = SettingsSection::WebSearch;
+    let order: Vec<String> = order.iter().map(|n| (*n).to_owned()).collect();
+    settings.websearch = crate::screens::websearch_rows(&instances, &order);
+    settings
+}
+
+#[test]
+fn the_websearch_rows_show_the_chain_order_and_the_inert_tail() {
+    let instances = BTreeMap::from([
+        (
+            "brave-main".to_owned(),
+            rhema_config::WebSearchInstance {
+                provider: "brave".into(),
+                api_key: Some("k".into()),
+                secret_ref: None,
+            },
+        ),
+        (
+            "exa-work".to_owned(),
+            rhema_config::WebSearchInstance {
+                provider: "exa".into(),
+                api_key: None,
+                secret_ref: Some("id".into()),
+            },
+        ),
+        (
+            "tavily-x".to_owned(),
+            rhema_config::WebSearchInstance {
+                provider: "tavily".into(),
+                api_key: None,
+                secret_ref: None,
+            },
+        ),
+    ]);
+    let order = ["exa-work".to_owned(), "brave-main".to_owned()];
+    let rows = crate::screens::websearch_rows(&instances, &order);
+    // The chain first, in order order, not the map's; the unordered
+    // instance trails; the add row closes the list.
+    let names: Vec<_> = rows.iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(names, vec!["exa-work", "brave-main", "tavily-x", ""]);
+    assert_eq!(rows[0].position, Some(1));
+    assert_eq!(rows[1].position, Some(2));
+    assert_eq!(rows[2].position, None, "unordered is inert");
+    assert!(!rows[2].ordered);
+    assert!(rows[0].key_stored, "a keychain ref counts as stored");
+    assert!(!rows[2].key_stored, "no tiers filled, nothing stored");
+    assert!(rows[3].add);
+}
+
+#[test]
+fn the_websearch_page_moves_over_the_rows_and_acts() {
+    let instances = BTreeMap::from([
+        (
+            "brave-main".to_owned(),
+            rhema_config::WebSearchInstance {
+                provider: "brave".into(),
+                api_key: None,
+                secret_ref: None,
+            },
+        ),
+        (
+            "exa-work".to_owned(),
+            rhema_config::WebSearchInstance {
+                provider: "exa".into(),
+                api_key: None,
+                secret_ref: None,
+            },
+        ),
+    ]);
+    let mut screen = websearch_screen(instances, &["brave-main"]);
+    // Down: brave-main, then the inert exa-work, then the add row.
+    assert_eq!(screen.selected_websearch(), Some("brave-main"));
+    screen.handle_key(key(KeyCode::Down));
+    assert_eq!(
+        screen.selected_websearch(),
+        Some("exa-work"),
+        "the inert row is selectable"
+    );
+    screen.handle_key(key(KeyCode::Down));
+    assert_eq!(screen.selected_websearch(), None, "the add row");
+    assert_eq!(
+        screen.handle_key(key(KeyCode::Enter)),
+        SettingsAction::OpenWebSearchDialog
+    );
+    screen.websearch_dialog = Some(crate::screens::AddWebSearchDialog::new(BTreeSet::new()));
+    assert_eq!(screen.selected_websearch(), None, "the dialog blocks");
+    assert_eq!(
+        screen.handle_key(key(KeyCode::Esc)),
+        SettingsAction::CloseWebSearchDialog
+    );
+    assert!(screen.websearch_dialog.is_none(), "esc closed the dialog");
+    // d arms the removal confirm; y carries it, n and esc leave the
+    // row alone.
+    screen.handle_key(key(KeyCode::Up));
+    assert_eq!(
+        screen.handle_key(key(KeyCode::Char('d'))),
+        SettingsAction::None
+    );
+    assert_eq!(screen.websearch_confirm.as_deref(), Some("exa-work"));
+    assert_eq!(screen.selected_websearch(), None, "the confirm blocks");
+    screen.handle_key(key(KeyCode::Char('n')));
+    assert_eq!(screen.websearch_confirm, None);
+    screen.handle_key(key(KeyCode::Char('d')));
+    assert_eq!(
+        screen.handle_key(key(KeyCode::Char('y'))),
+        SettingsAction::RemoveWebSearchProvider
+    );
+    // [ and ] on an ordered row reorder; on the add row, nothing.
+    screen.row = 0;
+    assert_eq!(
+        screen.handle_key(key(KeyCode::Char('['))),
+        SettingsAction::MoveWebSearchUp
+    );
+    assert_eq!(
+        screen.handle_key(key(KeyCode::Char(']'))),
+        SettingsAction::MoveWebSearchDown
+    );
+    screen.row = 2;
+    assert_eq!(
+        screen.handle_key(key(KeyCode::Char('['))),
+        SettingsAction::None,
+        "the add row does not reorder"
+    );
+    // The other pages are untouched.
+    screen.section = SettingsSection::Providers;
+    assert_eq!(screen.selected_websearch(), None);
+}
+
+#[test]
+fn the_add_websearch_dialog_walks_kind_name_key_and_back() {
+    let mut dialog = crate::screens::AddWebSearchDialog::new(BTreeSet::from(["brave".to_owned()]));
+    // Kind stage: arrows, enter descends with the suggested name,
+    // numbered past the taken one.
+    dialog.handle_key(key(KeyCode::Down));
+    assert_eq!(
+        dialog.handle_key(key(KeyCode::Enter)),
+        WebSearchDialogAction::None
+    );
+    assert_eq!(dialog.kind, "exa", "the second row");
+    assert_eq!(dialog.input, "exa", "untaken kinds suggest themselves");
+    // Esc back to the kind list, then forward onto the taken kind.
+    dialog.handle_key(key(KeyCode::Esc));
+    assert_eq!(dialog.stage, WebSearchDialogStage::Kind);
+    dialog.handle_key(key(KeyCode::Up));
+    dialog.handle_key(key(KeyCode::Enter));
+    assert_eq!(dialog.kind, "brave");
+    assert_eq!(
+        dialog.input, "brave-2",
+        "the taken name numbers the suggestion"
+    );
+    // The suggestion is accepted as typed: enter carries it through.
+    assert_eq!(
+        dialog.handle_key(key(KeyCode::Enter)),
+        WebSearchDialogAction::None
+    );
+    assert_eq!(dialog.stage, WebSearchDialogStage::Key);
+    assert_eq!(dialog.name, "brave-2");
+    // The key stage refuses a blank line, then carries a typed key.
+    assert_eq!(
+        dialog.handle_key(key(KeyCode::Enter)),
+        WebSearchDialogAction::None
+    );
+    assert!(dialog.error.is_some(), "blank keys stay with the reason");
+    for c in "sk-test-123".chars() {
+        dialog.handle_key(key(KeyCode::Char(c)));
+    }
+    assert_eq!(
+        dialog.handle_key(key(KeyCode::Enter)),
+        WebSearchDialogAction::Submit
+    );
+    assert!(dialog.input.is_empty(), "the input cleared under the key");
+    let (name, kind, key_text) = dialog.build().unwrap();
+    assert_eq!(
+        (name.as_str(), kind, key_text.as_str()),
+        ("brave-2", "brave", "sk-test-123")
+    );
+    // Esc from the key stage retreats to the name line, restored.
+    let mut dialog = crate::screens::AddWebSearchDialog::new(BTreeSet::new());
+    dialog.handle_key(key(KeyCode::Down));
+    dialog.handle_key(key(KeyCode::Down));
+    dialog.handle_key(key(KeyCode::Enter));
+    assert_eq!(dialog.kind, "tavily", "the third row");
+    assert_eq!(dialog.input, "tavily", "the suggestion seeds the line");
+    // The suggestion edits like any line: backspaces clear it, then
+    // the typed name lands.
+    for _ in 0.."tavily".len() {
+        dialog.handle_key(key(KeyCode::Backspace));
+    }
+    for c in "tavily-main".chars() {
+        dialog.handle_key(key(KeyCode::Char(c)));
+    }
+    dialog.handle_key(key(KeyCode::Enter));
+    dialog.handle_key(key(KeyCode::Esc));
+    assert_eq!(dialog.stage, WebSearchDialogStage::Name);
+    assert_eq!(dialog.input, "tavily-main", "a retreat restores the line");
 }

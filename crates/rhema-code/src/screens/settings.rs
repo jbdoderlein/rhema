@@ -23,6 +23,9 @@ pub enum SettingsSection {
     Subagents,
     /// The active profile's MCP servers: list, add, mute, remove.
     Mcp,
+    /// The active profile's web search providers: list, add, remove,
+    /// and the fallback order between them.
+    WebSearch,
     /// The allowance, the session's cost, the last turn's tokens.
     Usage,
     /// This build beside the channel's latest release, and the
@@ -43,6 +46,7 @@ impl SettingsSection {
         SettingsSection::Skills,
         SettingsSection::Subagents,
         SettingsSection::Mcp,
+        SettingsSection::WebSearch,
         SettingsSection::Usage,
         SettingsSection::Update,
         SettingsSection::About,
@@ -59,6 +63,7 @@ impl SettingsSection {
             SettingsSection::Skills => "Skills",
             SettingsSection::Subagents => "Subagents",
             SettingsSection::Mcp => "MCP",
+            SettingsSection::WebSearch => "Web search",
             SettingsSection::Usage => "Usage",
             SettingsSection::Update => "Update",
             SettingsSection::About => "About",
@@ -146,6 +151,23 @@ pub enum SettingsAction {
     /// `y` on the remove-server confirm: the entry goes from the
     /// profile.
     RemoveMcpServer,
+    /// Enter on the web search page's add row: the add-provider
+    /// dialog opens.
+    OpenWebSearchDialog,
+    /// The add-provider dialog accepted kind, name, and key: store
+    /// the instance, place the key, persist.
+    SubmitWebSearchDialog,
+    /// Esc left the add-provider dialog.
+    CloseWebSearchDialog,
+    /// `y` on the remove-provider confirm: the instance leaves the
+    /// profile's map and its order entry goes with it.
+    RemoveWebSearchProvider,
+    /// `[` on a provider row: one step up the chain, or into the
+    /// chain when the row was inert.
+    MoveWebSearchUp,
+    /// `]` on a provider row: one step down the chain, never out of
+    /// it.
+    MoveWebSearchDown,
     /// Enter on the Update page's check row: the manifest fetch starts.
     CheckForUpdates,
     /// Enter on the Update page's install row: the install script
@@ -362,6 +384,15 @@ pub struct SettingsScreen {
     /// The server name awaiting its removal confirmation, the `d`
     /// key arms it, `y` confirms, `n` and esc leave the row alone.
     pub mcp_confirm: Option<String>,
+    // The Web search page's snapshot.
+    /// The active profile's providers, in chain order first, synced
+    /// from the config whenever the app mutates it.
+    pub websearch: Vec<WebSearchRow>,
+    /// The add-provider dialog, when it is up.
+    pub websearch_dialog: Option<AddWebSearchDialog>,
+    /// The provider name awaiting its removal confirmation, the `d`
+    /// key arms it, `y` confirms, `n` and esc leave the row alone.
+    pub websearch_confirm: Option<String>,
 
     // The Providers page's removal confirm.
     /// The instance name awaiting its removal confirmation, the `d`
@@ -441,6 +472,9 @@ impl SettingsScreen {
             mcp: Vec::new(),
             mcp_dialog: None,
             mcp_confirm: None,
+            websearch: Vec::new(),
+            websearch_dialog: None,
+            websearch_confirm: None,
             instance_confirm: None,
             profiles: Vec::new(),
             add_profile: None,
@@ -639,6 +673,32 @@ impl SettingsScreen {
         self.mcp.get(self.row).map(|row| row.name.as_str())
     }
 
+    /// The highlighted web search row's name; `None` on the add row,
+    /// with the dialog or the removal confirm up, or anywhere but the
+    /// Web search page.
+    pub fn selected_websearch(&self) -> Option<&str> {
+        if self.section != SettingsSection::WebSearch
+            || self.websearch_dialog.is_some()
+            || self.websearch_confirm.is_some()
+        {
+            return None;
+        }
+        self.websearch
+            .get(self.row)
+            .and_then(|row| (!row.add).then_some(row.name.as_str()))
+    }
+
+    /// Whether the highlighted web search row carries a live key or a
+    /// keychain ref: the page's footer hint reads it.
+    pub fn selected_websearch_movable(&self) -> Option<bool> {
+        if self.section != SettingsSection::WebSearch || self.websearch_dialog.is_some() {
+            return None;
+        }
+        self.websearch
+            .get(self.row)
+            .and_then(|row| (!row.add).then_some(row.ordered))
+    }
+
     /// How many interactive rows the page holds; zero means the arrows
     /// have nothing to move through.
     fn row_count(&self) -> usize {
@@ -650,6 +710,7 @@ impl SettingsScreen {
             SettingsSection::Skills => self.skills.len(),
             SettingsSection::Subagents => self.subagents.len(),
             SettingsSection::Mcp => self.mcp.len() + 1,
+            SettingsSection::WebSearch => self.websearch.len() + 1,
             SettingsSection::Update => 2,
             _ => 0,
         }
@@ -704,6 +765,10 @@ impl SettingsScreen {
             SettingsSection::Mcp => match self.selected_mcp_server() {
                 Some(_) => SettingsAction::ToggleMcpServer,
                 None => SettingsAction::OpenMcpDialog,
+            },
+            SettingsSection::WebSearch => match self.selected_websearch() {
+                Some(_) => SettingsAction::None,
+                None => SettingsAction::OpenWebSearchDialog,
             },
             SettingsSection::Update => match self.row {
                 0 => SettingsAction::CheckForUpdates,
@@ -768,6 +833,20 @@ impl SettingsScreen {
             };
         }
         if let Some(action) = self
+            .websearch_dialog
+            .as_mut()
+            .map(|dialog| dialog.handle_key(key))
+        {
+            if action == WebSearchDialogAction::Close {
+                self.websearch_dialog = None;
+            }
+            return match action {
+                WebSearchDialogAction::None => SettingsAction::None,
+                WebSearchDialogAction::Submit => SettingsAction::SubmitWebSearchDialog,
+                WebSearchDialogAction::Close => SettingsAction::CloseWebSearchDialog,
+            };
+        }
+        if let Some(action) = self
             .mcp_dialog
             .as_mut()
             .map(|dialog| dialog.handle_key(key))
@@ -791,6 +870,21 @@ impl SettingsScreen {
                 }
                 KeyCode::Char('n' | 'N') | KeyCode::Esc => {
                     self.mcp_confirm = None;
+                    SettingsAction::None
+                }
+                _ => SettingsAction::None,
+            };
+        }
+        if self.websearch_confirm.is_some() {
+            // The removal confirm takes every key while it is up: esc
+            // must stay here, not back out of the screen behind it.
+            return match key.code {
+                KeyCode::Char('y' | 'Y') => {
+                    self.websearch_confirm = None;
+                    SettingsAction::RemoveWebSearchProvider
+                }
+                KeyCode::Char('n' | 'N') | KeyCode::Esc => {
+                    self.websearch_confirm = None;
                     SettingsAction::None
                 }
                 _ => SettingsAction::None,
@@ -869,6 +963,23 @@ impl SettingsScreen {
                     self.mcp_confirm = Some(name.to_owned());
                 }
                 SettingsAction::None
+            }
+            KeyCode::Char('d') if self.selected_websearch().is_some() => {
+                // Removal asks first, the same modal the other pages
+                // use; the y that answers it carries the removal out.
+                if let Some(name) = self.selected_websearch() {
+                    self.websearch_confirm = Some(name.to_owned());
+                }
+                SettingsAction::None
+            }
+            KeyCode::Char('[') if self.selected_websearch_movable() == Some(true) => {
+                SettingsAction::MoveWebSearchUp
+            }
+            KeyCode::Char(']') if self.selected_websearch_movable() == Some(true) => {
+                SettingsAction::MoveWebSearchDown
+            }
+            KeyCode::Char('[') if self.selected_websearch_movable() == Some(false) => {
+                SettingsAction::MoveWebSearchUp
             }
             KeyCode::Char('c') if self.section == SettingsSection::Appearance => {
                 SettingsAction::CyclePalette

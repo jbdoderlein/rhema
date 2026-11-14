@@ -3,7 +3,7 @@
 
 use super::dialogs::{
     render_add_dialog, render_add_mcp_dialog, render_add_profile_dialog, render_add_sandbox_dialog,
-    render_instance_confirm, render_mcp_confirm,
+    render_add_websearch_dialog, render_instance_confirm, render_mcp_confirm,
 };
 use super::*;
 
@@ -115,6 +115,9 @@ pub(crate) fn render_settings(
     }
     if let Some(dialog) = &settings.sandbox_dialog {
         render_add_sandbox_dialog(frame, dialog, theme);
+    }
+    if let Some(dialog) = &settings.websearch_dialog {
+        render_add_websearch_dialog(frame, dialog, theme);
     }
     if let Some(dialog) = &settings.mcp_dialog {
         render_add_mcp_dialog(frame, dialog, theme);
@@ -705,6 +708,60 @@ pub(crate) fn settings_page(
             (
                 lines,
                 footer("enter mutes · d removes · the add row installs one"),
+                row_hits,
+            )
+        }
+        SettingsSection::WebSearch => {
+            if settings.websearch.is_empty() {
+                lines.extend(settings_hint("no providers in this profile", theme, width));
+                lines.extend(settings_hint(
+                    "the add row below installs one, or export a BRAVE_SEARCH_API_KEY / \
+                     EXA_API_KEY / TAVILY_API_KEY",
+                    theme,
+                    width,
+                ));
+            }
+            let mut row_hits = Vec::new();
+            for (index, row) in settings.websearch.iter().enumerate() {
+                let selected = index == settings.row;
+                row_hits.push((lines.len(), SettingsHit::PageRow(index)));
+                // The position is the chain's truth: `search` walks
+                // 1.., first success wins. An unordered row lists
+                // dim, inert, and `[` enrolls it.
+                let dim = !row.ordered;
+                let mut line = Line::from(vec![
+                    super::chrome::marker(selected, theme),
+                    Span::raw(match row.position {
+                        Some(position) => format!("{position}."),
+                        None => "\u{b7}".to_owned(),
+                    })
+                    .fg(if dim { theme.text3 } else { theme.text2 }),
+                    Span::raw(" ").fg(theme.text3),
+                    Span::raw(row.name.clone()).fg(if dim { theme.text3 } else { theme.text }),
+                    Span::raw(format!(" \u{b7} {}", row.kind)).fg(theme.text3),
+                ]);
+                if !row.key_stored {
+                    line.push_span(Span::raw(" \u{b7} no key stored").fg(theme.warn));
+                }
+                lines.push(settings_row(line, selected, theme));
+            }
+            let add = settings.websearch.len();
+            let selected = settings.row == add;
+            row_hits.push((lines.len(), SettingsHit::PageRow(add)));
+            lines.push(settings_row(
+                Line::from(vec![
+                    super::chrome::marker(selected, theme),
+                    Span::raw("+ Add a provider...").fg(theme.text2),
+                ]),
+                selected,
+                theme,
+            ));
+            lines.push(Line::default());
+            (
+                lines,
+                footer(
+                    "[ moves up, ] down \u{b7} d removes \u{b7} [ enrolls a dim row \u{b7} the add row installs one",
+                ),
                 row_hits,
             )
         }

@@ -6868,3 +6868,149 @@ fn a_clear_survives_a_switch_back() {
         .expect("the keyed profile rebuilds the agent");
     assert_eq!(len, 0, "the cleared conversation stays cleared");
 }
+
+#[test]
+fn adding_a_websearch_provider_places_its_key_and_enrolls_it() {
+    let mut h = harness_with_secrets(None, None, Session::default());
+    let secrets = Arc::clone(h.secrets.as_ref().unwrap());
+    h.app
+        .open_settings_at(crate::screens::SettingsSection::WebSearch);
+    // The add row is selected on the empty page; enter opens the
+    // dialog.
+    let action = h.app.on_key(key(KeyCode::Enter));
+    assert_eq!(
+        action,
+        vec![],
+        "the keypress routed through on_key, no effects yet"
+    );
+    {
+        let crate::Screen::Settings(settings) = &mut h.app.screen else {
+            panic!("settings open");
+        };
+        assert!(
+            settings.websearch_dialog.is_some(),
+            "enter on the add row opened the dialog"
+        );
+        // Kind: brave (the first row), enter accepts, the name line
+        // carries the suggestion, edited to brave-main.
+        let dialog = settings.websearch_dialog.as_mut().unwrap();
+        dialog.handle_key(key(KeyCode::Enter));
+        for _ in 0.."brave".len() {
+            dialog.handle_key(key(KeyCode::Backspace));
+        }
+        for c in "brave-main".chars() {
+            dialog.handle_key(key(KeyCode::Char(c)));
+        }
+        dialog.handle_key(key(KeyCode::Enter));
+        for c in "sk-1".chars() {
+            dialog.handle_key(key(KeyCode::Char(c)));
+        }
+    }
+    // Enter routes the dialog's Submit through the app: the config
+    // write, the keychain placement, the persist.
+    let effects = h.app.on_key(key(KeyCode::Enter));
+    let _ = effects;
+    let stored = h.store.load().unwrap().effective(Some("personal"));
+    let instance = &stored.websearch["brave-main"];
+    assert_eq!(instance.provider, "brave");
+    assert_eq!(instance.api_key, None, "the file holds no key");
+    let id = instance.secret_ref.as_deref().expect("the keychain ref");
+    assert_eq!(secrets.get(id).unwrap().as_deref(), Some("sk-1"));
+    assert_eq!(
+        stored.websearch_order,
+        vec!["brave-main".to_owned()],
+        "a first provider enrolls at the chain's end"
+    );
+}
+
+#[test]
+fn the_websearch_order_moves_and_persists_without_a_rebuild() {
+    let mut h = harness(None, None, Session::default());
+    h.app.config.set_for_profile(Some("personal"), |p| {
+        p.websearch.insert(
+            "brave-main".into(),
+            rhema_config::WebSearchInstance {
+                provider: "brave".into(),
+                api_key: Some("k".into()),
+                secret_ref: None,
+            },
+        );
+        p.websearch.insert(
+            "exa-work".into(),
+            rhema_config::WebSearchInstance {
+                provider: "exa".into(),
+                api_key: Some("k".into()),
+                secret_ref: None,
+            },
+        );
+        p.websearch_order = vec!["brave-main".into(), "exa-work".into()];
+    });
+    let _ = h.store.save(&h.app.config.clone());
+    h.app
+        .open_settings_at(crate::screens::SettingsSection::WebSearch);
+    // Row 0 is brave-main; ] sends it down one.
+    h.app.on_key(key(KeyCode::Char(']')));
+    let stored = h.store.load().unwrap().effective(Some("personal"));
+    assert_eq!(
+        stored.websearch_order,
+        vec!["exa-work".to_owned(), "brave-main".to_owned()]
+    );
+    // The selection rides the rebuilt rows: row 0 is now exa-work,
+    // row 1 brave-main. Down to it, then `[` walks it back up.
+    h.app.on_key(key(KeyCode::Down));
+    h.app.on_key(key(KeyCode::Char('[')));
+    let stored = h.store.load().unwrap().effective(Some("personal"));
+    assert_eq!(
+        stored.websearch_order,
+        vec!["brave-main".to_owned(), "exa-work".to_owned()]
+    );
+    // The selection stays at row 1, which now holds exa-work: a
+    // second `[` walks THAT up, the swap toggles under a still
+    // selection.
+    h.app.on_key(key(KeyCode::Char('[')));
+    let stored = h.store.load().unwrap().effective(Some("personal"));
+    assert_eq!(
+        stored.websearch_order,
+        vec!["exa-work".to_owned(), "brave-main".to_owned()]
+    );
+    // `[` at the top stays put: the chain never loses a member this
+    // way.
+    h.app.on_key(key(KeyCode::Up));
+    h.app.on_key(key(KeyCode::Char('[')));
+    let stored = h.store.load().unwrap().effective(Some("personal"));
+    assert_eq!(
+        stored.websearch_order,
+        vec!["exa-work".to_owned(), "brave-main".to_owned()]
+    );
+}
+
+#[test]
+fn removing_a_websearch_provider_takes_its_order_entry_with_it() {
+    let mut h = harness(None, None, Session::default());
+    h.app.config.set_for_profile(Some("personal"), |p| {
+        p.websearch.insert(
+            "brave-main".into(),
+            rhema_config::WebSearchInstance {
+                provider: "brave".into(),
+                api_key: Some("k".into()),
+                secret_ref: None,
+            },
+        );
+        p.websearch_order = vec!["brave-main".into()];
+    });
+    let _ = h.store.save(&h.app.config.clone());
+    h.app
+        .open_settings_at(crate::screens::SettingsSection::WebSearch);
+    h.app.on_key(key(KeyCode::Char('d')));
+    assert_eq!(
+        h.app.on_key(key(KeyCode::Char('y'))),
+        vec![],
+        "the confirm routed through on_key"
+    );
+    let stored = h.store.load().unwrap().effective(Some("personal"));
+    assert!(stored.websearch.is_empty());
+    assert!(
+        stored.websearch_order.is_empty(),
+        "the order entry went with the instance"
+    );
+}

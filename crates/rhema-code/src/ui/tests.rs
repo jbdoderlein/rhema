@@ -527,11 +527,11 @@ fn the_settings_screen_draws_the_sidebar_and_the_page() {
     settings.stored.instance = Some("google".into());
 
     let mut hits = Vec::new();
-    let mut terminal = Terminal::new(TestBackend::new(80, 16)).unwrap();
+    let mut terminal = Terminal::new(TestBackend::new(80, 18)).unwrap();
     terminal
         .draw(|frame| render_settings(frame, &settings, &DARK, &crate::icons::UNICODE, &mut hits))
         .unwrap();
-    let rows: Vec<String> = (0..16)
+    let rows: Vec<String> = (0..18)
         .map(|y| {
             (0..80)
                 .map(|x| terminal.backend().buffer()[(x, y)].symbol())
@@ -1126,11 +1126,11 @@ fn the_add_dialog_starts_with_categories_then_lists_providers() {
     settings.dialog = Some(crate::screens::AddInstanceDialog::new(&settings.stored));
 
     let mut hits = Vec::new();
-    let mut terminal = Terminal::new(TestBackend::new(80, 16)).unwrap();
+    let mut terminal = Terminal::new(TestBackend::new(80, 18)).unwrap();
     terminal
         .draw(|frame| render_settings(frame, &settings, &DARK, &crate::icons::UNICODE, &mut hits))
         .unwrap();
-    let rows: Vec<String> = (0..16)
+    let rows: Vec<String> = (0..18)
         .map(|y| {
             (0..80)
                 .map(|x| terminal.backend().buffer()[(x, y)].symbol())

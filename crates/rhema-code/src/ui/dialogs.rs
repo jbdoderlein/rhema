@@ -676,3 +676,80 @@ pub(crate) fn render_confirm_quit(frame: &mut Frame, theme: &Theme) {
         inner,
     );
 }
+
+/// Renders the web search add dialog: the kind list on its stage, the
+/// name and key lines on theirs, the stage's hint on the status line.
+pub(crate) fn render_add_websearch_dialog(
+    frame: &mut Frame,
+    dialog: &crate::screens::AddWebSearchDialog,
+    theme: &Theme,
+) {
+    use crate::screens::{WEBSEARCH_KINDS, WebSearchDialogStage};
+    let rows = match dialog.stage {
+        WebSearchDialogStage::Kind => WEBSEARCH_KINDS.len() as u16,
+        _ => 1,
+    };
+    let area = centered(58, rows + 3, frame.area());
+    frame.render_widget(Clear, area);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .border_style(Style::default().fg(theme.border))
+        .style(Style::default().bg(theme.sunken).fg(theme.text))
+        .title(" add a web search provider ");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let [body_area, status_area] =
+        Layout::vertical([Constraint::Length(rows), Constraint::Length(1)]).areas(inner);
+
+    match dialog.stage {
+        WebSearchDialogStage::Kind => {
+            let rows: Vec<Line> = WEBSEARCH_KINDS
+                .iter()
+                .enumerate()
+                .map(|(index, (kind, what))| {
+                    let selected = index == dialog.selected;
+                    let name_style = if selected {
+                        Style::default().fg(theme.text).bold()
+                    } else {
+                        Style::default().fg(theme.text2)
+                    };
+                    Line::from(vec![
+                        Span::raw(if selected { "❯ " } else { "  " }).fg(theme.accent_text),
+                        Span::styled((*kind).to_owned(), name_style),
+                        Span::raw(format!("  {what}")).fg(theme.text3),
+                    ])
+                })
+                .collect();
+            frame.render_widget(Paragraph::new(rows), body_area);
+        }
+        _ => {
+            let mut line = Line::from(vec![
+                Span::raw(dialog.input_label()).fg(theme.text3),
+                Span::raw(dialog.input.clone()).fg(theme.text),
+                Span::raw("▌").fg(theme.accent_text),
+            ]);
+            if dialog.stage == WebSearchDialogStage::Key && !dialog.input.is_empty() {
+                // The key line shows its length, not its bytes: the
+                // shoulder-surfer rule every key dialog should follow.
+                line.spans.pop();
+                line.spans.pop();
+                line.push_span(
+                    Span::raw(format!(
+                        "{} ({} chars)",
+                        "•".repeat(dialog.input.chars().count().min(24)),
+                        dialog.input.chars().count()
+                    ))
+                    .fg(theme.text),
+                );
+            }
+            frame.render_widget(Paragraph::new(vec![line]), body_area);
+        }
+    }
+    let status = match (&dialog.error, dialog.stage) {
+        (Some(error), _) => (error.clone(), theme.warn),
+        _ => (dialog.input_hint(), theme.text3),
+    };
+    frame.render_widget(Paragraph::new(status.0).fg(status.1), status_area);
+}

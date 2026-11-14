@@ -40,6 +40,10 @@ impl App {
             &settings.stored.mcp_servers,
             &self.disabled_mcp_servers,
         );
+        settings.websearch = crate::screens::websearch_rows(
+            &settings.stored.websearch,
+            &settings.stored.websearch_order,
+        );
         self.screen = Screen::Settings(Box::new(settings));
     }
 
@@ -289,6 +293,163 @@ impl App {
         self.transcript
             .push_notice(&format!("removed the {name} server"));
         Vec::new()
+    }
+
+    /// Rebuilds the web search page's snapshot from the config,
+    /// keeping the selection inside the shrunken list. A no-op when
+    /// the settings screen is not open.
+    pub(crate) fn refresh_websearch_page(&mut self) {
+        let Screen::Settings(settings) = &mut self.screen else {
+            return;
+        };
+        settings.websearch_dialog = None;
+        settings.stored = self.config.effective(self.session_profile.as_deref());
+        settings.websearch = crate::screens::websearch_rows(
+            &settings.stored.websearch,
+            &settings.stored.websearch_order,
+        );
+        let rows = settings.websearch.len() + 1;
+        if settings.row >= rows {
+            settings.row = rows.saturating_sub(1);
+        }
+    }
+
+    /// Enter on the web search page's add row: the dialog opens,
+    /// refusing the profile's current instance names.
+    pub(crate) fn open_websearch_dialog(&mut self) {
+        let Screen::Settings(settings) = &mut self.screen else {
+            return;
+        };
+        let taken = settings.stored.websearch.keys().cloned().collect();
+        settings.websearch_dialog = Some(crate::screens::AddWebSearchDialog::new(taken));
+    }
+
+    /// The add-provider dialog's accepted provider: the instance
+    /// lands in the profile's `websearch` map, the key goes through
+    /// [`rhema_config::Profile::place_websearch_key`] (keychain first,
+    /// the literal when no store accepts it), the name joins the
+    /// chain order at the end, and the config persists. The running
+    /// agent rebuilds, because a first provider flips the wiring
+    /// gate: the function and the section exist from the next turn.
+    pub(crate) fn submit_websearch_provider(&mut self) -> Vec<Effect> {
+        let built = match &self.screen {
+            Screen::Settings(settings) => settings
+                .websearch_dialog
+                .as_ref()
+                .and_then(|dialog| dialog.build().ok()),
+            _ => None,
+        };
+        let Some((name, kind, key)) = built else {
+            return Vec::new();
+        };
+        // The dialog dedupes against its opening snapshot; this is
+        // the belt for a path that should not exist.
+        if self.effective().websearch.contains_key(&name) {
+            self.transcript
+                .push_notice(&format!("a provider named {name} already exists"));
+            return Vec::new();
+        }
+        let secrets = self.secrets.clone();
+        let mut location = None;
+        self.config
+            .set_for_profile(self.session_profile.as_deref(), |profile| {
+                profile.websearch.insert(
+                    name.clone(),
+                    rhema_config::WebSearchInstance {
+                        provider: kind.to_owned(),
+                        api_key: None,
+                        secret_ref: None,
+                    },
+                );
+                location = profile.place_websearch_key(&name, &key, secrets.as_deref());
+                profile.websearch_order.push(name.clone());
+            });
+        if !self.save_config() {
+            return Vec::new();
+        }
+        self.refresh_websearch_page();
+        let where_note = match location {
+            Some(rhema_config::KeyLocation::Keychain) => "the key went to the keychain",
+            _ => "the key stayed in the config file",
+        };
+        let _ = self.rebuild_live_agent(false);
+        self.transcript.push_notice(&format!(
+            "added {name} ({kind}) to this profile, {where_note}, the agent rebuilt with it"
+        ));
+        Vec::new()
+    }
+
+    /// `y` on the removal confirm: the instance leaves the profile's
+    /// map, its order entry goes with it, and the config persists.
+    /// The running agent rebuilds when the last provider went: the
+    /// wiring gate closes, the function and the section go away.
+    pub(crate) fn remove_websearch_provider(&mut self) -> Vec<Effect> {
+        let Some(name) = (match &self.screen {
+            Screen::Settings(settings) => settings.selected_websearch().map(str::to_owned),
+            _ => None,
+        }) else {
+            return Vec::new();
+        };
+        let mut removed = false;
+        self.config
+            .set_for_profile(self.session_profile.as_deref(), |profile| {
+                removed = profile.websearch.remove(&name).is_some();
+                profile.websearch_order.retain(|entry| entry != &name);
+            });
+        if !removed || !self.save_config() {
+            return Vec::new();
+        }
+        self.refresh_websearch_page();
+        let empty_now = self.effective().websearch.is_empty();
+        if !empty_now || !self.turn.running {
+            let _ = self.rebuild_live_agent(false);
+        }
+        self.transcript
+            .push_notice(&format!("removed the {name} provider"));
+        Vec::new()
+    }
+
+    /// `[` or `]` on a provider row: one step up or down the chain.
+    /// `[` on an unordered row brings it into the chain at the end.
+    /// Persisted with no rebuild: the chain order is read fresh per
+    /// `search` invocation, the wiring carries nothing of it.
+    pub(crate) fn move_websearch_provider(&mut self, up: bool) {
+        let Some(name) = (match &self.screen {
+            Screen::Settings(settings) => settings.selected_websearch().map(str::to_owned),
+            _ => None,
+        }) else {
+            return;
+        };
+        let mut moved = false;
+        self.config
+            .set_for_profile(self.session_profile.as_deref(), |profile| {
+                let Some(pos) = profile.websearch_order.iter().position(|n| n == &name) else {
+                    // An unordered row: `[` enrolls it, last in the
+                    // chain. `]` does nothing, out of the chain is
+                    // not a keypress away.
+                    if up {
+                        profile.websearch_order.push(name.clone());
+                        moved = true;
+                    }
+                    return;
+                };
+                let new = if up {
+                    pos.saturating_sub(1)
+                } else {
+                    (pos + 1).min(profile.websearch_order.len() - 1)
+                };
+                if new != pos {
+                    profile.websearch_order.remove(pos);
+                    profile.websearch_order.insert(new, name.clone());
+                    moved = true;
+                }
+            });
+        if !moved || !self.save_config() {
+            return;
+        }
+        self.refresh_websearch_page();
+        self.transcript
+            .push_notice(&format!("moved {name} in the search chain, saved"));
     }
 
     /// Opens the selected subagent definition in `$EDITOR`. The built-in

@@ -400,6 +400,21 @@ impl App {
                 }
             }
             SettingsAction::RemoveMcpServer => self.remove_mcp_server(),
+            SettingsAction::OpenWebSearchDialog => {
+                self.open_websearch_dialog();
+                Vec::new()
+            }
+            SettingsAction::SubmitWebSearchDialog => self.submit_websearch_provider(),
+            SettingsAction::CloseWebSearchDialog => Vec::new(),
+            SettingsAction::RemoveWebSearchProvider => self.remove_websearch_provider(),
+            SettingsAction::MoveWebSearchUp => {
+                self.move_websearch_provider(true);
+                Vec::new()
+            }
+            SettingsAction::MoveWebSearchDown => {
+                self.move_websearch_provider(false);
+                Vec::new()
+            }
             SettingsAction::SelectSandboxInstance => {
                 let name = match &self.screen {
                     Screen::Settings(settings) => {
