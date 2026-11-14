@@ -378,24 +378,28 @@ fn render_report(
         .iter()
         .zip(answered)
         .map(|(entry, answer)| {
+            // The note renders the entry's advice over the answered
+            // name — the family's alternative, so `{{ browser }}` is
+            // always a command this machine has. Absent tools earn
+            // none: guidance about a missing tool is the stale kind.
+            let note = answer
+                .as_deref()
+                .zip(entry.advice.as_ref())
+                .map(|(name, advice)| {
+                    // The advice renders through the section joiner,
+                    // which appends a newline; a note rides inside a
+                    // line, so its terminator is the template's.
+                    render_text(advice, &facts.context(manifest, json!({ "browser": name })))
+                        .trim_end()
+                        .to_owned()
+                })
+                .filter(|note| !note.is_empty())
+                .unwrap_or_default();
             json!({
                 "name": answer.unwrap_or(entry.executable.as_str()),
-                "state": if answer.is_some() { "present" } else { "absent" },
+                "state": answer.is_some(),
+                "note": note,
             })
-        })
-        .collect();
-    let notes: Vec<String> = manifest
-        .probe
-        .iter()
-        .zip(answered)
-        .filter_map(|(entry, answer)| {
-            let advice = entry.advice.as_ref()?;
-            let answer = answer.as_deref()?;
-            let note = render_text(
-                advice,
-                &facts.context(manifest, json!({ "browser": answer })),
-            );
-            (!note.is_empty()).then_some(note)
         })
         .collect();
     let context = facts.context(
@@ -406,7 +410,6 @@ fn render_report(
             "workspace": workspace.display().to_string(),
             "branch": branch,
             "tools": tools,
-            "notes": notes,
         }),
     );
     let rendered = render_text(&manifest.report, &context);
@@ -566,7 +569,7 @@ mod tests {
                 json!({
                     "os": "macOS (Darwin arm64)", "shell": "/bin/zsh",
                     "workspace": "/ws", "branch": "main",
-                    "tools": [{"name": "rg", "state": "present"}], "notes": ["n"],
+                    "tools": [{"name": "rg", "state": true, "note": "n"}],
                     "kind": "k", "reason": "r",
                 }),
             );
@@ -671,8 +674,9 @@ mod tests {
         assert_eq!(os_label(manifest, "SunOS sun4u"), "SunOS sun4u");
     }
 
-    /// Advice joins the notes only when its executable answered — the
-    /// ripgrep note is data like any other entry's.
+    /// The note rides its tool's line and only when the executable
+    /// answered — the ripgrep note is data like any other entry's.
+    /// Absent tools keep their line: the model should know not to try.
     #[test]
     fn advice_follows_presence_not_the_tool_name() {
         let manifest = manifest();
@@ -686,8 +690,8 @@ mod tests {
                 "Darwin arm64\nshell: /bin/zsh\nrg: present\nfd: absent\ngit branch: main\n",
             ),
         );
-        assert!(with.contains("Notes:"), "{with}");
-        assert!(with.contains("Use `rg`"), "{with}");
+        assert!(with.contains("- rg: present\n  Use `rg`"), "{with}");
+        assert!(with.contains("- fd: absent"), "{with}");
         let without = render_report(
             manifest,
             Path::new("/ws"),
@@ -697,7 +701,7 @@ mod tests {
                 "Darwin arm64\nshell: /bin/zsh\nrg: absent\nfd: absent\n",
             ),
         );
-        assert!(!without.contains("Notes:"), "{without}");
+        assert!(!without.contains("Use `rg`"), "{without}");
         assert!(without.contains("- rg: absent"), "{without}");
     }
 
@@ -738,13 +742,13 @@ mod tests {
         let present = parse_probe(
             manifest,
             "Linux x86_64\nshell: /bin/bash\nrg: present\nfd: absent\njq: absent\n\
-             yq: absent\nsd: absent\ncurl: present\ngob: present\n\
+             yq: absent\nsd: absent\ncurl: present\n\
              chromium: absent\nchrome: present\n",
         );
         assert_eq!(
             missing_tools(manifest, &present),
             vec!["fd", "jq", "yq", "sd"],
-            "the answered chromium family and the present rg, curl and gob stay out"
+            "the answered chromium family and the present rg and curl stay out"
         );
         let bare = parse_probe(manifest, "Linux x86_64\nshell: /bin/bash\n");
         assert_eq!(
