@@ -34,12 +34,15 @@ impl SseDecoder {
     /// Feeds bytes and returns the payloads of every event completed by
     /// them. Handles events whose lines are split across chunks.
     pub fn push(&mut self, bytes: &[u8]) -> Vec<String> {
+        // A poisoned decoder stops accepting input. The caller should
+        // have taken the error already; returning empty keeps a
+        // forgotten check from growing the buffer without bound.
+        if self.error.is_some() {
+            return Vec::new();
+        }
         // Bound the buffer before extending it: a line that never ends
         // is not an event, it is a server gone wrong.
-        if self.error.is_none()
-            && !bytes.contains(&b'\n')
-            && self.buffer.len() + bytes.len() > MAX_EVENT_BYTES
-        {
+        if !bytes.contains(&b'\n') && self.buffer.len() + bytes.len() > MAX_EVENT_BYTES {
             self.error = Some(format!(
                 "the stream sent more than {MAX_EVENT_BYTES} bytes without a \
                  line break, not an SSE event; aborting"
@@ -65,6 +68,11 @@ impl SseDecoder {
     /// newline, and an event never closed by a blank line.
     pub fn finish(&mut self) -> Vec<String> {
         let mut events = Vec::new();
+        if self.error.is_some() {
+            self.buffer.clear();
+            self.data.clear();
+            return events;
+        }
         if !self.buffer.is_empty() {
             let tail = String::from_utf8_lossy(&self.buffer).into_owned();
             self.buffer.clear();
@@ -131,6 +139,19 @@ mod tests {
         // The buffer is gone; the decoder keeps answering, empty.
         assert!(d.push(b"later").is_empty());
         assert!(d.take_error().is_none());
+    }
+
+    #[test]
+    fn a_poisoned_decoder_does_not_grow_or_finish() {
+        let mut d = SseDecoder::new();
+        let big = vec![b'x'; MAX_EVENT_BYTES + 1];
+        assert!(d.push(&big).is_empty());
+        // The caller forgot to take the error: later bytes are ignored,
+        // not buffered, and finish yields no partial event.
+        assert!(d.push(b"later data: {}").is_empty());
+        assert!(d.buffer.is_empty());
+        assert!(d.finish().is_empty());
+        assert!(d.take_error().is_some());
     }
 
     #[test]
