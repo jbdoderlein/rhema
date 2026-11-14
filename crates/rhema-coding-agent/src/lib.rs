@@ -6,11 +6,43 @@
 //! shared toolkit (`rhema-agent-tools`): the approval-gated shell, its
 //! spec and discovered skills presented in the system prompt, the model
 //! loading skill bodies via the shell. Tool errors surface in-band to
-//! the model (SPEC.md §4); approval arrives per turn through the
-//! [`Approval`] hook; the session is plain data the driver can persist
-//! and resume, with a commit hook so an intent is durable before its
-//! first side effect, revive-on-resume for calls a crash left
-//! unanswered, and cancel-path repair for those a user stopped.
+//! the model (SPEC.md §4); approval is config state, installed into the
+//! tools before each turn, and a driver whose channel belongs to one
+//! turn swaps it with [`CodingAgent::set_approval`]; the session is
+//! plain data the driver can persist and resume, with a commit hook so
+//! an intent is durable before its first side effect, revive-on-resume
+//! for calls a crash left unanswered, and cancel-path repair for those
+//! a user stopped.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use std::sync::Arc;
+//!
+//! use rhema_coding_agent::{AllowAll, CodingAgent, CodingAgentConfig, Console};
+//! use rhema_core::ModelProvider;
+//!
+//! # async fn example(provider: impl ModelProvider + 'static) -> Result<(), Box<dyn std::error::Error>> {
+//! let config = CodingAgentConfig::new(
+//!     provider,
+//!     "claude-sonnet-5-5",
+//!     "/work/repo",
+//!     AllowAll, // any Approval; DenyAll refuses every call
+//! );
+//! let mut agent = CodingAgent::new(config)?;
+//!
+//! let _reply = agent
+//!     .turn("fix the failing test", &mut Console::stdout())
+//!     .await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! `Console::stdout()` is the ready-made event sink; any
+//! [`EventSink`](rhema_core::EventSink) works, and `NoopSink` drops the
+//! stream. The provider and the approval both arrive as `impl Trait`
+//! and are wrapped internally, so a concrete provider and an `Arc` the
+//! caller already holds pass equally unchanged.
 //!
 //! Layout:
 //! - [`agent`]: `CodingAgent`, `CodingAgentError`, `stamped_system`
@@ -53,6 +85,6 @@ pub use prompt::{DEFAULT_SYSTEM_MD, default_system};
 // The toolkit the driver is built on, under this crate's name: every
 // downstream driver (TUI, ACP, the claw) keeps its import paths.
 pub use rhema_agent_tools::{
-    AllowAll, Approval, DenyAll, ExpandPastes, ShellTools, render_system, render_template,
-    repair_dangling_calls, revive_dangling_calls,
+    AllowAll, Approval, Console, DenyAll, ExpandPastes, NoopSink, ShellTools, render_system,
+    render_template, repair_dangling_calls, revive_dangling_calls,
 };

@@ -18,7 +18,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rhema_agent_tools::AllowAll;
 use rhema_coding_agent::{CodingAgent, CodingAgentConfig};
 use rhema_config::mcp::{McpConfig, McpServer, McpTransport};
 use rhema_core::{
@@ -338,7 +337,12 @@ async fn the_wire_turn_walks_servers_help_and_call() -> Result<(), String> {
 
     // The agent builds its own ShellTools over the wiring's env map,
     // the production shape, `BASH_ENV` and the bridge token included.
-    let mut config = CodingAgentConfig::new(provider.clone(), "mock-model", workspace.path());
+    let mut config = CodingAgentConfig::new(
+        provider.clone(),
+        "mock-model",
+        workspace.path(),
+        rhema_coding_agent::AllowAll,
+    );
     config.skills = Some(Vec::new());
     config.transcript = None;
     config.shell_env = wiring.shell_env.clone();
@@ -346,7 +350,7 @@ async fn the_wire_turn_walks_servers_help_and_call() -> Result<(), String> {
     let mut agent = CodingAgent::new(config).map_err(|e| e.to_string())?;
 
     let output = agent
-        .turn("validate the fake file", &mut NullSink, Arc::new(AllowAll))
+        .turn("validate the fake file", &mut NullSink)
         .await
         .map_err(|e| e.to_string())?;
     let final_text = output

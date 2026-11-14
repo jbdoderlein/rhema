@@ -2531,6 +2531,7 @@ fn the_status_tracks_thinking_versus_running() {
         Arc::new(NeverDriven),
         "m-a",
         PathBuf::from("."),
+        rhema_coding_agent::AllowAll,
     ))
     .unwrap();
     h.app.on_event(UiEvent::TurnCancelled {
@@ -2636,6 +2637,7 @@ fn esc_when_running_cancels_the_turn_and_flags_the_channel() {
         Arc::new(NeverDriven),
         "m-a",
         PathBuf::from("."),
+        rhema_coding_agent::AllowAll,
     ))
     .unwrap();
     h.app.on_event(UiEvent::TurnCancelled {
@@ -2686,6 +2688,7 @@ fn the_cancelled_event_hands_the_agent_back_with_a_notice() {
         Arc::new(NeverDriven),
         "m-a",
         PathBuf::from("."),
+        rhema_coding_agent::AllowAll,
     ))
     .unwrap();
     h.app.on_event(UiEvent::TurnCancelled {
@@ -2726,7 +2729,13 @@ fn turn_finished_records_usage_and_errors() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     let make_agent = || {
         Box::new(
-            CodingAgent::new(CodingAgentConfig::new(Arc::new(NeverDriven), "m-a", ".")).unwrap(),
+            CodingAgent::new(CodingAgentConfig::new(
+                Arc::new(NeverDriven),
+                "m-a",
+                ".",
+                rhema_coding_agent::AllowAll,
+            ))
+            .unwrap(),
         )
     };
     let usage = Usage {
@@ -5685,6 +5694,7 @@ fn the_status_tracker_follows_the_turn_lifecycle() {
         Arc::new(NeverDriven),
         "m-a",
         std::env::temp_dir(),
+        rhema_coding_agent::AllowAll,
     ))
     .unwrap();
     h.app.turn.running = false;

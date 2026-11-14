@@ -252,7 +252,9 @@ impl App {
                 .unwrap_or(CodingAgentConfig::DEFAULT_MAX_TURN_STEPS),
             thinking,
             base_system: self.base_system.clone(),
-            ..CodingAgentConfig::new(provider, model, workspace)
+            // The prompt handler installs the session's real hook with
+            // `set_approval` before each turn; until one runs, deny.
+            ..CodingAgentConfig::new(provider, model, workspace, rhema_coding_agent::DenyAll)
         };
         // The `bash` tool does its own I/O here (no fs/terminal
         // callbacks), so commands run on this host and the vision

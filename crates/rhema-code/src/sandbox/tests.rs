@@ -583,7 +583,12 @@ fn the_assembly_applies_tools_before_and_workspace_after_the_wire_order() {
         instance_lock: None,
         managed: None,
     };
-    let mut config = CodingAgentConfig::new(Arc::new(Unused), "m", Path::new("/host/ws"));
+    let mut config = CodingAgentConfig::new(
+        Arc::new(Unused),
+        "m",
+        Path::new("/host/ws"),
+        rhema_coding_agent::AllowAll,
+    );
     assert!(config.tools.is_none());
     assembled.apply_tools(&mut config);
     assert_eq!(

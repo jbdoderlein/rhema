@@ -406,11 +406,12 @@ async fn serve_connection(
                         // The block ends the pin's borrow of the agent
                         // before the match takes it out of the guard.
                         let outcome = {
-                            let turn = restore
-                                .agent
-                                .as_mut()
-                                .expect("the guard was just filled")
-                                .turn(prompt, &mut sink, approval);
+                            let agent = restore.agent.as_mut().expect("the guard was just filled");
+                            // The hook belongs to this turn's editor
+                            // connection: a fresh round, a fresh
+                            // approval bridge.
+                            agent.set_approval(approval);
+                            let turn = agent.turn(prompt, &mut sink);
                             tokio::pin!(turn);
                             tokio::select! {
                                 _ = cancelled_turn(cancelled) => None,

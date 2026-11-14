@@ -301,7 +301,12 @@ mod tests {
             "scout",
             "scouts ahead",
         );
-        let mut config = CodingAgentConfig::new(Arc::new(Never), "m", workspace.path());
+        let mut config = CodingAgentConfig::new(
+            Arc::new(Never),
+            "m",
+            workspace.path(),
+            rhema_coding_agent::AllowAll,
+        );
         // The factory answers only anthropic; the model the wire's
         // config carries is never the parent here.
         let other = Arc::new(Never);
@@ -370,7 +375,12 @@ mod tests {
         // had never heard of.
         let empty = tempfile::tempdir().unwrap();
         let workspace = tempfile::tempdir().unwrap();
-        let mut config = CodingAgentConfig::new(Arc::new(Never), "m", workspace.path());
+        let mut config = CodingAgentConfig::new(
+            Arc::new(Never),
+            "m",
+            workspace.path(),
+            rhema_coding_agent::AllowAll,
+        );
         config
             .shell_env
             .insert("RHEMA_WIRE_TEST".to_owned(), "seen".to_owned());
@@ -402,7 +412,8 @@ mod tests {
         // The shell canonicalizes, so the assertion compares against the
         // canonical form of the same directory.
         let root = std::fs::canonicalize(workspace.path()).unwrap();
-        let mut config = CodingAgentConfig::new(Arc::new(Never), "m", &root);
+        let mut config =
+            CodingAgentConfig::new(Arc::new(Never), "m", &root, rhema_coding_agent::AllowAll);
         let handle = wire_at(Some(empty.path()), &mut config);
 
         // The catalog is never empty: the built-in general-purpose
@@ -447,7 +458,12 @@ mod tests {
     #[test]
     fn definitions_attach_the_tool_and_reach_the_prompt() {
         let (global, workspace) = workspace_with_defs();
-        let mut config = CodingAgentConfig::new(Arc::new(Never), "parent-model", &workspace);
+        let mut config = CodingAgentConfig::new(
+            Arc::new(Never),
+            "parent-model",
+            &workspace,
+            rhema_coding_agent::AllowAll,
+        );
         let handle = wire_at(Some(global.path()), &mut config);
 
         // The shell is shared with the tool: that is the approval
@@ -524,7 +540,12 @@ mod tests {
         // The wire: the config's own set runs the same filter, the
         // built-in answering to its name like any other.
         def_in(global.path(), "general-purpose", "my generalist");
-        let mut config = CodingAgentConfig::new(Arc::new(Never), "m", &workspace);
+        let mut config = CodingAgentConfig::new(
+            Arc::new(Never),
+            "m",
+            &workspace,
+            rhema_coding_agent::AllowAll,
+        );
         config.disabled_subagents = BTreeSet::from([
             "reviewer".to_owned(),
             "scout".to_owned(),
@@ -539,7 +560,12 @@ mod tests {
         let _ = handle.steering().drain();
 
         // Disabling one of two leaves the other: the tool stays.
-        let mut config = CodingAgentConfig::new(Arc::new(Never), "m", &workspace);
+        let mut config = CodingAgentConfig::new(
+            Arc::new(Never),
+            "m",
+            &workspace,
+            rhema_coding_agent::AllowAll,
+        );
         config.disabled_subagents = BTreeSet::from(["reviewer".to_owned()]);
         let _handle = wire_at(Some(global.path()), &mut config);
         let extra = config.extra_resolver.clone().expect("the tool");
@@ -556,7 +582,8 @@ mod tests {
     fn the_subagent_stamp_carries_the_parents_sections() {
         let workspace = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(workspace.path()).unwrap();
-        let mut config = CodingAgentConfig::new(Arc::new(Never), "m", &root);
+        let mut config =
+            CodingAgentConfig::new(Arc::new(Never), "m", &root, rhema_coding_agent::AllowAll);
         config.environment = Some("ENVSAYSHI".into());
         config.user_preferences = Some("USERSAYSHI".into());
         config.skills = Some(vec![rhema_agent_tools::Skill {
@@ -582,7 +609,12 @@ mod tests {
     #[test]
     fn a_total_replacement_replaces_the_subagent_stamp_too() {
         let workspace = tempfile::tempdir().unwrap();
-        let mut config = CodingAgentConfig::new(Arc::new(Never), "m", workspace.path());
+        let mut config = CodingAgentConfig::new(
+            Arc::new(Never),
+            "m",
+            workspace.path(),
+            rhema_coding_agent::AllowAll,
+        );
         config.system = Some("the replacement".into());
         assert_eq!(
             subagent_base_system(&config, workspace.path()),

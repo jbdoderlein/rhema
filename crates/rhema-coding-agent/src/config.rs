@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use rhema_agent_tools::{ShellTools, Skill};
+use rhema_agent_tools::{Approval, ShellTools, Skill};
 use rhema_core::ToolResolver;
 use rhema_core::request::ThinkingEffort;
 
@@ -68,6 +68,13 @@ pub struct CodingAgentConfig {
     ///
     /// [`CodingAgent::new`]: crate::CodingAgent::new
     pub provider: Arc<dyn rhema_core::ModelProvider>,
+    /// The approval hook every gated tool call goes through. The
+    /// constructor takes it beside the provider because there is no
+    /// neutral default: `DenyAll` leaves the agent unable to act and
+    /// `AllowAll` removes the gate silently. A driver that changes
+    /// policy between turns swaps it with
+    /// [`CodingAgent::set_approval`](crate::CodingAgent::set_approval).
+    pub approval: Arc<dyn Approval>,
     /// Model identifier, passed through to
     /// [`ChatParams`](rhema_core::ChatParams).
     pub model: String,
@@ -218,6 +225,7 @@ impl std::fmt::Debug for CodingAgentConfig {
         // presence is the debug-worthy fact, not their internals.
         f.debug_struct("CodingAgentConfig")
             .field("provider", &"<dyn ModelProvider>")
+            .field("approval", &"<dyn Approval>")
             .field("model", &self.model)
             .field("system", &self.system)
             .field("base_system", &self.base_system)
@@ -247,14 +255,22 @@ impl CodingAgentConfig {
     pub const DEFAULT_MAX_TURN_STEPS: u32 = 2048;
 
     /// Config running `provider` on `model`, rooted at `workspace`,
-    /// defaults elsewhere.
+    /// gating side effects through `approval`; defaults elsewhere.
+    ///
+    /// Both handles arrive as `impl Trait` and are wrapped here, so a
+    /// caller holding an `Arc` passes it unchanged (the blanket impls
+    /// in `rhema-core` and `rhema-agent-tools` make `Arc<T>` a `T`).
+    /// For an `Arc` argument the config keeps one more handle, not a
+    /// copy of the provider.
     pub fn new(
-        provider: Arc<dyn rhema_core::ModelProvider>,
+        provider: impl rhema_core::ModelProvider + 'static,
         model: impl Into<String>,
         workspace: impl Into<PathBuf>,
+        approval: impl Approval + 'static,
     ) -> Self {
         Self {
-            provider,
+            provider: Arc::new(provider),
+            approval: Arc::new(approval),
             model: model.into(),
             system: None,
             base_system: None,

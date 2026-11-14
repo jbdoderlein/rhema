@@ -165,7 +165,14 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
         base_system: base_system.clone(),
         disabled_skills: config.skills_disabled.clone(),
         disabled_subagents: config.disabled_subagents.clone(),
-        ..rhema_coding_agent::CodingAgentConfig::new(provider.clone(), &model, &workspace)
+        // Approval is intentionally `AllowAll`: commands run inside the
+        // sandbox, and the sandbox is the isolation boundary.
+        ..rhema_coding_agent::CodingAgentConfig::new(
+            provider.clone(),
+            &model,
+            &workspace,
+            rhema_coding_agent::AllowAll,
+        )
     };
     // Where bash runs: the sandbox choice engages only off `local`, and
     // before the subagent wire below, their inner shell inherits the
@@ -323,9 +330,6 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
         None => Session::default(),
     };
     let mut agent = CodingAgent::from_session(agent_config, session)?;
-    // Approval is intentionally `AllowAll`: commands run inside the
-    // sandbox, and the sandbox is the isolation boundary.
-    let approval: Arc<dyn Approval> = Arc::new(rhema_coding_agent::AllowAll);
 
     // The checkpoint, opt-in headless: when `--save` names a file, the
     // engine hands the session over at every stream boundary, before
@@ -352,7 +356,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
         step: None,
         max_steps: args.max_steps,
     };
-    let outcome = agent.turn(prompt, &mut sink, approval).await;
+    let outcome = agent.turn(prompt, &mut sink).await;
     let served: anyhow::Result<()> = match outcome {
         Ok(output) => {
             // Checkpoint after the completed turn: the file's freshest

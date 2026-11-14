@@ -145,13 +145,7 @@ async fn a_full_turn_runs_bash_in_the_sandbox_through_the_round_trip() {
     // The turn runs as its own task; the test body plays the client.
     let mut agent = rig.agent;
     let turn = tokio::spawn(async move {
-        let result = agent
-            .turn(
-                "say hello",
-                &mut NoopSink,
-                Arc::new(rhema_agent_tools::DenyAll),
-            )
-            .await;
+        let result = agent.turn("say hello", &mut NoopSink).await;
         (result, agent)
     });
     // The client side of the round-trip: approve the one request.

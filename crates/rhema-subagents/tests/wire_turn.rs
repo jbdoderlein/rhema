@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use rhema_agent_tools::{AllowAll, ShellTools};
+use rhema_agent_tools::ShellTools;
 use rhema_coding_agent::{CodingAgent, CodingAgentConfig};
 use rhema_core::{
     Content, Event, EventSink, Message, ModelOutput, ModelProvider, ModelRequest, ProviderError,
@@ -127,7 +127,12 @@ async fn a_job_finishing_mid_turn_is_announced_at_the_next_step_boundary() {
         shell.clone(),
         "parent-model",
     ));
-    let mut config = CodingAgentConfig::new(provider.clone(), "m", std::env::temp_dir());
+    let mut config = CodingAgentConfig::new(
+        provider.clone(),
+        "m",
+        std::env::temp_dir(),
+        rhema_coding_agent::AllowAll,
+    );
     config.base_system = Some("the parent's system prompt".into());
     config.tools = Some(shell);
     config.extra_resolver = Some(tools.clone());
@@ -135,7 +140,7 @@ async fn a_job_finishing_mid_turn_is_announced_at_the_next_step_boundary() {
     let mut agent = CodingAgent::new(config).unwrap();
 
     agent
-        .turn("delegate the look", &mut NullSink, Arc::new(AllowAll))
+        .turn("delegate the look", &mut NullSink)
         .await
         .unwrap();
 
@@ -206,7 +211,12 @@ async fn a_wired_agent_starts_notifies_and_fetches_by_job_id() {
     );
     // The wire's shape: the tool resolver and the steering read the one
     // registry.
-    let mut config = CodingAgentConfig::new(provider.clone(), "m", std::env::temp_dir());
+    let mut config = CodingAgentConfig::new(
+        provider.clone(),
+        "m",
+        std::env::temp_dir(),
+        rhema_coding_agent::AllowAll,
+    );
     // The marker the provider tells the parent's requests by: the base
     // prompt rides into the rendered system.
     config.base_system = Some("the parent's system prompt".into());
@@ -218,7 +228,7 @@ async fn a_wired_agent_starts_notifies_and_fetches_by_job_id() {
     // Turn 1: the start call answers in-band with a job id; the job
     // runs in the background, across the turn's end.
     agent
-        .turn("delegate the look", &mut NullSink, Arc::new(AllowAll))
+        .turn("delegate the look", &mut NullSink)
         .await
         .unwrap();
     let start_results: Vec<String> = agent
@@ -252,10 +262,7 @@ async fn a_wired_agent_starts_notifies_and_fetches_by_job_id() {
 
     // Turn 2: the notification precedes the input; the fetch returns
     // the cached report.
-    agent
-        .turn("get it", &mut NullSink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("get it", &mut NullSink).await.unwrap();
     let history = &agent.session().history;
     let is_notification = |message: &Message| {
         message.role == Role::User

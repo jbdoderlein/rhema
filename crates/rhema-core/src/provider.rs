@@ -5,6 +5,8 @@
 //! [`ModelRequest`] in and [`ModelOutput`] plus streamed
 //! [`Event`](crate::Event)s out.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 
 use crate::event::EventSink;
@@ -84,6 +86,20 @@ pub trait ModelProvider: Send + Sync {
         req: ModelRequest,
         sink: &mut dyn EventSink,
     ) -> Result<ModelOutput, ProviderError>;
+}
+
+/// A shared provider is a provider: the blanket impl lets a caller
+/// holding an `Arc<dyn ModelProvider>` pass it wherever an
+/// `impl ModelProvider` is accepted, instead of unwrapping it first.
+#[async_trait]
+impl<T: ModelProvider + ?Sized> ModelProvider for Arc<T> {
+    async fn complete(
+        &self,
+        req: ModelRequest,
+        sink: &mut dyn EventSink,
+    ) -> Result<ModelOutput, ProviderError> {
+        (**self).complete(req, sink).await
+    }
 }
 
 #[cfg(test)]

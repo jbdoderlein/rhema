@@ -154,13 +154,10 @@ async fn a_turn_start_announcement_lands_before_the_user_input() {
     let steering = Scripted::new(vec![vec!["Subagent scout (job-3) has finished.".into()]]);
     let config = CodingAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir())
+        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
     };
     let mut agent = CodingAgent::new(config).unwrap();
-    agent
-        .turn("run it", &mut NullSink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("run it", &mut NullSink).await.unwrap();
 
     let requests = recorder.requests();
     assert_eq!(requests.len(), 1);
@@ -181,13 +178,10 @@ async fn a_mid_turn_announcement_lands_after_the_tool_round() {
     let steering = Scripted::new(vec![vec![], vec![notification.to_owned()], vec![], vec![]]);
     let config = CodingAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir())
+        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
     };
     let mut agent = CodingAgent::new(config).unwrap();
-    agent
-        .turn("run it", &mut NullSink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("run it", &mut NullSink).await.unwrap();
 
     let requests = recorder.requests();
     assert_eq!(requests.len(), 2);
@@ -210,13 +204,10 @@ async fn an_unfetched_finish_is_announced_once_per_turn() {
     let steering = Arc::new(Stubborn("Subagent scout (job-3) has finished.".into()));
     let config = CodingAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir())
+        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
     };
     let mut agent = CodingAgent::new(config).unwrap();
-    agent
-        .turn("run it", &mut NullSink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("run it", &mut NullSink).await.unwrap();
 
     let requests = recorder.requests();
     assert_eq!(requests.len(), 3);
@@ -241,13 +232,10 @@ async fn several_finishes_coalesce_into_one_message() {
     ]]);
     let config = CodingAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir())
+        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
     };
     let mut agent = CodingAgent::new(config).unwrap();
-    agent
-        .turn("run it", &mut NullSink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("run it", &mut NullSink).await.unwrap();
 
     let requests = recorder.requests();
     let users = user_texts(&requests[0]);
@@ -262,13 +250,10 @@ async fn an_empty_drain_appends_nothing() {
     let steering = Scripted::new(vec![vec![], vec![]]);
     let config = CodingAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir())
+        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
     };
     let mut agent = CodingAgent::new(config).unwrap();
-    agent
-        .turn("run it", &mut NullSink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("run it", &mut NullSink).await.unwrap();
 
     let requests = recorder.requests();
     assert_eq!(
@@ -284,17 +269,11 @@ async fn a_separate_turn_reannounces_the_same_unfetched_line() {
     let steering = Arc::new(Stubborn("Subagent scout (job-3) has finished.".into()));
     let config = CodingAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir())
+        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
     };
     let mut agent = CodingAgent::new(config).unwrap();
-    agent
-        .turn("first", &mut NullSink, Arc::new(AllowAll))
-        .await
-        .unwrap();
-    agent
-        .turn("second", &mut NullSink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("first", &mut NullSink).await.unwrap();
+    agent.turn("second", &mut NullSink).await.unwrap();
 
     let requests = recorder.requests();
     assert_eq!(requests.len(), 2);
@@ -319,12 +298,10 @@ async fn without_steering_the_history_keeps_its_plain_shape() {
         recorder.clone(),
         "m",
         std::env::temp_dir(),
+        AllowAll,
     ))
     .unwrap();
-    agent
-        .turn("run it", &mut NullSink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("run it", &mut NullSink).await.unwrap();
 
     let requests = recorder.requests();
     assert_eq!(requests.len(), 2);

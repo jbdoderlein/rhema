@@ -3,11 +3,14 @@
 //! steering source configured, the driver's own loop with the two drain
 //! points that append finished-work notifications at step boundaries.
 //!
-//! The agent owns one [`ShellTools`] resolver for its lifetime. Approval
-//! arrives per turn; it is installed into the resolver before stepping and
-//! cleared after (see [`rhema_agent_tools::approval`] for why the hook travels
-//! as an `Arc`). The session is plain data, the driver may mutate it between
-//! turns, checkpoint it, or resume it from disk. A turn entering with
+//! The agent owns one [`ShellTools`] resolver for its lifetime. The
+//! config carries the approval hook; every turn installs it into the
+//! resolver before stepping and clears it after (see
+//! [`rhema_agent_tools::approval`] for why the hook travels as an
+//! `Arc`). A driver whose hook belongs to one turn, the TUI's
+//! per-round bridge, swaps it with [`CodingAgent::set_approval`].
+//! The session is plain data, the driver may mutate it between turns,
+//! checkpoint it, or resume it from disk. A turn entering with
 //! committed-but-unanswered calls (a crash resume) revives first:
 //! replay-safe tools re-run, the rest are reported interrupted, see
 //! [`revive_dangling_calls`].
@@ -404,6 +407,15 @@ impl CodingAgent {
         self.agent.set_commit_hook(hook);
     }
 
+    /// Replaces the approval hook the following turns install before
+    /// stepping. The constructor already takes one; this is for a
+    /// driver whose answer channel belongs to a single turn (the TUI
+    /// builds a fresh bridge per round) or whose policy changes
+    /// between turns.
+    pub fn set_approval(&mut self, approval: impl Approval + 'static) {
+        self.config.approval = Arc::new(approval);
+    }
+
     /// The conversation so far.
     pub fn session(&self) -> &Session {
         &self.session
@@ -484,18 +496,18 @@ impl CodingAgent {
     }
 
     /// One turn: push the user input, loop steps until the model stops
-    /// requesting tools (capped at `max_turn_steps`), with `approval`
-    /// gating the side-effecting tools. Appends to the session in place;
-    /// the hook is cleared on the way out, success or failure. A history
-    /// entering with unanswered calls, a crash resume, revives first, so
-    /// the model sees a closed round, not a dangling one.
+    /// requesting tools (capped at `max_turn_steps`), with the config's
+    /// approval hook gating the side-effecting tools. Appends to the
+    /// session in place; the hook is cleared on the way out, success or
+    /// failure. A history entering with unanswered calls, a crash
+    /// resume, revives first, so the model sees a closed round, not a
+    /// dangling one.
     pub async fn turn(
         &mut self,
         input: impl Into<String>,
         sink: &mut dyn EventSink,
-        approval: Arc<dyn Approval>,
     ) -> Result<ModelOutput, CodingAgentError> {
-        self.turn_with_cancel(input, sink, approval, Arc::new(AtomicBool::new(false)))
+        self.turn_with_cancel(input, sink, Arc::new(AtomicBool::new(false)))
             .await
     }
 
@@ -509,10 +521,9 @@ impl CodingAgent {
         &mut self,
         input: impl Into<String>,
         sink: &mut dyn EventSink,
-        approval: Arc<dyn Approval>,
         cancelled: Arc<AtomicBool>,
     ) -> Result<ModelOutput, CodingAgentError> {
-        self.turn_message_with_cancel(Message::text(Role::User, input), sink, approval, cancelled)
+        self.turn_message_with_cancel(Message::text(Role::User, input), sink, cancelled)
             .await
     }
 
@@ -523,9 +534,8 @@ impl CodingAgent {
         &mut self,
         message: Message,
         sink: &mut dyn EventSink,
-        approval: Arc<dyn Approval>,
     ) -> Result<ModelOutput, CodingAgentError> {
-        self.turn_message_with_cancel(message, sink, approval, Arc::new(AtomicBool::new(false)))
+        self.turn_message_with_cancel(message, sink, Arc::new(AtomicBool::new(false)))
             .await
     }
 
@@ -535,7 +545,6 @@ impl CodingAgent {
         &mut self,
         message: Message,
         sink: &mut dyn EventSink,
-        approval: Arc<dyn Approval>,
         cancelled: Arc<AtomicBool>,
     ) -> Result<ModelOutput, CodingAgentError> {
         self.turns += 1;
@@ -547,7 +556,7 @@ impl CodingAgent {
         // The hook goes on before revive: a replay-safe call re-runs
         // here, and it must do so under this turn's approval, not with
         // no hook answering "rejected" for a prompt nobody saw.
-        self.tools.install_approval(approval);
+        self.tools.install_approval(self.config.approval.clone());
         revive_dangling_calls(&mut self.session, self.resolver.as_ref(), &ctx).await;
         // With a steering source the loop is this driver's own, the
         // same shape as the provided `run_turn` plus the two drain
@@ -581,12 +590,11 @@ impl CodingAgent {
     /// what already ran and continues from there, no committed tool
     /// call re-executes behind the model's back). A history entering
     /// with unanswered calls, a commit-hook failure after an intent
-    /// landed, revives first, like any turn. Approval and cancel wire
-    /// in as in [`Self::turn_message_with_cancel`].
+    /// landed, revives first, like any turn. Approval comes from the
+    /// config and cancel wires in as in [`Self::turn_message_with_cancel`].
     pub async fn retry_turn_with_cancel(
         &mut self,
         sink: &mut dyn EventSink,
-        approval: Arc<dyn Approval>,
         cancelled: Arc<AtomicBool>,
     ) -> Result<ModelOutput, CodingAgentError> {
         self.turns += 1;
@@ -598,7 +606,7 @@ impl CodingAgent {
         // The hook goes on before revive: a replay-safe call re-runs
         // here, and it must do so under this turn's approval, not with
         // no hook answering "rejected" for a prompt nobody saw.
-        self.tools.install_approval(approval);
+        self.tools.install_approval(self.config.approval.clone());
         revive_dangling_calls(&mut self.session, self.resolver.as_ref(), &ctx).await;
         let steering = self.config.steering.clone();
         let result = self.steps(None, sink, &ctx, steering.as_deref()).await;
@@ -741,12 +749,10 @@ mod paste_tests {
             recording.clone(),
             "m",
             std::env::temp_dir(),
+            AllowAll,
         ))
         .unwrap();
-        agent
-            .turn(&embedded, &mut NoopSink, Arc::new(AllowAll))
-            .await
-            .unwrap();
+        agent.turn(&embedded, &mut NoopSink).await.unwrap();
 
         // The session records the compact chip form.
         assert_eq!(
@@ -790,6 +796,7 @@ mod paste_tests {
             recording.clone(),
             "m",
             std::env::temp_dir(),
+            AllowAll,
         ))
         .unwrap()
     }
@@ -806,10 +813,7 @@ mod paste_tests {
                 rhema_core::Image::new(rhema_core::ImageMediaType::Jpeg, "d29ybGQ="),
             ],
         );
-        agent
-            .turn_message(message, &mut NoopSink, Arc::new(AllowAll))
-            .await
-            .unwrap();
+        agent.turn_message(message, &mut NoopSink).await.unwrap();
 
         let seen = recording.0.lock().unwrap();
         assert_eq!(seen.len(), 1);
@@ -836,10 +840,7 @@ mod paste_tests {
     async fn the_text_entry_still_sends_exactly_one_text_block() {
         let recording = Arc::new(RecordingBlocks(Mutex::new(Vec::new())));
         let mut agent = blocks_agent(&recording);
-        agent
-            .turn("plain words", &mut NoopSink, Arc::new(AllowAll))
-            .await
-            .unwrap();
+        agent.turn("plain words", &mut NoopSink).await.unwrap();
 
         let seen = recording.0.lock().unwrap();
         assert_eq!(seen.len(), 1);
@@ -933,13 +934,10 @@ mod extra_tools_tests {
         let scripted = Arc::new(Scripted(Mutex::new(Vec::new())));
         let config = CodingAgentConfig {
             extra_resolver: Some(Arc::new(Echo)),
-            ..CodingAgentConfig::new(scripted.clone(), "m", std::env::temp_dir())
+            ..CodingAgentConfig::new(scripted.clone(), "m", std::env::temp_dir(), AllowAll)
         };
         let mut agent = CodingAgent::new(config).unwrap();
-        let output = agent
-            .turn("use the tool", &mut NoopSink, Arc::new(AllowAll))
-            .await
-            .unwrap();
+        let output = agent.turn("use the tool", &mut NoopSink).await.unwrap();
 
         // The extension tool resolved in-band and its result reached the
         // model, which then ended the turn.
@@ -980,12 +978,10 @@ mod extra_tools_tests {
             scripted.clone(),
             "m",
             std::env::temp_dir(),
+            AllowAll,
         ))
         .unwrap();
-        agent
-            .turn("hi", &mut NoopSink, Arc::new(AllowAll))
-            .await
-            .unwrap();
+        agent.turn("hi", &mut NoopSink).await.unwrap();
         {
             let rounds = scripted.0.lock().unwrap();
             assert_eq!(rounds[0], vec!["bash".to_owned(), "zoom".to_owned()]);
@@ -1004,13 +1000,10 @@ mod extra_tools_tests {
         let scripted = Arc::new(Scripted(Mutex::new(Vec::new())));
         let config = CodingAgentConfig {
             transcript: None,
-            ..CodingAgentConfig::new(scripted.clone(), "m", std::env::temp_dir())
+            ..CodingAgentConfig::new(scripted.clone(), "m", std::env::temp_dir(), AllowAll)
         };
         let mut agent = CodingAgent::new(config).unwrap();
-        agent
-            .turn("hi", &mut NoopSink, Arc::new(AllowAll))
-            .await
-            .unwrap();
+        agent.turn("hi", &mut NoopSink).await.unwrap();
         let rounds = scripted.0.lock().unwrap();
         assert_eq!(rounds[0], vec!["bash".to_owned()]);
         let prompt = agent
@@ -1118,7 +1111,7 @@ mod environment_stamp_tests {
     fn config(provider: Arc<dyn ModelProvider>, report: &str) -> CodingAgentConfig {
         CodingAgentConfig {
             environment: Some(report.to_owned()),
-            ..CodingAgentConfig::new(provider, "m", std::env::temp_dir())
+            ..CodingAgentConfig::new(provider, "m", std::env::temp_dir(), AllowAll)
         }
     }
 
@@ -1144,10 +1137,7 @@ mod environment_stamp_tests {
     #[tokio::test]
     async fn a_resumed_conversation_keeps_its_stamped_report() {
         let mut first = CodingAgent::new(config(Arc::new(Ender), "REPORT-A")).unwrap();
-        first
-            .turn("hi", &mut NoopSink, Arc::new(AllowAll))
-            .await
-            .unwrap();
+        first.turn("hi", &mut NoopSink).await.unwrap();
         let session = first.session().clone();
 
         // Whatever the rebuilt config carries, a model switch, a
@@ -1173,10 +1163,7 @@ mod environment_stamp_tests {
     #[tokio::test]
     async fn a_pre_report_session_stamps_the_fresh_render_once() {
         let mut first = CodingAgent::new(config(Arc::new(Ender), "REPORT-A")).unwrap();
-        first
-            .turn("hi", &mut NoopSink, Arc::new(AllowAll))
-            .await
-            .unwrap();
+        first.turn("hi", &mut NoopSink).await.unwrap();
         // Age the session: the stamp disappears, the history stays.
         let session = Session {
             driver_state: serde_json::Value::Null,
@@ -1310,13 +1297,10 @@ mod transcript_tests {
         let recording = Arc::new(Recording(Mutex::new(Vec::new())));
         let config = CodingAgentConfig {
             transcript: None,
-            ..CodingAgentConfig::new(recording.clone(), "m", std::env::temp_dir())
+            ..CodingAgentConfig::new(recording.clone(), "m", std::env::temp_dir(), AllowAll)
         };
         let mut agent = CodingAgent::from_session(config, big_history(5)).unwrap();
-        agent
-            .turn("next", &mut NoopSink, Arc::new(AllowAll))
-            .await
-            .unwrap();
+        agent.turn("next", &mut NoopSink).await.unwrap();
         let sent = recording.0.lock().unwrap();
         assert_eq!(sent.len(), 1);
         // Restored history plus this turn's input, nothing rewritten.
@@ -1332,7 +1316,7 @@ mod transcript_tests {
                 max_view_bytes: 4_000,
                 ..rhema_transcript::TranscriptSettings::default()
             }),
-            ..CodingAgentConfig::new(recording.clone(), "m", std::env::temp_dir())
+            ..CodingAgentConfig::new(recording.clone(), "m", std::env::temp_dir(), AllowAll)
         };
         let mut agent = CodingAgent::from_session(config, big_history(5)).unwrap();
         // The prompt advertises zoom: the tool and the prompt cannot drift.
@@ -1340,10 +1324,7 @@ mod transcript_tests {
             .system()
             .expect("the agent was built with a system prompt");
         assert!(prompt.contains("zoom"), "{prompt}");
-        agent
-            .turn("next", &mut NoopSink, Arc::new(AllowAll))
-            .await
-            .unwrap();
+        agent.turn("next", &mut NoopSink).await.unwrap();
 
         let sent = recording.0.lock().unwrap();
         let messages = &sent[0];

@@ -6,6 +6,8 @@
 //! cleared after; tool resolution is synchronous within a turn, so the
 //! per-turn swap is race-free.
 
+use std::sync::Arc;
+
 use rhema_core::ToolCall;
 
 /// Decides whether a gated tool call (`bash`) may run.
@@ -34,5 +36,14 @@ pub struct DenyAll;
 impl Approval for DenyAll {
     fn approve(&self, _call: &ToolCall) -> bool {
         false
+    }
+}
+
+/// A shared hook is a hook: an `Arc<dyn Approval>` a driver already
+/// holds passes wherever an `impl Approval` is accepted, instead of
+/// the caller unwrapping it first.
+impl<T: Approval + ?Sized> Approval for Arc<T> {
+    fn approve(&self, call: &ToolCall) -> bool {
+        (**self).approve(call)
     }
 }

@@ -48,6 +48,15 @@ fn end_turn_output(text: &str) -> ModelOutput {
     }
 }
 
+/// The constructor takes the provider as a concrete value or as a
+/// shared handle; both satisfy `impl ModelProvider`.
+#[test]
+fn the_provider_arrives_directly_or_shared() {
+    let _direct = CodingAgentConfig::new(MockProvider::new(Vec::new()), "m", ".", AllowAll);
+    let _shared =
+        CodingAgentConfig::new(Arc::new(MockProvider::new(Vec::new())), "m", ".", AllowAll);
+}
+
 #[tokio::test]
 async fn a_turn_writes_the_file_and_keeps_the_history_shape() {
     let root = tempfile::tempdir().unwrap();
@@ -59,14 +68,16 @@ async fn a_turn_writes_the_file_and_keeps_the_history_shape() {
         )),
         end_turn_output("wrote notes.txt"),
     ]));
-    let mut agent =
-        CodingAgent::new(CodingAgentConfig::new(provider, "mock-model", root.path())).unwrap();
+    let mut agent = CodingAgent::new(CodingAgentConfig::new(
+        provider,
+        "mock-model",
+        root.path(),
+        AllowAll,
+    ))
+    .unwrap();
     let mut sink = NullSink;
 
-    let output = agent
-        .turn("create notes.txt", &mut sink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    let output = agent.turn("create notes.txt", &mut sink).await.unwrap();
 
     assert_eq!(output.stop_reason, StopReason::EndTurn);
     assert_eq!(
@@ -96,18 +107,17 @@ async fn a_second_turn_continues_the_same_session() {
         end_turn_output("done one"),
         end_turn_output("done two"),
     ]));
-    let mut agent =
-        CodingAgent::new(CodingAgentConfig::new(provider, "mock-model", root.path())).unwrap();
+    let mut agent = CodingAgent::new(CodingAgentConfig::new(
+        provider,
+        "mock-model",
+        root.path(),
+        AllowAll,
+    ))
+    .unwrap();
     let mut sink = NullSink;
 
-    agent
-        .turn("first", &mut sink, Arc::new(AllowAll))
-        .await
-        .unwrap();
-    agent
-        .turn("second", &mut sink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("first", &mut sink).await.unwrap();
+    agent.turn("second", &mut sink).await.unwrap();
 
     assert_eq!(agent.session().history.len(), 6);
     assert_eq!(
@@ -129,15 +139,12 @@ async fn a_turn_past_the_step_budget_fails_with_max_iterations() {
     ]));
     let config = CodingAgentConfig {
         max_turn_steps: 2,
-        ..CodingAgentConfig::new(provider, "mock-model", root.path())
+        ..CodingAgentConfig::new(provider, "mock-model", root.path(), AllowAll)
     };
     let mut agent = CodingAgent::new(config).unwrap();
     let mut sink = NullSink;
 
-    let err = agent
-        .turn("loop", &mut sink, Arc::new(AllowAll))
-        .await
-        .unwrap_err();
+    let err = agent.turn("loop", &mut sink).await.unwrap_err();
     assert_eq!(
         err,
         CodingAgentError::Agent(rhema_core::AgentError::MaxIterations(2))
@@ -155,13 +162,11 @@ async fn session_round_trips_through_disk_and_resumes() {
         provider.clone(),
         "mock-model",
         root.path(),
+        AllowAll,
     ))
     .unwrap();
     let mut sink = NullSink;
-    agent
-        .turn("one", &mut sink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("one", &mut sink).await.unwrap();
 
     let path = root.path().join("session.json");
     agent.save_session_to(&path).unwrap();
@@ -169,15 +174,12 @@ async fn session_round_trips_through_disk_and_resumes() {
     assert_eq!(&loaded, agent.session());
 
     let mut resumed = CodingAgent::from_session(
-        CodingAgentConfig::new(provider, "mock-model", root.path()),
+        CodingAgentConfig::new(provider, "mock-model", root.path(), AllowAll),
         loaded,
     )
     .unwrap();
     assert_eq!(resumed.session().history.len(), 2);
-    resumed
-        .turn("two", &mut sink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    resumed.turn("two", &mut sink).await.unwrap();
     assert_eq!(resumed.session().history.len(), 4);
     assert_eq!(
         resumed.session().history[0],
@@ -193,13 +195,15 @@ async fn session_round_trips_through_disk_and_resumes() {
 async fn a_saved_session_round_trips_as_pretty_json() {
     let root = tempfile::tempdir().unwrap();
     let provider = Arc::new(MockProvider::new(vec![end_turn_output("hi")]));
-    let mut agent =
-        CodingAgent::new(CodingAgentConfig::new(provider, "mock-model", root.path())).unwrap();
+    let mut agent = CodingAgent::new(CodingAgentConfig::new(
+        provider,
+        "mock-model",
+        root.path(),
+        AllowAll,
+    ))
+    .unwrap();
     let mut sink = NullSink;
-    agent
-        .turn("hello", &mut sink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("hello", &mut sink).await.unwrap();
 
     let path = root.path().join("session.json");
     agent.save_session_to(&path).unwrap();
@@ -214,13 +218,15 @@ async fn a_saved_session_round_trips_as_pretty_json() {
 async fn a_saved_session_lands_private_and_leaves_no_temp() {
     let root = tempfile::tempdir().unwrap();
     let provider = Arc::new(MockProvider::new(vec![end_turn_output("hi")]));
-    let mut agent =
-        CodingAgent::new(CodingAgentConfig::new(provider, "mock-model", root.path())).unwrap();
+    let mut agent = CodingAgent::new(CodingAgentConfig::new(
+        provider,
+        "mock-model",
+        root.path(),
+        AllowAll,
+    ))
+    .unwrap();
     let mut sink = NullSink;
-    agent
-        .turn("hello", &mut sink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("hello", &mut sink).await.unwrap();
 
     let path = root.path().join("session.json");
     agent.save_session_to(&path).unwrap();

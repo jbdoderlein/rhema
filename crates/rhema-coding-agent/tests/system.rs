@@ -68,14 +68,12 @@ async fn the_default_system_prompt_names_the_canonical_workspace() {
         provider.clone(),
         "mock-model",
         root.path(),
+        AllowAll,
     ))
     .unwrap();
     let mut sink = NullSink;
 
-    agent
-        .turn("hi", &mut sink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("hi", &mut sink).await.unwrap();
 
     let systems = provider.systems();
     assert_eq!(systems.len(), 1);
@@ -95,15 +93,12 @@ async fn a_base_system_prompt_replaces_the_default_and_fills_the_workspace() {
     let provider = recorder();
     let config = CodingAgentConfig {
         base_system: Some("BASE in {{ workspace }}.".into()),
-        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path())
+        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
     };
     let mut agent = CodingAgent::new(config).unwrap();
     let mut sink = NullSink;
 
-    agent
-        .turn("hi", &mut sink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("hi", &mut sink).await.unwrap();
 
     let systems = provider.systems();
     assert_eq!(systems.len(), 1);
@@ -135,15 +130,12 @@ async fn a_base_system_with_a_for_loop_renders_each_skill_through_it() {
             "{% for skill in skills %}load {{ skill.name }} from {{ skill.path }} when {{ skill.description }} applies\n{% endfor %}TAIL {{ workspace }}"
                 .into(),
         ),
-        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path())
+        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
     };
     let mut agent = CodingAgent::new(config).unwrap();
     let mut sink = NullSink;
 
-    agent
-        .turn("hi", &mut sink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("hi", &mut sink).await.unwrap();
 
     let systems = provider.systems();
     let system = systems[0].as_deref().expect("one system prompt recorded");
@@ -174,15 +166,12 @@ async fn a_base_system_with_a_for_loop_renders_each_tool_through_it() {
             "{% for tool in tools %}call {{ tool.name }}: {{ tool.description }} with {{ tool.parameters | tojson }}\n{% endfor %}TAIL {{ workspace }}"
                 .into(),
         ),
-        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path())
+        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
     };
     let mut agent = CodingAgent::new(config).unwrap();
     let mut sink = NullSink;
 
-    agent
-        .turn("hi", &mut sink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("hi", &mut sink).await.unwrap();
 
     let systems = provider.systems();
     let system = systems[0].as_deref().expect("one system prompt recorded");
@@ -202,7 +191,7 @@ async fn a_base_system_that_fails_to_render_fails_the_construction() {
     let provider = recorder();
     let config = CodingAgentConfig {
         base_system: Some("{% if skills %} never closed".into()),
-        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path())
+        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
     };
     let err = match CodingAgent::new(config) {
         Err(err) => err,
@@ -220,15 +209,12 @@ async fn config_system_replaces_the_default() {
     let provider = recorder();
     let config = CodingAgentConfig {
         system: Some("custom prompt".into()),
-        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path())
+        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
     };
     let mut agent = CodingAgent::new(config).unwrap();
     let mut sink = NullSink;
 
-    agent
-        .turn("hi", &mut sink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("hi", &mut sink).await.unwrap();
 
     assert_eq!(provider.systems(), vec![Some("custom prompt".to_string())]);
 }
@@ -239,7 +225,7 @@ fn the_agent_exposes_its_rendered_system_prompt() {
     let provider = recorder();
     let config = CodingAgentConfig {
         system: Some("custom prompt".into()),
-        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path())
+        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
     };
     let agent = CodingAgent::new(config).unwrap();
     assert_eq!(agent.system(), Some("custom prompt"));
@@ -311,14 +297,12 @@ async fn the_stamped_prompt_is_what_the_agent_sends() {
         provider.clone(),
         "mock-model",
         root.path(),
+        AllowAll,
     ))
     .unwrap();
     let mut sink = NullSink;
 
-    agent
-        .turn("hi", &mut sink, Arc::new(AllowAll))
-        .await
-        .unwrap();
+    agent.turn("hi", &mut sink).await.unwrap();
 
     let systems = provider.systems();
     // The default agent's extra specs are zoom's: the preview names

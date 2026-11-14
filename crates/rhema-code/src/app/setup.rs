@@ -870,7 +870,15 @@ fn agent_config(
         base_system: options.base_system.clone(),
         disabled_skills: disabled_skills.clone(),
         disabled_subagents: disabled_subagents.clone(),
-        ..CodingAgentConfig::new(provider, model.unwrap_or_default(), &options.workspace)
+        // Approval is intentionally `AllowAll`: the sandbox, not a
+        // prompt, is the isolation boundary. The approval modal is a
+        // seam for a future policy.
+        ..CodingAgentConfig::new(
+            provider,
+            model.unwrap_or_default(),
+            &options.workspace,
+            rhema_coding_agent::AllowAll,
+        )
     }
 }
 

@@ -156,6 +156,10 @@ impl AgentAssembly {
         ));
         let config = CodingAgentConfig {
             provider,
+            // The turn-level hook is the fail-safe below the gate: a
+            // call that bypasses `ClientGate` is denied, and the gate
+            // installs its own per-call allow once it has decided.
+            approval: Arc::new(rhema_agent_tools::DenyAll),
             model: self.model.clone(),
             system: None,
             base_system: self.base_system.clone(),

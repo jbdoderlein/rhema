@@ -32,7 +32,7 @@ use crossterm::terminal::{
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use rhema_acp::AcpOptions;
-use rhema_coding_agent::{AllowAll, Approval, CodingAgent};
+use rhema_coding_agent::CodingAgent;
 use rhema_config::secrets::KeyringSecretStore;
 use rhema_core::{Event as ModelEvent, EventSink, Session};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
@@ -967,14 +967,10 @@ fn dispatch(
             let (steer, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
             // The status names the prompt until a tool call takes over.
             status.note_prompt(&text);
-            // Approval is intentionally `AllowAll`: the sandbox, not a
-            // prompt, is the isolation boundary. The modal remains as a
-            // seam for a future policy.
             app.begin_turn(cancel, steer, None);
             spawn_turn(
                 agent,
                 crate::turn::Prompt::User { text, images },
-                Arc::new(AllowAll),
                 app.checkpoint_target(),
                 cancelled,
                 steered,
@@ -993,7 +989,6 @@ fn dispatch(
             spawn_turn(
                 agent,
                 crate::turn::Prompt::Retry,
-                Arc::new(AllowAll),
                 app.checkpoint_target(),
                 cancelled,
                 steered,

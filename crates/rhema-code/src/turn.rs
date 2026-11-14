@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use rhema_coding_agent::{Approval, CodingAgent, CodingAgentError, repair_dangling_calls};
+use rhema_coding_agent::{CodingAgent, CodingAgentError, repair_dangling_calls};
 use rhema_core::{Event, EventSink, Image, Message, ModelOutput, Role, Session};
 use rhema_provider::{InteractiveLogin, LoginSink, LoginUpdate};
 use std::future::Future;
@@ -91,9 +91,9 @@ impl Prompt {
 }
 
 /// Spawns a turn chain on a tokio task: runs the prompt through the
-/// agent with the given approval hook, checkpoints the session at every
-/// stream boundary and again after the final turn (when `save` is set),
-/// and hands the agent back via [`UiEvent::TurnFinished`], or, when the
+/// agent, checkpoints the session at every stream boundary and again
+/// after the final turn (when `save` is set), and hands the agent back
+/// via [`UiEvent::TurnFinished`], or, when the
 /// cancel flag flips, drops the turn future at its current await and
 /// hands the agent back via [`UiEvent::TurnCancelled`]. A
 /// message on `steer` drops the turn future the same way, but the task
@@ -105,7 +105,6 @@ impl Prompt {
 pub fn spawn_turn(
     mut agent: CodingAgent,
     prompt: Prompt,
-    approval: Arc<dyn Approval>,
     save: Option<PathBuf>,
     cancel: watch::Receiver<bool>,
     mut steer: Receiver<String>,
@@ -167,11 +166,7 @@ pub fn spawn_turn(
                 Box<dyn Future<Output = Result<ModelOutput, CodingAgentError>> + Send>,
             > = if retry {
                 retry = false;
-                Box::pin(agent.retry_turn_with_cancel(
-                    &mut sink,
-                    Arc::clone(&approval),
-                    Arc::clone(&cancelled_flag),
-                ))
+                Box::pin(agent.retry_turn_with_cancel(&mut sink, Arc::clone(&cancelled_flag)))
             } else {
                 let message = Message::text_with_images(
                     Role::User,
@@ -181,7 +176,6 @@ pub fn spawn_turn(
                 Box::pin(agent.turn_message_with_cancel(
                     message,
                     &mut sink,
-                    Arc::clone(&approval),
                     Arc::clone(&cancelled_flag),
                 ))
             };
@@ -520,17 +514,10 @@ mod mock_tests {
             Arc::clone(&provider) as Arc<dyn ModelProvider>,
             "test-model",
             std::env::temp_dir(),
+            rhema_coding_agent::AllowAll,
         ))
         .unwrap();
-        spawn_turn(
-            agent,
-            Prompt::text("hi"),
-            Arc::new(AllowAll),
-            None,
-            cancelled,
-            steered,
-            tx,
-        );
+        spawn_turn(agent, Prompt::text("hi"), None, cancelled, steered, tx);
 
         // Wait for the first generation to be in flight, then steer: the
         // message drops it and starts the next turn with itself as the
@@ -634,18 +621,11 @@ mod mock_tests {
             Arc::clone(&provider) as Arc<dyn ModelProvider>,
             "test-model",
             std::env::temp_dir(),
+            rhema_coding_agent::AllowAll,
         ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
-        spawn_turn(
-            agent,
-            Prompt::text("hi"),
-            Arc::new(AllowAll),
-            None,
-            cancelled,
-            steered,
-            tx,
-        );
+        spawn_turn(agent, Prompt::text("hi"), None, cancelled, steered, tx);
 
         let mut transcript = Transcript::new();
         let (agent, result) = drive_turn_for_test(&mut rx, &mut transcript).await;
@@ -660,15 +640,7 @@ mod mock_tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let (_, cancelled) = watch_cancel();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
-        spawn_turn(
-            *agent,
-            Prompt::Retry,
-            Arc::new(AllowAll),
-            None,
-            cancelled,
-            steered,
-            tx,
-        );
+        spawn_turn(*agent, Prompt::Retry, None, cancelled, steered, tx);
         let mut transcript = Transcript::new();
         let (agent, result) = drive_turn_for_test(&mut rx, &mut transcript).await;
         assert!(result.is_ok(), "the retried request answers");
@@ -708,18 +680,11 @@ mod mock_tests {
             )])),
             "test-model",
             std::env::temp_dir(),
+            rhema_coding_agent::AllowAll,
         ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
-        spawn_turn(
-            agent,
-            Prompt::text("hi"),
-            Arc::new(AllowAll),
-            None,
-            cancelled,
-            steered,
-            tx,
-        );
+        spawn_turn(agent, Prompt::text("hi"), None, cancelled, steered, tx);
 
         let mut transcript = Transcript::new();
         let (agent, result) = drive_turn_for_test(&mut rx, &mut transcript).await;
@@ -742,13 +707,13 @@ mod mock_tests {
             Arc::new(rhema_core::MockProvider::new([scripted_output("done")])),
             "test-model",
             std::env::temp_dir(),
+            rhema_coding_agent::AllowAll,
         ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
         spawn_turn(
             agent,
             Prompt::text("hi"),
-            Arc::new(AllowAll),
             Some(save.clone()),
             cancelled,
             steered,
@@ -770,18 +735,11 @@ mod mock_tests {
             Arc::new(HangingProvider),
             "test-model",
             std::env::temp_dir(),
+            rhema_coding_agent::AllowAll,
         ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
-        spawn_turn(
-            agent,
-            Prompt::text("hi"),
-            Arc::new(AllowAll),
-            None,
-            cancelled,
-            steered,
-            tx,
-        );
+        spawn_turn(agent, Prompt::text("hi"), None, cancelled, steered, tx);
 
         cancel.send(true).unwrap();
         loop {
@@ -822,13 +780,13 @@ mod mock_tests {
             Arc::new(rhema_core::MockProvider::new(vec![sleeping_tool_output()])),
             "test-model",
             std::env::temp_dir(),
+            rhema_coding_agent::AllowAll,
         ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
         spawn_turn(
             agent,
             Prompt::text("hi"),
-            Arc::new(AllowAll),
             Some(save.clone()),
             cancelled,
             steered,
