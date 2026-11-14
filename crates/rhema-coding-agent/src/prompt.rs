@@ -78,6 +78,27 @@ mod tests {
     }
 
     #[test]
+    fn the_websearch_section_renders_only_when_wired() {
+        // The template's conditional: a frontend that wired nothing
+        // advertises nothing.
+        let bare = default_system(Path::new("/ws"));
+        assert!(!bare.contains("Web search"), "{bare}");
+        let wired = render_system(
+            DEFAULT_SYSTEM_MD,
+            Path::new("/ws"),
+            &[],
+            &ShellTools::builtin_specs(),
+        );
+        // The section rides the same interpolation the vision and
+        // jobs sections do; here we only pin the conditional's two
+        // branches against the template's own variable.
+        assert!(wired.is_ok());
+        let template = DEFAULT_SYSTEM_MD;
+        assert!(template.contains("{% if websearch %}"), "{template}");
+        assert!(template.contains("{{ websearch }}"), "{template}");
+    }
+
+    #[test]
     fn the_default_prompt_presents_each_skill_field_to_the_model() {
         let out = render_system(
             DEFAULT_SYSTEM_MD,

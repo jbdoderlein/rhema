@@ -188,6 +188,14 @@ pub struct CodingAgentConfig {
     /// advertises nothing, the same rule [`vision`](Self::vision)
     /// follows.
     pub jobs: Option<String>,
+    /// The prompt section documenting the wired
+    /// [`websearch`](rhema_agent_tools::websearch) macro, the `search`
+    /// bash function's documentation, produced by the frontend's
+    /// provisioning and passed verbatim. `None` renders no section: a
+    /// frontend that wired nothing (a sandbox session, a remote
+    /// executor, no providers configured) advertises nothing, the
+    /// same rule [`vision`](Self::vision) follows.
+    pub websearch: Option<String>,
     /// The directory conventions skill discovery reads when
     /// [`skills`](Self::skills) is `None`: the user-wide skills directory
     /// and the cross-agent `.agents/skills` convention. `None`, the
@@ -255,6 +263,7 @@ impl CodingAgentConfig {
             user_preferences: None,
             vision: None,
             jobs: None,
+            websearch: None,
             home: None,
         }
     }

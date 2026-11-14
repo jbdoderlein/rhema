@@ -62,6 +62,12 @@ Before you answer, check the skills list below in this priority order.
 
 {{ jobs }}
 {% endif %}
+{% if websearch %}
+
+## Web search
+
+{{ websearch }}
+{% endif %}
 {% if mcp %}
 
 ## MCP servers
