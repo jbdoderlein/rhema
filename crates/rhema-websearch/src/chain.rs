@@ -25,6 +25,7 @@ pub const DEFAULT_BUDGET: Duration = Duration::from_secs(45);
 
 /// One configured provider: the instance name the config and the
 /// output use, the adapter behind it.
+#[derive(Clone)]
 struct Entry {
     name: String,
     provider: Arc<dyn WebSearchProvider>,
@@ -48,6 +49,7 @@ pub struct ChainOutcome {
 /// included. Racing would bill every provider for one query, and the
 /// ladder exists to survive failures, not to shave milliseconds (see
 /// `specs/rhema-websearch.md` §5, §12.6).
+#[derive(Clone)]
 pub struct Chain {
     entries: Vec<Entry>,
     per_attempt: Duration,

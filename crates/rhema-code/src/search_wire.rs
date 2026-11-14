@@ -80,6 +80,7 @@ pub(crate) fn wire_for_session(
 /// One parsed invocation: the query text and the two flags. `parse`
 /// is the mode's whole argv contract, `run` its whole behavior, so
 /// both are testable without a process or a keychain.
+#[derive(Clone)]
 pub(crate) struct Invocation {
     /// The query text, the flags-free remainder joined with spaces.
     pub query: rhema_websearch::SearchQuery,
@@ -125,12 +126,29 @@ pub(crate) fn parse(args: &[OsString]) -> Result<Invocation, ()> {
 /// answer: the markdown on stdout, the failure's own text on stderr,
 /// the exit codes the usage table names. The seam the CLI tests
 /// drive; `cli_run` is this plus the process bits.
+///
+/// The future runs on its own thread: the binary's `main` is
+/// `#[tokio::main]`, so this sync mode can be entered from inside a
+/// runtime (the headless path, which is where the shell function
+/// finds it), and a runtime built or blocked on right here would
+/// panic with the nested-runtime error. A fresh thread is outside
+/// any runtime, whichever side spawns the mode.
 pub(crate) fn run(invocation: &Invocation, chain: &rhema_websearch::Chain) -> i32 {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("a current-thread runtime cannot fail to build");
-    match runtime.block_on(chain.search(&invocation.query)) {
+    let invocation = invocation.clone();
+    let chain = chain.clone();
+    let outcome = std::thread::scope(|scope| {
+        scope
+            .spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("a current-thread runtime cannot fail to build");
+                runtime.block_on(chain.search(&invocation.query))
+            })
+            .join()
+            .expect("the search thread carries no panic of its own")
+    });
+    match outcome {
         Ok(outcome) => {
             println!("{}", rhema_websearch::render(&outcome));
             0
@@ -286,5 +304,32 @@ mod tests {
                 .map(String::as_str),
             Some("registry-test-a")
         );
+    }
+}
+
+#[cfg(test)]
+mod runtime_tests {
+    use super::*;
+    use rhema_websearch::mock::MockSearchProvider;
+
+    /// The regression: the binary's main is #[tokio::main], and the
+    /// headless path enters this mode from inside that runtime. A
+    /// runtime of the mode's own, built or blocked on here, panics
+    /// with the nested-runtime error before a single provider is
+    /// asked. The worker-thread escape survives the same context —
+    /// and the plain #[test]s already pin the outside-a-runtime
+    /// side, so both shapes of caller stay covered.
+    #[tokio::test]
+    async fn a_run_inside_a_runtime_does_not_panic() {
+        let winner = MockSearchProvider::new("exa").shared();
+        let mut chain = rhema_websearch::Chain::new();
+        chain.push("Exa", winner);
+        let invocation = Invocation {
+            query: rhema_websearch::SearchQuery::new("tokio vs smol"),
+        };
+        let code = tokio::task::spawn_blocking(move || run(&invocation, &chain))
+            .await
+            .unwrap();
+        assert_eq!(code, 0, "the mock answers, the mode exits clean");
     }
 }
