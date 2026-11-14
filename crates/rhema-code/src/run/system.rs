@@ -107,7 +107,7 @@ pub(crate) fn markdown_ansi(source: &str, theme: &crate::palette::Theme, width: 
                     out.push_str(&crossterm::style::SetAttribute(modifier.1).to_string());
                 }
             }
-            out.push_str(span.content.as_ref());
+            out.push_str(&without_terminal_controls(span.content.as_ref()));
             if style.fg.is_some() || !style.add_modifier.is_empty() {
                 out.push_str(&crossterm::style::ResetColor.to_string());
             }
@@ -115,6 +115,17 @@ pub(crate) fn markdown_ansi(source: &str, theme: &crate::palette::Theme, width: 
         out.push('\n');
     }
     out
+}
+
+/// Drops control characters from prompt text before it reaches the
+/// terminal. The prompt can be workspace-owned, and a raw ESC there
+/// would drive the terminal (title changes, clipboard writes,
+/// hyperlinks). Newline and tab stay: they shape text, they do not
+/// execute.
+pub(crate) fn without_terminal_controls(text: &str) -> String {
+    text.chars()
+        .filter(|c| !c.is_control() || matches!(c, '\n' | '\t'))
+        .collect()
 }
 
 /// Maps a ratatui color onto the crossterm one of the same terminal

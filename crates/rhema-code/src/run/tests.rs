@@ -4,6 +4,7 @@
 use super::headless::failed_checkpoint_path;
 use super::system::{
     markdown_ansi, system_edit_at, system_restore_at, system_show_at, system_show_at_with_mcp,
+    without_terminal_controls,
 };
 use super::*;
 
@@ -190,6 +191,15 @@ mod system_tests {
         // Plain text alone carries no styling of its own.
         let plain = markdown_ansi("just words", &theme, 80);
         assert!(!plain.contains('\u{1b}'), "{plain:?}");
+    }
+
+    #[test]
+    fn terminal_prompt_text_drops_escape_sequences_but_keeps_layout() {
+        let raw = "before \u{1b}]0;title\u{7} after\tend\nnext";
+        assert_eq!(
+            without_terminal_controls(raw),
+            "before ]0;title after\tend\nnext"
+        );
     }
 
     #[test]
