@@ -475,17 +475,26 @@ impl Profile {
     /// carries the credential that provider needs (a llama.cpp server
     /// works keyless; the rest need a key, env included).
     pub fn has_credentials(&self, secrets: Option<&dyn SecretStore>) -> bool {
-        match self.provider.as_deref() {
-            Some("llama-cpp") => true,
-            Some("openrouter") => self.api_key("openrouter", secrets).is_some(),
-            Some("anthropic") => self.api_key("anthropic", secrets).is_some(),
-            Some("openai") => self.api_key("openai", secrets).is_some(),
-            Some("deepseek") => self.api_key("deepseek", secrets).is_some(),
-            Some("zai") => self.api_key("zai", secrets).is_some(),
-            Some("opencode") => self.api_key("opencode", secrets).is_some(),
-            Some("copilot") => self.api_key("copilot", secrets).is_some(),
-            Some("chatgpt") => self.api_key("chatgpt", secrets).is_some(),
-            _ => self.api_key("google", secrets).is_some(),
+        // The effective provider, `RHEMA_PROVIDER` included: the stored
+        // spelling alone would call a profile unusable when an
+        // environment override supplies exactly the credential it
+        // needs.
+        let Some(provider) = self.provider_name() else {
+            return false;
+        };
+        match provider.as_str() {
+            "llama-cpp" => true,
+            "openrouter" => self.api_key("openrouter", secrets).is_some(),
+            "anthropic" => self.api_key("anthropic", secrets).is_some(),
+            "openai" => self.api_key("openai", secrets).is_some(),
+            "deepseek" => self.api_key("deepseek", secrets).is_some(),
+            "zai" => self.api_key("zai", secrets).is_some(),
+            "opencode" => self.api_key("opencode", secrets).is_some(),
+            "copilot" => self.api_key("copilot", secrets).is_some(),
+            "chatgpt" => self.api_key("chatgpt", secrets).is_some(),
+            "google" => self.api_key("google", secrets).is_some(),
+            // An unknown spelling never reads as google.
+            _ => false,
         }
     }
 
@@ -650,7 +659,19 @@ impl Profile {
     ) -> Option<KeyLocation> {
         let instance = self.instances.get_mut(name)?;
         let trimmed = key.trim();
-        if trimmed.is_empty() || secrets.is_none() {
+        if trimmed.is_empty() {
+            // Clearing removes both tiers: a stale `secret_ref` would
+            // otherwise keep the old keychain value live.
+            if let (Some(store), Some(id)) = (secrets, instance.secret_ref.take()) {
+                let _ = store.delete(&id);
+            }
+            instance.api_key = None;
+            return Some(KeyLocation::File);
+        }
+        if secrets.is_none() {
+            // No store to fall back from: the literal is the key, and
+            // a stale ref must not shadow it later.
+            instance.secret_ref = None;
             instance.api_key = Some(trimmed.to_owned());
             return Some(KeyLocation::File);
         }
@@ -668,6 +689,12 @@ impl Profile {
             // The keychain refused: the file keeps the key, the
             // behavior it has always had. Nothing is lost.
             Err(_) => {
+                // Drop the old ref with its entry: keeping it would
+                // make `stored_instance_key` prefer a key the user
+                // just replaced.
+                if let Some(old) = instance.secret_ref.take() {
+                    let _ = store.delete(&old);
+                }
                 instance.api_key = Some(trimmed.to_owned());
                 Some(KeyLocation::File)
             }
@@ -699,7 +726,15 @@ impl Profile {
     ) -> Option<KeyLocation> {
         let instance = self.websearch.get_mut(name)?;
         let trimmed = key.trim();
-        if trimmed.is_empty() || secrets.is_none() {
+        if trimmed.is_empty() {
+            if let (Some(store), Some(id)) = (secrets, instance.secret_ref.take()) {
+                let _ = store.delete(&id);
+            }
+            instance.api_key = None;
+            return Some(KeyLocation::File);
+        }
+        if secrets.is_none() {
+            instance.secret_ref = None;
             instance.api_key = Some(trimmed.to_owned());
             return Some(KeyLocation::File);
         }
@@ -717,6 +752,9 @@ impl Profile {
             // The keychain refused: the file keeps the key, the
             // behavior it has always had. Nothing is lost.
             Err(_) => {
+                if let Some(old) = instance.secret_ref.take() {
+                    let _ = store.delete(&old);
+                }
                 instance.api_key = Some(trimmed.to_owned());
                 Some(KeyLocation::File)
             }
@@ -1739,6 +1777,10 @@ mod tests {
         assert!(!bare("deepseek").has_credentials(None));
         assert!(!bare("copilot").has_credentials(None));
         assert!(!bare("chatgpt").has_credentials(None));
+        assert!(
+            !bare("mystery").has_credentials(None),
+            "an unknown provider never reads as google"
+        );
     }
 
     #[test]
@@ -2517,6 +2559,62 @@ profiles:
         );
         // An unknown instance name places nothing.
         assert_eq!(profile.place_key("nope", "k", Some(&store)), None);
+    }
+
+    #[test]
+    fn clearing_a_key_drops_its_stale_keychain_entry() {
+        use crate::secrets::VolatileSecretStore;
+        let mut profile = Profile::default();
+        profile.upsert_instance(
+            "anthropic",
+            ProviderInstance {
+                provider: "anthropic".into(),
+                api_key: None,
+                secret_ref: None,
+                base_url: None,
+                api: None,
+            },
+        );
+        let store = VolatileSecretStore::new();
+        profile.place_key("anthropic", "old", Some(&store));
+        let instance = profile.instance_for_provider("anthropic").unwrap().1;
+        let id = instance.secret_ref.clone().unwrap();
+        assert_eq!(store.get(&id).unwrap().as_deref(), Some("old"));
+
+        assert_eq!(
+            profile.place_key("anthropic", "   ", Some(&store)),
+            Some(KeyLocation::File)
+        );
+        let instance = profile.instance_for_provider("anthropic").unwrap().1;
+        assert_eq!(instance.api_key, None);
+        assert_eq!(instance.secret_ref, None);
+        assert_eq!(store.get(&id).unwrap(), None, "the entry is gone");
+    }
+
+    #[test]
+    fn a_file_fallback_drops_a_stale_keychain_ref() {
+        use crate::secrets::VolatileSecretStore;
+        let mut profile = Profile::default();
+        profile.upsert_instance(
+            "anthropic",
+            ProviderInstance {
+                provider: "anthropic".into(),
+                api_key: None,
+                secret_ref: Some("old-ref".into()),
+                base_url: None,
+                api: None,
+            },
+        );
+        let store = VolatileSecretStore::new();
+        store.set("old-ref", "old").unwrap();
+
+        assert_eq!(
+            profile.place_key("anthropic", "new", Some(&UnreachableStore)),
+            Some(KeyLocation::File)
+        );
+        let instance = profile.instance_for_provider("anthropic").unwrap().1;
+        assert_eq!(instance.api_key.as_deref(), Some("new"));
+        assert_eq!(instance.secret_ref, None);
     }
 
     #[test]
