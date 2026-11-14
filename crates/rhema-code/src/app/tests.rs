@@ -7014,3 +7014,51 @@ fn removing_a_websearch_provider_takes_its_order_entry_with_it() {
         "the order entry went with the instance"
     );
 }
+
+#[test]
+fn a_paste_reaches_the_websearch_dialogs_input() {
+    // The regression: a terminal delivers ctrl-v and cmd-v as a
+    // bracketed paste event, and the app's paste routing dropped it
+    // on the floor for the web search dialog — the key could never
+    // land without typing it by hand.
+    let mut h = harness_with_secrets(None, None, Session::default());
+    h.app
+        .open_settings_at(crate::screens::SettingsSection::WebSearch);
+    // Enter opens the dialog on the kind list, enter descends to the
+    // name line, enter again reaches the key line.
+    h.app.on_key(key(KeyCode::Enter));
+    {
+        let crate::Screen::Settings(settings) = &mut h.app.screen else {
+            panic!("settings open");
+        };
+        let dialog = settings.websearch_dialog.as_mut().unwrap();
+        dialog.handle_key(key(KeyCode::Enter));
+        for _ in 0.."Brave".len() {
+            dialog.handle_key(key(KeyCode::Backspace));
+        }
+        for c in "Work key".chars() {
+            dialog.handle_key(key(KeyCode::Char(c)));
+        }
+        dialog.handle_key(key(KeyCode::Enter));
+    }
+    h.app.on_paste("sk-pasted-123\n");
+    let crate::Screen::Settings(settings) = &h.app.screen else {
+        panic!("settings open");
+    };
+    let dialog = settings.websearch_dialog.as_ref().unwrap();
+    assert_eq!(
+        dialog.input, "sk-pasted-123",
+        "the paste landed, the trailing newline did not"
+    );
+    // Enter stores it, and the pasted key rides the whole way: the
+    // keychain holds what the dialog carried.
+    let effects = h.app.on_key(key(KeyCode::Enter));
+    let _ = effects;
+    let secrets = Arc::clone(h.secrets.as_ref().unwrap());
+    let stored = h.store.load().unwrap().effective(Some("personal"));
+    let id = stored.websearch["Work key"]
+        .secret_ref
+        .as_ref()
+        .expect("the keychain ref");
+    assert_eq!(secrets.get(id).unwrap().as_deref(), Some("sk-pasted-123"));
+}

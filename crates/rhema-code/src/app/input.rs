@@ -51,6 +51,9 @@ impl App {
                 if let Some(dialog) = &mut settings.mcp_dialog {
                     dialog.paste(text);
                 }
+                if let Some(dialog) = &mut settings.websearch_dialog {
+                    dialog.paste(text);
+                }
             }
             Screen::Onboarding(wizard) => {
                 if let Some(dialog) = &mut wizard.dialog {
