@@ -121,6 +121,15 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
             argv.extend(rest);
             std::process::exit(rhema_agent_tools::jobs::cli_run(&argv));
         }
+        // The search macro's road: `search "query"` in the agent
+        // shell execs `rhema __search …`, whose exit code owns the
+        // process and whose stderr is the model's error text.
+        Some(crate::args::Command::Search { args: rest }) => {
+            let mut argv = Vec::with_capacity(rest.len() + 1);
+            argv.push(std::ffi::OsString::from(rhema_agent_tools::websearch::MODE));
+            argv.extend(rest);
+            std::process::exit(crate::search_wire::cli_run(&argv));
+        }
         // The stubs' road: `rhema __server …` and every unrecognized
         // subcommand go to the MCP CLI, whose exit code owns the
         // process. An unknown mode is its exit-2 usage error.

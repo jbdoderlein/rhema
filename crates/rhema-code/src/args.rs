@@ -245,6 +245,16 @@ pub enum Command {
         #[arg(allow_hyphen_values = true, trailing_var_arg = true)]
         args: Vec<std::ffi::OsString>,
     },
+    /// The pass-through that makes the agent shell's `search` macro
+    /// work: `rhema __search "query"` execs this binary in the search
+    /// CLI, which runs the session profile's provider chain and prints
+    /// the markdown. Outside a wired shell it exits 4 with a hint.
+    #[command(name = "__search")]
+    Search {
+        /// The CLI's own argv, passed through untouched.
+        #[arg(allow_hyphen_values = true, trailing_var_arg = true)]
+        args: Vec<std::ffi::OsString>,
+    },
     /// The catch-all the init file's stubs land in: `rhema __server
     /// <name> …` execs this binary with `__server` as the first
     /// token, and any other unrecognized subcommand follows the same

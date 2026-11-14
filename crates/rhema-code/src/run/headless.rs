@@ -221,6 +221,23 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     let bash_env = vision_wiring
         .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
         .or(bash_env);
+    // Search: the TUI's third link, the same two gates. The profile
+    // name rides the wiring's env var; the mode reads the settings
+    // fresh per call.
+    let search_wiring = crate::search_wire::wire_for_session(
+        &profile,
+        &effective,
+        Some(&secrets),
+        sandboxed.as_ref(),
+        bash_env.clone(),
+    );
+    if let Some(wiring) = &search_wiring {
+        agent_config.shell_env.extend(wiring.shell_env.clone());
+        agent_config.websearch = Some(wiring.section.to_owned());
+    }
+    let bash_env = search_wiring
+        .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
+        .or(bash_env);
     // MCP: the same local-only gate the TUI applies, a sandboxed
     // executor cannot reach the socket, so it advertises nothing.
     if let Some(entry) = crate::mcp_wire::wire_for_session(

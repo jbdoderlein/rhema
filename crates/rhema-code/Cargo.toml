@@ -94,11 +94,17 @@ base64 = "0.22"
 # Only the `vendored-openssl` feature brings this in. A dependency edge
 # is how the feature reaches openssl-sys for every crate in the graph.
 openssl = { version = "0.10", features = ["vendored"], optional = true }
+# The search macro's fleet: the seam, the three adapters through the
+# registry, and the profile assembly the __search mode runs
+rhema-websearch = { path = "../rhema-websearch", version = "0.2.6", default-features = false }
+rhema-websearch-registry = { path = "../rhema-websearch-registry", version = "0.2.6" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 rhema-mcp = { version = "0.2.6", path = "../rhema-mcp" }
 serde_yaml.workspace = true
 
 [dev-dependencies]
+# The __search mode tests drive a scripted chain
+rhema-websearch = { path = "../rhema-websearch", version = "0.2.6", features = ["mock"] }
 # The sandbox tests drive the scripted sandbox
 rhema-sandbox = { path = "../rhema-sandbox", features = ["mock"] }
 tempfile = "3"

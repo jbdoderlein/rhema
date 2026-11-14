@@ -66,6 +66,7 @@ pub mod palette;
 pub mod run;
 pub mod sandbox;
 pub mod screens;
+pub(crate) mod search_wire;
 pub mod sessions;
 pub mod status;
 pub mod store;

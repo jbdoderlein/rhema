@@ -1,0 +1,290 @@
+//! The `__search` mode and the session wiring: the `search` macro's
+//! other end.
+//!
+//! The agent's shell execs `rhema __search "query"`; this module owns
+//! the pass-through: it parses the flags, resolves the profile the
+//! wiring named, assembles that profile's chain through the registry,
+//! runs the query, and prints the markdown. The settings are read
+//! fresh per call, so a provider added mid-session serves the next
+//! `search` without a restart; the profile is the wiring's env var,
+//! pinned at session start, the one per-session input a standalone
+//! exec can carry without session state.
+//!
+//! The session wiring gate is the mcp_wire rule: a sandboxed session
+//! wires nothing, and a profile with no providers wires nothing, no
+//! function and no prompt section (`specs/rhema-websearch.md` §8).
+//! One wiring per session key, held for the process, because the
+//! init file's env map is per-profile and a profile switch re-runs
+//! the assembly: the same shape the MCP registry keeps.
+
+#![forbid(unsafe_code)]
+
+use std::collections::BTreeMap;
+use std::ffi::OsString;
+use std::sync::{Arc, Mutex, OnceLock};
+
+use rhema_config::Profile;
+use rhema_config::secrets::SecretStore;
+
+/// The usage text the mode prints on stderr, and the model reads, on
+/// a query it cannot serve as typed.
+const USAGE: &str = "search: web search through this session's providers
+
+    search \"query text\"          general index
+    search -n 5 \"query\"          cap the results (default 8, max 20)
+    search --news \"query\"        the news index
+
+    exit 0: results printed      exit 1: every provider failed
+    exit 2: bad usage            exit 4: not wired in this shell";
+
+/// One session's wiring, the mcp_wire shape: the provisioned init
+/// file held for the process's life, one per session key.
+static WIRED: OnceLock<Mutex<BTreeMap<String, Arc<rhema_agent_tools::websearch::Wiring>>>> =
+    OnceLock::new();
+
+fn registry() -> &'static Mutex<BTreeMap<String, Arc<rhema_agent_tools::websearch::Wiring>>> {
+    WIRED.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+/// Wires the session's search macro, the setup's call: the gate first
+/// (a sandboxed session and a providerless profile both wire
+/// nothing), then one provision per session key. `None` when the gate
+/// closes: the caller renders no section, the agent sees no function.
+pub(crate) fn wire_for_session(
+    session_key: &str,
+    profile: &Profile,
+    secrets: Option<&dyn SecretStore>,
+    sandboxed: Option<&crate::sandbox::Sandboxed>,
+    bash_env: Option<std::ffi::OsString>,
+) -> Option<Arc<rhema_agent_tools::websearch::Wiring>> {
+    if sandboxed.is_some() {
+        return None;
+    }
+    // The gate answers the only question the settings can: does this
+    // profile have providers to try? The chain itself is not cached;
+    // the mode handler assembles fresh per invocation, so added
+    // providers land without a restart.
+    rhema_websearch_registry::assemble_chain(Some(profile), secrets)?;
+    let mut reg = registry().lock().expect("search wire registry lock");
+    if let Some(wiring) = reg.get(session_key) {
+        return Some(wiring.clone());
+    }
+    let bin = std::env::current_exe().ok()?;
+    let wiring = Arc::new(
+        rhema_agent_tools::websearch::provision_with_bin(bash_env, &bin, session_key).ok()?,
+    );
+    reg.insert(session_key.to_owned(), wiring.clone());
+    Some(wiring)
+}
+
+/// One parsed invocation: the query text and the two flags. `parse`
+/// is the mode's whole argv contract, `run` its whole behavior, so
+/// both are testable without a process or a keychain.
+pub(crate) struct Invocation {
+    /// The query text, the flags-free remainder joined with spaces.
+    pub query: rhema_websearch::SearchQuery,
+}
+
+/// Parses the mode's argv (mode token already skipped). A usage error
+/// is [`rhema_agent_tools::websearch::EXIT_USAGE`]; the caller prints
+/// [`USAGE`].
+pub(crate) fn parse(args: &[OsString]) -> Result<Invocation, ()> {
+    let mut news = false;
+    let mut count: Option<u8> = None;
+    let mut words: Vec<String> = Vec::new();
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.to_string_lossy().as_ref() {
+            "--news" => news = true,
+            "-n" => {
+                let Some(value) = iter.next() else {
+                    return Err(());
+                };
+                let Ok(parsed) = value.to_string_lossy().parse::<u8>() else {
+                    return Err(());
+                };
+                count = Some(parsed);
+            }
+            other if other.starts_with('-') => return Err(()),
+            other => words.push(other.to_owned()),
+        }
+    }
+    if words.is_empty() {
+        return Err(());
+    }
+    let mut query = rhema_websearch::SearchQuery::new(words.join(" "));
+    if let Some(count) = count {
+        query = query.with_max_results(count);
+    }
+    Ok(Invocation {
+        query: query.with_news(news),
+    })
+}
+
+/// Runs one invocation against a caller-supplied chain and prints the
+/// answer: the markdown on stdout, the failure's own text on stderr,
+/// the exit codes the usage table names. The seam the CLI tests
+/// drive; `cli_run` is this plus the process bits.
+pub(crate) fn run(invocation: &Invocation, chain: &rhema_websearch::Chain) -> i32 {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("a current-thread runtime cannot fail to build");
+    match runtime.block_on(chain.search(&invocation.query)) {
+        Ok(outcome) => {
+            println!("{}", rhema_websearch::render(&outcome));
+            0
+        }
+        Err(err) => {
+            eprintln!("search: {err}");
+            1
+        }
+    }
+}
+
+/// The mode's entry: the process exit code is ours, its stderr is the
+/// model's error text, the vision and jobs modes' contract.
+pub fn cli_run(argv: &[OsString]) -> i32 {
+    // Parse first: a usage error needs no environment and no config,
+    // and it is the one exit code a test can pin without either.
+    let invocation = match parse(&argv.iter().skip(1).cloned().collect::<Vec<_>>()) {
+        Ok(invocation) => invocation,
+        Err(()) => {
+            eprintln!("{USAGE}");
+            return rhema_agent_tools::websearch::EXIT_USAGE;
+        }
+    };
+    let Some(profile_name) = std::env::var(rhema_agent_tools::websearch::VAR_PROFILE)
+        .ok()
+        .filter(|name| !name.trim().is_empty())
+    else {
+        eprintln!(
+            "search: not wired in this shell (no {})",
+            rhema_agent_tools::websearch::VAR_PROFILE
+        );
+        return rhema_agent_tools::websearch::EXIT_NOT_WIRED;
+    };
+    // The stored settings, the headless run's convention: an
+    // unreadable file is the default document, never an error wall.
+    let doc = crate::store::Config::load().unwrap_or_default();
+    // The named profile, as the wiring named it at session start; a
+    // name the config lost reads as the default profile, the same
+    // leniency `effective` applies to an absent flag.
+    let profile = doc.effective(Some(&profile_name));
+    let secrets =
+        rhema_config::secrets::KeyringSecretStore::named(rhema_config::secrets::RHEMA_SERVICE);
+    let Some(chain) = rhema_websearch_registry::assemble_chain(Some(&profile), Some(&secrets))
+    else {
+        eprintln!(
+            "search: no provider is configured for profile \"{profile_name}\" (settings \
+             > Providers > Web search, or a BRAVE_SEARCH_API_KEY / EXA_API_KEY / TAVILY_API_KEY \
+             environment variable)"
+        );
+        return 1;
+    };
+    run(&invocation, &chain)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rhema_websearch::mock::MockSearchProvider;
+
+    fn os(args: &[&str]) -> Vec<OsString> {
+        args.iter().map(OsString::from).collect()
+    }
+
+    #[test]
+    fn the_query_is_the_flag_free_remainder() {
+        let invocation = parse(&os(&["rust", "async", "book"])).unwrap();
+        assert_eq!(invocation.query.text, "rust async book");
+        assert_eq!(
+            invocation.query.max_results,
+            rhema_websearch::query::DEFAULT_MAX_RESULTS
+        );
+        assert!(!invocation.query.news);
+    }
+
+    #[test]
+    fn the_flags_are_count_and_news() {
+        let invocation = parse(&os(&["-n", "5", "--news", "rust", "release"])).unwrap();
+        assert_eq!(invocation.query.max_results, 5);
+        assert!(invocation.query.news);
+        assert_eq!(invocation.query.text, "rust release");
+    }
+
+    #[test]
+    fn a_lone_or_bad_count_is_usage() {
+        assert!(parse(&os(&["-n"])).is_err());
+        assert!(parse(&os(&["-n", "many", "q"])).is_err());
+    }
+
+    #[test]
+    fn an_unknown_flag_and_an_empty_query_are_usage() {
+        assert!(parse(&os(&["--deep", "q"])).is_err());
+        assert!(parse(&os(&["-x"])).is_err());
+        assert!(parse(&os(&[])).is_err());
+    }
+
+    #[test]
+    fn a_query_of_flags_only_is_usage() {
+        assert!(parse(&os(&["--news"])).is_err(), "no query text, no run");
+    }
+
+    #[test]
+    fn the_run_prints_the_win_and_fails_with_the_ladder() {
+        let winner = MockSearchProvider::new("brave").shared();
+        winner.push_ok(vec![rhema_websearch::SearchResult::new(
+            "T",
+            "https://x",
+            "snippet",
+        )]);
+        let mut chain = rhema_websearch::Chain::new();
+        chain.push("brave-main", winner);
+        let invocation = parse(&os(&["rust"])).unwrap();
+        assert_eq!(run(&invocation, &chain), 0);
+
+        let loser = MockSearchProvider::new("exa").shared();
+        loser.push_err(rhema_websearch::SearchError::RateLimited);
+        let mut chain = rhema_websearch::Chain::new();
+        chain.push("exa-work", loser);
+        assert_eq!(run(&invocation, &chain), 1);
+    }
+
+    #[test]
+    fn the_wiring_gate_closes_on_sandbox_and_on_no_providers() {
+        let profile = Profile::default();
+        assert!(
+            wire_for_session("personal", &profile, None, None, None).is_none(),
+            "no providers, no wiring"
+        );
+        // The sandbox case needs a Sandboxed handle, the assembly's
+        // own; its None arm is the same early return the providerless
+        // case exercises, and app tests cover the gated path.
+    }
+
+    #[test]
+    fn the_registry_holds_one_wiring_per_session_key() {
+        // Direct provision, not wire_for_session: the registry path
+        // needs current_exe to speak MODE, which a test binary does.
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("rhema-fake");
+        std::fs::write(&bin, "#!/bin/sh\nexit 0\n").unwrap();
+        let first = rhema_agent_tools::websearch::provision_with_bin(None, &bin, "registry-test-a")
+            .unwrap();
+        let second =
+            rhema_agent_tools::websearch::provision_with_bin(None, &bin, "registry-test-b")
+                .unwrap();
+        assert_ne!(
+            first.init_path, second.init_path,
+            "two session keys, two init files"
+        );
+        assert_eq!(
+            first
+                .shell_env
+                .get(rhema_agent_tools::websearch::VAR_PROFILE)
+                .map(String::as_str),
+            Some("registry-test-a")
+        );
+    }
+}

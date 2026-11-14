@@ -887,6 +887,24 @@ pub(crate) fn session_agent_config(
     let bash_env = vision_wiring
         .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
         .or(bash_env);
+    // Search: the same chain's third link, gated twice like MCP's
+    // wire, on the sandbox and on the profile carrying providers at
+    // all. The chain the mode runs is assembled fresh per invocation;
+    // this wiring only decides the function and the section exist.
+    let search_wiring = crate::search_wire::wire_for_session(
+        session_key,
+        profile,
+        secrets.map(|secrets| secrets.as_ref()),
+        sandboxed,
+        bash_env.clone(),
+    );
+    if let Some(wiring) = &search_wiring {
+        config.shell_env.extend(wiring.shell_env.clone());
+        config.websearch = Some(wiring.section.to_owned());
+    }
+    let bash_env = search_wiring
+        .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
+        .or(bash_env);
     // MCP: the local-only wire, gated on the sandbox, a session
     // whose bash runs elsewhere never sees the section, because its
     // executor could not reach the socket or the provisioned env.
