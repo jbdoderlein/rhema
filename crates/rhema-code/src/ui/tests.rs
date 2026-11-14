@@ -1458,8 +1458,7 @@ mod scroll_tests {
     use crate::screens::{CatalogModel, ChatState, Chip};
     use crate::store::MemoryStore;
     use ratatui::{Terminal, backend::TestBackend};
-    use rhema_core::message::Role;
-    use rhema_core::{Message, Usage};
+    use rhema_core::Usage;
     use rhema_provider::ModelCard;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
@@ -1528,40 +1527,41 @@ mod scroll_tests {
             .collect()
     }
 
-    /// The startup tools strip renders before the conversation starts
-    /// and folds away once it has: the prompt's environment section
-    /// carries the same facts from the first turn on, and a strip over
-    /// a running transcript would be an echo.
+    /// The startup tools strip rides the transcript header: one row
+    /// under the banner naming the probed tools this machine misses, and
+    /// the ask that installs them. It shows once with the banner and
+    /// scrolls away as the conversation grows; the prompt's environment
+    /// section carries the same facts from the first turn on.
     #[test]
-    fn the_missing_tools_strip_precedes_the_conversation_then_folds() {
+    fn the_missing_tools_strip_sits_under_the_banner() {
         let mut app = chat_app();
         app.missing_tools = vec!["fd".into(), "jq".into()];
         // A wide frame: the strip's whole sentence must fit, where the
         // shared 40-column harness would clip it mid-clause.
-        let screen = {
+        let rows = {
             let backend = TestBackend::new(90, 12);
             let mut terminal = Terminal::new(backend).unwrap();
             terminal.draw(|frame| render(&mut app, frame)).unwrap();
             let buffer = terminal.backend().buffer();
             (0..buffer.area.height)
-                .flat_map(|y| {
-                    (0..buffer.area.width).map(move |x| buffer[(x, y)].symbol().to_owned())
+                .map(|y| {
+                    (0..buffer.area.width)
+                        .map(|x| buffer[(x, y)].symbol().to_owned())
+                        .collect::<String>()
                 })
-                .collect::<String>()
+                .collect::<Vec<_>>()
         };
+        let banner_row = rows
+            .iter()
+            .position(|row| row.contains(crate::VERSION_LABEL))
+            .expect("the banner draws");
         assert!(
-            screen.contains("missing tools: fd, jq"),
-            "the strip names the tools: {screen}"
+            rows[banner_row + 2].contains("missing tools: fd, jq"),
+            "the strip sits under the banner's blank row: {rows:?}"
         );
         assert!(
-            screen.contains("ask the agent to install them"),
-            "the strip names the ask: {screen}"
-        );
-        app.session.history.push(Message::text(Role::User, "hello"));
-        let screen = screen_text(&mut app);
-        assert!(
-            !screen.contains("missing tools"),
-            "the strip folds once the conversation has started: {screen}"
+            rows[banner_row + 2].contains("ask the agent to install them"),
+            "the strip names the ask: {rows:?}"
         );
     }
 

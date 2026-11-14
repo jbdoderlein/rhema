@@ -116,6 +116,20 @@ pub(crate) fn partition(lines: &[transcript::Line]) -> Vec<TranscriptBlock> {
     blocks
 }
 
+/// The missing tools strip as one transcript row: the dim label, the
+/// tool names in the text color, and the ask that installs them.
+pub(crate) fn missing_tools_line(app: &App, theme: &Theme) -> Line<'static> {
+    let mut line = Line::from(Span::raw("missing tools: ").fg(theme.text3));
+    for (index, tool) in app.missing_tools.iter().enumerate() {
+        if index > 0 {
+            line.push_span(Span::raw(", ").fg(theme.text3));
+        }
+        line.push_span(Span::raw(tool.clone()).fg(theme.text2));
+    }
+    line.push_span(Span::raw(", ask the agent to install them").fg(theme.text3));
+    line
+}
+
 pub(crate) fn render_transcript(
     frame: &mut Frame,
     app: &mut App,
@@ -189,6 +203,19 @@ pub(crate) fn render_transcript(
         .iter()
         .flat_map(|line| wrap_line(line, width))
         .collect();
+    // The startup tools strip: one row under the banner naming the
+    // probed tools this machine misses, and the ask that installs them.
+    // It rides the transcript canvas, so it shows once with the banner
+    // and scrolls away as the conversation starts; the prompt's
+    // environment section carries the same facts from the first turn
+    // on, and a strip pinned over the prompt would repeat every frame.
+    // Passive by design: the install goes through the agent and its
+    // approval gate, where a password-prompting `sudo` is a
+    // conversation, not a keystroke.
+    if !app.missing_tools.is_empty() {
+        rows.extend(wrap_line(&missing_tools_line(app, theme), width));
+        rows.push(Line::from(""));
+    }
     let mut bubbles: Vec<(usize, BubbleGeom)> = Vec::new();
     for (index, block) in blocks.iter().enumerate() {
         if index > 0

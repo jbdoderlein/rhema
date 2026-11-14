@@ -22,7 +22,7 @@ use dialogs::{
     render_approval_modal, render_confirm_quit, render_picker, render_profile_picker,
     render_resume_picker,
 };
-use footer::{render_footer, render_missing_tools, show_missing_tools};
+use footer::render_footer;
 use input::{input_rows, render_input};
 use onboarding::render_onboarding;
 use overlay::render_command_palette;
@@ -183,20 +183,8 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             };
             let input_rows =
                 input_rows(&app.chat.input, &app.chat.chips, frame.area().width, &theme);
-            // The startup tools strip takes one row between transcript
-            // and status, and only before the conversation starts,
-            // once it has, the model's environment section carries the
-            // same facts and the row folds away.
-            let missing_rows = u16::from(show_missing_tools(app));
-            let [
-                transcript_area,
-                missing_area,
-                status_area,
-                input_area,
-                footer_area,
-            ] = Layout::vertical([
+            let [transcript_area, status_area, input_area, footer_area] = Layout::vertical([
                 Constraint::Min(0),
-                Constraint::Length(missing_rows),
                 Constraint::Length(status_rows),
                 Constraint::Length(input_rows),
                 Constraint::Length(1),
@@ -226,9 +214,6 @@ pub fn render(app: &mut App, frame: &mut Frame) {
                 occlusions.push(overlay::palette_area(palette_rows.len(), input_area));
             }
             render_transcript(frame, app, transcript_area, &theme, &occlusions);
-            if missing_rows > 0 {
-                render_missing_tools(frame, app, missing_area, &theme);
-            }
             render_status(frame, app, status_area, &theme);
             app.cursor_anchor = Some(render_input(frame, app, input_area, &theme));
             render_command_palette(frame, app, input_area, &theme);
