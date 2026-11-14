@@ -3016,24 +3016,42 @@ fn the_websearch_page_moves_over_the_rows_and_acts() {
 
 #[test]
 fn the_add_websearch_dialog_walks_kind_name_key_and_back() {
-    let mut dialog = crate::screens::AddWebSearchDialog::new(BTreeSet::from(["brave".to_owned()]));
+    let mut dialog = crate::screens::AddWebSearchDialog::new(BTreeSet::from([
+        "Exa".to_owned(),
+        "Brave".to_owned(),
+    ]));
     // Kind stage: arrows, enter descends with the suggested name,
-    // numbered past the taken one.
+    // the vendor's display name, capitals included — instance names
+    // are freeform, the Providers page's rule. Exa is taken, so the
+    // suggestion numbers: the providers page's "Google Gemini 2"
+    // convention, capitals and all.
     dialog.handle_key(key(KeyCode::Down));
     assert_eq!(
         dialog.handle_key(key(KeyCode::Enter)),
         WebSearchDialogAction::None
     );
     assert_eq!(dialog.kind, "exa", "the second row");
-    assert_eq!(dialog.input, "exa", "untaken kinds suggest themselves");
-    // Esc back to the kind list, then forward onto the taken kind.
+    assert_eq!(dialog.input, "Exa 2", "the taken display name numbers");
+    // Esc back to the kind list, then forward onto the untaken kind:
+    // its display name suggests itself.
     dialog.handle_key(key(KeyCode::Esc));
     assert_eq!(dialog.stage, WebSearchDialogStage::Kind);
+    dialog.handle_key(key(KeyCode::Down));
+    dialog.handle_key(key(KeyCode::Down));
+    dialog.handle_key(key(KeyCode::Enter));
+    assert_eq!(dialog.kind, "tavily", "the third row");
+    assert_eq!(
+        dialog.input, "Tavily",
+        "an untaken display name suggests itself"
+    );
+    // Esc back, then onto the second taken kind.
+    dialog.handle_key(key(KeyCode::Esc));
+    dialog.handle_key(key(KeyCode::Up));
     dialog.handle_key(key(KeyCode::Up));
     dialog.handle_key(key(KeyCode::Enter));
     assert_eq!(dialog.kind, "brave");
     assert_eq!(
-        dialog.input, "brave-2",
+        dialog.input, "Brave 2",
         "the taken name numbers the suggestion"
     );
     // The suggestion is accepted as typed: enter carries it through.
@@ -3042,7 +3060,7 @@ fn the_add_websearch_dialog_walks_kind_name_key_and_back() {
         WebSearchDialogAction::None
     );
     assert_eq!(dialog.stage, WebSearchDialogStage::Key);
-    assert_eq!(dialog.name, "brave-2");
+    assert_eq!(dialog.name, "Brave 2");
     // The key stage refuses a blank line, then carries a typed key.
     assert_eq!(
         dialog.handle_key(key(KeyCode::Enter)),
@@ -3060,7 +3078,7 @@ fn the_add_websearch_dialog_walks_kind_name_key_and_back() {
     let (name, kind, key_text) = dialog.build().unwrap();
     assert_eq!(
         (name.as_str(), kind, key_text.as_str()),
-        ("brave-2", "brave", "sk-test-123")
+        ("Brave 2", "brave", "sk-test-123")
     );
     // Esc from the key stage retreats to the name line, restored.
     let mut dialog = crate::screens::AddWebSearchDialog::new(BTreeSet::new());
@@ -3068,17 +3086,17 @@ fn the_add_websearch_dialog_walks_kind_name_key_and_back() {
     dialog.handle_key(key(KeyCode::Down));
     dialog.handle_key(key(KeyCode::Enter));
     assert_eq!(dialog.kind, "tavily", "the third row");
-    assert_eq!(dialog.input, "tavily", "the suggestion seeds the line");
+    assert_eq!(dialog.input, "Tavily", "the suggestion seeds the line");
     // The suggestion edits like any line: backspaces clear it, then
-    // the typed name lands.
-    for _ in 0.."tavily".len() {
+    // a mixed-case name lands and holds.
+    for _ in 0.."Tavily".len() {
         dialog.handle_key(key(KeyCode::Backspace));
     }
-    for c in "tavily-main".chars() {
+    for c in "Work Exa".chars() {
         dialog.handle_key(key(KeyCode::Char(c)));
     }
     dialog.handle_key(key(KeyCode::Enter));
     dialog.handle_key(key(KeyCode::Esc));
     assert_eq!(dialog.stage, WebSearchDialogStage::Name);
-    assert_eq!(dialog.input, "tavily-main", "a retreat restores the line");
+    assert_eq!(dialog.input, "Work Exa", "a retreat restores the line");
 }

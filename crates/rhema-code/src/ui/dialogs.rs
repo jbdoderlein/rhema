@@ -708,7 +708,7 @@ pub(crate) fn render_add_websearch_dialog(
             let rows: Vec<Line> = WEBSEARCH_KINDS
                 .iter()
                 .enumerate()
-                .map(|(index, (kind, what))| {
+                .map(|(index, (_, display, what))| {
                     let selected = index == dialog.selected;
                     let name_style = if selected {
                         Style::default().fg(theme.text).bold()
@@ -717,7 +717,7 @@ pub(crate) fn render_add_websearch_dialog(
                     };
                     Line::from(vec![
                         Span::raw(if selected { "❯ " } else { "  " }).fg(theme.accent_text),
-                        Span::styled((*kind).to_owned(), name_style),
+                        Span::styled((*display).to_owned(), name_style),
                         Span::raw(format!("  {what}")).fg(theme.text3),
                     ])
                 })

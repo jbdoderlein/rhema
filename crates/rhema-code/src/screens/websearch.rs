@@ -74,11 +74,17 @@ pub fn websearch_rows(
 }
 
 /// The kinds the add-provider dialog offers, in dialog order: the
-/// registry's spelling and the one-line gloss under it.
-pub const WEBSEARCH_KINDS: &[(&str, &str)] = &[
-    ("brave", "Brave Search, pay-as-you-go, generous free tier"),
-    ("exa", "Exa, neural search, pay-as-you-go"),
-    ("tavily", "Tavily, LLM-flavored search, free tier"),
+/// registry's spelling, the display name the name stage suggests
+/// (instance names are freeform, the Providers page's "Google Gemini"
+/// rule, not the agent-name rule), and the one-line gloss under it.
+pub const WEBSEARCH_KINDS: &[(&str, &str, &str)] = &[
+    (
+        "brave",
+        "Brave",
+        "Brave Search, pay-as-you-go, generous free tier",
+    ),
+    ("exa", "Exa", "Exa, neural search, pay-as-you-go"),
+    ("tavily", "Tavily", "Tavily, LLM-flavored search, free tier"),
 ];
 
 /// Which half of the add-provider dialog is showing.
@@ -153,6 +159,12 @@ impl AddWebSearchDialog {
         WEBSEARCH_KINDS[self.selected.min(WEBSEARCH_KINDS.len() - 1)].0
     }
 
+    /// The display name the highlighted row suggests for the instance:
+    /// the vendor's own spelling, capitals included.
+    pub fn selected_display(&self) -> &'static str {
+        WEBSEARCH_KINDS[self.selected.min(WEBSEARCH_KINDS.len() - 1)].1
+    }
+
     /// The hint under the input, per the stage.
     pub fn input_hint(&self) -> String {
         match self.stage {
@@ -160,10 +172,11 @@ impl AddWebSearchDialog {
                 "arrows choose · enter continues · esc cancels".to_owned()
             }
             WebSearchDialogStage::Name => {
-                "lowercase letters, digits, '-' and '_' · enter continues · esc back".to_owned()
+                "name this provider · enter continues · esc back".to_owned()
             }
             WebSearchDialogStage::Key => {
-                "the vendor's dashboard mints it · enter stores · esc back".to_owned()
+                "the vendor's dashboard mints it · ctrl-v paste · enter stores · esc back"
+                    .to_owned()
             }
         }
     }
@@ -221,16 +234,19 @@ impl AddWebSearchDialog {
             KeyCode::Enter => {
                 self.kind = self.selected_kind();
                 self.error = None;
-                // The suggested name is the kind, numbered when taken:
-                // brave, brave-2, brave-3, the providers page's own
-                // convention for a first and second instance.
-                let mut suggestion = self.kind.to_owned();
-                let mut counter = 2;
-                while self.taken.contains(&suggestion) {
-                    suggestion = format!("{}-{counter}", self.kind);
-                    counter += 1;
+                // The suggested name is the vendor's display name,
+                // numbered when taken: Exa, "Exa 2", the providers
+                // page's own convention for a first and second
+                // instance of a vendor.
+                let base = self.selected_display();
+                if !self.taken.contains(base) {
+                    self.input = base.to_owned();
+                } else {
+                    self.input = (2..)
+                        .map(|n| format!("{base} {n}"))
+                        .find(|name| !self.taken.contains(name))
+                        .unwrap_or_else(|| format!("{base} {}", self.taken.len() + 1));
                 }
-                self.input = suggestion;
                 self.stage = WebSearchDialogStage::Name;
                 WebSearchDialogAction::None
             }
@@ -280,11 +296,10 @@ impl AddWebSearchDialog {
                 if text.is_empty() {
                     return WebSearchDialogAction::None;
                 }
-                if !server_name_charset(&text) {
-                    self.error =
-                        Some("names must be lowercase letters, digits, '-' and '_'".to_owned());
-                    return WebSearchDialogAction::None;
-                }
+                // Instance names are freeform, the Providers page's
+                // rule: any non-empty trimmed line that does not
+                // collide, "Exa" and "work exa" alike. The map key is
+                // the name, nothing agent-facing reads it.
                 if self.taken.contains(&text) {
                     self.error = Some(format!("a provider named {text} already exists"));
                     return WebSearchDialogAction::None;
@@ -324,14 +339,4 @@ impl AddWebSearchDialog {
         }
         Ok((self.name.clone(), self.kind, self.key.clone()))
     }
-}
-
-/// The name charset the MCP dialog validates by, reworded here so the
-/// web search page's rule is its own: lowercase letters, digits, '-'
-/// and '_', non-empty.
-pub(crate) fn server_name_charset(name: &str) -> bool {
-    !name.is_empty()
-        && name
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
 }
