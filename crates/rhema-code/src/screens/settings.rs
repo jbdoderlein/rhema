@@ -362,6 +362,11 @@ pub struct SettingsScreen {
     /// The server name awaiting its removal confirmation, the `d`
     /// key arms it, `y` confirms, `n` and esc leave the row alone.
     pub mcp_confirm: Option<String>,
+
+    // The Providers page's removal confirm.
+    /// The instance name awaiting its removal confirmation, the `d`
+    /// key arms it, `y` confirms, `n` and esc leave the row alone.
+    pub instance_confirm: Option<String>,
     // The Profiles page's snapshot.
     /// The config's profiles, sorted by name.
     pub profiles: Vec<ProfileRow>,
@@ -436,6 +441,7 @@ impl SettingsScreen {
             mcp: Vec::new(),
             mcp_dialog: None,
             mcp_confirm: None,
+            instance_confirm: None,
             profiles: Vec::new(),
             add_profile: None,
             skills: Vec::new(),
@@ -554,10 +560,14 @@ impl SettingsScreen {
         rows
     }
 
-    /// The name of the highlighted instance row; `None` on the add row
-    /// or anywhere but the Providers page.
+    /// The name of the highlighted instance row; `None` on the add
+    /// row, with the removal confirm up, or anywhere but the Providers
+    /// page.
     pub fn selected_instance(&self) -> Option<&str> {
-        if self.section != SettingsSection::Providers || self.dialog.is_some() {
+        if self.section != SettingsSection::Providers
+            || self.dialog.is_some()
+            || self.instance_confirm.is_some()
+        {
             return None;
         }
         self.instance_rows()
@@ -707,8 +717,9 @@ impl SettingsScreen {
     /// Handles one keypress. The left/right arrows and tabs move the
     /// sidebar, the vertical arrows move the page's rows, esc or `q`
     /// backs out (dialog first, then the screen), enter acts on the
-    /// selected row, `d` forgets an instance or removes a profile, `c`
-    /// cycles a profile's name color (and colors the Appearance page),
+    /// selected row, `d` removes: a profile at once, an instance or an
+    /// MCP server after its confirm, `c` cycles a profile's name
+    /// color (and colors the Appearance page),
     /// `e` edits the selected subagent, space toggles a skill or
     /// subagent or mutes an MCP server, and the Appearance page carries
     /// `t`/`b`/`i` as shortcuts for its remaining toggles.
@@ -785,6 +796,21 @@ impl SettingsScreen {
                 _ => SettingsAction::None,
             };
         }
+        if self.instance_confirm.is_some() {
+            // The removal confirm takes every key while it is up: esc
+            // must stay here, not back out of the screen behind it.
+            return match key.code {
+                KeyCode::Char('y' | 'Y') => {
+                    self.instance_confirm = None;
+                    SettingsAction::RemoveInstance
+                }
+                KeyCode::Char('n' | 'N') | KeyCode::Esc => {
+                    self.instance_confirm = None;
+                    SettingsAction::None
+                }
+                _ => SettingsAction::None,
+            };
+        }
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             return SettingsAction::None;
         }
@@ -808,7 +834,12 @@ impl SettingsScreen {
             KeyCode::Esc | KeyCode::Char('q') => SettingsAction::Back,
             KeyCode::Enter => self.enter_action(),
             KeyCode::Char('d') if self.selected_instance().is_some() => {
-                SettingsAction::RemoveInstance
+                // Removal asks first: the confirm modal arms here and
+                // the y that answers it carries the removal out.
+                if let Some(name) = self.selected_instance() {
+                    self.instance_confirm = Some(name.to_owned());
+                }
+                SettingsAction::None
             }
             KeyCode::Char('d') if self.selected_profile().is_some() => {
                 SettingsAction::RemoveProfile

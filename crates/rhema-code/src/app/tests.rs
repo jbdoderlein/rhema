@@ -740,13 +740,14 @@ fn removing_an_instance_deletes_its_keychain_entry() {
         instance.api_key = None;
     });
     // /login opens the providers page over the session's profile;
-    // the instance row is selected, `d` forgets it.
+    // the instance row is selected, `d` arms the confirm, `y` forgets.
     for c in "/login".chars() {
         h.app.on_key(key(KeyCode::Char(c)));
     }
     h.app.on_key(key(KeyCode::Enter));
     assert!(matches!(h.app.screen, Screen::Settings(_)));
     let _ = h.app.on_key(key(KeyCode::Char('d')));
+    let _ = h.app.on_key(key(KeyCode::Char('y')));
     let effective = h.store.load().unwrap().effective(None);
     assert!(!effective.instances.contains_key("google"), "forgotten");
     assert_eq!(secrets.get("ref-1").unwrap(), None, "the entry went too");
@@ -1954,7 +1955,7 @@ fn activating_across_providers_drops_the_foreign_model() {
 }
 
 #[test]
-fn d_forgets_the_highlighted_instance() {
+fn d_asks_then_y_forgets_the_highlighted_instance() {
     let mut h = harness(None, None, Session::default());
     h.app.config.set_for_profile(Some("personal"), |settings| {
         settings.provider = Some("llama-cpp".into());
@@ -1971,11 +1972,36 @@ fn d_forgets_the_highlighted_instance() {
         );
     });
     crate::commands::dispatch(&mut h.app, "/login");
+    // d arms the confirm; the profile still holds the instance.
     h.app.on_key(key(KeyCode::Char('d')));
+    {
+        let Screen::Settings(settings) = &h.app.screen else {
+            panic!("expected the settings screen");
+        };
+        assert_eq!(settings.instance_confirm.as_deref(), Some("home"));
+    }
+    assert!(
+        h.app
+            .config
+            .effective(Some("personal"))
+            .instances
+            .contains_key("home"),
+        "d alone removes nothing"
+    );
+    // n cancels, then d and y remove for real.
+    h.app.on_key(key(KeyCode::Char('n')));
+    h.app.on_key(key(KeyCode::Char('d')));
+    h.app.on_key(key(KeyCode::Char('y')));
     assert!(matches!(h.app.screen, Screen::Settings(_)));
     let effective = h.store.load().unwrap().effective(None);
     assert!(effective.instances.is_empty());
     assert_eq!(effective.instance, None);
+    {
+        let Screen::Settings(settings) = &h.app.screen else {
+            panic!("expected the settings screen");
+        };
+        assert_eq!(settings.instance_confirm, None, "the confirm spent itself");
+    }
     // The provider stays llama-cpp, whose keyless server always
     // constructs, on the default URL now, the way a flat profile
     // always could.

@@ -256,6 +256,32 @@ fn the_appearance_labels_keep_a_gap_before_their_values() {
     assert!(!text.contains("BackgroundNative"), "{text}");
 }
 
+/// The provider removal confirm: titled, the question names the
+/// instance, the answer is y over n, all over the dimmed page.
+#[test]
+fn the_instance_confirm_names_the_provider_and_its_answer() {
+    let mut settings = crate::screens::SettingsScreen::new();
+    settings.instance_confirm = Some("home".to_owned());
+    let mut hits = Vec::new();
+    let mut terminal = Terminal::new(TestBackend::new(80, 40)).unwrap();
+    terminal
+        .draw(|frame| render_settings(frame, &settings, &DARK, &crate::icons::UNICODE, &mut hits))
+        .unwrap();
+    let text: String = (0..40)
+        .map(|y| {
+            (0..80)
+                .map(|x| terminal.backend().buffer()[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect();
+    assert!(text.contains(" Confirmation "), "{text}");
+    assert!(
+        text.contains("Are you sure you want to delete provider home?"),
+        "{text}"
+    );
+    assert!(text.contains("y/n"), "{text}");
+}
+
 /// The Update page: this build's row, the channel's latest with its
 /// verdict, the two rows, and the dim install row before a check
 /// earned it.

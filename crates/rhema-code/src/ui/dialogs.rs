@@ -353,6 +353,36 @@ pub(crate) fn render_mcp_confirm(frame: &mut Frame, name: &str, theme: &Theme) {
     );
 }
 
+/// The provider removal confirm: one small box asking about the one
+/// login, in the quit confirm's shape, `y` answers, `n` and esc leave
+/// the row alone.
+pub(crate) fn render_instance_confirm(frame: &mut Frame, name: &str, theme: &Theme) {
+    let question = format!("Are you sure you want to delete provider {name}?");
+    let width = (question.chars().count() + 4).max(34) as u16;
+    let area = centered(width, 4, frame.area());
+    frame.render_widget(Clear, area);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .border_style(Style::default().fg(theme.border_strong))
+        .style(Style::default().bg(theme.surface).fg(theme.text))
+        .title(" Confirmation ");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let [question_area, answer_area] =
+        Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(inner);
+    frame.render_widget(Paragraph::new(question), question_area);
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::raw("y").bold(),
+            Span::raw("/"),
+            Span::raw("n").bold(),
+        ]))
+        .fg(theme.text3),
+        answer_area,
+    );
+}
+
 pub(crate) fn render_add_sandbox_dialog(
     frame: &mut Frame,
     dialog: &crate::screens::AddSandboxDialog,

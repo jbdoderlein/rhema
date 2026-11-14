@@ -171,6 +171,7 @@ impl App {
                     || settings.add_profile.is_some()
                     || settings.mcp_dialog.is_some()
                     || settings.mcp_confirm.is_some()
+                    || settings.instance_confirm.is_some()
                 {
                     // A dialog is modal: clicks behind it do nothing.
                     return Vec::new();
@@ -188,6 +189,7 @@ impl App {
                     || settings.sandbox_dialog.is_some()
                     || settings.mcp_dialog.is_some()
                     || settings.mcp_confirm.is_some()
+                    || settings.instance_confirm.is_some()
                 {
                     return Vec::new();
                 }

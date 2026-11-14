@@ -3,7 +3,7 @@
 
 use super::dialogs::{
     render_add_dialog, render_add_mcp_dialog, render_add_profile_dialog, render_add_sandbox_dialog,
-    render_mcp_confirm,
+    render_instance_confirm, render_mcp_confirm,
 };
 use super::*;
 
@@ -102,7 +102,8 @@ pub(crate) fn render_settings(
         || settings.add_profile.is_some()
         || settings.sandbox_dialog.is_some()
         || settings.mcp_dialog.is_some()
-        || settings.mcp_confirm.is_some();
+        || settings.mcp_confirm.is_some()
+        || settings.instance_confirm.is_some();
     if modal {
         super::chrome::dim_backdrop(frame.buffer_mut(), theme);
     }
@@ -120,6 +121,9 @@ pub(crate) fn render_settings(
     }
     if let Some(name) = &settings.mcp_confirm {
         render_mcp_confirm(frame, name, theme);
+    }
+    if let Some(name) = &settings.instance_confirm {
+        render_instance_confirm(frame, name, theme);
     }
 }
 

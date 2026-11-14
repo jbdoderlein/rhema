@@ -449,15 +449,39 @@ fn settings_rows_move_within_the_providers_page_and_wrap() {
 fn settings_enter_and_d_act_on_the_providers_rows() {
     let mut settings = settings_screen();
     settings.stored = keyed_profile("google", "g-key");
-    // An instance row: enter activates, d forgets.
+    // An instance row: enter activates, d arms the removal confirm.
     assert_eq!(
         settings.handle_key(key(KeyCode::Enter)),
         SettingsAction::ActivateInstance
     );
     assert_eq!(
         settings.handle_key(key(KeyCode::Char('d'))),
+        SettingsAction::None,
+        "d only arms the confirm"
+    );
+    assert_eq!(settings.instance_confirm.as_deref(), Some("google"));
+    assert_eq!(settings.selected_instance(), None, "the confirm blocks");
+    // Anything but y and n keeps asking; n leaves the row alone.
+    assert_eq!(
+        settings.handle_key(key(KeyCode::Char('x'))),
+        SettingsAction::None
+    );
+    assert_eq!(settings.instance_confirm.as_deref(), Some("google"));
+    assert_eq!(
+        settings.handle_key(key(KeyCode::Char('n'))),
+        SettingsAction::None
+    );
+    assert_eq!(settings.instance_confirm, None, "n left the row alone");
+    // Esc cancels too and stays on the page, then y confirms.
+    settings.handle_key(key(KeyCode::Char('d')));
+    settings.handle_key(key(KeyCode::Esc));
+    assert_eq!(settings.instance_confirm, None, "esc left the row alone");
+    settings.handle_key(key(KeyCode::Char('d')));
+    assert_eq!(
+        settings.handle_key(key(KeyCode::Char('y'))),
         SettingsAction::RemoveInstance
     );
+    assert_eq!(settings.instance_confirm, None, "the confirm spent itself");
     // The add row: enter opens the dialog, d is nothing.
     settings.row = 1;
     assert_eq!(
