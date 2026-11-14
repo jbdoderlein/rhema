@@ -3765,6 +3765,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rhema-websearch-registry"
+version = "0.2.6"
+dependencies = [
+ "rhema-websearch",
+ "rhema-websearch-brave",
+ "rhema-websearch-exa",
+ "rhema-websearch-tavily",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
 name = "rhema-websearch-tavily"
 version = "0.2.6"
 dependencies = [

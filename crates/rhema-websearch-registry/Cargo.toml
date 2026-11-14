@@ -1,0 +1,27 @@
+[package]
+name = "rhema-websearch-registry"
+description = "The web search fleet's name-to-adapter wiring: one build call per websearch provider spelling"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+rhema-websearch = { path = "../rhema-websearch", version = "0.2.6", default-features = false }
+rhema-websearch-brave = { path = "../rhema-websearch-brave", version = "0.2.6" }
+rhema-websearch-exa = { path = "../rhema-websearch-exa", version = "0.2.6" }
+rhema-websearch-tavily = { path = "../rhema-websearch-tavily", version = "0.2.6" }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# The test seam: the base crate's scripted provider behind build_mock.
+mock = ["rhema-websearch/mock"]
