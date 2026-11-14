@@ -201,9 +201,11 @@ impl AgentAssembly {
             // The commands run in the remote sandbox; no local
             // provision means no `see` function, so no section. The same
             // goes for `job`: its backend would have to be installed on
-            // the far side first.
+            // the far side first. `search` rides the same rule, the
+            // providers and their keys live on this side's config.
             vision: None,
             jobs: None,
+            websearch: None,
         };
         (config, shell)
     }

@@ -15,7 +15,9 @@ use std::sync::Arc;
 
 use rhema_config::secrets::SecretStore;
 use rhema_config::{Profile, websearch_env_names};
-use rhema_websearch::{Chain, MockSearchProvider, WebSearchProvider};
+#[cfg(feature = "mock")]
+use rhema_websearch::MockSearchProvider;
+use rhema_websearch::{Chain, WebSearchProvider};
 use rhema_websearch_brave::BraveProvider;
 use rhema_websearch_exa::ExaProvider;
 use rhema_websearch_tavily::TavilyProvider;
