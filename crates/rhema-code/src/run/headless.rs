@@ -248,6 +248,33 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
             Backend::named(kind, &profile, Some(&secrets)).map(|backend| backend.provider())
         }) as rhema_coding_agent::SubagentProviders
     });
+    // The prompt's optional sections, the TUI's gate read headless:
+    // machine facts for a local session, the sandbox's notice for a
+    // mounted one. Before the subagent wire, so the subagents stamp
+    // the same sections into their own prompts. The absence list is
+    // the user's stderr note — the headless runner's whole user
+    // surface — naming the tools this host misses and the ask that
+    // installs them, conversationally, through the approval gate.
+    let (environment, user, missing) = crate::run::prompt_sections(
+        &workspace,
+        &sandboxed
+            .as_ref()
+            .map(|assembled| assembled.workspace.clone())
+            .unwrap_or_else(|| workspace.display().to_string()),
+        sandboxed
+            .as_ref()
+            .map(|assembled| assembled.choice.stored_name()),
+        &model,
+        HARNESS,
+    );
+    agent_config.environment = environment;
+    agent_config.user_preferences = user;
+    if !missing.is_empty() {
+        eprintln!(
+            "note: tools not found: {} (ask the agent to install them)",
+            missing.join(", ")
+        );
+    }
     // One provider instance serves the main agent and the subagent
     // wrapper: a token-backed adapter keeps one refreshed credential,
     // not a copy per seam.

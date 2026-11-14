@@ -189,6 +189,13 @@ pub struct App {
     /// run last reported. Outlives the settings screen — the opener
     /// syncs it into the Update page, and every result syncs it back.
     pub update: crate::screens::UpdatePage,
+    /// The probed tools this machine misses, the startup strip's feed.
+    /// Set at construction and at every re-assembly — a rebuild
+    /// re-probes, so installing a tool and switching the model clears
+    /// the strip alike. Rendered while the conversation has not
+    /// started: once it has, the model's own environment section
+    /// carries the fact and the strip would be an echo.
+    pub missing_tools: Vec<String>,
     /// Where the onboarding welcome step drew its logo, when it did:
     /// the runner places the terminal-graphics image there after the
     /// frame, and clears it when the rect goes away. `None` on every
@@ -413,6 +420,7 @@ impl App {
         // on demand (they change when the model switches or a login lands).
         let mut agent = None;
         let mut subagents_handle = None;
+        let mut missing: Vec<String> = Vec::new();
         // Startup reads straight off the config: App::effective exists on
         // the struct, which does not exist yet.
         let effective = setup.config.effective(setup.options.profile.as_deref());
@@ -462,7 +470,7 @@ impl App {
                         .as_ref()
                         .map(Backend::provider)
                         .ok_or(AgentError::MissingProvider)?;
-                    let (agent_config, subagents) = session_agent_config(
+                    let (agent_config, subagents, missing_tools) = session_agent_config(
                         &setup.options,
                         setup.sandboxed.as_ref(),
                         effective.model.clone(),
@@ -485,6 +493,7 @@ impl App {
                         session.clone(),
                     )?);
                     subagents_handle = Some(subagents);
+                    missing = missing_tools;
                     Screen::Chat
                 }
                 // No model yet — or no usable backend at all — still
@@ -524,6 +533,7 @@ impl App {
             agent,
             jobs,
             subagents: subagents_handle,
+            missing_tools: missing,
             turn: TurnState::idle(),
             transcript,
             usage: None,

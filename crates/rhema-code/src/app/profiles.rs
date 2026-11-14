@@ -243,7 +243,7 @@ impl App {
         // app's own handle: a token-backed adapter keeps one refreshed
         // credential, not a copy per seam.
         let provider = backend.provider();
-        let (agent_config, subagents) = session_agent_config(
+        let (agent_config, subagents, missing_tools) = session_agent_config(
             &self.options,
             self.sandboxed.as_ref(),
             effective.model.clone(),
@@ -283,6 +283,7 @@ impl App {
                 self.models.clear();
                 self.agent = Some(agent);
                 self.subagents = Some(subagents);
+                self.missing_tools = missing_tools;
                 self.screen = Screen::Chat;
                 // An explicit switch is a choice: recorded for this
                 // workspace now, not at the next turn.

@@ -105,6 +105,31 @@ pub(crate) fn effort_letter(effort: rhema_core::request::ThinkingEffort) -> &'st
     }
 }
 
+/// The startup tools strip: one dim row above the footer naming the
+/// probed tools this machine misses, and the ask that installs them.
+/// Rendered while the conversation has not started — the prompt's
+/// environment section carries the same facts once it has, and a strip
+/// over a running transcript would be an echo. Passive by design: the
+/// install goes through the agent and its approval gate, where a
+/// password-prompting `sudo` is a conversation, not a keystroke.
+pub(crate) fn render_missing_tools(frame: &mut Frame, app: &App, area: Rect, theme: &Theme) {
+    let mut line = Line::from(Span::raw(" missing tools: ").fg(theme.text3));
+    for (index, tool) in app.missing_tools.iter().enumerate() {
+        if index > 0 {
+            line.push_span(Span::raw(", ").fg(theme.text3));
+        }
+        line.push_span(Span::raw(tool.clone()).fg(theme.text2));
+    }
+    line.push_span(Span::raw(" — ask the agent to install them").fg(theme.text3));
+    frame.render_widget(Paragraph::new(line), area);
+}
+
+/// Whether the startup tools strip has a row this frame: tools are
+/// missing and the conversation has not started.
+pub(crate) fn show_missing_tools(app: &App) -> bool {
+    !app.missing_tools.is_empty() && app.session.history.is_empty()
+}
+
 pub(crate) fn render_footer(frame: &mut Frame, app: &App, area: Rect, theme: &Theme) {
     // The mark, then always the same facts: profile, where the session
     // sits, model, where bash runs, context footprint against the

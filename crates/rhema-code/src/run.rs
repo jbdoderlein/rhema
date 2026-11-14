@@ -167,24 +167,33 @@ fn run_acp(args: crate::args::AcpArgs) -> anyhow::Result<()> {
 /// local session, the honest notice for a sandboxed one, because host
 /// facts would be lies about a container. `None` and `local` are the
 /// local case; any other stored kind names the sandbox the notice
-/// carries. The one gate: the agent's assembly and the `system show`
-/// preview both read here, so what is previewed is what turns send.
+/// carries. The third element is the probe's absence list, the user's
+/// view of the same run: a local session names the tools it misses, a
+/// sandboxed one claims none — the host's gaps are not a sandbox's.
+/// The one gate: the agent's assembly and the `system show` preview
+/// both read here, so what is previewed is what turns send.
 pub(crate) fn prompt_sections(
     workspace: &std::path::Path,
     sandbox_workspace: &str,
     sandbox_kind: Option<&str>,
     model: &str,
     harness: &str,
-) -> (Option<String>, Option<String>) {
+) -> (Option<String>, Option<String>, Vec<String>) {
     let user = rhema_config::Home::discover()
         .ok()
         .and_then(|home| std::fs::read_to_string(home.config.join("USER.md")).ok())
         .filter(|text| !text.trim().is_empty());
-    let environment = match sandbox_kind {
-        None | Some("local") => rhema_coding_agent::host_report(workspace, model, harness),
-        Some(kind) => rhema_coding_agent::remote_notice(kind, sandbox_workspace, model, harness),
+    let (environment, missing) = match sandbox_kind {
+        None | Some("local") => {
+            let host = rhema_coding_agent::host_environment(workspace, model, harness);
+            (host.report, host.missing)
+        }
+        Some(kind) => (
+            rhema_coding_agent::remote_notice(kind, sandbox_workspace, model, harness),
+            Vec::new(),
+        ),
     };
-    (Some(environment), user)
+    (Some(environment), user, missing)
 }
 
 /// The process exit code for a failed run: 2 when the failure is the

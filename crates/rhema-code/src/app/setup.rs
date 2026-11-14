@@ -817,6 +817,12 @@ fn agent_config(
 /// feeds reach for it, so the wire's registry and this chain through
 /// `SteeringChain` — subagent finishes first, job finishes second, one
 /// message either way.
+///
+/// The third return element is the probed tools this machine misses,
+/// for the UI's startup notice — the user's view of the same probe
+/// that stamped the prompt's environment section. Re-derives per
+/// assembly, so a profile switch that changes nothing still re-answers
+/// the same truth; a sandboxed session answers empty.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn session_agent_config(
     options: &RunOptions,
@@ -830,7 +836,11 @@ pub(crate) fn session_agent_config(
     disabled_mcp: &std::collections::BTreeSet<String>,
     secrets: Option<&Arc<dyn rhema_config::secrets::SecretStore>>,
     jobs_steering: Option<Arc<dyn rhema_coding_agent::Steering>>,
-) -> (CodingAgentConfig, rhema_subagents::SubagentHandle) {
+) -> (
+    CodingAgentConfig,
+    rhema_subagents::SubagentHandle,
+    Vec<String>,
+) {
     let mut config = agent_config(options, model, disabled_skills, disabled_subagents);
     // The subagent tool's cross-provider `model` spellings resolve
     // through the same per-kind answers the model picker's catalog
@@ -849,7 +859,7 @@ pub(crate) fn session_agent_config(
     if let Some(sandboxed) = sandboxed {
         sandboxed.apply_tools(&mut config);
     }
-    apply_prompt_sections(&mut config, options, sandboxed);
+    let missing_tools = apply_prompt_sections(&mut config, options, sandboxed);
     // Jobs and vision: the same local-only gate, chained into one
     // `BASH_ENV` lineage. Jobs lands first, so the chain reads
     // jobs -> vision -> MCP: each init file sources its predecessor by
@@ -904,7 +914,7 @@ pub(crate) fn session_agent_config(
     if let Some(sandboxed) = sandboxed {
         sandboxed.apply_workspace(&mut config);
     }
-    (config, subagents)
+    (config, subagents, missing_tools)
 }
 
 /// The prompt's two optional sections, through the one gate the
@@ -913,17 +923,20 @@ pub(crate) fn session_agent_config(
 /// local one probes the host. Runs BEFORE the subagent wire, so the
 /// subagents stamp the same sections into their own prompts: the
 /// sandbox-side path reads off the assembly, not the config, whose
-/// workspace only becomes that path after the wire.
+/// workspace only becomes that path after the wire. Returns the
+/// probe's absence list for the UI to surface — the user's view of
+/// the same run, empty for a sandbox, whose host's gaps it does not
+/// inherit.
 fn apply_prompt_sections(
     config: &mut CodingAgentConfig,
     options: &RunOptions,
     sandboxed: Option<&crate::sandbox::Sandboxed>,
-) {
+) -> Vec<String> {
     let kind = sandboxed.map(|sandboxed| sandboxed.choice.stored_name());
     let mounted = sandboxed
         .map(|sandboxed| sandboxed.workspace.clone())
         .unwrap_or_else(|| config.workspace.display().to_string());
-    let (environment, user) = crate::run::prompt_sections(
+    let (environment, user, missing) = crate::run::prompt_sections(
         &options.workspace,
         &mounted,
         kind,
@@ -932,6 +945,7 @@ fn apply_prompt_sections(
     );
     config.environment = environment;
     config.user_preferences = user;
+    missing
 }
 
 /// The context a reported usage stands for: the whole prompt plus the

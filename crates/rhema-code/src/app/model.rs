@@ -660,13 +660,15 @@ impl App {
         stats: Option<rhema_transcript::TranscriptStats>,
         sections: Vec<rhema_transcript::Section>,
     ) -> Result<(), String> {
-        let (mut agent, subagents) = self.build_agent(session).map_err(|err| err.to_string())?;
+        let (mut agent, subagents, missing) =
+            self.build_agent(session).map_err(|err| err.to_string())?;
         if let Some(stats) = &stats {
             agent.carry_transcript_stats(stats);
         }
         agent.adopt_transcript_sections(sections);
         self.agent = Some(agent);
         self.subagents = Some(subagents);
+        self.missing_tools = missing;
         Ok(())
     }
 
@@ -691,15 +693,18 @@ impl App {
     /// Builds an agent over `session` with the current model and flags.
     /// The wire's registry handle rides beside the agent: a rebuilt
     /// agent carries a fresh registry, and the UI must read that one.
+    /// The third element is the assembly's absence list, the startup
+    /// notice's feed — the rebuild re-probes, so the notice re-answers
+    /// with it.
     pub(crate) fn build_agent(
         &self,
         session: Session,
-    ) -> Result<(CodingAgent, rhema_subagents::SubagentHandle), CodingAgentError> {
+    ) -> Result<(CodingAgent, rhema_subagents::SubagentHandle, Vec<String>), CodingAgentError> {
         let provider = self
             .provider
             .clone()
             .ok_or(CodingAgentError::Agent(AgentError::MissingProvider))?;
-        let (agent_config, subagents) = session_agent_config(
+        let (agent_config, subagents, missing) = session_agent_config(
             &self.options,
             self.sandboxed.as_ref(),
             self.effective().model.clone(),
@@ -717,6 +722,7 @@ impl App {
         Ok((
             CodingAgent::from_session(provider, agent_config, session)?,
             subagents,
+            missing,
         ))
     }
 }

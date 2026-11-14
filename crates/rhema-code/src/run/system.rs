@@ -226,7 +226,7 @@ pub(crate) fn system_show_at_with_mcp(
     // The preview has no assembly to name the sandbox-side path, so
     // the host path stands in — the mount postures share it, and the
     // http kind differs only in its constant prefix.
-    let (environment, user) = prompt_sections(
+    let (environment, user, _) = prompt_sections(
         &workspace,
         &workspace.display().to_string(),
         kind.as_deref(),

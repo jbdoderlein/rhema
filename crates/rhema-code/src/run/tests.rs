@@ -197,11 +197,15 @@ mod system_tests {
         // The local case probes the host — either honest answer; the
         // user section rides the machine's own USER.md, so its presence
         // is not asserted.
-        let (host, _) = prompt_sections(std::env::temp_dir().as_path(), "/ws", None, "m", "h");
+        let (host, _, missing) =
+            prompt_sections(std::env::temp_dir().as_path(), "/ws", None, "m", "h");
         let host = host.unwrap();
         assert!(host.contains("## Environment"));
         assert!(host.contains("- Model: m"));
-        let (notice, _) = prompt_sections(
+        // A local session names what it misses; the sandboxed one below
+        // must not.
+        assert!(missing.iter().all(|tool| !tool.is_empty()));
+        let (notice, _, missing) = prompt_sections(
             std::env::temp_dir().as_path(),
             "/ws",
             Some("docker"),
@@ -211,6 +215,7 @@ mod system_tests {
         let notice = notice.unwrap();
         assert!(notice.contains("docker sandbox"));
         assert!(notice.contains("- Workspace: /ws"));
+        assert!(missing.is_empty(), "a sandbox claims no host absences");
     }
 }
 

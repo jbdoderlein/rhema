@@ -154,7 +154,7 @@ impl App {
             }
         };
         let ResumedLoad { session, stats } = loaded;
-        let (mut agent, subagents) = match self.build_agent(session.clone()) {
+        let (mut agent, subagents, missing) = match self.build_agent(session.clone()) {
             Ok(built) => built,
             Err(err) => {
                 self.error = Some(err.to_string());
@@ -180,6 +180,7 @@ impl App {
         self.transcript_stats = None;
         self.agent = Some(agent);
         self.subagents = Some(subagents);
+        self.missing_tools = missing;
         self.session_file = Some(path.to_path_buf());
         self.transcript = Transcript::from_history(&self.session.history);
         // The saved session carries what it spent; the footer continues
