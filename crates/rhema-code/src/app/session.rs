@@ -13,6 +13,13 @@ impl App {
         if let Some(agent) = self.agent.as_mut() {
             agent.session_mut().history.clear();
         }
+        // The App's own copy clears with the conversation too: with the
+        // agent out — a keyless switch, a removed login — this copy is
+        // what a switch-back rebuilds on and what the exit save exports.
+        // Left full, the cleared conversation came back, and the exit
+        // save (its file binding dropped below) wrote it to a fresh
+        // session file: one conversation, two picker entries.
+        self.session.history.clear();
         self.transcript = Transcript::new();
         self.usage = None;
         self.session_cost = 0.0;

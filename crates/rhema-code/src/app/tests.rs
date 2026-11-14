@@ -6725,3 +6725,73 @@ fn the_update_states_survive_closing_the_settings() {
         "the opener syncs the app's state in"
     );
 }
+
+#[test]
+fn a_clear_with_the_agent_out_leaves_nothing_to_resume() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    // A live conversation in the agent.
+    if let Some(agent) = h.app.agent.as_mut() {
+        agent
+            .session_mut()
+            .history
+            .push(Message::text(Role::User, "the whole conversation"));
+        agent
+            .session_mut()
+            .history
+            .push(Message::text(Role::Assistant, "its answer"));
+    }
+    // A keyless profile moves in: the agent drops, and the session comes
+    // home to the App's own copy (the switch keeps the conversation).
+    h.app.config.profiles.insert(
+        "work".to_owned(),
+        rhema_config::Profile {
+            provider: Some("openrouter".into()),
+            ..rhema_config::Profile::default()
+        },
+    );
+    let _ = h.app.switch_profile("work");
+    assert!(h.app.agent.is_none(), "the agent drops with the provider");
+    assert_eq!(h.app.session.history.len(), 2, "the switch keeps the talk");
+
+    // The clear lands while the agent is out. The exit save reads the
+    // App's copy — a stale copy here would export the cleared
+    // conversation, and with the file binding gone it would grow a
+    // second session file for it.
+    let _ = crate::commands::dispatch(&mut h.app, "/clear");
+    assert_eq!(
+        h.app.export_session(),
+        None,
+        "nothing of the cleared talk exports"
+    );
+}
+
+#[test]
+fn a_clear_survives_a_switch_back() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    if let Some(agent) = h.app.agent.as_mut() {
+        agent
+            .session_mut()
+            .history
+            .push(Message::text(Role::User, "the whole conversation"));
+    }
+    // Away to a keyless profile (the agent drops), a clear, and back to
+    // the keyed one: the rebuild reads the App's copy, so a stale copy
+    // would continue the cleared conversation from its next turn.
+    h.app.config.profiles.insert(
+        "work".to_owned(),
+        rhema_config::Profile {
+            provider: Some("openrouter".into()),
+            ..rhema_config::Profile::default()
+        },
+    );
+    let _ = h.app.switch_profile("work");
+    let _ = crate::commands::dispatch(&mut h.app, "/clear");
+    let _ = h.app.switch_profile("personal");
+    let len = h
+        .app
+        .agent
+        .as_ref()
+        .map(|agent| agent.session().history.len())
+        .expect("the keyed profile rebuilds the agent");
+    assert_eq!(len, 0, "the cleared conversation stays cleared");
+}
