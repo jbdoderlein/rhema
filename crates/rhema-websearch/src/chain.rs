@@ -237,7 +237,7 @@ mod tests {
         );
         assert_eq!(
             err.to_string(),
-            "every provider failed: brave-main: rate limited; exa-work: the key or plan was refused"
+            "every provider failed: brave-main: rate limited\nexa-work: the key or plan was refused"
         );
     }
 

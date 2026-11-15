@@ -85,7 +85,7 @@ impl ChainError {
             .iter()
             .map(|(name, err)| format!("{name}: {err}"))
             .collect::<Vec<_>>()
-            .join("; ")
+            .join("\n")
     }
 }
 
@@ -127,7 +127,7 @@ mod tests {
         ]);
         assert_eq!(
             err.to_string(),
-            "every provider failed: brave-main: rate limited; exa-work: timed out"
+            "every provider failed: brave-main: rate limited\nexa-work: timed out"
         );
     }
 
