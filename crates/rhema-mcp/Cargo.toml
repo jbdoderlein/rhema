@@ -23,7 +23,7 @@ hyper-util = { version = "0.1", features = ["client", "client-legacy", "http1", 
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "tls12", "ring", "webpki-tokio"] }
 http-body-util = "0.1"
 bytes = "1"
-rhema-config = { version = "0.2.6", path = "../rhema-config" }
+rhema-config = { version = "0.3.0", path = "../rhema-config" }
 axum.workspace = true
 async-stream = "0.3.6"
 futures-util = "0.3.34"
@@ -32,7 +32,7 @@ base64 = "0.22"
 clap = "4.6.7"
 # The mapping crate: its own repository and release line
 mcp-to-cli = "0.1.0"
-rhema-agent-tools = { version = "0.2.6", path = "../rhema-agent-tools" }
+rhema-agent-tools = { version = "0.3.0", path = "../rhema-agent-tools" }
 
 [dev-dependencies]
 tempfile = "3"
@@ -40,8 +40,8 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 # The wire-turn end-to-end drives a CodingAgent over a scripted
 # provider. Dev-only: the production graph stays disconnected (the
 # frontends bring the driver, the crate never does).
-rhema-coding-agent = { version = "0.2.6", path = "../rhema-coding-agent" }
-rhema-core = { version = "0.2.6", path = "../rhema-core" }
+rhema-coding-agent = { version = "0.3.0", path = "../rhema-coding-agent" }
+rhema-core = { version = "0.3.0", path = "../rhema-core" }
 async-trait.workspace = true
 
 [[test]]
