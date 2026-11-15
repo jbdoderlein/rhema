@@ -322,6 +322,7 @@ fn harness_inner(
             custom: None,
             thinking: rhema_core::request::ThinkingEffort::Default,
             icons: crate::icons::Flavor::Unicode,
+            cursor: crate::cursor::CursorStyle::Default,
             profile: Some("personal".into()),
             workspace: PathBuf::from("."),
             max_steps: 4,
@@ -4230,6 +4231,7 @@ fn a_logged_in_profile_opens_the_chat_without_the_login_screen() {
             custom: None,
             thinking: rhema_core::request::ThinkingEffort::Default,
             icons: crate::icons::Flavor::Unicode,
+            cursor: crate::cursor::CursorStyle::Default,
             profile: Some(profile),
             workspace: PathBuf::from("."),
             max_steps: 4,
@@ -5555,6 +5557,46 @@ fn settings_toggles_the_background_live_and_persists_it() {
     assert_eq!(h.app.options.background, crate::palette::Background::Rhema);
     assert_eq!(h.app.theme, crate::palette::DARK, "the fills come back");
     assert_eq!(h.store.load().unwrap().background.as_deref(), Some("rhema"));
+}
+
+#[test]
+fn settings_cycles_the_cursor_style_and_persists_it() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    crate::commands::dispatch(&mut h.app, "/settings");
+    // Three tabs: Profiles and Sandbox sit between Providers and
+    // Appearance.
+    h.app.on_key(key(KeyCode::Tab));
+    h.app.on_key(key(KeyCode::Tab));
+    h.app.on_key(key(KeyCode::Tab));
+    // Row 4 is the cursor row; enter and `s` both cycle it, and the
+    // effect carries the shape to the terminal this frame.
+    for _ in 0..4 {
+        h.app.on_key(key(KeyCode::Down));
+    }
+    assert_eq!(
+        h.app.on_key(key(KeyCode::Enter)),
+        vec![Effect::SetCursorStyle(crate::cursor::CursorStyle::Block)]
+    );
+    assert_eq!(h.app.options.cursor, crate::cursor::CursorStyle::Block);
+    assert_eq!(h.store.load().unwrap().cursor.as_deref(), Some("block"));
+    if let Screen::Settings(settings) = &h.app.screen {
+        assert_eq!(
+            settings.cursor,
+            crate::cursor::CursorStyle::Block,
+            "the page follows the toggle"
+        );
+    }
+    // The cycle walks the explicit shapes, then wraps back to the
+    // terminal's own caret.
+    h.app.on_key(key(KeyCode::Char('s')));
+    assert_eq!(h.app.options.cursor, crate::cursor::CursorStyle::Line);
+    assert_eq!(h.store.load().unwrap().cursor.as_deref(), Some("line"));
+    h.app.on_key(key(KeyCode::Char('s')));
+    assert_eq!(h.app.options.cursor, crate::cursor::CursorStyle::Underline);
+    assert_eq!(h.store.load().unwrap().cursor.as_deref(), Some("underline"));
+    h.app.on_key(key(KeyCode::Char('s')));
+    assert_eq!(h.app.options.cursor, crate::cursor::CursorStyle::Default);
+    assert_eq!(h.store.load().unwrap().cursor.as_deref(), Some("default"));
 }
 
 #[test]

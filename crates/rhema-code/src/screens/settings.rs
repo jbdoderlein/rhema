@@ -117,6 +117,9 @@ pub enum SettingsAction {
     ToggleBackground,
     /// Toggle the icon flavor.
     ToggleIcons,
+    /// Cycle the input caret's shape: the terminal's own, a block, a
+    /// line, an underscore.
+    CycleCursor,
     /// Enter or `e` on a subagent row: open the definition in `$EDITOR`.
     /// The built-in has no file, the app copies it into the global
     /// directory first, where it shadows the built-in from then on.
@@ -357,6 +360,8 @@ pub struct SettingsScreen {
     /// Appearance: whether the terminal's own background is the one on
     /// screen, no painted page fills.
     pub background_native: bool,
+    /// Appearance: the caret shape the input asks the terminal to draw.
+    pub cursor: crate::cursor::CursorStyle,
     // The Providers page, live.
     /// The profile this screen edits: the session's.
     pub profile: String,
@@ -462,6 +467,7 @@ impl SettingsScreen {
             theme_dark: true,
             icons_nerd: true,
             background_native: true,
+            cursor: crate::cursor::CursorStyle::Default,
             profile: "personal".to_owned(),
             stored: rhema_config::Profile::default(),
             dialog: None,
@@ -695,7 +701,7 @@ impl SettingsScreen {
             SettingsSection::Providers => self.instance_rows().len(),
             SettingsSection::Profiles => self.profiles.len() + 1,
             SettingsSection::Sandbox => self.sandbox_rows().len(),
-            SettingsSection::Appearance => 4,
+            SettingsSection::Appearance => 5,
             SettingsSection::Skills => self.skills.len(),
             SettingsSection::Subagents => self.subagents.len(),
             SettingsSection::Mcp => self.mcp.len() + 1,
@@ -733,7 +739,8 @@ impl SettingsScreen {
                 0 => SettingsAction::CyclePalette,
                 1 => SettingsAction::ToggleTheme,
                 2 => SettingsAction::ToggleBackground,
-                _ => SettingsAction::ToggleIcons,
+                3 => SettingsAction::ToggleIcons,
+                _ => SettingsAction::CycleCursor,
             },
             SettingsSection::Subagents => match self.selected_subagent() {
                 Some(_) => SettingsAction::EditSubagent,
@@ -778,7 +785,7 @@ impl SettingsScreen {
     /// color (and colors the Appearance page),
     /// `e` edits the selected subagent, space toggles a skill or
     /// subagent or mutes an MCP server, and the Appearance page carries
-    /// `t`/`b`/`i` as shortcuts for its remaining toggles.
+    /// `t`/`b`/`i`/`s` as shortcuts for its remaining toggles.
     pub fn handle_key(&mut self, key: KeyEvent) -> SettingsAction {
         if let Some(action) = self
             .add_profile
@@ -985,6 +992,9 @@ impl SettingsScreen {
             }
             KeyCode::Char('i') if self.section == SettingsSection::Appearance => {
                 SettingsAction::ToggleIcons
+            }
+            KeyCode::Char('s') if self.section == SettingsSection::Appearance => {
+                SettingsAction::CycleCursor
             }
             _ => SettingsAction::None,
         }

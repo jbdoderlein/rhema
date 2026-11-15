@@ -23,6 +23,8 @@
 //!   the clipboard read the paste keys go through
 //! - [`onboarding`]: the first-run wizard's steps and keys
 //! - [`bundled`]: the skills rhema ships with, seeded on start
+//! - [`cursor`]: the input caret's shape, stored and cycled from the
+//!   Appearance page
 //! - [`sessions`]: saved conversations for /resume, grouped by workspace
 //! - [`status`]: program status over OSC 7501, for the terminal's tabs
 //! - [`app`]: the state machine routing keys and events
@@ -55,6 +57,7 @@ pub mod approval;
 pub mod args;
 pub mod bundled;
 pub mod commands;
+pub mod cursor;
 pub mod events;
 pub mod icons;
 pub mod jobs;

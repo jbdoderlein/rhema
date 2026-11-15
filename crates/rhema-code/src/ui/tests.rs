@@ -243,16 +243,18 @@ fn the_appearance_labels_keep_a_gap_before_their_values() {
                 .collect::<String>()
         })
         .collect();
-    // Four toggles render, all values one aligned column over; the
+    // Five toggles render, all values one aligned column over; the
     // longest label (`Background`, ten cells) keeps a space before its
     // value instead of swallowing it.
     // The screen's own placeholder state, nerd icons, native
-    // background, is what renders here; the opener overwrites it.
+    // background, the terminal's own caret, is what renders here; the
+    // opener overwrites it.
     let row = |label: &str, value: &str| format!("{:<11}{value}", label);
     assert!(text.contains(&row("Background", "Native")), "{text}");
     assert!(text.contains(&row("Colors", "Rhema")), "{text}");
     assert!(text.contains(&row("Theme", "Dark")), "{text}");
     assert!(text.contains(&row("Icons", "Nerd")), "{text}");
+    assert!(text.contains(&row("Cursor", "Default")), "{text}");
     assert!(!text.contains("BackgroundNative"), "{text}");
 }
 
@@ -1558,6 +1560,7 @@ mod scroll_tests {
                 m3_source: None,
                 custom: None,
                 icons: crate::icons::Flavor::Unicode,
+                cursor: crate::cursor::CursorStyle::Default,
                 thinking: rhema_core::request::ThinkingEffort::Default,
                 profile: Some("personal".into()),
                 workspace: PathBuf::from("."),

@@ -452,6 +452,7 @@ pub(crate) fn settings_page(
                         "Unicode"
                     },
                 ),
+                ("Cursor", settings.cursor.label()),
             ];
             for (index, (label, value)) in toggles.iter().enumerate() {
                 let selected = index == settings.row;
@@ -466,7 +467,7 @@ pub(crate) fn settings_page(
             lines.push(Line::default());
             (
                 lines,
-                footer("c - colors, t - theme, b - background, i - icons"),
+                footer("c colors · t theme · b background · i icons · s cursor"),
                 row_hits,
             )
         }

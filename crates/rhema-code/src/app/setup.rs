@@ -613,6 +613,8 @@ pub struct RunOptions {
     pub custom: Option<crate::store::CustomPalette>,
     /// Which icon flavor the footer draws with.
     pub icons: crate::icons::Flavor,
+    /// The input caret's shape.
+    pub cursor: crate::cursor::CursorStyle,
     /// The config profile this session runs under.
     pub profile: Option<String>,
     /// Workspace root for tools.
@@ -751,6 +753,9 @@ pub enum Effect {
     /// Run the install script off-thread; the outcome lands as
     /// `UiEvent::UpdateInstalled`.
     InstallUpdate,
+    /// Write this caret shape to the terminal now: the Appearance
+    /// page's cycle is live, like the theme and palette flips.
+    SetCursorStyle(crate::cursor::CursorStyle),
 }
 
 /// The Subagents page's rows: every discovered definition with its

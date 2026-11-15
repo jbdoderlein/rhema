@@ -443,6 +443,8 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
         .and_then(crate::icons::Flavor::parse)
         .unwrap_or_default();
     let background = crate::palette::Background::parse(config.background.as_deref());
+    let cursor =
+        crate::cursor::CursorStyle::from_stored(config.cursor.as_deref()).unwrap_or_default();
     let options = RunOptions {
         colors,
         theme,
@@ -450,6 +452,7 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
         m3_source,
         custom,
         icons,
+        cursor,
         profile: Some(profile),
         workspace: workspace.clone(),
         max_steps: args.max_steps,
@@ -572,6 +575,7 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
             return Err(error);
         }
     };
+    app.options.cursor.apply();
 
     let (tx, mut rx) = unbounded_channel::<UiEvent>();
     let outcome = event_loop(&mut terminal, &mut app, &tx, &mut rx, &mut effects).await;
@@ -627,6 +631,10 @@ fn restore_terminal() {
     let _ = stdout().flush();
     let _ = write!(stdout(), "\x1b[>0u");
     let _ = stdout().flush();
+    // Only a session that wrote DECSCUSR puts the cursor back: a
+    // default session never did, so the shell's own shape (a line under
+    // shell integration) stays exactly as it was.
+    crate::cursor::CursorStyle::restore();
     let _ = crossterm::execute!(
         stdout(),
         DisableBracketedPaste,
@@ -1047,12 +1055,13 @@ fn dispatch(
                 tx.clone(),
             );
         }
+        Effect::SetCursorStyle(style) => style.apply(),
         Effect::EditSubagent(path) => {
             // Blocking here is the point: the editor owns the terminal,
             // so nothing of the app, draw, input, tasks, can run
             // until it is back. The app is on the settings screen, not
             // mid-turn; the runtime's background work stalls with it.
-            if let Err(err) = edit_in_editor(terminal, &path) {
+            if let Err(err) = edit_in_editor(terminal, &path, app.options.cursor) {
                 app.transcript.push_notice(&format!("editor: {err}"));
             }
             app.refresh_subagents();
@@ -1070,6 +1079,7 @@ fn dispatch(
 fn edit_in_editor(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     path: &std::path::Path,
+    cursor: crate::cursor::CursorStyle,
 ) -> anyhow::Result<()> {
     use std::io::Write as _;
     // The kitty flags pop before the screen they were pushed on is
@@ -1104,6 +1114,9 @@ fn edit_in_editor(
     #[cfg(not(unix))]
     let _ = crossterm::execute!(stdout(), EnableMouseCapture, EnableBracketedPaste);
     let _ = stdout().flush();
+    // An editor may leave its own caret shape behind; an explicit
+    // session choice goes back the moment rhema owns the terminal again.
+    cursor.apply();
     let _ = terminal.clear();
     result
 }

@@ -76,6 +76,7 @@ impl App {
         settings.theme_dark = options.theme == crate::palette::ThemeKind::Dark;
         settings.icons_nerd = options.icons == crate::icons::Flavor::Nerd;
         settings.background_native = options.background == crate::palette::Background::Native;
+        settings.cursor = options.cursor;
         settings.profile = session_profile
             .unwrap_or(rhema_config::DEFAULT_PROFILE)
             .to_owned();
@@ -585,6 +586,20 @@ impl App {
             settings.icons_nerd = nerd;
         }
         self.save_config();
+    }
+
+    /// Cycles the input caret's shape and persists the choice, live
+    /// like the theme toggle: the returned effect writes the new shape
+    /// to the terminal this frame. The open settings page follows.
+    pub(crate) fn cycle_cursor_style(&mut self) -> Effect {
+        let style = self.options.cursor.next();
+        self.options.cursor = style;
+        self.config.cursor = Some(style.stored_name().to_owned());
+        if let Screen::Settings(settings) = &mut self.screen {
+            settings.cursor = style;
+        }
+        self.save_config();
+        Effect::SetCursorStyle(style)
     }
 
     /// Flips a skill's on/off state: the disabled set in the config

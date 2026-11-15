@@ -102,6 +102,12 @@ pub struct Document {
     /// here, anything unparseable reads as the default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background: Option<String>,
+    /// The input caret's shape: `default` (the terminal's own cursor,
+    /// the default), `block` (a steady block), `line` (a steady bar),
+    /// or `underline` (a steady underscore). Validated by the consumer,
+    /// not here, anything unparseable reads as the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
     /// The UI color palette: `rhema` (the default), `aquamarine`,
     /// `black-and-white`, `dracula`, `catppuccin-frappe`,
     /// `catppuccin-macchiato`, `catppuccin-mocha`, `nord`, `gruvbox`,
@@ -170,6 +176,7 @@ impl Default for Document {
             icons: None,
             theme: None,
             background: None,
+            cursor: None,
             colors: None,
             m3_source: None,
             custom: None,
@@ -232,6 +239,7 @@ impl Document {
             "icons",
             "theme",
             "background",
+            "cursor",
             "colors",
             "m3_source",
             "custom",
@@ -372,6 +380,19 @@ mod tests {
         std::fs::write(&path, "theme: dark\n").unwrap();
         let loaded = Document::load_from(&path).unwrap();
         assert_eq!(loaded.background, None);
+    }
+
+    #[test]
+    fn the_cursor_choice_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        std::fs::write(&path, "cursor: underline\n").unwrap();
+        let loaded = Document::load_from(&path).unwrap();
+        assert_eq!(loaded.cursor.as_deref(), Some("underline"));
+        // Unset reads as None, the terminal's own caret.
+        std::fs::write(&path, "theme: dark\n").unwrap();
+        let loaded = Document::load_from(&path).unwrap();
+        assert_eq!(loaded.cursor, None);
     }
 
     #[test]
