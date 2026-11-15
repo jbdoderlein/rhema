@@ -200,13 +200,7 @@ async fn a_denied_call_never_reaches_the_sandbox() {
     let mut rig = rig(Arc::new(bash_then_done("c1", "rm -rf /", "kept safe")));
     let mut agent = rig.agent;
     let turn = tokio::spawn(async move {
-        let result = agent
-            .turn(
-                "clean up",
-                &mut NoopSink,
-                Arc::new(rhema_agent_tools::DenyAll),
-            )
-            .await;
+        let result = agent.turn("clean up", &mut NoopSink).await;
         (result, agent)
     });
     if let Some((_call, reply)) = rig.requests.recv().await {
@@ -262,13 +256,7 @@ async fn a_crash_mid_command_resumes_with_the_call_reported_interrupted() {
     let committed_seen = rig.committed.notified();
     let parked_seen = rig.sandbox.parked().notified();
     let task = tokio::spawn(async move {
-        let _ = agent
-            .turn(
-                "start the build",
-                &mut NoopSink,
-                Arc::new(rhema_agent_tools::DenyAll),
-            )
-            .await;
+        let _ = agent.turn("start the build", &mut NoopSink).await;
     });
     if let Some((_call, reply)) = rig.requests.recv().await {
         reply.send(true).unwrap();
@@ -324,11 +312,7 @@ async fn a_crash_mid_command_resumes_with_the_call_reported_interrupted() {
         )
         .expect("the resume assembles");
     resumed
-        .turn(
-            "continue",
-            &mut NoopSink,
-            Arc::new(rhema_agent_tools::DenyAll),
-        )
+        .turn("continue", &mut NoopSink)
         .await
         .expect("the resumed turn completes");
 

@@ -425,7 +425,7 @@ pub async fn drive_turn_for_test(
 mod mock_tests {
     use super::*;
     use crate::transcript::{Line, Transcript};
-    use rhema_coding_agent::{AllowAll, CodingAgent, CodingAgentConfig};
+    use rhema_coding_agent::{CodingAgent, CodingAgentConfig};
     use rhema_core::{
         Content, Message, ModelOutput, ModelProvider, ModelRequest, ProviderError, Role,
         StopReason, ToolCall, Usage,
