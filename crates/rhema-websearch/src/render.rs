@@ -47,7 +47,9 @@ pub fn render(outcome: &ChainOutcome) -> String {
 
 /// One numbered block: the link, then the snippet on its own line.
 fn block(number: usize, result: &SearchResult) -> String {
-    let title = escape_brackets(&result.title);
+    // A title is one line: vendor titles carry newlines and doubled
+    // spaces, and an unescaped newline would end the link's text.
+    let title = collapse_whitespace(&escape_brackets(&result.title));
     let url = wrap_url(&result.url);
     let mut out = format!("{number}. [{title}]({url})\n");
     let snippet = collapse_whitespace(&result.snippet);
@@ -65,12 +67,15 @@ fn escape_brackets(title: &str) -> String {
 
 /// Wraps a url in angle brackets when its own characters would break
 /// the markdown link: parentheses and spaces end a `(...)` target
-/// early.
+/// early. Angle brackets are percent-encoded first: a raw `>` closes
+/// the `<...>` form just as early, and neither character is legal in
+/// a url.
 fn wrap_url(url: &str) -> String {
-    if url.contains(['(', ')', ' ', '<', '>']) {
+    let url = url.replace('<', "%3C").replace('>', "%3E");
+    if url.contains(['(', ')', ' ']) {
         format!("<{url}>")
     } else {
-        url.to_owned()
+        url
     }
 }
 
@@ -154,6 +159,26 @@ mod tests {
             "s",
         )]));
         assert!(out.contains("1. [\\[RFC\\] notes](https://x)\n"), "{out}");
+    }
+
+    #[test]
+    fn a_title_of_newlines_stays_one_line() {
+        let out = render(&outcome(vec![SearchResult::new(
+            "Line one\nline two",
+            "https://x",
+            "s",
+        )]));
+        assert!(out.contains("1. [Line one line two](https://x)\n"), "{out}");
+    }
+
+    #[test]
+    fn an_angle_bracket_in_the_url_is_encoded() {
+        let out = render(&outcome(vec![SearchResult::new(
+            "T",
+            "https://x/a>b<c",
+            "s",
+        )]));
+        assert!(out.contains("](https://x/a%3Eb%3Cc)\n"), "{out}");
     }
 
     #[test]
