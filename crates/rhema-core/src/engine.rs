@@ -439,16 +439,7 @@ impl AgentBuilder {
 /// assistant message that issued it, in call order; returns the call
 /// ids it answered.
 pub fn close_orphaned_calls(history: &mut Vec<Message>) -> Vec<String> {
-    let answered: HashSet<String> = history
-        .iter()
-        .flat_map(|message| message.content.iter())
-        .filter_map(|content| match content {
-            Content::ToolResult(result) => Some(result.id.clone()),
-            _ => None,
-        })
-        .collect();
     let mut repaired = Vec::new();
-    let mut repaired_ids: HashSet<String> = HashSet::new();
     let mut index = 0;
     while index < history.len() {
         if history[index].role != Role::Assistant {
@@ -468,9 +459,26 @@ pub fn close_orphaned_calls(history: &mut Vec<Message>) -> Vec<String> {
             index += 1;
             continue;
         }
+        // A call is answered by the Tool block that follows its own
+        // assistant message, not by any result anywhere in the
+        // history: providers reuse ids across turns (`call_0` is
+        // routine), so a same-id result from an earlier turn must not
+        // mask a dangling call in this one.
+        let mut block_end = index + 1;
+        while block_end < history.len() && history[block_end].role == Role::Tool {
+            block_end += 1;
+        }
+        let answered: HashSet<&str> = history[index + 1..block_end]
+            .iter()
+            .flat_map(|message| message.content.iter())
+            .filter_map(|content| match content {
+                Content::ToolResult(result) => Some(result.id.as_str()),
+                _ => None,
+            })
+            .collect();
         let missing: Vec<&String> = calls
             .iter()
-            .filter(|id| !answered.contains(*id) && !repaired_ids.contains(*id))
+            .filter(|id| !answered.contains(id.as_str()))
             .collect();
         if missing.is_empty() {
             index += 1;
@@ -481,10 +489,6 @@ pub fn close_orphaned_calls(history: &mut Vec<Message>) -> Vec<String> {
             .enumerate()
             .map(|(position, id)| (id.as_str(), position))
             .collect();
-        let mut block_end = index + 1;
-        while block_end < history.len() && history[block_end].role == Role::Tool {
-            block_end += 1;
-        }
         for id in missing {
             let call_rank = rank[id.as_str()];
             let mut insert_at = index + 1;
@@ -518,7 +522,6 @@ pub fn close_orphaned_calls(history: &mut Vec<Message>) -> Vec<String> {
                 },
             );
             block_end += 1;
-            repaired_ids.insert(id.clone());
             repaired.push(id.clone());
         }
         index = block_end;
@@ -576,6 +579,43 @@ mod tests {
         };
         assert_eq!(result.id, "call-1");
         assert!(result.is_error, "an interrupted call reads as a failure");
+    }
+
+    #[test]
+    fn a_reused_call_id_is_answered_per_turn() {
+        // Google-style providers restart ids every turn, so the first
+        // turn's `call_0` result must not mask the second turn's
+        // dangling `call_0`.
+        let assistant = |id: &str| Message {
+            role: Role::Assistant,
+            content: vec![Content::ToolCall(ToolCall {
+                id: id.into(),
+                name: "bash".into(),
+                args: serde_json::json!({"command": "echo hi"}),
+                provider_data: serde_json::Value::Null,
+            })],
+        };
+        let mut history = vec![
+            Message::text(Role::User, "first"),
+            assistant("call_0"),
+            Message {
+                role: Role::Tool,
+                content: vec![Content::ToolResult(ToolResult::failure(
+                    "call_0",
+                    "already answered",
+                ))],
+            },
+            Message::text(Role::User, "second"),
+            assistant("call_0"),
+        ];
+        let answered = close_orphaned_calls(&mut history);
+        assert_eq!(answered, ["call_0"]);
+        assert_eq!(history.len(), 6, "one synthetic result, no duplicates");
+        let Some(Content::ToolResult(result)) = history[5].content.first() else {
+            panic!("the tail answers the second call");
+        };
+        assert_eq!(result.id, "call_0");
+        assert!(result.is_error);
     }
 
     #[test]
