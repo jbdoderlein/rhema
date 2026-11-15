@@ -12,8 +12,14 @@ use serde::Deserialize;
 pub struct BraveResponse {
     /// The general index's section, present on the web route.
     pub web: Option<BraveSection>,
-    /// The news index's section, present on the news route.
+    /// The news index's section, the shape older news responses used.
     pub news: Option<BraveSection>,
+    /// The news route's hits. The current news response puts them at
+    /// the top level (`{"type": "news", "results": [...]}`), not
+    /// under a `news` key; [`results_from_response`] reads this when
+    /// no `news` section is present.
+    #[serde(default)]
+    pub results: Vec<BraveResult>,
 }
 
 /// One index's section: the hits and the rest Brave attaches to them.
@@ -38,22 +44,28 @@ pub struct BraveResult {
     pub description: Option<String>,
 }
 
-/// Maps a response onto the seam's results: the section the caller
-/// asks for (web or news, the routes' own key), in vendor order,
-/// hits missing a url dropped, missing titles filled with the url.
-/// An absent section is zero results, an honest answer (see the
-/// crate docs).
+/// Maps a response onto the seam's results: the web section, or the
+/// news route's top-level `results` (a `news` section is honored when
+/// present), in vendor order, hits missing a url dropped, missing
+/// titles filled with the url. An absent route is zero results, an
+/// honest answer (see the crate docs).
 pub fn results_from_response(response: &BraveResponse, news: bool) -> Vec<SearchResult> {
-    let section = if news {
-        response.news.as_ref()
+    let results = if news {
+        // The documented news shape is top-level; a `news` section is
+        // still honored for responses that wrap their hits.
+        response
+            .news
+            .as_ref()
+            .map_or(response.results.as_slice(), |section| {
+                section.results.as_slice()
+            })
     } else {
-        response.web.as_ref()
+        response
+            .web
+            .as_ref()
+            .map_or(&[][..], |section| section.results.as_slice())
     };
-    let Some(section) = section else {
-        return Vec::new();
-    };
-    section
-        .results
+    results
         .iter()
         .filter_map(|result| {
             let url = result.url.as_deref()?.to_owned();
@@ -103,6 +115,31 @@ mod tests {
         let results = results_from_response(&response, true);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].url, "https://news");
+    }
+
+    #[test]
+    fn the_documented_news_shape_reads_the_top_level_results() {
+        // Brave's news route answers `{"type": "news", "results": [...]}`;
+        // the hits are not wrapped in a `news` section.
+        let response: BraveResponse = serde_json::from_str(
+            r#"{
+                "type": "news",
+                "query": {"original": "q"},
+                "results": [
+                    {"title": "One", "url": "https://one", "description": "a"},
+                    {"title": "Two", "url": "https://two", "description": "b"}
+                ]
+            }"#,
+        )
+        .unwrap();
+        let results = results_from_response(&response, true);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].url, "https://one");
+        assert_eq!(results[1].title, "Two");
+        assert!(
+            results_from_response(&response, false).is_empty(),
+            "the web route never reads the news hits"
+        );
     }
 
     #[test]

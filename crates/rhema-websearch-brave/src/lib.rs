@@ -3,18 +3,18 @@
 //!
 //! Brave's API is a GET with the query and the count as URL
 //! parameters, the key in a `X-Subscription-Token` header, and the
-//! results under a `web` (or `news`) key on the way back. Two shapes
-//! this adapter pins (vendor docs are the source of truth,
-//! `specs/rhema-websearch.md` §4):
+//! hits under a `web` key on the web route (the news route puts them
+//! at the top level). Two shapes this adapter pins (vendor docs are
+//! the source of truth, `specs/rhema-websearch.md` §4):
 //!
 //! - `text_decorations=false`: without it Brave decorates
 //!   descriptions with `<strong>` tags and HTML entities, and the
 //!   seam's snippets are plaintext by contract.
-//! - a 200 response whose body carries no `web` key (no `news` key on
-//!   the news route) reads as zero results, not a parse failure: a
-//!   vendor that answered with nothing is an honest answer, and a
-//!   `Parse` error would bill the next provider in the chain for a
-//!   query the first one settled.
+//! - a 200 response whose body carries no `web` key (no `results`
+//!   array on the news route) reads as zero results, not a parse
+//!   failure: a vendor that answered with nothing is an honest
+//!   answer, and a `Parse` error would bill the next provider in the
+//!   chain for a query the first one settled.
 //!
 //! Layout: the [`wire`] types and the pure mapping (always compiled),
 //! and the [`BraveProvider`] over reqwest (feature `native`).

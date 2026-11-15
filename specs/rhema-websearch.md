@@ -243,7 +243,7 @@ The mapping each adapter pins:
 | query | `q` | `query` | `query` |
 | count | `count` (1..=20) | `numResults` | `max_results` |
 | news | the news endpoint | `category: "news"` | `topic: "news"` |
-| snippet | `web.results[].description` (news: `news.results[]`) | `contents.text` capped at request time, trimmed | `results[].content` |
+| snippet | `web.results[].description` (news: `results[].description`) | `contents.text` capped at request time, trimmed | `results[].content` |
 | extras sent | none | `contents: { text: { maxCharacters: 500 } }` | `include_answer: false`, `include_raw_content: false`, `search_depth: "basic"` |
 
 Every adapter takes the key in its constructor, returns results in

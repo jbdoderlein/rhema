@@ -11,9 +11,9 @@ use crate::wire::{BraveResponse, results_from_response};
 /// The API root: the web and news routes hang off it.
 pub const DEFAULT_BASE_URL: &str = "https://api.search.brave.com/res";
 /// The general index's route.
-pub const BRAVE_WEB_PATH: &str = "/web/search";
+pub const BRAVE_WEB_PATH: &str = "/v1/web/search";
 /// The news index's route.
-pub const BRAVE_NEWS_PATH: &str = "/news/search";
+pub const BRAVE_NEWS_PATH: &str = "/v1/news/search";
 /// The user agent the provider sends, the house spelling.
 pub const USER_AGENT: &str = concat!("rhema/", env!("CARGO_PKG_VERSION"));
 

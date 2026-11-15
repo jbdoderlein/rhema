@@ -2,7 +2,7 @@
 //! wiremock server. Zero network.
 
 use rhema_websearch::{SearchError, SearchQuery, WebSearchProvider};
-use rhema_websearch_brave::BraveProvider;
+use rhema_websearch_brave::{BRAVE_NEWS_PATH, BRAVE_WEB_PATH, BraveProvider, DEFAULT_BASE_URL};
 use serde_json::json;
 use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -21,11 +21,27 @@ fn web_body() -> serde_json::Value {
     })
 }
 
+#[test]
+fn the_default_routes_are_the_documented_endpoints() {
+    // The API root is `/res`; the version prefix belongs to the route.
+    // A regression here makes every live Brave call 404 while the
+    // mock-server tests, which override the base URL, stay green.
+    assert_eq!(DEFAULT_BASE_URL, "https://api.search.brave.com/res");
+    assert_eq!(
+        format!("{DEFAULT_BASE_URL}{BRAVE_WEB_PATH}"),
+        "https://api.search.brave.com/res/v1/web/search"
+    );
+    assert_eq!(
+        format!("{DEFAULT_BASE_URL}{BRAVE_NEWS_PATH}"),
+        "https://api.search.brave.com/res/v1/news/search"
+    );
+}
+
 #[tokio::test]
 async fn the_web_route_gets_the_key_the_params_and_maps_the_results() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/web/search"))
+        .and(path("/v1/web/search"))
         .and(query_param("q", "rust async"))
         .and(query_param("count", "5"))
         // The plaintext contract: undecorated descriptions come back.
@@ -51,13 +67,15 @@ async fn the_web_route_gets_the_key_the_params_and_maps_the_results() {
 async fn the_news_flag_switches_the_route_and_the_section() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/news/search"))
+        .and(path("/v1/news/search"))
         .and(query_param("q", "rust release"))
         .respond_with(
+            // The documented news shape: the hits sit at the top level.
             ResponseTemplate::new(200).set_body_json(json!({
-                "news": {"results": [
+                "type": "news",
+                "results": [
                     {"title": "Rust 1.90", "url": "https://blog.rust-lang.org", "description": "released"}
-                ]}
+                ]
             })),
         )
         .mount(&server)
@@ -65,7 +83,7 @@ async fn the_news_flag_switches_the_route_and_the_section() {
     // The web route must not answer a news query: if it did, the mock
     // would not match and the call would 404.
     Mock::given(method("GET"))
-        .and(path("/web/search"))
+        .and(path("/v1/web/search"))
         .respond_with(ResponseTemplate::new(500))
         .mount(&server)
         .await;
