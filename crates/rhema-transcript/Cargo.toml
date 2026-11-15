@@ -22,6 +22,8 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+# Generated logs and request sequences for the view's invariants.
+hegeltest = { workspace = true }
 
 [lints]
 workspace = true

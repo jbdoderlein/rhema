@@ -28,6 +28,10 @@ async-trait = "0.1"
 serde_yaml = "0.9"
 # Test runtime
 tokio = { version = "1", features = ["macros", "rt"] }
+# Property-based tests: generated inputs for the SSE decoder's chunk
+# boundaries and the transcript's view invariants. Pinned exactly:
+# Hegel is beta and changes its API between releases.
+hegeltest = "=0.52.6"
 # The MCP bridge's HTTP surface
 axum = { version = "0.8", features = ["json"] }
 # The system-prompt template (Jinja syntax); whitespace rules fit

@@ -30,6 +30,9 @@ tokio = { workspace = true, features = ["time"] }
 # The login-flow tests run on the test runtime; start_paused (test-util)
 # drives the retry ladder's sleeps virtually.
 tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
+# Generated SSE bodies and arbitrary split points for the decoder's
+# split-invariance property.
+hegeltest = { workspace = true }
 
 [lints]
 workspace = true
