@@ -264,7 +264,20 @@ pub(crate) fn render_transcript(
     // above the top; clamping here keeps PgDn answering immediately
     // instead of burning the surplus first.
     app.chat.scroll = app.chat.scroll.min(max_top);
-    let top = max_top - app.chat.scroll;
+    // A selection pins the row it started on. Streaming appends rows
+    // below, and following the bottom would slide the selected text up
+    // under the pointer; holding the top keeps the highlight on the
+    // words the drag covered. The offset stays in step with the pinned
+    // top, so clearing the selection resumes from the view the user
+    // saw instead of jumping back to the live tail.
+    let top = match app.selection {
+        Some(selection) => {
+            let top = selection.viewport_top.min(max_top);
+            app.chat.scroll = max_top - top;
+            top
+        }
+        None => max_top - app.chat.scroll,
+    };
     // The prompt card: the screen cells its sprites cover, restated
     // for the runner's graphics pass. The card is a nine-slice, four
     // corner arcs at one cell each, the four edges and the interior as
@@ -421,6 +434,7 @@ pub(crate) fn render_transcript(
     );
     app.transcript_view = crate::app::selection::TranscriptView {
         area: inner,
+        top,
         rows: visible_rows,
         rail: None,
     };

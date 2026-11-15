@@ -2606,6 +2606,7 @@ fn a_mouse_down_over_the_transcript_starts_a_selection() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     h.app.transcript_view = crate::app::selection::TranscriptView {
         area: ratatui::layout::Rect::new(0, 0, 20, 4),
+        top: 7,
         rows: vec!["hello".to_owned()],
         rail: None,
     };
@@ -2615,6 +2616,11 @@ fn a_mouse_down_over_the_transcript_starts_a_selection() {
         Some((2, 0)),
         "the transcript starts a selection"
     );
+    assert_eq!(
+        h.app.selection.map(|selection| selection.viewport_top),
+        Some(7),
+        "the selection remembers the row the window started on"
+    );
 }
 
 #[test]
@@ -2622,6 +2628,7 @@ fn a_mouse_down_outside_the_drawn_rows_clears_the_selection() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     h.app.transcript_view = crate::app::selection::TranscriptView {
         area: ratatui::layout::Rect::new(0, 0, 20, 4),
+        top: 0,
         rows: vec!["hello".to_owned()],
         rail: None,
     };
@@ -2659,6 +2666,7 @@ fn a_key_clears_the_selection() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     h.app.transcript_view = crate::app::selection::TranscriptView {
         area: ratatui::layout::Rect::new(0, 0, 20, 4),
+        top: 0,
         rows: vec!["hello".to_owned()],
         rail: None,
     };

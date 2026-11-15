@@ -1673,7 +1673,10 @@ mod scroll_tests {
             .position(|row| row.contains("hello"))
             .expect("the notice is drawn");
         let start_col = app.transcript_view.rows[row].find("hello").unwrap() as u16;
-        let mut selection = Selection::new((area.x + start_col, area.y + row as u16));
+        let mut selection = Selection::new(
+            (area.x + start_col, area.y + row as u16),
+            app.transcript_view.top,
+        );
         selection.extend((area.x + start_col + 5, area.y + row as u16));
         app.selection = Some(selection);
         terminal.draw(|frame| render(&mut app, frame)).unwrap();
@@ -1690,6 +1693,73 @@ mod scroll_tests {
         assert!(
             !reversed(area.x + start_col + 5),
             "the cell after the selection stays plain"
+        );
+    }
+
+    /// While the model streams, rows land below the selection. The
+    /// viewport stays on the row the drag started from, so the highlight
+    /// keeps covering the same words and the copy reads them back.
+    #[test]
+    fn streaming_output_does_not_move_a_selection() {
+        use crate::app::selection::{self, Selection};
+
+        let mut app = chat_app();
+        app.transcript
+            .push_user(&format!("{} hello", "word ".repeat(200)), Vec::new());
+        let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
+        terminal.draw(|frame| render(&mut app, frame)).unwrap();
+
+        let area = app.transcript_view.area;
+        let row = app
+            .transcript_view
+            .rows
+            .iter()
+            .rposition(|row| row.contains("hello"))
+            .expect("the line is drawn");
+        let byte = app.transcript_view.rows[row].rfind("hello").unwrap();
+        let col =
+            unicode_width::UnicodeWidthStr::width(&app.transcript_view.rows[row][..byte]) as u16;
+        let mut selection =
+            Selection::new((area.x + col, area.y + row as u16), app.transcript_view.top);
+        selection.extend((area.x + col + 5, area.y + row as u16));
+        app.selection = Some(selection);
+        let pinned = selection.viewport_top;
+
+        // The model keeps writing after the selection lands.
+        app.transcript.push_notice("still writing");
+        terminal.draw(|frame| render(&mut app, frame)).unwrap();
+
+        assert_eq!(app.transcript_view.top, pinned, "the window stayed put");
+        assert_eq!(
+            selection::text(&app.transcript_view, selection),
+            "hello",
+            "the drag still covers the word it started on"
+        );
+        assert!(
+            app.transcript_view.rail.is_some(),
+            "the pinned window reads as history"
+        );
+
+        // Clearing the selection leaves the view where the user saw it;
+        // the new output waits below until they scroll to the tail.
+        app.selection = None;
+        terminal.draw(|frame| render(&mut app, frame)).unwrap();
+        assert_eq!(app.transcript_view.top, pinned, "the window stays put");
+        assert!(
+            !app.transcript_view
+                .rows
+                .iter()
+                .any(|row| row.contains("still writing")),
+            "the new output is below the frozen window"
+        );
+        app.chat.scroll = 0;
+        terminal.draw(|frame| render(&mut app, frame)).unwrap();
+        assert!(
+            app.transcript_view
+                .rows
+                .iter()
+                .any(|row| row.contains("still writing")),
+            "the new output waits at the tail"
         );
     }
 

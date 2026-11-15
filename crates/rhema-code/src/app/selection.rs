@@ -20,6 +20,10 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 pub(crate) struct TranscriptView {
     /// The rect the transcript rows were rendered into.
     pub(crate) area: Rect,
+    /// The index of the first drawn row in the transcript's full row
+    /// list. A selection pins it so streaming output cannot move the
+    /// text under the pointer.
+    pub(crate) top: usize,
     /// One plain-text string per drawn row, top row first.
     pub(crate) rows: Vec<String>,
     /// The scroll rail, when the rows ran past the viewport.
@@ -108,21 +112,29 @@ impl TranscriptView {
 }
 
 /// A selection's two endpoints, in absolute screen cells: the cell the
-/// drag started on and the cell it reached.
+/// drag started on and the cell it reached, plus the transcript's first
+/// visible row when the drag began.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Selection {
     /// Where the left button went down.
     pub(crate) anchor: (u16, u16),
     /// Where the drag last reached.
     pub(crate) cursor: (u16, u16),
+    /// The first row the viewport drew when the selection started. The
+    /// render keeps this row pinned while the selection lives, so output
+    /// appended below does not slide the selected text out from under
+    /// the highlight.
+    pub(crate) viewport_top: usize,
 }
 
 impl Selection {
-    /// A selection starting at one cell.
-    pub(crate) fn new(anchor: (u16, u16)) -> Self {
+    /// A selection starting at one cell, over the viewport whose first
+    /// drawn row is `viewport_top`.
+    pub(crate) fn new(anchor: (u16, u16), viewport_top: usize) -> Self {
         Self {
             anchor,
             cursor: anchor,
+            viewport_top,
         }
     }
 
@@ -282,6 +294,7 @@ mod tests {
     fn view(rows: &[&str]) -> TranscriptView {
         TranscriptView {
             area: Rect::new(0, 0, 40, rows.len() as u16),
+            top: 0,
             rows: rows.iter().map(|row| (*row).to_owned()).collect(),
             rail: None,
         }
@@ -322,7 +335,7 @@ mod tests {
     #[test]
     fn a_drag_takes_the_text_between_its_cells() {
         let view = view(&["hello", "world", "third"]);
-        let mut selection = Selection::new((1, 0));
+        let mut selection = Selection::new((1, 0), 0);
         selection.extend((3, 1));
         assert_eq!(text(&view, selection), "ello\nwor");
     }
@@ -330,7 +343,7 @@ mod tests {
     #[test]
     fn a_drag_down_and_right_normalizes_its_endpoints() {
         let view = view(&["hello", "world"]);
-        let mut selection = Selection::new((3, 1));
+        let mut selection = Selection::new((3, 1), 0);
         selection.extend((1, 0));
         assert_eq!(text(&view, selection), "ello\nwor");
     }
@@ -338,7 +351,7 @@ mod tests {
     #[test]
     fn the_end_column_is_excluded_and_trailing_air_is_trimmed() {
         let view = view(&["ab    ", "cd"]);
-        let mut selection = Selection::new((0, 0));
+        let mut selection = Selection::new((0, 0), 0);
         selection.extend((20, 1));
         assert_eq!(text(&view, selection), "ab\ncd");
     }
@@ -346,7 +359,7 @@ mod tests {
     #[test]
     fn a_selection_starting_on_a_drawn_row_and_ending_below_copies_to_the_last_row() {
         let view = view(&["one", "two"]);
-        let mut selection = Selection::new((0, 0));
+        let mut selection = Selection::new((0, 0), 0);
         selection.extend((1, 9));
         assert_eq!(text(&view, selection), "one\ntwo");
     }
@@ -354,7 +367,7 @@ mod tests {
     #[test]
     fn a_selection_starting_below_the_rows_is_empty() {
         let view = view(&["one", "two"]);
-        let selection = Selection::new((0, 9));
+        let selection = Selection::new((0, 9), 0);
         assert_eq!(text(&view, selection), "");
     }
 

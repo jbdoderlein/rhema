@@ -97,7 +97,10 @@ impl App {
             return;
         }
         if self.transcript_view.starts_at(x, y) {
-            self.selection = Some(super::selection::Selection::new((x, y)));
+            self.selection = Some(super::selection::Selection::new(
+                (x, y),
+                self.transcript_view.top,
+            ));
         }
     }
 
