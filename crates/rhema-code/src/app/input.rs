@@ -80,10 +80,20 @@ impl App {
     /// it clears the previous selection; clicks still act on release.
     pub fn on_mouse_down(&mut self, x: u16, y: u16) {
         self.selection = None;
+        self.rail_drag = false;
         if !matches!(self.screen, Screen::Chat)
             || self.turn.pending_approval.is_some()
             || self.confirm_quit
         {
+            return;
+        }
+        // The rail is a control before it is text: a press on it moves
+        // the window and arms a drag, it never starts a selection.
+        if let Some(rail) = self.transcript_view.rail
+            && rail.area.contains(ratatui::layout::Position::new(x, y))
+        {
+            self.chat.scroll = rail.scroll_at(y);
+            self.rail_drag = true;
             return;
         }
         if self.transcript_view.starts_at(x, y) {
@@ -95,6 +105,12 @@ impl App {
     /// the transcript so a drag past an edge still selects the text it
     /// crossed.
     pub fn on_mouse_drag(&mut self, x: u16, y: u16) {
+        if self.rail_drag {
+            if let Some(rail) = self.transcript_view.rail {
+                self.chat.scroll = rail.scroll_at(y);
+            }
+            return;
+        }
         if self.selection.is_none() || self.transcript_view.rows.is_empty() {
             return;
         }
@@ -113,6 +129,10 @@ impl App {
     /// click clears it. A release with no selection to consume returns
     /// `false`, so the caller still routes it as a click.
     pub fn finish_selection(&mut self, x: u16, y: u16) -> bool {
+        if self.rail_drag {
+            self.rail_drag = false;
+            return true;
+        }
         if self.selection.is_none() {
             return false;
         }

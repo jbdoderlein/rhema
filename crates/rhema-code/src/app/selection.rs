@@ -1,5 +1,6 @@
-//! Transcript mouse selection: mapping screen cells onto the rows the
-//! last frame drew, and the plain text between two positions.
+//! Transcript mouse affordances: mapping screen cells onto the rows the
+//! last frame drew, the plain text between two positions, and the scroll
+//! rail's pointer mapping.
 //!
 //! The terminal owns the pointer while the TUI runs (mouse capture is on
 //! for the wheel and the settings clicks), so selection cannot be the
@@ -10,16 +11,74 @@
 use ratatui::layout::Rect;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-/// The transcript's last drawn frame: the inner rect the rows went into
-/// and one plain-text string per drawn row, top row first. This is the
-/// coordinate space a mouse selection maps onto; every frame replaces
-/// it, so a selection always reads what is on screen now.
+/// The transcript's last drawn frame: the inner rect the rows went into,
+/// one plain-text string per drawn row, top row first, and the scroll
+/// rail when the frame drew one. This is the coordinate space a mouse
+/// selection or a rail drag maps onto; every frame replaces it, so both
+/// always read what is on screen now.
 #[derive(Debug, Default)]
 pub(crate) struct TranscriptView {
     /// The rect the transcript rows were rendered into.
     pub(crate) area: Rect,
     /// One plain-text string per drawn row, top row first.
     pub(crate) rows: Vec<String>,
+    /// The scroll rail, when the rows ran past the viewport.
+    pub(crate) rail: Option<ScrollRail>,
+}
+
+/// The transcript's scroll rail as the last frame drew it: the track's
+/// cells and the row counts a pointer maps onto a scroll offset. Every
+/// frame replaces it, like [`TranscriptView`]; a transcript that fits
+/// its viewport has none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ScrollRail {
+    /// The rail's cell rect: one column wide, the transcript's height.
+    pub(crate) area: Rect,
+    /// The transcript's total rendered rows.
+    pub(crate) total: usize,
+    /// The rows the viewport shows.
+    pub(crate) visible: usize,
+}
+
+impl ScrollRail {
+    /// The rows hidden above the viewport at its topmost position.
+    fn max_top(&self) -> usize {
+        self.total.saturating_sub(self.visible)
+    }
+
+    /// The thumb's height: the visible share of the content, at least
+    /// one cell and never taller than the track.
+    fn thumb_height(&self) -> usize {
+        (self.visible * self.visible / self.total.max(1))
+            .max(1)
+            .min(self.visible)
+    }
+
+    /// The thumb's span at `top` (the first visible row): its row from
+    /// the track's top and its height.
+    pub(crate) fn thumb(&self, top: usize) -> (usize, usize) {
+        let height = self.thumb_height();
+        let span = self.visible.saturating_sub(height);
+        let max_top = self.max_top();
+        let row = (top.min(max_top) * span).checked_div(max_top).unwrap_or(0);
+        (row, height)
+    }
+
+    /// The scroll offset a pointer at screen row `y` asks for: the
+    /// thumb centers on the pointer, clamped to the track. The offset
+    /// counts rows above the bottom, [`crate::screens::ChatState`]'s
+    /// unit.
+    pub(crate) fn scroll_at(&self, y: u16) -> usize {
+        let height = self.thumb_height();
+        let span = self.visible.saturating_sub(height);
+        if span == 0 {
+            return 0;
+        }
+        let row = y.saturating_sub(self.area.y) as usize;
+        let offset = row.saturating_sub(height / 2).min(span);
+        let max_top = self.max_top();
+        max_top - offset * max_top / span
+    }
 }
 
 impl TranscriptView {
@@ -224,7 +283,40 @@ mod tests {
         TranscriptView {
             area: Rect::new(0, 0, 40, rows.len() as u16),
             rows: rows.iter().map(|row| (*row).to_owned()).collect(),
+            rail: None,
         }
+    }
+
+    #[test]
+    fn the_rail_thumb_covers_the_visible_share_and_follows_the_top() {
+        let rail = ScrollRail {
+            area: Rect::new(8, 0, 1, 10),
+            total: 40,
+            visible: 10,
+        };
+        // A quarter of the content shows: two cells of thumb.
+        assert_eq!(rail.thumb(0), (0, 2));
+        // Halfway through the content, the thumb sits halfway down.
+        assert_eq!(rail.thumb(15), (4, 2));
+        // At the topmost position (bottom of the content), it reaches
+        // the track's end.
+        assert_eq!(rail.thumb(30), (8, 2));
+    }
+
+    #[test]
+    fn a_pointer_maps_onto_a_scroll_offset() {
+        let rail = ScrollRail {
+            area: Rect::new(8, 2, 1, 10),
+            total: 40,
+            visible: 10,
+        };
+        // The track's first row asks for the topmost content.
+        assert_eq!(rail.scroll_at(2), 30);
+        // The last row asks for the live tail.
+        assert_eq!(rail.scroll_at(11), 0);
+        // Above and below the track clamp to the same ends.
+        assert_eq!(rail.scroll_at(0), 30);
+        assert_eq!(rail.scroll_at(200), 0);
     }
 
     #[test]

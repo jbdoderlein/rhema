@@ -2912,6 +2912,103 @@ mod scroll_tests {
     }
 
     #[test]
+    fn the_scroll_rail_shows_only_while_viewing_history() {
+        let mut app = chat_app();
+        // The banner alone fits the harness's viewport: no rail, and
+        // its column stays blank.
+        let backend = TestBackend::new(40, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| render(&mut app, frame)).unwrap();
+        assert!(app.transcript_view.rail.is_none());
+        let buffer = terminal.backend().buffer();
+        assert!(
+            (0..buffer.area.height).all(|y| buffer[(38, y)].symbol() != "▐"),
+            "no rail on a fitting transcript"
+        );
+
+        // A wall of text overflows, but the live tail is the default
+        // reading position: the rail stays off there.
+        app.transcript
+            .push_user(&format!("{} end", "word ".repeat(200)), Vec::new());
+        let backend = TestBackend::new(40, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| render(&mut app, frame)).unwrap();
+        assert!(app.transcript_view.rail.is_none(), "off at the tail");
+        let buffer = terminal.backend().buffer();
+        assert!(
+            (0..buffer.area.height).all(|y| buffer[(38, y)].symbol() != "▐"),
+            "no rail at the tail"
+        );
+
+        // One step into the history brings it in, on the last margin
+        // column and running the transcript's whole height.
+        app.chat.scroll = 1;
+        let backend = TestBackend::new(40, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| render(&mut app, frame)).unwrap();
+        let rail = app.transcript_view.rail.expect("the rail draws in history");
+        assert_eq!(rail.area.x, 38, "flush with the right margin");
+        assert!(rail.total > rail.visible);
+        let buffer = terminal.backend().buffer();
+        let cells: Vec<&str> = (rail.area.y..rail.area.y + rail.area.height)
+            .map(|y| buffer[(rail.area.x, y)].symbol())
+            .collect();
+        assert!(
+            cells.iter().all(|symbol| *symbol == "▐"),
+            "the track draws: {cells:?}"
+        );
+    }
+
+    #[test]
+    fn the_rail_thumb_follows_the_visible_window() {
+        let mut app = chat_app();
+        app.transcript
+            .push_user(&format!("{} end", "word ".repeat(300)), Vec::new());
+        let draw = |app: &mut App| {
+            let backend = TestBackend::new(40, 12);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal.draw(|frame| render(app, frame)).unwrap();
+            let buffer = terminal.backend().buffer().clone();
+            (app.transcript_view.rail, buffer)
+        };
+        let thumb_rows = |buffer: &ratatui::buffer::Buffer,
+                          rail: &crate::app::selection::ScrollRail| {
+            (rail.area.y..rail.area.y + rail.area.height)
+                .filter(|y| buffer[(rail.area.x, *y)].style().fg == Some(DARK.text3))
+                .collect::<Vec<_>>()
+        };
+        // Just into the history, the thumb sits low on the track.
+        app.chat.scroll = 1;
+        let (rail, buffer) = draw(&mut app);
+        let rail = rail.expect("the rail draws in history");
+        assert!(
+            thumb_rows(&buffer, &rail).first().copied() > Some(rail.area.y + 1),
+            "the thumb starts low"
+        );
+        // At the head, it reaches the top.
+        app.chat.scroll = 1000;
+        let (rail, buffer) = draw(&mut app);
+        let rail = rail.expect("the rail draws in history");
+        assert_eq!(
+            thumb_rows(&buffer, &rail).first().copied(),
+            Some(rail.area.y),
+            "the thumb reaches the head"
+        );
+        // A drag that reaches the tail keeps the rail on until release,
+        // the thumb on the track's bottom.
+        app.chat.scroll = 0;
+        app.rail_drag = true;
+        let (rail, buffer) = draw(&mut app);
+        let rail = rail.expect("the rail survives the drag");
+        assert_eq!(
+            thumb_rows(&buffer, &rail).last().copied(),
+            Some(rail.area.y + rail.area.height - 1),
+            "the thumb ends at the tail"
+        );
+        app.rail_drag = false;
+    }
+
+    #[test]
     fn a_multi_line_input_renders_every_line_and_caps_at_the_tail() {
         let mut app = chat_app();
         app.chat.insert_str("alpha\nbeta\ngamma");

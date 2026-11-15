@@ -2571,6 +2571,7 @@ fn a_mouse_down_over_the_transcript_starts_a_selection() {
     h.app.transcript_view = crate::app::selection::TranscriptView {
         area: ratatui::layout::Rect::new(0, 0, 20, 4),
         rows: vec!["hello".to_owned()],
+        rail: None,
     };
     h.app.on_mouse_down(2, 0);
     assert_eq!(
@@ -2586,6 +2587,7 @@ fn a_mouse_down_outside_the_drawn_rows_clears_the_selection() {
     h.app.transcript_view = crate::app::selection::TranscriptView {
         area: ratatui::layout::Rect::new(0, 0, 20, 4),
         rows: vec!["hello".to_owned()],
+        rail: None,
     };
     h.app.on_mouse_down(2, 0);
     h.app.on_mouse_down(2, 3);
@@ -2596,11 +2598,33 @@ fn a_mouse_down_outside_the_drawn_rows_clears_the_selection() {
 }
 
 #[test]
+fn a_drag_on_the_scroll_rail_moves_the_window_not_a_selection() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    h.app.transcript_view.rail = Some(crate::app::selection::ScrollRail {
+        area: ratatui::layout::Rect::new(9, 1, 1, 10),
+        total: 40,
+        visible: 10,
+    });
+    // A press at the track's first row asks for the topmost content.
+    h.app.on_mouse_down(9, 1);
+    assert_eq!(h.app.chat.scroll, 30);
+    assert!(h.app.rail_drag, "the press arms a rail drag");
+    assert!(h.app.selection.is_none(), "no selection under the rail");
+    // The drag follows the pointer to the live tail.
+    h.app.on_mouse_drag(9, 10);
+    assert_eq!(h.app.chat.scroll, 0);
+    // The release consumes the drag, so it never routes as a click.
+    assert!(h.app.finish_selection(9, 10));
+    assert!(!h.app.rail_drag);
+}
+
+#[test]
 fn a_key_clears_the_selection() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     h.app.transcript_view = crate::app::selection::TranscriptView {
         area: ratatui::layout::Rect::new(0, 0, 20, 4),
         rows: vec!["hello".to_owned()],
+        rail: None,
     };
     h.app.on_mouse_down(2, 0);
     h.app.on_key(key(KeyCode::Char('x')));

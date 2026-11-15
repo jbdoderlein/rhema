@@ -162,6 +162,9 @@ pub struct App {
     /// The selection over the transcript, while one is in flight or was
     /// just copied. Keys, the wheel, and a fresh click clear it.
     pub(crate) selection: Option<selection::Selection>,
+    /// Whether the left button is dragging the transcript's scroll rail
+    /// rather than selecting text.
+    pub(crate) rail_drag: bool,
     /// The session's assembled sandbox, when `bash` runs on one:
     /// `None` is the local fast path, every agent build applies this
     /// when set, so a mid-session rebuild never drops it.
@@ -547,6 +550,7 @@ impl App {
             transcript_cache: crate::ui::WrapCache::new(),
             transcript_view: Default::default(),
             selection: None,
+            rail_drag: false,
             sandboxed: setup.sandboxed,
             sandbox_machines: setup.sandbox_machines,
             disabled_mcp_servers: config_disabled_mcp,

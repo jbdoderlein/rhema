@@ -412,6 +412,7 @@ pub(crate) fn render_transcript(
                 .collect()
         })
         .collect();
+    let total = rows.len();
     frame.render_widget(
         Paragraph::new(rows)
             .scroll((top as u16, 0))
@@ -421,10 +422,60 @@ pub(crate) fn render_transcript(
     app.transcript_view = crate::app::selection::TranscriptView {
         area: inner,
         rows: visible_rows,
+        rail: None,
     };
     if let Some(selection) = app.selection {
         crate::app::selection::highlight(frame, &app.transcript_view, selection);
     }
+    // The rail draws last: over the text and the selection highlight,
+    // since it is a control, not content. It is a history affordance,
+    // off at the live tail, so the reading column stays clean until
+    // the reader leaves it. A drag keeps it on even when the drag
+    // reaches the tail: the control must not vanish under the pointer.
+    if app.chat.scroll > 0 || app.rail_drag {
+        app.transcript_view.rail = render_scroll_rail(frame, inner, total, visible, top, theme);
+    }
+}
+
+/// The scroll rail in the transcript's right margin: one half-block
+/// column whose brighter thumb marks the visible window in the whole
+/// content. It only draws when the rows run past the viewport, so a
+/// short conversation keeps a clean right edge, and it stays inside
+/// the two cells the wrap width already leaves free, so showing it
+/// never re-wraps a block. The returned rail is the pointer's hit
+/// target; `None` means nothing to drag.
+fn render_scroll_rail(
+    frame: &mut Frame,
+    area: Rect,
+    total: usize,
+    visible: usize,
+    top: usize,
+    theme: &Theme,
+) -> Option<crate::app::selection::ScrollRail> {
+    // A one-row viewport cannot show a thumb that means anything.
+    if area.width == 0 || visible < 2 || total <= visible {
+        return None;
+    }
+    let rail = crate::app::selection::ScrollRail {
+        area: Rect::new(area.x + area.width - 1, area.y, 1, visible as u16),
+        total,
+        visible,
+    };
+    let (thumb_row, thumb_rows) = rail.thumb(top);
+    let buffer = frame.buffer_mut();
+    for row in 0..visible {
+        let y = area.y + row as u16;
+        let in_thumb = row >= thumb_row && row < thumb_row + thumb_rows;
+        let color = if in_thumb { theme.text3 } else { theme.border };
+        if let Some(cell) = buffer.cell_mut((rail.area.x, y)) {
+            cell.set_symbol("▐");
+            cell.set_fg(color);
+            // The rail is chrome, not content: a selection covering
+            // it must not reverse it into a solid block.
+            cell.modifier = ratatui::style::Modifier::empty();
+        }
+    }
+    Some(rail)
 }
 
 /// Renders one block's wrapped content rows at `width`, the separators
