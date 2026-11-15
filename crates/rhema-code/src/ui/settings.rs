@@ -471,19 +471,6 @@ pub(crate) fn settings_page(
                 row_hits,
             )
         }
-        SettingsSection::Memory => {
-            lines.extend(wrap_line(
-                &Line::from(
-                    Span::raw(
-                        "Cross-session memory is not wired into this coding agent yet.".to_owned(),
-                    )
-                    .fg(theme.text),
-                ),
-                width,
-            ));
-            lines.push(Line::default());
-            (lines, footer(""), Vec::new())
-        }
         SettingsSection::Skills => {
             lines.extend(settings_field(
                 "Global",

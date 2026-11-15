@@ -15,8 +15,6 @@ pub enum SettingsSection {
     Sandbox,
     /// The theme and the footer's icon flavor.
     Appearance,
-    /// Cross-session memory: a status page today.
-    Memory,
     /// The discovered skills.
     Skills,
     /// The discovered subagent definitions, editable in `$EDITOR`.
@@ -42,7 +40,6 @@ impl SettingsSection {
         SettingsSection::Profiles,
         SettingsSection::Sandbox,
         SettingsSection::Appearance,
-        SettingsSection::Memory,
         SettingsSection::Skills,
         SettingsSection::Subagents,
         SettingsSection::Mcp,
@@ -59,7 +56,6 @@ impl SettingsSection {
             SettingsSection::Profiles => "Profiles",
             SettingsSection::Sandbox => "Sandbox",
             SettingsSection::Appearance => "Appearance",
-            SettingsSection::Memory => "Memory",
             SettingsSection::Skills => "Skills",
             SettingsSection::Subagents => "Subagents",
             SettingsSection::Mcp => "MCP",
