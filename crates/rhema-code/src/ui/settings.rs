@@ -103,6 +103,7 @@ pub(crate) fn render_settings(
         || settings.sandbox_dialog.is_some()
         || settings.mcp_dialog.is_some()
         || settings.mcp_confirm.is_some()
+        || settings.websearch_confirm.is_some()
         || settings.instance_confirm.is_some();
     if modal {
         super::chrome::dim_backdrop(frame.buffer_mut(), theme);
@@ -124,6 +125,9 @@ pub(crate) fn render_settings(
     }
     if let Some(name) = &settings.mcp_confirm {
         render_mcp_confirm(frame, name, theme);
+    }
+    if let Some(name) = &settings.websearch_confirm {
+        render_instance_confirm(frame, name, theme);
     }
     if let Some(name) = &settings.instance_confirm {
         render_instance_confirm(frame, name, theme);

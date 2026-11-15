@@ -308,7 +308,9 @@ impl App {
             &settings.stored.websearch,
             &settings.stored.websearch_order,
         );
-        let rows = settings.websearch.len() + 1;
+        // The rows carry their add row; the MCP equivalent below has
+        // to add one because its rows do not.
+        let rows = settings.websearch.len();
         if settings.row >= rows {
             settings.row = rows.saturating_sub(1);
         }
@@ -390,13 +392,28 @@ impl App {
         }) else {
             return Vec::new();
         };
-        let mut removed = false;
+        let mut removed = None;
         self.config
             .set_for_profile(self.session_profile.as_deref(), |profile| {
-                removed = profile.websearch.remove(&name).is_some();
+                removed = profile.websearch.remove(&name);
                 profile.websearch_order.retain(|entry| entry != &name);
             });
-        if !removed || !self.save_config() {
+        let Some(removed) = removed else {
+            return Vec::new();
+        };
+        // The keychain entry goes with the instance, the same rule the
+        // provider logins follow: a removed key must not stay in the
+        // chain. Best effort; a store that refuses leaves the entry,
+        // and that must not pass silently.
+        if let Some(id) = removed.secret_ref
+            && let Some(store) = self.secret_store()
+            && let Err(err) = store.delete(&id)
+        {
+            self.error = Some(format!(
+                "the provider is removed, but its keychain entry could not be deleted: {err}"
+            ));
+        }
+        if !self.save_config() {
             return Vec::new();
         }
         self.refresh_websearch_page();

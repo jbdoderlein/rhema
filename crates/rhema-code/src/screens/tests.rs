@@ -2893,6 +2893,29 @@ fn websearch_screen(
 }
 
 #[test]
+fn the_websearch_add_row_is_the_last_row() {
+    let instances = BTreeMap::from([(
+        "brave-main".to_owned(),
+        rhema_config::WebSearchInstance {
+            provider: "brave".into(),
+            api_key: Some("k".into()),
+            secret_ref: None,
+        },
+    )]);
+    let mut screen = websearch_screen(instances, &["brave-main"]);
+    // brave-main, then the add row; the next Down wraps to the top
+    // instead of stopping on a row the page never draws.
+    screen.handle_key(key(KeyCode::Down));
+    assert_eq!(screen.selected_websearch(), None, "the add row");
+    screen.handle_key(key(KeyCode::Down));
+    assert_eq!(
+        screen.selected_websearch(),
+        Some("brave-main"),
+        "the add row is the last row"
+    );
+}
+
+#[test]
 fn the_websearch_rows_show_the_chain_order_and_the_inert_tail() {
     let instances = BTreeMap::from([
         (

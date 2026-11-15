@@ -699,7 +699,9 @@ impl SettingsScreen {
             SettingsSection::Skills => self.skills.len(),
             SettingsSection::Subagents => self.subagents.len(),
             SettingsSection::Mcp => self.mcp.len() + 1,
-            SettingsSection::WebSearch => self.websearch.len() + 1,
+            // The web search rows already carry their add row; the MCP
+            // rows do not, hence its `+ 1`.
+            SettingsSection::WebSearch => self.websearch.len(),
             SettingsSection::Update => 2,
             _ => 0,
         }

@@ -1599,6 +1599,41 @@ fn a_resumed_session_shows_its_saved_usage() {
 }
 
 #[test]
+fn removing_a_websearch_provider_deletes_its_keychain_entry() {
+    let mut h = harness_with_secrets(Some("k"), None, Session::default());
+    h.secrets
+        .as_ref()
+        .unwrap()
+        .set("ws-1", "brave-key")
+        .unwrap();
+    let personal = h
+        .app
+        .config
+        .settings
+        .profiles
+        .get_mut("personal")
+        .expect("the harness profile");
+    personal.websearch.insert(
+        "brave-main".to_owned(),
+        rhema_config::WebSearchInstance {
+            provider: "brave".into(),
+            api_key: None,
+            secret_ref: Some("ws-1".into()),
+        },
+    );
+    personal.websearch_order.push("brave-main".to_owned());
+
+    h.app.open_settings_at(SettingsSection::WebSearch);
+    assert!(h.app.remove_websearch_provider().is_empty());
+    assert!(h.app.effective().websearch.is_empty());
+    assert_eq!(
+        h.secrets.as_ref().unwrap().get("ws-1").unwrap(),
+        None,
+        "the removed provider leaves no key in the chain"
+    );
+}
+
+#[test]
 fn the_saved_usage_survives_a_save_and_resume_round_trip() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     let mut session = Session::default();
