@@ -101,19 +101,23 @@ pub(crate) fn parse(args: &[OsString]) -> Result<Invocation, ()> {
                 let Some(value) = iter.next() else {
                     return Err(());
                 };
-                let Ok(parsed) = value.to_string_lossy().parse::<u8>() else {
+                // Parse wide, then clamp: `-n 300` asks for more than
+                // the seam allows, which the query clamps to 20, not
+                // a usage error.
+                let Ok(parsed) = value.to_string_lossy().parse::<u32>() else {
                     return Err(());
                 };
-                count = Some(parsed);
+                count = Some(u8::try_from(parsed).unwrap_or(u8::MAX));
             }
             other if other.starts_with('-') => return Err(()),
             other => words.push(other.to_owned()),
         }
     }
-    if words.is_empty() {
+    let text = words.join(" ");
+    if text.trim().is_empty() {
         return Err(());
     }
-    let mut query = rhema_websearch::SearchQuery::new(words.join(" "));
+    let mut query = rhema_websearch::SearchQuery::new(text);
     if let Some(count) = count {
         query = query.with_max_results(count);
     }
@@ -242,6 +246,16 @@ mod tests {
         assert!(parse(&os(&["--deep", "q"])).is_err());
         assert!(parse(&os(&["-x"])).is_err());
         assert!(parse(&os(&[])).is_err());
+        assert!(parse(&os(&[""])).is_err(), "blank is no query");
+        assert!(parse(&os(&["  ", "\t"])).is_err(), "whitespace is no query");
+    }
+
+    #[test]
+    fn an_over_large_count_clamps_instead_of_failing() {
+        let invocation = parse(&os(&["-n", "300", "q"])).unwrap();
+        assert_eq!(invocation.query.max_results, 20);
+        let invocation = parse(&os(&["-n", "0", "q"])).unwrap();
+        assert_eq!(invocation.query.max_results, 1);
     }
 
     #[test]
