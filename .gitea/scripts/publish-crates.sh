@@ -11,6 +11,11 @@
 # in CI on every push: a crate that joins the dependency chain without
 # joining the list fails there, not halfway through a tag release.
 #
+# A versioned dev-dependency constrains the order as well: cargo strips the
+# path when it packages a crate and resolves the version against crates.io,
+# so the dependency must already be published. A path-only dev-dependency
+# carries no version and adds no such requirement.
+#
 # CARGO_REGISTRY_TOKEN must be allowed to publish every crate in the
 # list. A token restricted to specific crates answers 403 for the first
 # name it does not carry, and a brand-new name is the usual culprit:
@@ -25,13 +30,13 @@ CRATES=(
   rhema-sandbox
   rhema-sandbox-local
   rhema-sandbox-http
+  rhema-transcript
+  rhema-coding-agent
   rhema-mcp
   rhema-rsd
   rhema-memory
   rhema-identity
   rhema-autonomous-agent
-  rhema-transcript
-  rhema-coding-agent
   rhema-cloud-agent
   rhema-provider-anthropic
   rhema-provider-chatgpt
@@ -56,16 +61,18 @@ index_of() {
   return 1
 }
 
-# The crate's in-tree dependency lines, as "<name> <versioned|path-only>".
-# Only `path = ` entries are in-tree; the dev sections are skipped because
-# a published package never resolves them.
+# The crate's in-tree dependency lines, as "<name> <kind>", where kind is
+# versioned, path-only, dev-versioned, or dev-path-only.
+# Only `path = ` entries are in-tree.
 manifest_edges() {
   awk '
     /^\[/ { section = $0; next }
-    section ~ /dependencies\]$/ && section !~ /dev-dependencies/ && /path *=/ {
+    section ~ /dependencies\]$/ && /path *=/ {
       name = $0
       sub(/[[:space:]]*=.*/, "", name)
-      print name, (/version *=/ ? "versioned" : "path-only")
+      kind = (/version *=/ ? "versioned" : "path-only")
+      if (section ~ /dev-dependencies/) kind = "dev-" kind
+      print name, kind
     }
   ' "$1"
 }
@@ -86,14 +93,19 @@ check() {
     fi
     at=$(index_of "$crate")
     while read -r dep kind; do
-      if ! dep_at=$(index_of "$dep"); then
-        echo "$crate depends on $dep, which the publish list does not carry" >&2
-        bad=1
-      elif [ "$dep_at" -ge "$at" ]; then
-        echo "$crate is listed before $dep; move $dep earlier" >&2
-        bad=1
-      fi
-      if [ "$kind" = path-only ]; then
+      case "$kind" in
+        versioned | dev-versioned) needs_registry=yes ;;
+        *) needs_registry=no ;;
+      esac
+      if [ "$needs_registry" = yes ]; then
+        if ! dep_at=$(index_of "$dep"); then
+          echo "$crate depends on $dep, which the publish list does not carry" >&2
+          bad=1
+        elif [ "$dep_at" -ge "$at" ]; then
+          echo "$crate is listed before $dep; move $dep earlier" >&2
+          bad=1
+        fi
+      elif [ "$kind" = path-only ]; then
         echo "$crate depends on $dep by path only; crates.io needs a version" >&2
         bad=1
       fi
