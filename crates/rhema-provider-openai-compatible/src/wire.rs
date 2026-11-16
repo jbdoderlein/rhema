@@ -10,11 +10,12 @@
 //! - `model` is passed through verbatim and never validated here: the
 //!   server owns rejection, so a malformed request surfaces as a 400 mapped
 //!   to [`ProviderError::Api`](rhema_core::ProviderError::Api).
-//! - Roles map one-to-one. `ModelRequest.system` becomes a leading `system`
-//!   message; each `Role::System` message becomes its own `system` message
-//!   (text blocks joined by a blank line). `Role::User` and `Role::Assistant`
-//!   map to their like-named roles; text blocks of one message are joined by
-//!   a blank line into the single `content` string.
+//! - Roles map one-to-one after [`ModelRequest::normalized`] has folded
+//!   every `Role::System` message into `ModelRequest.system`, which becomes
+//!   the single leading `system` message (text blocks joined by a blank
+//!   line). `Role::User` and `Role::Assistant` map to their like-named
+//!   roles; text blocks of one message are joined by a blank line into the
+//!   single `content` string.
 //! - A user turn carrying [`Content::Image`] blocks maps to a content parts
 //!   array, one part per content block in order, each text block a `text`
 //!   part and each image an `image_url` part whose url is a
@@ -165,9 +166,15 @@ pub struct ChatCompletionRequest {
     /// Sampling temperature, when set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
+    /// Nucleus-sampling threshold, when set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
     /// Output token ceiling, when set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
+    /// Stop sequences, when any.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub stop: Vec<String>,
     /// The dialect's effort field, one entry under the server family's
     /// own key. Flattened so the wire sees `{"…effort_key": …}` at the
     /// top level, exactly where each family looks for it.
@@ -543,6 +550,9 @@ pub fn is_text(model: &ModelCard) -> bool {
 /// through verbatim and nothing is validated: the server owns rejection.
 /// The request the dialect sends: the shared chat-completions
 /// vocabulary, with the effort and reasoning-replay spelled per dialect.
+///
+/// `req` is expected to be normalized: [`ModelRequest::normalized`] has
+/// already folded any [`Role::System`] messages into [`ModelRequest::system`].
 pub fn request_body(req: &ModelRequest, dialect: &Dialect) -> ChatCompletionRequest {
     let mut messages: Vec<WireMessage> = Vec::new();
     if let Some(system) = req.system.as_deref().filter(|s| !s.trim().is_empty()) {
@@ -558,17 +568,10 @@ pub fn request_body(req: &ModelRequest, dialect: &Dialect) -> ChatCompletionRequ
     for message in &req.messages {
         match message.role {
             Role::System => {
-                let text = joined_texts(message);
-                if !text.is_empty() {
-                    messages.push(WireMessage {
-                        role: "system".into(),
-                        content: Some(WireContent::Text(text)),
-                        reasoning_content: None,
-                        reasoning: None,
-                        tool_calls: None,
-                        tool_call_id: None,
-                    });
-                }
+                debug_assert!(
+                    false,
+                    "ModelRequest::normalized removes system messages before the wire"
+                );
             }
             Role::User => {
                 if let Some(content) = parts_of(message) {
@@ -670,7 +673,9 @@ pub fn request_body(req: &ModelRequest, dialect: &Dialect) -> ChatCompletionRequ
             include_usage: true,
         }),
         temperature: req.params.temperature,
+        top_p: req.params.top_p,
         max_tokens: req.params.max_tokens,
+        stop: req.params.stop.clone(),
         effort: effort_field(req.params.thinking, dialect),
     }
 }
@@ -1107,7 +1112,9 @@ mod tests {
             params: ChatParams {
                 model: "gpt-4o-mini".into(),
                 temperature: Some(0.2),
+                top_p: Some(0.9),
                 max_tokens: Some(256),
+                stop: vec!["STOP".into()],
                 thinking: ThinkingEffort::Default,
             },
         };
@@ -1119,6 +1126,8 @@ mod tests {
         assert_eq!(json["stream"], json!(true));
         assert_eq!(json["stream_options"]["include_usage"], json!(true));
         assert_eq!(json["temperature"], json!(0.2_f32));
+        assert_eq!(json["top_p"], json!(0.9_f32));
+        assert_eq!(json["stop"], json!(["STOP"]));
         // `max_tokens`, not `max_completion_tokens`: the field generic
         // servers accept.
         assert_eq!(json["max_tokens"], json!(256));
@@ -1150,7 +1159,7 @@ mod tests {
     }
 
     #[test]
-    fn system_messages_each_keep_their_own_wire_message() {
+    fn system_messages_fold_into_one_leading_wire_message() {
         let req = ModelRequest {
             system: Some("a".into()),
             messages: vec![
@@ -1159,14 +1168,16 @@ mod tests {
             ],
             tools: vec![],
             params: ChatParams::new("gpt-4o-mini"),
-        };
+        }
+        .normalized();
 
         let json =
             serde_json::to_value(request_body(&req, &OPENAI_COMPATIBLE)).expect("body serializes");
         let messages = json["messages"].as_array().expect("messages");
-        assert_eq!(messages.len(), 3);
-        assert_eq!(messages[0]["content"], "a");
-        assert_eq!(messages[1]["content"], "b");
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages[0]["content"], "a\n\nb");
+        assert_eq!(messages[1]["role"], "user");
         assert!(json.get("tools").is_none());
         assert!(json.get("temperature").is_none());
         assert!(json.get("max_tokens").is_none());
@@ -1768,7 +1779,9 @@ mod tests {
             params: ChatParams {
                 model: "gpt-4o-mini".into(),
                 temperature: None,
+                top_p: None,
                 max_tokens: None,
+                stop: Vec::new(),
                 thinking: ThinkingEffort::High,
             },
         };
@@ -1838,7 +1851,9 @@ mod tests {
             params: ChatParams {
                 model: "gpt-4o-mini".into(),
                 temperature: None,
+                top_p: None,
                 max_tokens: None,
+                stop: Vec::new(),
                 thinking: ThinkingEffort::Default,
             },
         };

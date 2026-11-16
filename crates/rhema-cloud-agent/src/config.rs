@@ -10,6 +10,8 @@
 //! default so a never-configured session still assembles.
 #![forbid(unsafe_code)]
 
+use std::num::NonZeroU32;
+
 use rhema_agent_tools::Skill;
 
 /// The default model, when the session carries no config yet.
@@ -22,8 +24,8 @@ fn default_workspace() -> String {
     DEFAULT_WORKSPACE.to_owned()
 }
 
-fn default_max_turn_steps() -> u32 {
-    128
+fn default_max_turn_steps() -> NonZeroU32 {
+    NonZeroU32::new(128).unwrap()
 }
 
 /// One skill seeded into the sandbox and rendered into the prompt.
@@ -62,9 +64,11 @@ pub struct SessionConfig {
     /// Skills seeded into the sandbox and rendered into the prompt.
     #[serde(default)]
     pub skills: Vec<SkillSeed>,
-    /// Cap on steps per turn.
+    /// Cap on steps per turn. A turn still requesting tools past it
+    /// returns its last output with `StopReason::ToolUse`; the type keeps
+    /// a zero budget, which would run nothing, out of the config.
     #[serde(default = "default_max_turn_steps")]
-    pub max_turn_steps: u32,
+    pub max_turn_steps: NonZeroU32,
 }
 
 impl Default for SessionConfig {

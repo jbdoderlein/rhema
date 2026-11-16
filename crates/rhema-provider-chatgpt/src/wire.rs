@@ -6,9 +6,13 @@
 //! (`https://chatgpt.com/backend-api/codex`). Mapping constraints:
 //!
 //! - The system prompt is the request's `instructions` string:
-//!   `ModelRequest::system` and every `Role::System` message, joined by
+//!   `ModelRequest::normalized` folds `ModelRequest::system` and every
+//!   `Role::System` message into one string, which lands there joined by
 //!   a blank line. The Responses input array has no system role this
 //!   adapter needs to spell separately.
+//! - `ChatParams::top_p` and `ChatParams::stop` have no field this
+//!   backend's request shape accepts and are ignored; `max_tokens` maps
+//!   onto `max_output_tokens`.
 //! - `Role::User` becomes one `message` item with `input_text` parts
 //!   for its text blocks and `input_image` parts for its images, each
 //!   image url a `data:{media type};base64,…` URI. `Role::Tool` result
@@ -964,6 +968,7 @@ mod tests {
             Message::text(Role::User, "go"),
             Message::text(Role::System, "rule two"),
         ];
+        let req = req.normalized();
         let body = request_body(&req);
         assert_eq!(
             body.instructions.as_deref(),

@@ -5,6 +5,7 @@
 //! memory into a turn ever needs anything new in `rhema-core`, the
 //! boundary is wrong, fix the boundary, don't add the type.
 
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use rhema_core::{
@@ -71,9 +72,16 @@ async fn a_turn_can_save_and_recall_memory() {
     let ctx = ToolContext::default();
     let input = Message::text(Role::User, "remember the release channel, then recall it");
 
-    let output = run_turn(&mut agent, &mut session, input, &mut Quiet, &ctx, 8)
-        .await
-        .unwrap();
+    let output = run_turn(
+        &mut agent,
+        &mut session,
+        input,
+        &mut Quiet,
+        &ctx,
+        NonZeroU32::new(8).unwrap(),
+    )
+    .await
+    .unwrap();
     assert_eq!(output.stop_reason, StopReason::EndTurn);
 
     let result_for = |id: &str| {
@@ -138,7 +146,7 @@ async fn a_failing_memory_call_stays_in_band() {
         Message::text(Role::User, "update the ghost record"),
         &mut Quiet,
         &ctx,
-        8,
+        NonZeroU32::new(8).unwrap(),
     )
     .await
     .unwrap();

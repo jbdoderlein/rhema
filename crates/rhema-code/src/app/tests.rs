@@ -10,6 +10,7 @@ use rhema_config::secrets::SecretStore as _;
 use rhema_core::{Message, Role, Session, StopReason, ToolCall, Usage};
 use rhema_provider::ModelCard;
 use std::collections::BTreeMap;
+use std::num::NonZeroU32;
 
 /// A turn provider the cancelled-turn tests never drive, these tests
 /// exercise the UI's cancellation bookkeeping, not an exchange, so any
@@ -325,7 +326,7 @@ fn harness_inner(
             cursor: crate::cursor::CursorStyle::Default,
             profile: Some("personal".into()),
             workspace: PathBuf::from("."),
-            max_steps: 4,
+            max_steps: NonZeroU32::new(4).unwrap(),
             no_transcript: false,
             base_system: None,
             save: None,
@@ -4242,7 +4243,7 @@ fn a_logged_in_profile_opens_the_chat_without_the_login_screen() {
             cursor: crate::cursor::CursorStyle::Default,
             profile: Some(profile),
             workspace: PathBuf::from("."),
-            max_steps: 4,
+            max_steps: NonZeroU32::new(4).unwrap(),
             no_transcript: false,
             base_system: None,
             save: None,

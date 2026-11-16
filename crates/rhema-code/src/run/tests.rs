@@ -39,10 +39,14 @@ mod exit_tests {
     #[test]
     fn any_other_failure_is_exit_code_1() {
         assert_eq!(exit_code(&anyhow::anyhow!("no prompt")), 1);
-        let maxed = anyhow::Error::new(CodingAgentError::Agent(
-            rhema_core::AgentError::MaxIterations(8),
+        let missing = anyhow::Error::new(CodingAgentError::Agent(
+            rhema_core::AgentError::MissingProvider,
         ));
-        assert_eq!(exit_code(&maxed), 1, "a step budget is a rhema limit");
+        assert_eq!(
+            exit_code(&missing),
+            1,
+            "a driver wiring error is a rhema limit"
+        );
     }
 
     #[test]

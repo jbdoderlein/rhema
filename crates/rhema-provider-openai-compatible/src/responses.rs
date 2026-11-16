@@ -17,8 +17,11 @@
 //!
 //! Request mapping, mirroring the chat dialect's choices:
 //!
-//! - `ModelRequest.system` and `Role::System` messages fold into
-//!   `instructions`, which the API inserts as the first system message.
+//! - `ModelRequest.normalized` has already folded `ModelRequest.system`
+//!   and every `Role::System` message into one string, which lands in
+//!   `instructions`; the API inserts it as the first system message.
+//! - `ChatParams::top_p` maps onto `top_p`; `stop` has no field in the
+//!   Responses request shape and is ignored.
 //! - A text-only turn keeps a bare string content, strict servers
 //!   predate the parts shape; a turn with images spells a parts array
 //!   of `input_text`/`input_image` items, the data-URI form a pasted
@@ -65,8 +68,9 @@ use crate::wire::{
 pub struct ResponsesRequest {
     /// Model identifier, passed through verbatim.
     pub model: String,
-    /// The system prompt: `ModelRequest.system` plus every `Role::System`
-    /// message, joined. Inserted by the API as the first system message.
+    /// The system prompt: the normalized `ModelRequest.system`, with every
+    /// `Role::System` message already folded in. Inserted by the API as
+    /// the first system message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
     /// The conversation so far, as input items in order.
@@ -82,6 +86,9 @@ pub struct ResponsesRequest {
     /// Sampling temperature, when set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
+    /// Nucleus-sampling threshold, when set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
     /// Output token ceiling, when set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<u32>,
@@ -251,6 +258,7 @@ pub fn request_body(req: &ModelRequest) -> ResponsesRequest {
         stream: true,
         store: false,
         temperature: req.params.temperature,
+        top_p: req.params.top_p,
         max_output_tokens: req.params.max_tokens,
         reasoning: reasoning(req.params.thinking),
     }
@@ -884,11 +892,15 @@ mod tests {
                 description: "run a command".into(),
                 parameters: serde_json::json!({"type": "object"}),
             }],
-            params: ChatParams::new("deepseek-flash"),
+            params: ChatParams {
+                top_p: Some(0.8),
+                ..ChatParams::new("deepseek-flash")
+            },
         };
 
         let body = serde_json::to_value(request_body(&req)).expect("body serializes");
         assert_eq!(body["model"], "deepseek-flash");
+        assert_eq!(body["top_p"], serde_json::json!(0.8_f32));
         assert_eq!(body["instructions"], "be terse");
         assert_eq!(body["stream"], true);
         assert_eq!(body["store"], false);
@@ -917,6 +929,23 @@ mod tests {
             })
         );
         assert_eq!(body["input"].as_array().expect("input").len(), 2);
+    }
+
+    #[test]
+    fn system_messages_fold_into_instructions_after_normalization() {
+        let req = ModelRequest {
+            system: Some("a".into()),
+            messages: vec![
+                Message::text(Role::System, "b"),
+                Message::text(Role::User, "hi"),
+            ],
+            tools: vec![],
+            params: ChatParams::new("deepseek-flash"),
+        }
+        .normalized();
+        let body = request_body(&req);
+        assert_eq!(body.instructions.as_deref(), Some("a\n\nb"));
+        assert_eq!(body.input.len(), 1);
     }
 
     #[test]

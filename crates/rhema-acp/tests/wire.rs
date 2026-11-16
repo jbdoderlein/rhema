@@ -6,6 +6,7 @@
 
 #![cfg(feature = "mock")]
 
+use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -366,6 +367,55 @@ async fn a_tool_call_round_trips_permissions() {
                 chunk_texts(&collected),
                 vec!["done".to_owned()],
                 "the assistant continued after the tool ran"
+            );
+            Ok(())
+        },
+    )
+    .await;
+    let _ = outcome;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_at_the_step_cap_ends_with_max_turn_requests() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = dir.path().join("ws");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let session_dir = dir.path().join("sessions");
+    let updates = updates();
+    let collected = updates.clone();
+
+    let mut options = options(vec![reply_call("call-1", "echo capped")], &session_dir);
+    options.max_steps = Some(NonZeroU32::new(1).unwrap());
+    let permissions: Permissions = Arc::new(Mutex::new(Vec::new()));
+    let outcome = with_agent(
+        options,
+        updates,
+        permissions,
+        RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
+            PermissionOptionId::new("allow-once"),
+        )),
+        async move |cx| {
+            initialize(&cx).await;
+            let session = new_session(&cx, &workspace).await.session_id;
+
+            let response = cx
+                .send_request(PromptRequest::new(
+                    session.clone(),
+                    vec![ContentBlock::from("run it")],
+                ))
+                .block_task()
+                .await
+                .expect("prompt");
+            // The cap is not a protocol error: the call ran, and the
+            // client sees the spec's max-turn-request stop.
+            assert_eq!(response.stop_reason, StopReason::MaxTurnRequests);
+            assert!(
+                collected
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|update| matches!(update, SessionUpdate::ToolCall(_))),
+                "the capped turn still reports its tool call"
             );
             Ok(())
         },

@@ -314,6 +314,7 @@ impl ModelProvider for ChatGptProvider {
         req: ModelRequest,
         sink: &mut dyn EventSink,
     ) -> Result<ModelOutput, ProviderError> {
+        let req = req.normalized();
         let mut body = request_body(&req);
         body.prompt_cache_key = Some(self.prompt_cache_key.clone());
         let (access, account) = self.token(false).await?;

@@ -4,9 +4,10 @@
 //! Turn semantics through the scripted provider: history shape, session
 //! continuation, the step budget, and persistence/resume.
 
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use rhema_coding_agent::{AllowAll, CodingAgent, CodingAgentConfig, CodingAgentError};
+use rhema_coding_agent::{AllowAll, CodingAgent, CodingAgentConfig};
 use rhema_core::{
     Content, Event, EventSink, Message, MockProvider, ModelOutput, Role, Session, StopReason,
     ToolCall, Usage,
@@ -131,24 +132,22 @@ async fn a_second_turn_continues_the_same_session() {
 }
 
 #[tokio::test]
-async fn a_turn_past_the_step_budget_fails_with_max_iterations() {
+async fn a_turn_past_the_step_budget_returns_the_last_output() {
     let root = tempfile::tempdir().unwrap();
     let provider = Arc::new(MockProvider::new(vec![
         tool_use_output(tool_call("call_1", "list_dir", json!({}))),
         tool_use_output(tool_call("call_2", "list_dir", json!({}))),
     ]));
     let config = CodingAgentConfig {
-        max_turn_steps: 2,
+        max_turn_steps: NonZeroU32::new(2).unwrap(),
         ..CodingAgentConfig::new(provider, "mock-model", root.path(), AllowAll)
     };
     let mut agent = CodingAgent::new(config).unwrap();
     let mut sink = NullSink;
 
-    let err = agent.turn("loop", &mut sink).await.unwrap_err();
-    assert_eq!(
-        err,
-        CodingAgentError::Agent(rhema_core::AgentError::MaxIterations(2))
-    );
+    let out = agent.turn("loop", &mut sink).await.unwrap();
+    assert_eq!(out.stop_reason, StopReason::ToolUse);
+    assert!(matches!(out.message.content[0], Content::ToolCall(_)));
 }
 
 #[tokio::test]

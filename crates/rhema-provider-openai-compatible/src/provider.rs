@@ -488,6 +488,7 @@ impl ModelProvider for OpenAiCompatibleProvider {
         req: ModelRequest,
         sink: &mut dyn EventSink,
     ) -> Result<ModelOutput, ProviderError> {
+        let req = req.normalized();
         match self.api {
             Api::Chat => {
                 let body = crate::wire::request_body(&req, &self.dialect);

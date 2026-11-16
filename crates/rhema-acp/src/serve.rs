@@ -25,6 +25,7 @@
 //! no client offers them).
 
 use std::collections::HashMap;
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -49,7 +50,7 @@ use anyhow::Context;
 use rhema_coding_agent::{CodingAgent, CodingAgentConfig, CodingAgentError, repair_dangling_calls};
 use rhema_config::Settings;
 use rhema_core::request::ThinkingEffort;
-use rhema_core::{AgentError, Content, ModelProvider, Role, Session, StopReason as EngineStop};
+use rhema_core::{Content, ModelProvider, Role, Session, StopReason as EngineStop};
 use tokio::sync::watch;
 
 use crate::approval::{AcpApproval, AlwaysMemory};
@@ -78,7 +79,7 @@ pub struct AcpOptions {
     /// llama.cpp server base URL override.
     pub llama_url: Option<String>,
     /// Cap on steps per turn; `None` is the coding agent's default.
-    pub max_steps: Option<u32>,
+    pub max_steps: Option<NonZeroU32>,
     /// Reasoning effort override; `None` falls back to the profile,
     /// then the provider default.
     pub thinking: Option<ThinkingEffort>,
@@ -424,29 +425,20 @@ async fn serve_connection(
                                     .agent
                                     .take()
                                     .expect("the guard still holds the agent");
-                                let stop = acp_stop(&output.stop_reason);
+                                // A turn still asking for tools at the cap
+                                // is the protocol's max-turn-request stop,
+                                // not a failure; its calls already ran and
+                                // the history is valid for the next prompt.
+                                let stop = if output.stop_reason == EngineStop::ToolUse {
+                                    StopReason::MaxTurnRequests
+                                } else {
+                                    acp_stop(&output.stop_reason)
+                                };
                                 app.persist(&session_id.0, agent.session());
                                 app.put_agent(&session_id.0, agent);
                                 app.note_activity(&session_id.0, &cx);
                                 let _ =
                                     responder.respond(prompt_response(stop, &app, &session_id.0));
-                            }
-                            Some(Err(CodingAgentError::Agent(AgentError::MaxIterations(_)))) => {
-                                // The budget ran out with calls possibly
-                                // left hanging; close them before the
-                                // session serves another turn.
-                                let mut agent = restore
-                                    .agent
-                                    .take()
-                                    .expect("the guard still holds the agent");
-                                repair_dangling_calls(agent.session_mut());
-                                app.put_agent(&session_id.0, agent);
-                                app.note_activity(&session_id.0, &cx);
-                                let _ = responder.respond(prompt_response(
-                                    StopReason::MaxTurnRequests,
-                                    &app,
-                                    &session_id.0,
-                                ));
                             }
                             Some(Err(err)) => {
                                 let mut agent = restore

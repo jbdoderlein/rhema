@@ -328,6 +328,8 @@ async fn history_with_tool_results_maps_to_the_messages_json() {
             temperature: Some(0.2),
             max_tokens: Some(256),
             thinking: rhema_core::request::ThinkingEffort::Default,
+            top_p: None,
+            stop: Vec::new(),
         },
     };
 

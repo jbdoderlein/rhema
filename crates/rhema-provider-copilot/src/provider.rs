@@ -391,6 +391,7 @@ impl ModelProvider for CopilotProvider {
         req: ModelRequest,
         sink: &mut dyn EventSink,
     ) -> Result<ModelOutput, ProviderError> {
+        let req = req.normalized();
         let body = request_body(&req, &OPENAI_COMPATIBLE);
         let mut token = self.copilot_token().await?;
         let mut response = self.post_chat(&token, &body).await?;

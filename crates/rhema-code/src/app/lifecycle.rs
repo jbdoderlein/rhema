@@ -338,6 +338,9 @@ impl App {
                         Self::stop_words(&output.stop_reason)
                     ));
                 }
+                if output.stop_reason == StopReason::ToolUse {
+                    self.push_notice("the turn hit its step limit; send a follow-up to keep going");
+                }
             }
             Err(message) => {
                 self.error = Some(message);

@@ -12,6 +12,7 @@
 //! primitive a driver can persist, cancel, or steer around.
 
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use crate::event::{Event, EventSink};
@@ -37,12 +38,6 @@ pub enum AgentError {
     /// effect starts.
     #[error(transparent)]
     Commit(#[from] CommitError),
-    /// The turn was still requesting tools after `max_iterations` steps.
-    #[error(
-        "stopped after {0} steps without finishing; send a follow-up \
-             to keep going, or raise the step limit"
-    )]
-    MaxIterations(u32),
 }
 
 /// Why a [`CommitHook`] rejected the intent: the text a driver's
@@ -209,7 +204,8 @@ impl Agent {
                 .map(|r| r.specs())
                 .unwrap_or_default(),
             params: self.params.clone(),
-        };
+        }
+        .normalized();
         let out = self.provider.complete(req, &mut events).await?;
 
         let call_indices: Vec<usize> = out
@@ -288,8 +284,9 @@ impl Agent {
 
     /// The default iteration cap of [`Agent::turn`]: a runaway-loop
     /// guard, not a task budget. A driver with its own policy passes a
-    /// different cap to [`Agent::turn_with_limit`].
-    pub const DEFAULT_TURN_STEPS: u32 = 32;
+    /// different cap to [`Agent::turn_with_limit`]. The cap is
+    /// non-zero because a turn always runs at least one step.
+    pub const DEFAULT_TURN_STEPS: NonZeroU32 = NonZeroU32::new(32).unwrap();
 
     /// A whole turn: append `input`, then step until the model answers
     /// without asking for tools, up to [`Self::DEFAULT_TURN_STEPS`].
@@ -316,7 +313,7 @@ impl Agent {
         session: &mut Session,
         sink: &mut dyn EventSink,
         ctx: &ToolContext,
-        max_iterations: u32,
+        max_iterations: NonZeroU32,
     ) -> Result<ModelOutput, AgentError> {
         run_turn(self, session, input.into(), sink, ctx, max_iterations).await
     }
@@ -531,25 +528,31 @@ pub fn close_orphaned_calls(history: &mut Vec<Message>) -> Vec<String> {
 
 /// The loop in free-function form, for a caller that already holds a
 /// [`Message`]: push the input, then step until the model stops
-/// requesting tools. [`Agent::turn`] is the shorthand; the step boundary
-/// stays the primitive, and a driver with its own persistence or
-/// steering policy can own the loop instead.
+/// requesting tools or the cap runs out. [`Agent::turn`] is the
+/// shorthand; the step boundary stays the primitive, and a driver with
+/// its own persistence or steering policy can own the loop instead.
+///
+/// The returned output is the last exchange either way. A
+/// [`StopReason::ToolUse`] result means the cap ended the turn while the
+/// model still wanted tools; its calls already ran and the history is
+/// valid, so the caller can continue with [`Agent::step`] or a follow-up
+/// turn. A finished turn returns the model's own stop reason.
 pub async fn run_turn(
     agent: &mut Agent,
     session: &mut Session,
     input: Message,
     sink: &mut dyn EventSink,
     ctx: &ToolContext,
-    max_iterations: u32,
+    max_iterations: NonZeroU32,
 ) -> Result<ModelOutput, AgentError> {
     session.history.push(input);
-    for _ in 0..max_iterations {
-        let step = agent.step(session, sink, ctx).await?;
-        if step.output.stop_reason != StopReason::ToolUse {
-            return Ok(step.output);
-        }
+    let mut step = agent.step(session, sink, ctx).await?;
+    let mut remaining = max_iterations.get() - 1;
+    while step.output.stop_reason == StopReason::ToolUse && remaining > 0 {
+        step = agent.step(session, sink, ctx).await?;
+        remaining -= 1;
     }
-    Err(AgentError::MaxIterations(max_iterations))
+    Ok(step.output)
 }
 
 #[cfg(test)]
@@ -791,6 +794,6 @@ mod tests {
             .is_retryable()
         );
         assert!(!AgentError::Commit(CommitError("disk full".into())).is_retryable());
-        assert!(!AgentError::MaxIterations(32).is_retryable());
+        assert!(!AgentError::MissingProvider.is_retryable());
     }
 }

@@ -620,7 +620,7 @@ pub struct RunOptions {
     /// Workspace root for tools.
     pub workspace: PathBuf,
     /// Max steps per turn.
-    pub max_steps: u32,
+    pub max_steps: std::num::NonZeroU32,
     /// Send the whole history every step, skipping the transcript's
     /// bounded request view.
     pub no_transcript: bool,

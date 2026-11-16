@@ -133,6 +133,13 @@ pub struct MessagesRequest {
     /// turns.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
+    /// Nucleus-sampling threshold, when set, and never set while thinking
+    /// is enabled, for the same reason as temperature.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    /// Stop sequences, when any.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub stop_sequences: Vec<String>,
     /// Extended thinking, when the driver named a level: the API's knob
     /// is a token budget, not a level, so the level maps onto one.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -829,6 +836,8 @@ pub fn request_body(req: &ModelRequest) -> Result<MessagesRequest, ProviderError
             .is_none()
             .then_some(req.params.temperature)
             .flatten(),
+        top_p: thinking.is_none().then_some(req.params.top_p).flatten(),
+        stop_sequences: req.params.stop.clone(),
         thinking,
         stream: true,
     })
@@ -1286,6 +1295,8 @@ mod tests {
                 temperature: Some(0.7),
                 max_tokens: Some(4_096),
                 thinking: ThinkingEffort::High,
+                top_p: None,
+                stop: Vec::new(),
             },
         };
         let body = serde_json::to_value(request_body(&req).unwrap()).expect("body serializes");
@@ -1326,6 +1337,8 @@ mod tests {
                 temperature: None,
                 max_tokens: None,
                 thinking,
+                top_p: None,
+                stop: Vec::new(),
             },
         };
 
@@ -1390,6 +1403,8 @@ mod tests {
                 model: "claude-sonnet-4-5".into(),
                 temperature: Some(0.2),
                 max_tokens: Some(256),
+                top_p: None,
+                stop: Vec::new(),
             },
         };
 
@@ -1738,7 +1753,8 @@ mod tests {
             ],
             tools: vec![],
             params: ChatParams::new("claude-sonnet-4-5"),
-        };
+        }
+        .normalized();
 
         let json = serde_json::to_value(request_body(&req).expect("request maps"))
             .expect("body serializes");
@@ -1750,6 +1766,37 @@ mod tests {
         );
         assert_eq!(json["messages"].as_array().expect("messages").len(), 1);
         assert!(json.get("tools").is_none());
+    }
+
+    #[test]
+    fn sampling_knobs_ride_the_wire_and_yield_to_thinking() {
+        let mut req = ModelRequest {
+            system: None,
+            messages: vec![Message::text(Role::User, "hi")],
+            tools: vec![],
+            params: ChatParams {
+                model: "claude-sonnet-4-5".into(),
+                temperature: Some(0.2),
+                top_p: Some(0.9),
+                max_tokens: None,
+                stop: vec!["STOP".into()],
+                thinking: ThinkingEffort::Default,
+            },
+        };
+        let body = serde_json::to_value(request_body(&req).expect("request maps"))
+            .expect("body serializes");
+        assert_eq!(body["temperature"], json!(0.2_f32));
+        assert_eq!(body["top_p"], json!(0.9_f32));
+        assert_eq!(body["stop_sequences"], json!(["STOP"]));
+
+        // Thinking turns reject temperature and top_p modifications;
+        // stop sequences still apply.
+        req.params.thinking = ThinkingEffort::High;
+        let body = serde_json::to_value(request_body(&req).expect("request maps"))
+            .expect("body serializes");
+        assert!(body.get("temperature").is_none());
+        assert!(body.get("top_p").is_none());
+        assert_eq!(body["stop_sequences"], json!(["STOP"]));
     }
 
     #[test]

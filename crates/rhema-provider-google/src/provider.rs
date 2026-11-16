@@ -198,6 +198,7 @@ impl ModelProvider for GoogleProvider {
         req: ModelRequest,
         sink: &mut dyn EventSink,
     ) -> Result<ModelOutput, ProviderError> {
+        let req = req.normalized();
         let body = crate::wire::request_body(&req)?;
         let model = req.params.model.trim();
         // `models/` is the wire prefix; accept both spellings.

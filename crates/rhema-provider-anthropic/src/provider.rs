@@ -498,6 +498,7 @@ impl ModelProvider for AnthropicProvider {
         req: ModelRequest,
         sink: &mut dyn EventSink,
     ) -> Result<ModelOutput, ProviderError> {
+        let req = req.normalized();
         let body = crate::wire::request_body(&req)?;
         let url = format!("{}/v1/messages", self.base_url);
 

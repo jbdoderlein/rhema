@@ -97,16 +97,25 @@ return Step { output: out }
 The provided turn loop is ~15 lines; ship it in core as a convenience or in a sibling crate, either is fine, it is not the primitive.
 
 ```rust
-pub async fn run_turn(agent: &mut Agent, session: &mut Session, input: Message, sink: &mut dyn EventSink)
-    -> Result<ModelOutput, AgentError> {
+pub async fn run_turn(
+    agent: &mut Agent,
+    session: &mut Session,
+    input: Message,
+    sink: &mut dyn EventSink,
+    max_iterations: NonZeroU32,
+) -> Result<ModelOutput, AgentError> {
     session.history.push(input);
-    for i in 0..max {
-        let step = agent.step(session, sink).await?;
-        if step.output.stop_reason != StopReason::ToolUse { return Ok(step.output); }
+    let mut remaining = max_iterations.get() - 1;
+    let mut step = agent.step(session, sink).await?;
+    while step.output.stop_reason == StopReason::ToolUse && remaining > 0 {
+        remaining -= 1;
+        step = agent.step(session, sink).await?;
     }
-    Err(AgentError::MaxIterations)
+    Ok(step.output)
 }
 ```
+
+A turn still asking for tools at the cap returns that last output; the driver sees the stop reason and keeps the reply, usage, and any calls already resolved.
 
 The RSD driver (crate 2) is the same shape with different scaffolding: `acquire()` loads a `Session` from storage, steps, `poll_inbox()` between steps and appends delivered items to `history`, `checkpoint()` after each step, `release()`, all using the RSD contract, none of it visible to crate 1.
 

@@ -5,6 +5,7 @@
 //! the call interrupted instead of re-running it. This is the behavior
 //! the DO wraps; the wasm glue only changes where the bytes ride.
 
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -94,7 +95,7 @@ fn rig(provider: Arc<dyn ModelProvider>) -> Rig {
         model: "claude-sonnet-4-5".into(),
         base_system: None,
         skills: Vec::new(),
-        max_turn_steps: 8,
+        max_turn_steps: NonZeroU32::new(8).unwrap(),
         thinking: rhema_core::request::ThinkingEffort::Default,
         workspace: "/workspace".into(),
         transcript: Some(rhema_transcript::TranscriptSettings::default()),
@@ -297,7 +298,7 @@ async fn a_crash_mid_command_resumes_with_the_call_reported_interrupted() {
         model: "claude-sonnet-4-5".into(),
         base_system: None,
         skills: Vec::new(),
-        max_turn_steps: 8,
+        max_turn_steps: NonZeroU32::new(8).unwrap(),
         thinking: rhema_core::request::ThinkingEffort::Default,
         workspace: "/workspace".into(),
         transcript: Some(rhema_transcript::TranscriptSettings::default()),
@@ -350,7 +351,7 @@ async fn seeded_skills_reach_the_prompt_without_a_filesystem() {
         model: "claude-sonnet-4-5".into(),
         base_system: None,
         skills,
-        max_turn_steps: 8,
+        max_turn_steps: NonZeroU32::new(8).unwrap(),
         thinking: rhema_core::request::ThinkingEffort::Default,
         workspace: "/workspace".into(),
         transcript: Some(rhema_transcript::TranscriptSettings::default()),

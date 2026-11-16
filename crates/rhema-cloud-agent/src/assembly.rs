@@ -9,6 +9,7 @@
 //! workspace string is meaningful only inside the sandbox.
 #![forbid(unsafe_code)]
 
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use rhema_agent_tools::{Approval, ShellExecutor, ShellTools, Skill};
@@ -93,9 +94,9 @@ pub struct AgentAssembly {
     /// [`Self::workspace`], because the model reads the bodies through
     /// the shell.
     pub skills: Vec<Skill>,
-    /// Cap on steps per turn; past it the turn fails with
-    /// `AgentError::MaxIterations`.
-    pub max_turn_steps: u32,
+    /// Cap on steps per turn; past it the turn returns its last output
+    /// with `StopReason::ToolUse`.
+    pub max_turn_steps: NonZeroU32,
     /// How much reasoning the model should do.
     pub thinking: rhema_core::request::ThinkingEffort,
     /// The workspace path inside the sandbox (`/workspace`).

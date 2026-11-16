@@ -7,6 +7,7 @@
 //! subset minus the workspace (the client names it per session).
 
 use std::ffi::OsString;
+use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -170,7 +171,7 @@ pub struct Args {
 
     /// Max steps per turn.
     #[arg(long, default_value_t = CodingAgentConfig::DEFAULT_MAX_TURN_STEPS)]
-    pub max_steps: u32,
+    pub max_steps: NonZeroU32,
 
     /// Send the whole history every step: skip the bounded request
     /// view that summarizes older messages into lines the `zoom` tool
@@ -316,7 +317,7 @@ pub struct RunArgs {
 
     /// Max steps per turn.
     #[arg(long, default_value_t = CodingAgentConfig::DEFAULT_MAX_TURN_STEPS)]
-    pub max_steps: u32,
+    pub max_steps: NonZeroU32,
 
     /// Send the whole history every step: skip the bounded request
     /// view that summarizes older messages into lines the `zoom` tool
@@ -348,7 +349,7 @@ pub struct AcpArgs {
 
     /// Max steps per turn.
     #[arg(long, default_value_t = CodingAgentConfig::DEFAULT_MAX_TURN_STEPS)]
-    pub max_steps: u32,
+    pub max_steps: NonZeroU32,
 
     /// How much reasoning the model should do. Absent, the profile's
     /// setting stands, and absent there too, the provider's default.
@@ -450,7 +451,7 @@ mod tests {
         assert_eq!(args.workspace, PathBuf::from("/tmp/ws"));
         assert_eq!(args.resume, Some(PathBuf::from("s.json")));
         assert_eq!(args.save, Some(PathBuf::from("s.json")));
-        assert_eq!(args.max_steps, 4);
+        assert_eq!(args.max_steps, NonZeroU32::new(4).unwrap());
         assert_eq!(args.thinking, Some(ThinkingKind::Low));
     }
 
@@ -609,7 +610,7 @@ mod tests {
                 assert_eq!(run.workspace, PathBuf::from("/tmp/ws"));
                 assert_eq!(run.resume, Some(PathBuf::from("s.json")));
                 assert_eq!(run.save, Some(PathBuf::from("s.json")));
-                assert_eq!(run.max_steps, 4);
+                assert_eq!(run.max_steps, NonZeroU32::new(4).unwrap());
                 assert_eq!(run.thinking, Some(ThinkingKind::Low));
             }
             other => panic!("expected the run subcommand, got {other:?}"),
@@ -645,7 +646,7 @@ mod tests {
             Some(Command::Acp(acp)) => {
                 assert_eq!(acp.profile.as_deref(), Some("work"));
                 assert_eq!(acp.model.as_deref(), Some("claude-sonnet-4-5"));
-                assert_eq!(acp.max_steps, 16);
+                assert_eq!(acp.max_steps, NonZeroU32::new(16).unwrap());
                 assert_eq!(acp.thinking, Some(ThinkingKind::High));
             }
             other => panic!("expected the acp subcommand, got {other:?}"),

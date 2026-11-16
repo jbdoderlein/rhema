@@ -187,9 +187,15 @@ pub struct WireGenerationConfig {
     /// Sampling temperature, when set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
+    /// Nucleus-sampling threshold, when set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
     /// Output token ceiling, when set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<u32>,
+    /// Stop sequences, when any.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub stop_sequences: Vec<String>,
     /// Thinking controls, when the driver named a level: the API's knob
     /// is a token budget, and the thoughts are requested so they stream.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -475,11 +481,15 @@ pub fn request_body(req: &ModelRequest) -> Result<GenerateContentRequest, Provid
             include_thoughts: true,
         });
     let generation_config = (req.params.temperature.is_some()
+        || req.params.top_p.is_some()
         || req.params.max_tokens.is_some()
+        || !req.params.stop.is_empty()
         || thinking_config.is_some())
     .then_some(WireGenerationConfig {
         temperature: req.params.temperature,
+        top_p: req.params.top_p,
         max_output_tokens: req.params.max_tokens,
+        stop_sequences: req.params.stop.clone(),
         thinking_config,
     });
 
@@ -1020,7 +1030,9 @@ mod tests {
                 thinking: ThinkingEffort::Default,
                 model: "gemini-2.5-flash".into(),
                 temperature: Some(0.2),
+                top_p: Some(0.9),
                 max_tokens: Some(256),
+                stop: vec!["STOP".into()],
             },
         };
 
@@ -1029,7 +1041,9 @@ mod tests {
 
         assert_eq!(json["systemInstruction"]["parts"][0]["text"], "be terse");
         assert_eq!(json["generationConfig"]["temperature"], json!(0.2_f32));
+        assert_eq!(json["generationConfig"]["topP"], json!(0.9_f32));
         assert_eq!(json["generationConfig"]["maxOutputTokens"], json!(256));
+        assert_eq!(json["generationConfig"]["stopSequences"], json!(["STOP"]));
         assert_eq!(
             json["tools"][0]["functionDeclarations"][0]["name"],
             "list_dir"
@@ -1067,7 +1081,8 @@ mod tests {
             ],
             tools: vec![],
             params: ChatParams::new("gemini-2.5-flash"),
-        };
+        }
+        .normalized();
 
         let json = serde_json::to_value(request_body(&req).expect("request maps"))
             .expect("body serializes");
@@ -1435,6 +1450,8 @@ mod tests {
                 temperature: None,
                 max_tokens: None,
                 thinking: ThinkingEffort::High,
+                top_p: None,
+                stop: Vec::new(),
             },
         };
         let body =

@@ -354,9 +354,19 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     let mut sink = HeadlessSink {
         msg: Some(first_line(&prompt)),
         step: None,
-        max_steps: args.max_steps,
+        max_steps: args.max_steps.get(),
     };
-    let outcome = agent.turn(prompt, &mut sink).await;
+    let outcome: Result<_, anyhow::Error> = match agent.turn(prompt, &mut sink).await {
+        Ok(output) if output.stop_reason == rhema_core::StopReason::ToolUse => {
+            Err(anyhow::anyhow!(
+                "the turn hit its step budget of {} without a final answer; \
+             the streamed reply is on stdout",
+                args.max_steps
+            ))
+        }
+        Ok(output) => Ok(output),
+        Err(err) => Err(err.into()),
+    };
     let served: anyhow::Result<()> = match outcome {
         Ok(output) => {
             // Checkpoint after the completed turn: the file's freshest
@@ -406,7 +416,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
                     eprintln!("warning: the partial session was not checkpointed: {write_err}")
                 }
             }
-            Err(err.into())
+            Err(err)
         }
     };
     // Stop-on-exit for the one-shot: a headless run is a session like

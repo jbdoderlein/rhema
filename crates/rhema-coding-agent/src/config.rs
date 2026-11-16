@@ -1,5 +1,6 @@
 //! The agent's configuration: model, prompt, workspace, turn budget.
 
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -104,9 +105,13 @@ pub struct CodingAgentConfig {
     /// both supply paths honor it; an empty set (the default) changes
     /// nothing.
     pub disabled_skills: std::collections::BTreeSet<String>,
-    /// Cap on steps per turn; a turn still requesting tools past it fails
-    /// with `AgentError::MaxIterations`.
-    pub max_turn_steps: u32,
+    /// Cap on steps per turn. A turn still requesting tools past it
+    /// returns its last output with [`StopReason::ToolUse`], so the
+    /// driver can show the reply and continue; `NonZeroU32` keeps a turn
+    /// from starting with no step budget at all.
+    ///
+    /// [`StopReason::ToolUse`]: rhema_core::StopReason::ToolUse
+    pub max_turn_steps: NonZeroU32,
     /// How much reasoning the model should do; providers without a knob
     /// ignore it, and [`ThinkingEffort::Default`] sends nothing.
     pub thinking: ThinkingEffort,
@@ -252,7 +257,7 @@ impl CodingAgentConfig {
     /// cheap models under a watching eye; the cap exists to end a runaway
     /// loop, not to ration the model. `--max-steps` is the tighter leash
     /// for unattended turns on expensive models.
-    pub const DEFAULT_MAX_TURN_STEPS: u32 = 2048;
+    pub const DEFAULT_MAX_TURN_STEPS: NonZeroU32 = NonZeroU32::new(2048).unwrap();
 
     /// Config running `provider` on `model`, rooted at `workspace`,
     /// gating side effects through `approval`; defaults elsewhere.

@@ -1515,6 +1515,7 @@ mod scroll_tests {
     use ratatui::{Terminal, backend::TestBackend};
     use rhema_core::Usage;
     use rhema_provider::ModelCard;
+    use std::num::NonZeroU32;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
@@ -1564,7 +1565,7 @@ mod scroll_tests {
                 thinking: rhema_core::request::ThinkingEffort::Default,
                 profile: Some("personal".into()),
                 workspace: PathBuf::from("."),
-                max_steps: 4,
+                max_steps: NonZeroU32::new(4).unwrap(),
                 no_transcript: false,
                 base_system: None,
                 save: None,

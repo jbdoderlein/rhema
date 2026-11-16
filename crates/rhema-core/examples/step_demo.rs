@@ -3,6 +3,7 @@
 //!
 //! Run with `cargo run -p rhema-core --features mock --example step_demo`.
 
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use rhema_core::{
@@ -87,7 +88,7 @@ async fn main() {
         Message::text(Role::User, "say hello through the echo tool"),
         &mut sink,
         &ToolContext::default(),
-        4,
+        NonZeroU32::new(4).unwrap(),
     )
     .await
     .expect("scripted turn completes");

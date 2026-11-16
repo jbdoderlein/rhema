@@ -281,6 +281,8 @@ mod tests {
                 temperature: None,
                 max_tokens: None,
                 thinking: ThinkingEffort::High,
+                top_p: None,
+                stop: Vec::new(),
             },
         };
         let body = serde_json::to_string(&request_body(&req, &OPENROUTER)).unwrap();
@@ -314,6 +316,8 @@ mod tests {
                 temperature: None,
                 max_tokens: None,
                 thinking: ThinkingEffort::Default,
+                top_p: None,
+                stop: Vec::new(),
             },
         };
         let body = serde_json::to_value(request_body(&req, &OPENROUTER)).expect("body serializes");

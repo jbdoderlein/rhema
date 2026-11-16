@@ -54,8 +54,9 @@ pub fn clear_environment_stamp(session: &mut Session) {
 /// Why a turn or a session operation failed.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum CodingAgentError {
-    /// The engine or the provider failed, including a turn that exceeded
-    /// the step budget (`AgentError::MaxIterations`).
+    /// The engine or the provider failed. A turn that reaches its step
+    /// budget is not an error: it returns its last output with
+    /// `StopReason::ToolUse`.
     #[error(transparent)]
     Agent(#[from] AgentError),
     /// A path resolved outside the workspace root. Inside a turn this
@@ -496,7 +497,8 @@ impl CodingAgent {
     }
 
     /// One turn: push the user input, loop steps until the model stops
-    /// requesting tools (capped at `max_turn_steps`), with the config's
+    /// requesting tools (capped at `max_turn_steps`; a cap hit returns
+    /// the last output with [`StopReason::ToolUse`]), with the config's
     /// approval hook gating the side-effecting tools. Appends to the
     /// session in place; the hook is cleared on the way out, success or
     /// failure. A history entering with unanswered calls, a crash
@@ -641,16 +643,19 @@ impl CodingAgent {
         if let Some(input) = input {
             self.session.history.push(input);
         }
-        for _ in 0..self.config.max_turn_steps {
-            let step = self.agent.step(&mut self.session, sink, ctx).await?;
-            if step.output.stop_reason != StopReason::ToolUse {
-                return Ok(step.output);
+        let mut step = self.agent.step(&mut self.session, sink, ctx).await?;
+        let mut remaining = self.config.max_turn_steps.get() - 1;
+        while step.output.stop_reason == StopReason::ToolUse {
+            if remaining == 0 {
+                break;
             }
             if let Some(steering) = steering {
                 self.append_notifications(steering, &mut announced);
             }
+            step = self.agent.step(&mut self.session, sink, ctx).await?;
+            remaining -= 1;
         }
-        Err(AgentError::MaxIterations(self.config.max_turn_steps))
+        Ok(step.output)
     }
 
     /// Drains the steering source and appends what is new as one

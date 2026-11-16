@@ -278,7 +278,9 @@ impl Tracker {
         if app.turn.running {
             return Status::Working {
                 msg: self.msg.clone(),
-                progress: self.step.map(|step| progress(step, app.options.max_steps)),
+                progress: self
+                    .step
+                    .map(|step| progress(step, app.options.max_steps.get())),
             };
         }
         match &self.failed {
