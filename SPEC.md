@@ -135,6 +135,8 @@ The RSD driver (crate 2) is the same shape with different scaffolding: `acquire(
 
 The frontends' reference store is `rhema-session-store-file`: the seam (`rhema-session-store`) owns the `SessionStore` trait, the validated id, the picker row, and the error; the backend owns the layout, the atomic fsynced write, and the privacy modes. The TUI, ACP, headless, and `rhema-coding-agent`'s save/load helpers all go through it, and `rhema-session-store-sqlite` implements the same trait over one row per session. A frontend picks a backend at compile time; the seam pulls neither `rusqlite` nor `rhema-config`. See `specs/rhema-session-store.md`.
 
+Requested work has a durable record too. `rhema-submissions` keeps one ledger under `Session.driver_state.submissions`, the state machine over it (`submit`, `start`, `settle`, `cancel`, `retry`, `reconcile`), and a seam a crate implements to teach it what its half of a crash means. The ledger rides the store's whole-session write, so the work's state and its status land in one record on every backend, and a resumed process can tell which requests finished, which are half done, and which never started. ACP records each turn there and reconciles on `session/load`; `rhema-core` gains `Agent::resume_turn` so an interrupted turn continues instead of appending its input twice. See `specs/rhema-submissions.md`.
+
 ---
 
 ## 7. How we know it works

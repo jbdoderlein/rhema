@@ -22,6 +22,8 @@ use rhema_acp::AcpOptions;
 use rhema_core::{Content, Message, ModelOutput, Role, StopReason as EngineStop, ToolCall, Usage};
 use rhema_session_store::{SessionId as StoreSessionId, SessionStore};
 use rhema_session_store_file::FileStore;
+use rhema_submissions::{Status, snapshot, turn};
+use serde_json::json;
 
 /// A text reply: `text` streamed and appended, turn over.
 fn reply(text: &str) -> ModelOutput {
@@ -510,6 +512,15 @@ async fn cancel_drops_a_hung_turn() {
             let response: PromptResponse = pending.block_task().await.expect("cancelled prompt");
             assert_eq!(response.stop_reason, StopReason::Cancelled);
 
+            // The dropped turn is a terminal record on disk, not a
+            // missing one.
+            let saved = saved_session(&session_dir, &session);
+            let ledger = snapshot(&saved).expect("the ledger parses");
+            let record = ledger.newest().expect("the prompt left a record");
+            assert_eq!(record.kind.as_str(), "turn");
+            assert_eq!(record.status, Status::Cancelled);
+            assert_eq!(record.outcome, Some(rhema_submissions::Outcome::Cancelled));
+
             // The repaired session still serves.
             let after = cx
                 .send_request(PromptRequest::new(
@@ -684,6 +695,19 @@ async fn a_provider_failure_keeps_the_committed_step_on_disk() {
                 .content
                 .iter()
                 .any(|content| matches!(content, Content::ToolResult(result) if result.id == "call-1"))));
+
+            // The failure is classed at settle time: an exhausted script
+            // is not a transport death, so a retry cannot fix it.
+            let ledger = snapshot(&saved).expect("the ledger parses");
+            let record = ledger.newest().expect("the prompt left a record");
+            assert_eq!(record.status, Status::Failed);
+            assert!(matches!(
+                record.outcome,
+                Some(rhema_submissions::Outcome::Failed {
+                    retryable: false,
+                    ..
+                })
+            ));
             Ok(())
         },
     )
@@ -1367,4 +1391,232 @@ async fn the_slot_map_stays_capped_and_a_dropped_session_reloads() {
     .await;
     outcome.expect("scenario");
     let _ = collected;
+}
+
+/// Rewrites the saved session as a process that died after the last
+/// committed boundary: the turn record back to `Running` with its
+/// settle cleared, and the history cut at `len`.
+fn kill_in_place(session_dir: &Path, session: &SessionId, len: usize) -> std::time::SystemTime {
+    let id = StoreSessionId::new(session.0.to_string()).expect("the agent allocates valid ids");
+    let store = FileStore::new(session_dir);
+    let mut saved = store.load(&id).expect("the checkpoint reads back").unwrap();
+    saved.history.truncate(len);
+    let ledger = snapshot(&saved).expect("the ledger parses");
+    let record = ledger.newest().expect("the prompt left a record");
+    let item = &mut saved.driver_state["submissions"]["items"][record.id.as_str()];
+    item["status"] = json!("running");
+    item["settled_at"] = json!(null);
+    item["outcome"] = json!(null);
+    store
+        .save(&id, &saved)
+        .expect("the killed session is written");
+    std::fs::metadata(store.path_for(&id))
+        .expect("the file exists")
+        .modified()
+        .expect("the file has a timestamp")
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_prompt_leaves_a_done_record_with_the_answer_in_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = dir.path().join("ws");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let session_dir = dir.path().join("sessions");
+    let updates = updates();
+
+    let permissions: Permissions = Arc::new(Mutex::new(Vec::new()));
+    let outcome = with_agent(
+        options(vec![reply("the answer")], &session_dir),
+        updates,
+        permissions,
+        RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
+            PermissionOptionId::new("allow-once"),
+        )),
+        async move |cx| {
+            initialize(&cx).await;
+            let session = new_session(&cx, &workspace).await.session_id;
+            let response = cx
+                .send_request(PromptRequest::new(
+                    session.clone(),
+                    vec![ContentBlock::from("fix the test")],
+                ))
+                .block_task()
+                .await
+                .expect("prompt");
+            assert_eq!(response.stop_reason, StopReason::EndTurn);
+
+            let saved = saved_session(&session_dir, &session);
+            let ledger = snapshot(&saved).expect("the ledger parses");
+            assert_eq!(ledger.len(), 1, "one prompt, one record");
+            let record = ledger.newest().unwrap();
+            assert_eq!(record.kind.as_str(), "turn");
+            assert_eq!(record.status, Status::Done);
+            assert_eq!(record.attempts, 1);
+            assert!(record.started_at.is_some() && record.settled_at.is_some());
+            assert_eq!(
+                turn::answer(&saved, &ledger, &record.id).as_deref(),
+                Some("the answer")
+            );
+            Ok(())
+        },
+    )
+    .await;
+    let _ = outcome;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_killed_after_a_boundary_reconciles_to_interrupted_on_load() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = dir.path().join("ws");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let session_dir = dir.path().join("sessions");
+    let updates = updates();
+
+    let permissions: Permissions = Arc::new(Mutex::new(Vec::new()));
+    let outcome = with_agent(
+        options(
+            vec![reply_call("call-1", "echo committed"), reply("done")],
+            &session_dir,
+        ),
+        updates,
+        permissions,
+        RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
+            PermissionOptionId::new("allow-once"),
+        )),
+        async move |cx| {
+            initialize(&cx).await;
+            let session = new_session(&cx, &workspace).await.session_id;
+            let response = cx
+                .send_request(PromptRequest::new(
+                    session.clone(),
+                    vec![ContentBlock::from("run it")],
+                ))
+                .block_task()
+                .await
+                .expect("prompt");
+            assert_eq!(response.stop_reason, StopReason::EndTurn);
+
+            // A process that died before settling: the tool result is
+            // committed, the answer is not.
+            let before = kill_in_place(&session_dir, &session, 3);
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+            cx.send_request(LoadSessionRequest::new(
+                session.clone(),
+                workspace.to_path_buf(),
+            ))
+            .block_task()
+            .await
+            .expect("session/load");
+
+            let saved = saved_session(&session_dir, &session);
+            let ledger = snapshot(&saved).expect("the ledger parses");
+            let record = ledger.newest().unwrap();
+            assert_eq!(record.status, Status::Interrupted);
+            assert_eq!(
+                turn::answer(&saved, &ledger, &record.id),
+                None,
+                "no answer was committed"
+            );
+            assert_eq!(saved.history.len(), 3, "the load appended nothing");
+
+            // The first load reconciled and wrote; the second has
+            // nothing to change and leaves the file alone.
+            let id = StoreSessionId::new(session.0.to_string()).unwrap();
+            let path = FileStore::new(&session_dir).path_for(&id);
+            let reconciled = std::fs::metadata(&path).unwrap().modified().unwrap();
+            assert_ne!(reconciled, before, "the reconcile landed once");
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+            cx.send_request(LoadSessionRequest::new(
+                session.clone(),
+                workspace.to_path_buf(),
+            ))
+            .block_task()
+            .await
+            .expect("second session/load");
+            let unchanged = std::fs::metadata(&path).unwrap().modified().unwrap();
+            assert_eq!(
+                unchanged, reconciled,
+                "a reconnect does not rewrite the session"
+            );
+
+            // The interrupted record still serves a new prompt.
+            let after = cx
+                .send_request(PromptRequest::new(
+                    session.clone(),
+                    vec![ContentBlock::from("continue")],
+                ))
+                .block_task()
+                .await
+                .expect("post-load prompt");
+            assert_eq!(after.stop_reason, StopReason::EndTurn);
+            Ok(())
+        },
+    )
+    .await;
+    let _ = outcome;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_load_reconciles_an_unregistered_kind_to_interrupted() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = dir.path().join("ws");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let session_dir = dir.path().join("sessions");
+
+    // A session written by a build that links a `job` kind: this one
+    // does not, so the record must survive as an unclaimed one.
+    let id = StoreSessionId::new("0001759000000000-00").unwrap();
+    let mut session = rhema_core::Session {
+        history: vec![Message::text(Role::User, "run something")],
+        ..rhema_core::Session::default()
+    };
+    let record = rhema_submissions::submit(
+        &mut session,
+        rhema_submissions::KindName::new("job").unwrap(),
+        json!({ "command": "sleep 1" }),
+        1,
+    )
+    .unwrap();
+    rhema_submissions::start(&mut session, &record.id, 2, None).unwrap();
+    FileStore::new(&session_dir)
+        .save(&id, &session)
+        .expect("the crafted session is saved");
+
+    let updates = updates();
+    let permissions: Permissions = Arc::new(Mutex::new(Vec::new()));
+    let outcome = with_agent(
+        options(Vec::new(), &session_dir),
+        updates,
+        permissions,
+        RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
+            PermissionOptionId::new("allow-once"),
+        )),
+        async move |cx| {
+            initialize(&cx).await;
+            let session_id = SessionId::new(id.as_str().to_owned());
+            cx.send_request(LoadSessionRequest::new(
+                session_id.clone(),
+                workspace.to_path_buf(),
+            ))
+            .block_task()
+            .await
+            .expect("an unregistered kind does not block the load");
+
+            let saved = saved_session(&session_dir, &session_id);
+            let ledger = snapshot(&saved).expect("the ledger parses");
+            let record = ledger.newest().unwrap();
+            assert_eq!(record.kind.as_str(), "job");
+            assert_eq!(record.status, Status::Interrupted);
+            assert_eq!(
+                record.payload,
+                json!({ "command": "sleep 1" }),
+                "the payload is never touched"
+            );
+            Ok(())
+        },
+    )
+    .await;
+    let _ = outcome;
 }

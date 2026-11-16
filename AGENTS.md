@@ -100,6 +100,9 @@ Rules:
     (`crates/rhema-session-store-file/`)
   - `session-store-sqlite`: the SQLite backend
     (`crates/rhema-session-store-sqlite/`)
+  - `submissions`: the requested-work lifecycle: the record and its
+    statuses, the kind seam, and the built-in turn kind
+    (`crates/rhema-submissions/`)
   - `forge`: the forge integration: GitHub/Gitea/GitLab clients, the
     normalized event vocabulary, the notification triage, and the RSD
     ingest path (`rhema-claw` repository, `integrations/rhema-forge-integration/`)

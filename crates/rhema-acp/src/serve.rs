@@ -260,7 +260,7 @@ async fn serve_connection(
                         Error::invalid_params()
                             .data(format!("session {}: {err}", request.session_id.0))
                     })?;
-                    let session = FileStore::new(base)
+                    let mut session = FileStore::new(base)
                         .load(&id)
                         .map_err(|err| {
                             Error::invalid_params()
@@ -272,6 +272,34 @@ async fn serve_connection(
                                 request.session_id.0
                             ))
                         })?;
+                    // A record left `Running` by a dead process is not
+                    // running here: ask its kind what the session says,
+                    // and write only when something changed, so a plain
+                    // reconnect does not rewrite the file.
+                    let changes = rhema_submissions::reconcile(
+                        &mut session,
+                        &app.kinds(),
+                        rhema_submissions::now(),
+                    )
+                    .map_err(|err| {
+                        Error::internal_error()
+                            .data(format!("session {}: {err}", request.session_id.0))
+                    })?;
+                    if !changes.is_empty() {
+                        FileStore::new(base).save(&id, &session).map_err(|err| {
+                            Error::internal_error()
+                                .data(format!("session {}: {err}", request.session_id.0))
+                        })?;
+                    }
+                    for change in &changes {
+                        if let rhema_submissions::Change::Unclaimed { id, kind } = change {
+                            eprintln!(
+                                "rhema-acp: session {}: submission {id} belongs to \
+                                 the unregistered kind {kind}",
+                                request.session_id.0
+                            );
+                        }
+                    }
                     let provider = backend.provider.clone();
                     let agent = CodingAgent::from_session(
                         app.agent_config(
@@ -418,7 +446,7 @@ async fn serve_connection(
                         };
                         // The block ends the pin's borrow of the agent
                         // before the match takes it out of the guard.
-                        let outcome = {
+                        let turn_submission = {
                             let agent = restore.agent.as_mut().expect("the guard was just filled");
                             // The hook belongs to this turn's editor
                             // connection: a fresh round, a fresh
@@ -438,13 +466,67 @@ async fn serve_connection(
                                     store.save(&id, session).map_err(Into::into)
                                 })));
                             }
+                            // The turn is a submission before it is a
+                            // model call: the record is saved with the
+                            // history before the first token is spent,
+                            // so a resumed process can tell a turn that
+                            // never started from one that died mid-step.
+                            let at = rhema_submissions::now();
+                            let submission = match rhema_submissions::turn::submit(
+                                agent.session_mut(),
+                                prompt.clone(),
+                                at,
+                            ) {
+                                Ok(record) => record,
+                                Err(err) => {
+                                    let _ = responder.respond_with_error(
+                                        Error::internal_error()
+                                            .data(format!("cannot record the turn: {err}")),
+                                    );
+                                    return;
+                                }
+                            };
+                            if let Err(err) = rhema_submissions::turn::start(
+                                agent.session_mut(),
+                                &submission.id,
+                                &prompt,
+                                at,
+                            ) {
+                                let _ = rhema_submissions::cancel(
+                                    agent.session_mut(),
+                                    &submission.id,
+                                    at,
+                                );
+                                let _ = responder.respond_with_error(
+                                    Error::internal_error()
+                                        .data(format!("cannot record the turn: {err}")),
+                                );
+                                return;
+                            }
+                            // The record did not become durable: do not
+                            // spend a token on work nothing records.
+                            if let Err(err) = app.save(&session_id.0, agent.session()) {
+                                let _ = rhema_submissions::settle(
+                                    agent.session_mut(),
+                                    &submission.id,
+                                    rhema_submissions::Outcome::Cancelled,
+                                    at,
+                                );
+                                let _ = responder.respond_with_error(
+                                    Error::internal_error()
+                                        .data(format!("cannot record the turn: {err}")),
+                                );
+                                return;
+                            }
                             let turn = agent.turn(prompt, &mut sink);
                             tokio::pin!(turn);
-                            tokio::select! {
+                            let outcome = tokio::select! {
                                 _ = cancelled_turn(cancelled) => None,
                                 result = &mut turn => Some(result),
-                            }
+                            };
+                            (outcome, submission.id)
                         };
+                        let (outcome, turn_id) = turn_submission;
                         // The hook was this turn's; a later command on
                         // the slot must not checkpoint behind the
                         // post-turn save below.
@@ -453,7 +535,7 @@ async fn serve_connection(
                         }
                         match outcome {
                             Some(Ok(output)) => {
-                                let agent = restore
+                                let mut agent = restore
                                     .agent
                                     .take()
                                     .expect("the guard still holds the agent");
@@ -466,6 +548,11 @@ async fn serve_connection(
                                 } else {
                                     acp_stop(&output.stop_reason)
                                 };
+                                settle_turn(
+                                    agent.session_mut(),
+                                    &turn_id,
+                                    rhema_submissions::Outcome::Done,
+                                );
                                 app.persist(&session_id.0, agent.session());
                                 app.put_agent(&session_id.0, agent);
                                 app.note_activity(&session_id.0, &cx);
@@ -477,6 +564,11 @@ async fn serve_connection(
                                     .agent
                                     .take()
                                     .expect("the guard still holds the agent");
+                                // The settle is the write; the repair
+                                // below is for the next prompt only, so
+                                // the file keeps what the turn left.
+                                settle_turn(agent.session_mut(), &turn_id, failure_outcome(&err));
+                                app.persist(&session_id.0, agent.session());
                                 repair_dangling_calls(agent.session_mut());
                                 app.put_agent(&session_id.0, agent);
                                 app.note_activity(&session_id.0, &cx);
@@ -491,6 +583,12 @@ async fn serve_connection(
                                     .agent
                                     .take()
                                     .expect("the guard still holds the agent");
+                                settle_turn(
+                                    agent.session_mut(),
+                                    &turn_id,
+                                    rhema_submissions::Outcome::Cancelled,
+                                );
+                                app.persist(&session_id.0, agent.session());
                                 repair_dangling_calls(agent.session_mut());
                                 app.put_agent(&session_id.0, agent);
                                 app.note_activity(&session_id.0, &cx);
@@ -585,4 +683,30 @@ fn slash_command(prompt: &str) -> Option<(String, String)> {
         .unwrap_or((first.strip_prefix('/')?, ""));
     let name = name.trim().to_ascii_lowercase();
     matches!(name.as_str(), "thinking" | "model").then(|| (name, args.trim().to_owned()))
+}
+
+/// Settles the prompt's turn submission, warning on stderr when the
+/// transition is refused: the turn's answer is on disk either way.
+fn settle_turn(
+    session: &mut Session,
+    id: &rhema_submissions::SubmissionId,
+    outcome: rhema_submissions::Outcome,
+) {
+    let at = rhema_submissions::now();
+    if let Err(err) = rhema_submissions::settle(session, id, outcome, at) {
+        eprintln!("rhema-acp: warning: submission {id} was not settled: {err}");
+    }
+}
+
+/// The outcome a failed turn settles with. The failure class is read
+/// here, while the error is still in hand.
+fn failure_outcome(err: &CodingAgentError) -> rhema_submissions::Outcome {
+    let retryable = matches!(
+        err,
+        CodingAgentError::Agent(agent) if agent.is_retryable()
+    );
+    rhema_submissions::Outcome::Failed {
+        error: err.to_string(),
+        retryable,
+    }
 }

@@ -16,6 +16,8 @@ mock = ["rhema-core/mock", "rhema-coding-agent/mock"]
 rhema-config = { path = "../rhema-config", version = "0.3.0" }
 rhema-core = { path = "../rhema-core", version = "0.3.0" }
 rhema-coding-agent = { path = "../rhema-coding-agent", version = "0.3.0" }
+# The turn submission a prompt records, and the reconcile a load runs
+rhema-submissions = { path = "../rhema-submissions", version = "0.3.0" }
 # Session persistence: the seam's types and the shared file backend
 rhema-session-store = { path = "../rhema-session-store", version = "0.3.0" }
 rhema-session-store-file = { path = "../rhema-session-store-file", version = "0.3.0" }

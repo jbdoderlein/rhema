@@ -230,6 +230,12 @@ impl App {
         .await
     }
 
+    /// The submission kinds this build links: the built-in turn kind.
+    /// An extension that lands here registers its own.
+    pub(crate) fn kinds(&self) -> rhema_submissions::Kinds {
+        rhema_submissions::Kinds::new().with(Arc::new(rhema_submissions::turn::Turn))
+    }
+
     pub(crate) fn thinking(&self) -> ThinkingEffort {
         self.options
             .thinking
@@ -719,20 +725,27 @@ impl App {
     /// write warns on stderr and the turn still succeeds; stdout stays
     /// reserved for protocol traffic.
     pub(crate) fn persist(&self, id: &str, session: &Session) {
-        let Some(base) = &self.base else {
-            return;
-        };
         // A turn that succeeded must still write once more: the sink's
         // meter records cost on StepEnd, and the engine's last commit
         // fires before that event, so the final totals reach disk only
-        // here.
-        let Ok(id) = rhema_session_store::SessionId::new(id) else {
-            eprintln!("rhema-acp: warning: session {id} is not a valid id");
-            return;
-        };
-        if let Err(err) = rhema_session_store_file::FileStore::new(base).save(&id, session) {
+        // through this call.
+        if let Err(err) = self.save(id, session) {
             eprintln!("rhema-acp: warning: session {id} was not saved: {err}");
         }
+    }
+
+    /// Saves `session` under `id`, naming the failure.
+    ///
+    /// The prompt path uses this before the turn runs: a submission
+    /// transition that did not become durable must not start work.
+    pub(crate) fn save(&self, id: &str, session: &Session) -> Result<(), String> {
+        let Some(base) = &self.base else {
+            return Ok(());
+        };
+        let id = rhema_session_store::SessionId::new(id).map_err(|err| err.to_string())?;
+        rhema_session_store_file::FileStore::new(base)
+            .save(&id, session)
+            .map_err(|err| err.to_string())
     }
 }
 

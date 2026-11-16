@@ -3275,6 +3275,7 @@ dependencies = [
  "rhema-provider-registry",
  "rhema-session-store",
  "rhema-session-store-file",
+ "rhema-submissions",
  "serde_json",
  "tempfile",
  "tokio",
@@ -3781,6 +3782,20 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "rhema-submissions"
+version = "0.3.0"
+dependencies = [
+ "rhema-core",
+ "rhema-session-store",
+ "rhema-session-store-file",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
  "tokio",
 ]
 

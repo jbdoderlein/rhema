@@ -318,6 +318,43 @@ impl Agent {
         run_turn(self, session, input.into(), sink, ctx, max_iterations).await
     }
 
+    /// Continue a turn whose input is already in the history: step until
+    /// the model answers without asking for tools, appending nothing
+    /// first. The answer to a turn whose input was committed before a
+    /// crash, or the continuation of one that crashed mid tool loop.
+    ///
+    /// [`Agent::turn`] plus this pair cover a resumed turn: `turn` pushes
+    /// the input and loops, `resume_turn` loops over the tail the dead
+    /// process left. Calling `turn` again instead would append the same
+    /// user message twice. Dangling calls in the tail are closed by the
+    /// first step's repair, as in any step.
+    pub async fn resume_turn(
+        &mut self,
+        session: &mut Session,
+        sink: &mut dyn EventSink,
+        ctx: &ToolContext,
+    ) -> Result<ModelOutput, AgentError> {
+        self.resume_turn_with_limit(session, sink, ctx, Self::DEFAULT_TURN_STEPS)
+            .await
+    }
+
+    /// [`Agent::resume_turn`] with the loop guard chosen by the caller.
+    pub async fn resume_turn_with_limit(
+        &mut self,
+        session: &mut Session,
+        sink: &mut dyn EventSink,
+        ctx: &ToolContext,
+        max_iterations: NonZeroU32,
+    ) -> Result<ModelOutput, AgentError> {
+        let mut step = self.step(session, sink, ctx).await?;
+        let mut remaining = max_iterations.get() - 1;
+        while step.output.stop_reason == StopReason::ToolUse && remaining > 0 {
+            step = self.step(session, sink, ctx).await?;
+            remaining -= 1;
+        }
+        Ok(step.output)
+    }
+
     /// The system prompt stamped into every request, as set by
     /// [`AgentBuilder::system`]; `None` when none was set.
     pub fn system(&self) -> Option<&str> {

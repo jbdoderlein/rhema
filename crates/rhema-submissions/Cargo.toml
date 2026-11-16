@@ -1,0 +1,33 @@
+[package]
+name = "rhema-submissions"
+description = "The lifecycle layer: every requested unit of work as a durable record with an id, a kind, a payload and a status"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+# Scripted MockProvider for the tests; mirrors rhema-core's feature.
+mock = ["rhema-core/mock"]
+
+[dependencies]
+# The Session the ledger rides in, the engine the turn kind drives
+rhema-core = { path = "../rhema-core", version = "0.3.0" }
+# SubmissionId is the store's validated SessionId
+rhema-session-store = { path = "../rhema-session-store", version = "0.3.0" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Typed public errors
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# The reference store, for the round-trip test through a real file
+rhema-session-store-file = { path = "../rhema-session-store-file", version = "0.3.0" }
+rhema-core = { path = "../rhema-core", version = "0.3.0", features = ["mock"] }
+tempfile = "3"
+tokio = { workspace = true }
+
+[lints]
+workspace = true
