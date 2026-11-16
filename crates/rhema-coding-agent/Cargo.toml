@@ -26,6 +26,11 @@ rhema-config = { path = "../rhema-config", version = "0.3.0" }
 rhema-core = { path = "../rhema-core", version = "0.3.0" }
 # The bounded view over an unbounded session, when the config enables it
 rhema-transcript = { path = "../rhema-transcript", version = "0.3.0" }
+# `save_session_to`/`load_session_from`: the seam's error type and the
+# one atomic, fsynced session-file writer, shared with the frontends'
+# stores
+rhema-session-store = { path = "../rhema-session-store", version = "0.3.0" }
+rhema-session-store-file = { path = "../rhema-session-store-file", version = "0.3.0" }
 # The SYSTEM.md template engine: the renderer lives in the toolkit,
 # the template error type stays with the driver
 minijinja = { workspace = true }

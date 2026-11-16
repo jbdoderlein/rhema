@@ -29,6 +29,9 @@ use rhema_core::{
     StopReason, ToolContext, ToolResolver, ToolSpec, run_turn,
 };
 
+use rhema_session_store::StoreError;
+use rhema_session_store_file::PathStore;
+
 use crate::config::{CodingAgentConfig, Steering};
 
 /// The driver-state key carrying the conversation's rendered
@@ -678,22 +681,41 @@ impl CodingAgent {
             .push(Message::text(Role::User, lines.join("\n")));
     }
 
-    /// Writes the session as pretty JSON to `path`: `0600`, landed
-    /// through a temp file and renamed, so nothing conversation-shaped
-    /// is ever world-readable and a crash mid-save leaves the previous
-    /// checkpoint whole. This is the one store in the tree that holds
-    /// the full history; it rides the same privacy helpers as every
-    /// other (see `rhema_config::privacy`).
+    /// Writes the session as pretty JSON to `path` through
+    /// [`rhema_session_store_file::PathStore`]: `0600`, landed through a
+    /// private temp file, fsynced, and renamed, so nothing
+    /// conversation-shaped is ever world-readable and a crash mid-save
+    /// leaves the previous checkpoint whole.
     pub fn save_session_to(&self, path: &impl AsRef<Path>) -> io::Result<()> {
-        let json = serde_json::to_string_pretty(&self.session)
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
-        rhema_config::privacy::private_write_atomic(path.as_ref(), json.as_bytes())
+        PathStore::new(path.as_ref())
+            .save(&self.session)
+            .map_err(store_to_io)
     }
 
-    /// Reads a session written by [`CodingAgent::save_session_to`].
+    /// Reads a session written by [`CodingAgent::save_session_to`]. A
+    /// missing path keeps the `NotFound` kind the callers' "cannot
+    /// resume" wording reads.
     pub fn load_session_from(path: &impl AsRef<Path>) -> io::Result<Session> {
-        let raw = std::fs::read_to_string(path)?;
-        serde_json::from_str(&raw).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+        let path = path.as_ref();
+        PathStore::new(path)
+            .load()
+            .map_err(store_to_io)?
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("no session file at {}", path.display()),
+                )
+            })
+    }
+}
+
+/// The store's failures as the `io::Result` this driver's public
+/// session helpers have always returned: a real IO failure keeps its
+/// kind, everything else reads as invalid data.
+fn store_to_io(err: StoreError) -> io::Error {
+    match err {
+        StoreError::Io { source, .. } => source,
+        other => io::Error::new(io::ErrorKind::InvalidData, other.to_string()),
     }
 }
 
