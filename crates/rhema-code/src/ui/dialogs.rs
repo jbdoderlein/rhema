@@ -492,6 +492,17 @@ pub(crate) fn render_picker(
         Span::raw("  "),
         Span::raw(format!("{} models", filtered.len())).fg(theme.text3),
     ];
+    // A provider whose fetch timed out is unavailable, not merely
+    // empty; the red names the dead one while the live catalogs stay.
+    if !picker.unavailable.is_empty() {
+        footer.push(
+            Span::raw(format!(
+                "  · unavailable: {}",
+                picker.unavailable.join(", ")
+            ))
+            .fg(theme.error),
+        );
+    }
     // A provider whose fetch failed while others answered: its absence
     // from the list must read as an error, not as an empty catalog.
     if !picker.failed.is_empty() {

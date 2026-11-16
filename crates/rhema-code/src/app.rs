@@ -17,7 +17,7 @@ use rhema_provider::{Allowance, ModelCard};
 
 use crate::approval::ApprovalAnswerer;
 use crate::args::SandboxChoice;
-use crate::events::{FetchWhy, OwnedEvent, ResumedLoad, UiEvent};
+use crate::events::{CatalogFailure, FetchWhy, OwnedEvent, ResumedLoad, UiEvent};
 use crate::onboarding::{OnboardingAction, OnboardingScreen};
 use crate::screens::{
     AddInstanceDialog, ChatAction, ChatState, PickerAction, PickerScreen, PickerStatus,
@@ -87,6 +87,13 @@ pub struct App {
     /// Cached model catalog, shared with the picker when it opens: every
     /// logged-in provider's models, each tagged with its provider.
     pub models: Vec<crate::screens::CatalogModel>,
+    /// Providers whose last catalog fetch timed out, by provider name.
+    /// Kept across screens: a bootstrap failure usually lands on the
+    /// chat, long before the picker opens.
+    pub catalog_unavailable: Vec<&'static str>,
+    /// Providers whose last catalog fetch failed with their own error,
+    /// by provider name.
+    pub catalog_failed: Vec<&'static str>,
     /// The agent; `None` while a turn runs (the turn task owns it).
     pub agent: Option<CodingAgent>,
     /// The session's background shells, as the strip draws them: a
@@ -529,6 +536,8 @@ impl App {
             session,
             screen,
             models: Vec::new(),
+            catalog_unavailable: Vec::new(),
+            catalog_failed: Vec::new(),
             agent,
             jobs,
             subagents: subagents_handle,

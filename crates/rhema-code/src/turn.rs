@@ -281,11 +281,15 @@ pub fn spawn_model_fetch(
                 )
                 .await
                 {
-                    Ok(result) => result,
-                    Err(_) => Err(format!(
-                        "no answer within {} s, is the server up?",
-                        CATALOG_FETCH_TIMEOUT.as_secs()
-                    )),
+                    Ok(Ok(models)) => Ok(models),
+                    // A transport timeout names the provider unavailable:
+                    // the picker paints it red instead of listing it with
+                    // the provider's own error.
+                    Ok(Err(rhema_core::ProviderError::Timeout)) => {
+                        Err(crate::events::CatalogFailure::Unavailable)
+                    }
+                    Ok(Err(err)) => Err(crate::events::CatalogFailure::Error(err.to_string())),
+                    Err(_) => Err(crate::events::CatalogFailure::Unavailable),
                 };
                 crate::events::CatalogFetch {
                     provider,

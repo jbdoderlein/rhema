@@ -1289,6 +1289,38 @@ fn the_footer_names_the_failed_providers() {
     assert!(footer.contains("no models from openrouter"), "{footer}");
 }
 
+/// A provider whose fetch timed out is painted as unavailable, in the
+/// error color, next to the live catalogs.
+#[test]
+fn the_footer_paints_unavailable_providers_in_red() {
+    let mut picker = PickerScreen::new(
+        vec![model("model-a")]
+            .into_iter()
+            .map(|model| CatalogModel {
+                provider: "google",
+                instance: None,
+                model,
+            })
+            .collect(),
+    );
+    picker.unavailable = vec!["llama-cpp"];
+
+    let mut terminal = Terminal::new(TestBackend::new(100, 12)).unwrap();
+    terminal
+        .draw(|frame| render_picker(frame, &picker, &crate::icons::UNICODE, &DARK))
+        .unwrap();
+    let footer: String = (0..100)
+        .map(|x| terminal.backend().buffer()[(x, 10)].symbol())
+        .collect();
+    assert!(footer.contains("unavailable: llama-cpp"), "{footer}");
+    let x = footer.find("unavailable").expect("the footer names it") as u16;
+    assert_eq!(
+        terminal.backend().buffer()[(x, 10)].style().fg,
+        Some(DARK.error),
+        "{footer}"
+    );
+}
+
 /// A selection scrolled to the bottom of a long list must land on the
 /// last model row, never on the footer row underneath the list.
 #[test]

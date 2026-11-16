@@ -571,12 +571,8 @@ impl Backend {
     /// The models the backend offers, normalized to the picker's row
     /// type. The listing rides the registry's catalog seam, off the
     /// retry: it answers or it fails.
-    pub async fn list_models(&self) -> Result<Vec<ModelCard>, String> {
-        self.wired()
-            .listing
-            .list_models()
-            .await
-            .map_err(|err| err.to_string())
+    pub async fn list_models(&self) -> Result<Vec<ModelCard>, rhema_core::ProviderError> {
+        self.wired().listing.list_models().await
     }
 }
 

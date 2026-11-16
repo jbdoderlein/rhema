@@ -386,7 +386,8 @@ impl App {
                         // plan is the session's numbers now.
                         vec![Effect::FetchUsage]
                     }
-                    Some(Err(message)) => {
+                    Some(Err(failure)) => {
+                        let message = failure.message();
                         match &mut self.screen {
                             Screen::Settings(settings) => {
                                 if let Some(dialog) = &mut settings.dialog {
@@ -454,17 +455,27 @@ impl App {
                         .then(a.instance.cmp(&b.instance))
                         .then(a.model.id.cmp(&b.model.id))
                 });
+                // The failure lists outlive the screen: a bootstrap fetch
+                // usually lands on the chat, and the picker opened later
+                // still has to say which providers are unavailable.
+                self.catalog_unavailable = providers_failing(&failed, |failure| {
+                    matches!(failure, CatalogFailure::Unavailable)
+                });
+                self.catalog_failed = providers_failing(&failed, |failure| {
+                    matches!(failure, CatalogFailure::Error(_))
+                });
                 if let Screen::Picker(picker) = &mut self.screen {
                     if catalogs.is_empty() {
                         let message = failed
-                            .into_iter()
-                            .next()
-                            .and_then(|entry| entry.result.err())
+                            .first()
+                            .and_then(|entry| entry.result.as_ref().err())
+                            .map(CatalogFailure::message)
                             .unwrap_or_else(|| "no provider answered".to_owned());
                         picker.status = PickerStatus::Error(message);
                     } else {
                         picker.set_models(self.models.clone());
-                        picker.failed = failed.into_iter().map(|entry| entry.provider).collect();
+                        picker.unavailable = self.catalog_unavailable.clone();
+                        picker.failed = self.catalog_failed.clone();
                         picker.status = PickerStatus::Ready;
                     }
                 }
@@ -725,4 +736,20 @@ impl App {
             missing,
         ))
     }
+}
+
+/// The providers among `failed` whose failure `wanted` selects, sorted
+/// and deduplicated: one provider may fail on several instances.
+fn providers_failing(
+    failed: &[crate::events::CatalogFetch],
+    wanted: impl Fn(&CatalogFailure) -> bool,
+) -> Vec<&'static str> {
+    let mut providers: Vec<&'static str> = failed
+        .iter()
+        .filter(|entry| entry.result.as_ref().err().is_some_and(&wanted))
+        .map(|entry| entry.provider)
+        .collect();
+    providers.sort_unstable();
+    providers.dedup();
+    providers
 }

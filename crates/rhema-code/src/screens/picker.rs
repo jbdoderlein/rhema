@@ -141,8 +141,12 @@ pub struct CatalogModel {
 pub struct PickerScreen {
     /// The models to pick from (text chat only).
     pub models: Vec<CatalogModel>,
-    /// Providers whose fetch failed while others succeeded; the footer
-    /// names them so a missing catalog is never silent.
+    /// Providers whose fetch timed out while others answered; the
+    /// footer names them as unavailable, in the error color.
+    pub unavailable: Vec<&'static str>,
+    /// Providers whose fetch failed with their own error while others
+    /// succeeded; the footer names them so a missing catalog is never
+    /// silent.
     pub failed: Vec<&'static str>,
     /// The filter text; printable keys extend it without any prefix.
     pub filter: String,
@@ -160,6 +164,7 @@ impl PickerScreen {
         models.sort_by(|a, b| a.provider.cmp(b.provider).then(a.model.id.cmp(&b.model.id)));
         Self {
             models,
+            unavailable: Vec::new(),
             failed: Vec::new(),
             filter: String::new(),
             selected: 0,

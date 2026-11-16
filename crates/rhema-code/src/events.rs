@@ -40,8 +40,31 @@ pub struct CatalogFetch {
     /// name, every stored instance does; only an environment-only
     /// fetch is unnamed.
     pub instance: Option<String>,
-    /// The models, or the provider's error text.
-    pub result: Result<Vec<ModelCard>, String>,
+    /// The models, or why the fetch has none.
+    pub result: Result<Vec<ModelCard>, CatalogFailure>,
+}
+
+/// Why a catalog slice has no models.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CatalogFailure {
+    /// No answer within the fetch budget: a dead server, or a name the
+    /// resolver could not answer. The picker names the provider as
+    /// unavailable.
+    Unavailable,
+    /// The provider answered with this error.
+    Error(String),
+}
+
+impl CatalogFailure {
+    /// The text an empty picker or a login dialog shows.
+    pub fn message(&self) -> String {
+        match self {
+            Self::Unavailable => {
+                "the provider is unavailable: no answer within the timeout".to_owned()
+            }
+            Self::Error(message) => message.clone(),
+        }
+    }
 }
 
 /// An owned copy of a [`rhema_core::Event`]. [`Event`] borrows from the

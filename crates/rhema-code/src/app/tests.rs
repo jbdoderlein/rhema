@@ -141,7 +141,16 @@ fn failed(provider: &'static str, message: &str) -> Vec<crate::events::CatalogFe
     vec![crate::events::CatalogFetch {
         provider,
         instance: Some(provider.to_owned()),
-        result: Err(message.to_owned()),
+        result: Err(crate::events::CatalogFailure::Error(message.to_owned())),
+    }]
+}
+
+/// A `ModelsLoaded` result of one provider that did not answer.
+fn unavailable(provider: &'static str) -> Vec<crate::events::CatalogFetch> {
+    vec![crate::events::CatalogFetch {
+        provider,
+        instance: Some(provider.to_owned()),
+        result: Err(crate::events::CatalogFailure::Unavailable),
     }]
 }
 
@@ -1394,6 +1403,46 @@ fn refresh_merges_every_providers_catalog_and_names_the_failures() {
             assert_eq!(picker.models.len(), 1);
             assert_eq!(picker.models[0].provider, "openrouter");
         }
+        _ => panic!("expected the picker"),
+    }
+}
+
+#[test]
+fn a_bootstrap_timeout_is_kept_for_the_next_picker() {
+    let mut h = harness(Some("g"), Some("m-a"), Session::default());
+    // The bootstrap lands on the chat: google answers, the LAN server
+    // does not. The picker opens later and still names the dead one.
+    h.app.on_event(UiEvent::ModelsLoaded {
+        why: FetchWhy::Bootstrap,
+        result: [loaded("google", models()), unavailable("llama-cpp")].concat(),
+    });
+    assert_eq!(h.app.catalog_unavailable, ["llama-cpp"]);
+    h.app.on_key(ctrl('p'));
+    match &h.app.screen {
+        Screen::Picker(picker) => {
+            assert_eq!(picker.status, PickerStatus::Ready);
+            assert_eq!(picker.unavailable, ["llama-cpp"]);
+            assert!(picker.failed.is_empty());
+        }
+        _ => panic!("expected the picker"),
+    }
+}
+
+#[test]
+fn a_provider_that_answers_again_leaves_the_unavailable_list() {
+    let mut h = harness(Some("g"), Some("m-a"), Session::default());
+    h.app.on_event(UiEvent::ModelsLoaded {
+        why: FetchWhy::Bootstrap,
+        result: unavailable("llama-cpp"),
+    });
+    h.app.on_key(ctrl('p'));
+    h.app.on_event(UiEvent::ModelsLoaded {
+        why: FetchWhy::Refresh,
+        result: loaded("llama-cpp", vec![llama_model("local/model")]),
+    });
+    assert!(h.app.catalog_unavailable.is_empty());
+    match &h.app.screen {
+        Screen::Picker(picker) => assert!(picker.unavailable.is_empty()),
         _ => panic!("expected the picker"),
     }
 }

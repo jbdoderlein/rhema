@@ -805,6 +805,8 @@ impl App {
             effects.push(Effect::FetchModels(FetchWhy::Refresh));
         }
         self.screen = Screen::Picker(PickerScreen {
+            unavailable: self.catalog_unavailable.clone(),
+            failed: self.catalog_failed.clone(),
             status,
             ..PickerScreen::new(self.models.clone())
         });
