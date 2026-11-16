@@ -40,7 +40,7 @@ pub struct AppSetup {
     /// isolation seam a test points at a scratch directory so the
     /// machine's own global definitions and skills never leak into a
     /// page. `None` reads the environment (`XDG_CONFIG_HOME`, then
-    /// `HOME`).
+    /// `HOME`, then `USERPROFILE` on windows).
     pub home: Option<PathBuf>,
     /// Run the first-run onboarding wizard: no config existed, or the
     /// last wizard opened but never finished. `rhema onboard` sets it

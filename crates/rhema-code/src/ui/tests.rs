@@ -1552,6 +1552,12 @@ mod scroll_tests {
     use std::sync::Arc;
 
     fn chat_app() -> App {
+        app_with_home(Some(
+            std::env::temp_dir().join(format!("rhema-app-home-{}", std::process::id())),
+        ))
+    }
+
+    fn app_with_home(home: Option<PathBuf>) -> App {
         let mut personal = rhema_config::Profile {
             model: Some("m".into()),
             ..rhema_config::Profile::default()
@@ -1584,7 +1590,7 @@ mod scroll_tests {
             secrets: None,
             sandboxed: None,
             sandbox_machines: crate::sandbox::SandboxMachines::default(),
-            home: Some(std::env::temp_dir().join(format!("rhema-app-home-{}", std::process::id()))),
+            home,
             onboard: false,
             options: RunOptions {
                 colors: crate::palette::Palette::Rhema,
@@ -2113,6 +2119,15 @@ mod scroll_tests {
             columns.iter().all(|(_, pos)| *pos == columns[0].1),
             "descriptions misaligned: {columns:?}"
         );
+    }
+
+    /// The footer's home is the environment's resolution, not `HOME`
+    /// alone: windows keeps `HOME` unset and names the home in
+    /// `USERPROFILE`, so the trim must read that second name too.
+    #[test]
+    fn the_footer_home_reads_the_environment_resolution() {
+        let app = app_with_home(None);
+        assert_eq!(app.home, rhema_config::user_home().ok());
     }
 
     /// The footer's folder: the home and its `Documents` trim away, and

@@ -67,6 +67,8 @@ pub struct App {
     pub options: RunOptions,
     /// The home directory, when the environment names one: the footer
     /// trims it (and its `Documents`) off the workspace path it shows.
+    /// `HOME` answers first, `USERPROFILE` second, the way every other
+    /// home-derived path in the tree resolves it.
     pub home: Option<PathBuf>,
     /// The machine-global config root the settings pages discover
     /// under: the setup's home when one is given, else the
@@ -530,7 +532,7 @@ impl App {
             home: setup
                 .home
                 .clone()
-                .or_else(|| std::env::var("HOME").ok().map(PathBuf::from)),
+                .or_else(|| rhema_config::user_home().ok()),
             config_root,
             subscription: None,
             session,
