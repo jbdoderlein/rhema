@@ -76,6 +76,21 @@ pub fn tighten_file(path: &Path) {
     }
 }
 
+/// Creates `path` as a new file, `0600` at creation, and fails if it
+/// already exists. The session store's temp files use this: the mode
+/// applies before the first byte lands, and `create_new` means two
+/// writers can never open the same temp.
+pub fn private_create(path: &Path) -> io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)
+}
+
 /// Opens `path` for create-or-truncate writing, `0600` at creation.
 fn private_open(path: &Path) -> io::Result<std::fs::File> {
     let mut options = std::fs::OpenOptions::new();
@@ -169,6 +184,20 @@ mod tests {
             std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o700
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn private_create_is_create_new_and_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("temp");
+        let file = private_create(&path).unwrap();
+        assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+        drop(file);
+        // Two writers may never open the same temp.
+        let err = private_create(&path).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
     }
 
     #[test]
