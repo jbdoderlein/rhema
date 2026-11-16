@@ -92,6 +92,14 @@ Rules:
     (`crates/rhema-identity/`)
   - `rsd`: resource-scoped dispatch: the dispatcher and its stores
     (`crates/rhema-rsd/`)
+  - `session-store`: the saved-session seam: the `SessionStore` trait,
+    the validated id, the picker row, the error, and the replayable
+    contract suite (`crates/rhema-session-store/`)
+  - `session-store-file`: the reference file backend: the managed
+    layout and the explicit path store
+    (`crates/rhema-session-store-file/`)
+  - `session-store-sqlite`: the SQLite backend
+    (`crates/rhema-session-store-sqlite/`)
   - `forge`: the forge integration: GitHub/Gitea/GitLab clients, the
     normalized event vocabulary, the notification triage, and the RSD
     ingest path (`rhema-claw` repository, `integrations/rhema-forge-integration/`)

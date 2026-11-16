@@ -133,6 +133,8 @@ The RSD driver (crate 2) is the same shape with different scaffolding: `acquire(
 
 `Session` is plain data and fully serializable: no hidden engine state, no open stream, so a driver can checkpoint it at any step boundary. That property is the whole reason crate 1 can serve the RSD consumer later without growing.
 
+The frontends' reference store is `rhema-session-store-file`: the seam (`rhema-session-store`) owns the `SessionStore` trait, the validated id, the picker row, and the error; the backend owns the layout, the atomic fsynced write, and the privacy modes. The TUI, ACP, headless, and `rhema-coding-agent`'s save/load helpers all go through it, and `rhema-session-store-sqlite` implements the same trait over one row per session. A frontend picks a backend at compile time; the seam pulls neither `rusqlite` nor `rhema-config`. See `specs/rhema-session-store.md`.
+
 ---
 
 ## 7. How we know it works

@@ -106,6 +106,10 @@ The stored credential is the token JSON the flow returns (access, refresh, accou
 
 Turns run on the Codex Responses backend (`chatgpt.com/backend-api/codex`), and the model picker lists the subscription's live catalog. The adapter sends `originator: rhema`, not another client's name.
 
+### Saved sessions
+
+Every conversation checkpoints to disk as turns stream, through the same store ACP and `--save` use (`rhema-session-store-file`): one bare-JSON `Session` per file, written to a private temp file, fsynced, and renamed over the previous checkpoint. A crash mid-turn leaves the last committed boundary, never a half file. `/resume` lists the workspace's saved sessions from `<cache>/rhema/sessions/<encoded-workspace>/`, newest first, and shows each one's opening prompt.
+
 ### Skills, sessions, etc.
 
 Skills are folders holding a `SKILL.md` whose frontmatter `description` is the trigger the agent sees; an optional `license` line is shown (dimmed, under the description) in the Skills page of `/settings` and in the onboarding wizard. Drop one into `.rhema/skills/` in your workspace or `~/.config/rhema/skills/` for every workspace; project shadows global.
