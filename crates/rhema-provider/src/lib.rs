@@ -22,11 +22,15 @@
 //! - [`retry`]: the transient-failure retry every turn provider rides
 //! - [`transport`]: the HTTP seam under the adapters: one request in,
 //!   a status and a `Send` byte stream out
+//! - `http`: the reqwest client settings the native adapters share
+//!   (feature `http-client`)
 
 #![forbid(unsafe_code)]
 
 pub mod allowance;
 pub mod card;
+#[cfg(feature = "http-client")]
+pub mod http;
 pub mod login;
 pub mod pricing;
 pub mod retry;

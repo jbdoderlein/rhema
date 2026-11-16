@@ -58,15 +58,13 @@ impl LlamaCppProvider {
             transport: transport_for(&base_url, None),
             api_key: None,
             base_url,
-            // A dead server must fail fast: connects cap at 10s, and a
-            // stream that stops producing bytes for 90s is dead too.
-            // Streaming calls get no total timeout, generations can run
-            // for minutes.
-            http: reqwest::Client::builder()
-                .connect_timeout(std::time::Duration::from_secs(10))
-                .read_timeout(std::time::Duration::from_secs(90))
+            // A dead server must fail fast: connects and name lookups
+            // cap at 10s, and a stream that stops producing bytes for
+            // 90s is dead too. Streaming calls get no total timeout,
+            // generations can run for minutes.
+            http: rhema_provider::http::client_builder()
                 .build()
-                .expect("a client builder with only timeouts cannot fail"),
+                .expect("the shared client builder is valid"),
         }
     }
 

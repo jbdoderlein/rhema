@@ -12,8 +12,6 @@ use async_trait::async_trait;
 use futures_util::StreamExt;
 use rhema_provider::{HttpRequest, HttpResponse, Transport, TransportError};
 
-use std::time::Duration;
-
 /// A `reqwest::Client` speaking the [`Transport`] seam.
 #[derive(Clone, Debug)]
 pub struct ReqwestTransport {
@@ -27,12 +25,10 @@ impl ReqwestTransport {
     /// guard for streams. The stall guard bounds the silence between
     /// chunks, never the total generation time.
     pub fn new() -> Self {
-        let http = reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(10))
-            .read_timeout(Duration::from_secs(90))
+        let http = rhema_provider::http::client_builder()
             .user_agent(crate::provider::USER_AGENT)
             .build()
-            .expect("a client builder with only timeouts cannot fail");
+            .expect("the shared client builder is valid");
         Self { http }
     }
 }

@@ -278,14 +278,14 @@ impl InteractiveLogin for ChatGptLogin {
     }
 }
 
-/// The login's HTTP client: a bounded connect and the client's own
-/// user agent, so the token endpoint sees rhema rather than reqwest.
+/// The login's HTTP client: the shared bounded connect and name
+/// lookup, with the client's own user agent, so the token endpoint sees
+/// rhema rather than reqwest.
 fn http_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(10))
+    rhema_provider::http::client_builder()
         .user_agent(format!("rhema/{}", env!("CARGO_PKG_VERSION")))
         .build()
-        .expect("a client builder with only timeouts cannot fail")
+        .expect("the shared client builder is valid")
 }
 
 /// The PKCE pair: the secret verifier and the S256 challenge the

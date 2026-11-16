@@ -84,15 +84,9 @@ impl OpenRouterProvider {
     /// An empty key is accepted but useless for completions: the header is
     /// omitted and the API answers 401. Listing models works without a key.
     pub fn new(api_key: impl Into<String>) -> Self {
-        let http = reqwest::Client::builder()
-            // One connect attempt; a dead network fails fast instead of
-            // hanging the agent step.
-            .connect_timeout(Duration::from_secs(10))
-            // Per-read stall guard for streams: bounds the silence between
-            // chunks, never the total generation time.
-            .read_timeout(Duration::from_secs(90))
+        let http = rhema_provider::http::client_builder()
             .build()
-            .expect("a client builder with only timeouts cannot fail");
+            .expect("the shared client builder is valid");
         let api_key = api_key.into();
         Self {
             transport: transport_for(DEFAULT_BASE_URL, &api_key, Api::Responses),

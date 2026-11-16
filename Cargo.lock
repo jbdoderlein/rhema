@@ -3479,6 +3479,7 @@ dependencies = [
  "async-trait",
  "futures-core",
  "hegeltest",
+ "reqwest",
  "rhema-core",
  "serde",
  "serde_json",

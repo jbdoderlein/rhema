@@ -11,7 +11,7 @@ authors.workspace = true
 [dependencies]
 rhema-core = { path = "../rhema-core", version = "0.3.0" }
 # The shared model card, SSE decoder, and login-flow seam
-rhema-provider = { path = "../rhema-provider", version = "0.3.0" }
+rhema-provider = { path = "../rhema-provider", version = "0.3.0", features = ["http-client"] }
 # The OpenAI chat-completions dialect core this adapter speaks
 rhema-provider-openai-compatible = { path = "../rhema-provider-openai-compatible", version = "0.3.0" }
 serde = { workspace = true }

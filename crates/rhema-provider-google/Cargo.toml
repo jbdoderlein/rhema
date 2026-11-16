@@ -11,7 +11,7 @@ authors.workspace = true
 [dependencies]
 rhema-core = { path = "../rhema-core", version = "0.3.0" }
 # The shared model card and SSE decoder
-rhema-provider = { path = "../rhema-provider", version = "0.3.0" }
+rhema-provider = { path = "../rhema-provider", version = "0.3.0", features = ["http-client"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

@@ -13,7 +13,7 @@ default = ["native"]
 # The reqwest transport behind the default constructor. Off in wasm
 # builds, whose host has no sockets to speak of: they bring their own
 # `Transport` over host fetch, bridging the `!Send` JS stream inside.
-native = ["dep:reqwest"]
+native = ["dep:reqwest", "rhema-provider/http-client"]
 
 [dependencies]
 rhema-core = { path = "../rhema-core", version = "0.3.0" }

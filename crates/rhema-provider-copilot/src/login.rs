@@ -73,7 +73,9 @@ impl CopilotLogin {
             github_url: crate::provider::DEFAULT_GITHUB_URL.to_owned(),
             client_id: DEFAULT_CLIENT_ID.to_owned(),
             poll_interval: None,
-            http: reqwest::Client::new(),
+            http: rhema_provider::http::client_builder()
+                .build()
+                .expect("the shared client builder is valid"),
         }
     }
 

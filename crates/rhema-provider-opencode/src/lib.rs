@@ -58,15 +58,14 @@ pub const SESSION_HEADER: &str = "x-opencode-session";
 /// a generic SDK or HTTP-library name.
 pub const USER_AGENT: &str = concat!("rhema/", env!("CARGO_PKG_VERSION"));
 
-/// The HTTP client every instance uses: connect capped, stream reads
-/// stall-guarded, never total-time capped, and named as rhema.
+/// The HTTP client every instance uses: bounded connects and name
+/// lookups, stream reads stall-guarded, never total-time capped, and
+/// named as rhema.
 pub fn http_client() -> reqwest::Client {
-    reqwest::Client::builder()
+    rhema_provider::http::client_builder()
         .user_agent(USER_AGENT)
-        .connect_timeout(Duration::from_secs(10))
-        .read_timeout(Duration::from_secs(90))
         .build()
-        .expect("a client builder with only timeouts cannot fail")
+        .expect("the shared client builder is valid")
 }
 
 /// OpenCode Console or Go, speaking the shared OpenAI-compatible

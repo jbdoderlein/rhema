@@ -8,6 +8,13 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[features]
+# The shared reqwest client settings (connect budget, stream stall
+# guard, bounded name lookup) the native adapters build their HTTP
+# clients from. Off for hosts without sockets, which bring their own
+# transport.
+http-client = ["dep:reqwest"]
+
 [dependencies]
 # The ModelProvider seam the retry decorator implements and the
 # ProviderError it classifies
@@ -23,8 +30,11 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 # dyn InteractiveLogin: the frontends hold boxed flows
 async-trait = { workspace = true }
-# The retry decorator's backoff sleeps
-tokio = { workspace = true, features = ["time"] }
+# The retry decorator's backoff sleeps; the shared resolver's name
+# lookup
+tokio = { workspace = true, features = ["time", "net"] }
+# The client builder behind the `http-client` feature
+reqwest = { version = "0.12", optional = true }
 
 [dev-dependencies]
 # The login-flow tests run on the test runtime; start_paused (test-util)

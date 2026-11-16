@@ -36,18 +36,12 @@ use crate::wire::{
 /// The production Generative Language API base (v1beta).
 pub const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 
-/// The HTTP client every instance shares: connect capped, stream reads
-/// stall-guarded, never total-time capped.
+/// The HTTP client every instance shares: bounded connects and name
+/// lookups, stream reads stall-guarded, never total-time capped.
 fn http_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        // One connect attempt; a dead network fails fast instead of
-        // hanging the agent step.
-        .connect_timeout(Duration::from_secs(10))
-        // Per-read stall guard for streams: bounds the silence between
-        // chunks, never the total generation time.
-        .read_timeout(Duration::from_secs(90))
+    rhema_provider::http::client_builder()
         .build()
-        .expect("a client builder with only timeouts cannot fail")
+        .expect("the shared client builder is valid")
 }
 
 /// Google Gemini model backend, speaking the Generative Language REST API.

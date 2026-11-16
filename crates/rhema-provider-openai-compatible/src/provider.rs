@@ -40,18 +40,12 @@ pub const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 /// The SSE payload that ends every OpenAI-compatible chat stream.
 pub const DONE_SENTINEL: &str = "[DONE]";
 
-/// The HTTP client every instance shares: connect capped, stream reads
-/// stall-guarded, never total-time capped.
+/// The HTTP client every instance shares: bounded connects and name
+/// lookups, stream reads stall-guarded, never total-time capped.
 pub fn http_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        // One connect attempt; a dead network fails fast instead of
-        // hanging the agent step.
-        .connect_timeout(Duration::from_secs(10))
-        // Per-read stall guard for streams: bounds the silence between
-        // chunks, never the total generation time.
-        .read_timeout(Duration::from_secs(90))
+    rhema_provider::http::client_builder()
         .build()
-        .expect("a client builder with only timeouts cannot fail")
+        .expect("the shared client builder is valid")
 }
 
 /// DeepSeek's OpenAI-compatible endpoint, the base the `deepseek`
