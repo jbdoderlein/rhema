@@ -7,6 +7,8 @@
 //! (within the summary/truncation rules).
 
 use rhema_core::{Content, Image, Message, Role};
+// The one truncation rule, shared with the session store's picker rows.
+use rhema_session_store::truncate_chars;
 
 use crate::events::OwnedEvent;
 
@@ -366,24 +368,6 @@ pub fn describe(name: &str, args: &str) -> String {
         },
         other => other.to_owned(),
     }
-}
-
-/// Cuts `text` to at most `max` characters, appending `…` when cut; never
-/// splits a multi-byte character.
-pub fn truncate_chars(text: &str, max: usize) -> String {
-    // A zero budget cuts to nothing: callers pass saturating width
-    // arithmetic, so 0 arrives on a pane too narrow to show one glyph.
-    if max == 0 {
-        return String::new();
-    }
-    if text.chars().count() <= max {
-        return text.to_owned();
-    }
-    let mut end = max - 1;
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!("{}\u{2026}", &text[..end])
 }
 
 /// Cuts `text` to at most `max` terminal cells, appending `…` when cut;

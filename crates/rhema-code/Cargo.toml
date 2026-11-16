@@ -29,6 +29,10 @@ vendored-openssl = ["dep:openssl"]
 
 [dependencies]
 rhema-core = { path = "../rhema-core", version = "0.3.0" }
+# The session store seam and its file backend: saved sessions, the
+# checkpoint write, the resume listing
+rhema-session-store = { path = "../rhema-session-store", version = "0.3.0" }
+rhema-session-store-file = { path = "../rhema-session-store-file", version = "0.3.0" }
 rhema-config = { path = "../rhema-config", version = "0.3.0" }
 rhema-agent-tools = { path = "../rhema-agent-tools", version = "0.3.0" }
 rhema-coding-agent = { path = "../rhema-coding-agent", version = "0.3.0" }

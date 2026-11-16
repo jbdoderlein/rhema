@@ -339,15 +339,12 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     // which the next `--resume`'s revive closes, instead of no record at
     // all.
     let save = args.save.clone();
-    if let Some(dir) = save.as_ref().and_then(|path| path.parent()) {
-        std::fs::create_dir_all(dir)
-            .with_context(|| format!("cannot create the checkpoint directory {}", dir.display()))?;
-    }
     if let Some(path) = &save {
-        let hook_path = path.clone();
+        // `PathStore` creates the parent `0700` on the first commit, so
+        // `--save` into a fresh `.rhema/runs/` needs no setup step.
+        let store = PathStore::new(path);
         agent.set_commit_hook(Some(Box::new(move |session: &Session| {
-            crate::sessions::write_session(&hook_path, session)
-                .map_err(|err| rhema_core::CommitError(err.to_string()))
+            store.save(session).map_err(Into::into)
         })));
     }
 
@@ -373,7 +370,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
             // complete state, the stream commits already brought it
             // here, this re-writes it with the final usage attached.
             if let Some(path) = &save
-                && let Err(err) = agent.save_session_to(path)
+                && let Err(err) = PathStore::new(path).save(agent.session())
             {
                 eprintln!("warning: the session was not checkpointed: {err}");
             }
@@ -403,10 +400,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
             let path = save
                 .clone()
                 .unwrap_or_else(|| failed_checkpoint_path(&workspace));
-            if let Some(dir) = path.parent() {
-                let _ = std::fs::create_dir_all(dir);
-            }
-            match crate::sessions::write_session(&path, agent.session()) {
+            match PathStore::new(&path).save(agent.session()) {
                 Ok(()) => println!(
                     "· checkpoint: the partial session is at {} (resume with --resume {})",
                     path.display(),

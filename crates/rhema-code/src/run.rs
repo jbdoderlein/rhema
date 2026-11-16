@@ -35,6 +35,7 @@ use rhema_acp::AcpOptions;
 use rhema_coding_agent::CodingAgent;
 use rhema_config::secrets::KeyringSecretStore;
 use rhema_core::{Event as ModelEvent, EventSink, Session};
+use rhema_session_store_file::PathStore;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use crate::app::Backend;

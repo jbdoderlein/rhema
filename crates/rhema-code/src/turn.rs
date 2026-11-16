@@ -824,8 +824,28 @@ mod mock_tests {
                     assert!(!last.contains("\"is_error\""), "no result yet: {last}");
                     return;
                 }
-                UiEvent::TurnFinished { .. } => {
-                    panic!("a hanging tool must not finish");
+                UiEvent::TurnFinished { agent, result, .. } => {
+                    // The store's save is durable only after its
+                    // directory fsync, and the file becomes visible at
+                    // the rename before it. A cancel that lands in that
+                    // window reaches the tool before it starts: the
+                    // tool reports `cancelled` without running, the
+                    // engine commits the closed round, and the next
+                    // step finds the mock script exhausted. The side
+                    // effect never ran, which is what the cancelled arm
+                    // protects, one boundary later.
+                    assert!(result.is_err(), "the exhausted provider fails the turn");
+                    let last = agent
+                        .session()
+                        .history
+                        .last()
+                        .expect("the turn wrote history");
+                    let closed = serde_json::to_string(last).unwrap();
+                    assert!(
+                        closed.contains("call_1") && closed.contains("cancelled"),
+                        "the committed result is the cancellation: {closed}"
+                    );
+                    return;
                 }
                 _ => {}
             }
