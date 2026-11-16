@@ -927,6 +927,7 @@ pub(crate) fn session_agent_config(
     disabled_mcp: &std::collections::BTreeSet<String>,
     secrets: Option<&Arc<dyn rhema_config::secrets::SecretStore>>,
     jobs_steering: Option<Arc<dyn rhema_coding_agent::Steering>>,
+    jobs_tag: &str,
 ) -> (
     CodingAgentConfig,
     rhema_subagents::SubagentHandle,
@@ -965,9 +966,7 @@ pub(crate) fn session_agent_config(
     // literal path and guards the failure, and every generated function
     // ends up defined whichever file the variable names.
     let jobs_wiring = (sandboxed.is_none())
-        .then(|| {
-            rhema_agent_tools::jobs::wire(std::env::var_os("BASH_ENV"), crate::jobs::session_id())
-        })
+        .then(|| rhema_agent_tools::jobs::wire(std::env::var_os("BASH_ENV"), jobs_tag))
         .flatten();
     if let Some(wiring) = &jobs_wiring {
         config.shell_env.extend(wiring.shell_env.clone());

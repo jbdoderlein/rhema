@@ -12,8 +12,9 @@ use rhema_core::Session;
 use serde::{Deserialize, Serialize};
 
 use crate::error::SubmissionError;
-use crate::kind::{Kinds, RecoverCtx, Recovery};
+use crate::kind::{AdoptCtx, Kinds, RecoverCtx, Recovery};
 use crate::record::{KindName, Millis, Outcome, Owner, Record, Status, SubmissionId};
+use crate::view::Snapshot;
 
 /// The `driver_state` key the ledger lives under.
 pub(crate) const KEY: &str = "submissions";
@@ -428,6 +429,32 @@ pub fn reconcile(
     at: Millis,
 ) -> Result<Vec<Change>, SubmissionError> {
     let mut ledger = Ledger::parse(&session.driver_state)?;
+    // Adopt first: a tool that started work could not write the ledger,
+    // so the work's own store is the only evidence it exists. Each kind
+    // sees the ledger as it stands, including what earlier kinds adopted.
+    for (_, kind) in kinds.iter() {
+        let snapshot = Snapshot::from_records(ledger.records());
+        let payloads = kind.adopt(&AdoptCtx {
+            session,
+            snapshot: &snapshot,
+        });
+        for payload in payloads {
+            let id = ledger.next_id(at);
+            let record = Record {
+                id: id.clone(),
+                kind: KindName::new(kind.name()).expect("registration validated the tag"),
+                payload,
+                status: Status::Running,
+                created_at: at,
+                started_at: Some(at),
+                settled_at: None,
+                owner: None,
+                outcome: None,
+                attempts: 1,
+            };
+            ledger.items.insert(id, StoredRecord::from(&record));
+        }
+    }
     let stale: Vec<SubmissionId> = ledger
         .items
         .iter()
@@ -470,6 +497,14 @@ pub fn reconcile(
             }
             Recovery::Interrupted => {
                 stored.status = Status::Interrupted;
+                stored.settled_at = Some(at);
+            }
+            Recovery::Failed { error } => {
+                stored.status = Status::Failed;
+                stored.outcome = Some(Outcome::Failed {
+                    error,
+                    retryable: false,
+                });
                 stored.settled_at = Some(at);
             }
         }

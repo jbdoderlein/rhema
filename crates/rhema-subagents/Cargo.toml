@@ -11,6 +11,10 @@ authors.workspace = true
 [dependencies]
 # The step engine: a subagent is a fresh Agent on a fresh Session
 rhema-core = { path = "../rhema-core", version = "0.3.0" }
+# The child is a real session in the store, and its parent's record of
+# the work rides the parent's own ledger
+rhema-session-store = { path = "../rhema-session-store", version = "0.3.0" }
+rhema-submissions = { path = "../rhema-submissions", version = "0.3.0" }
 # The background-tuned retry wrapper: a job rides the frontend's turn
 # provider wrapped once more, so an outage waits out under the job
 # instead of killing it
@@ -41,6 +45,8 @@ tokio = { workspace = true, features = ["rt", "sync", "time"] }
 # The scripted provider drives inner agents offline; the local shell
 # comes back for the tests that really run commands.
 rhema-core = { path = "../rhema-core", features = ["mock"] }
+# The reference store, so a child session is a real file
+rhema-session-store-file = { path = "../rhema-session-store-file", version = "0.3.0" }
 rhema-agent-tools = { path = "../rhema-agent-tools", features = ["local-shell"] }
 rhema-coding-agent = { path = "../rhema-coding-agent", features = ["local-shell"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

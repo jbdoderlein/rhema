@@ -54,6 +54,8 @@ use std::sync::{Arc, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
+pub mod kind;
+
 /// The bash function's name, and the model's whole interface. A rename is
 /// this constant, the prompt section, and the spec text.
 pub const NAME: &str = "job";
@@ -79,10 +81,11 @@ pub const VAR_SESSION: &str = "RHEMA_SESSION";
 /// function name, and the frontend read this shim, never the backend.
 pub const BACKEND: &str = "gob";
 
-/// The longest owner tag [`owner_of`] trusts: the backend's ids are 3
-/// characters today, and a longer token means the description's brackets
-/// are something else entirely.
-const MAX_ID_CHARS: usize = 16;
+/// The longest owner tag [`owner_of`] trusts. A session id is 19
+/// characters (`<millis:016>-<n:02>`), and the tag is that id, so the
+/// bound has to sit above it; a longer token means the description's
+/// brackets are something else entirely.
+const MAX_ID_CHARS: usize = 32;
 
 /// Exit code for a shell the wiring never reached: no session var, so no
 /// tag to write and no owner to check.
@@ -673,6 +676,28 @@ fn owned_rows(
         })
         .map(BackendJob::row)
         .collect())
+}
+
+/// Why a listing did not answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ListingError {
+    /// The backend binary is not on `PATH`. The job kind reads this as
+    /// "no job backend", not as a lost job.
+    NoBackend,
+    /// The backend answered with an error, or its JSON did not parse.
+    Failed(String),
+}
+
+/// One session's rows, as the job kind reads them: the listing scoped
+/// by the tag, whatever directory the jobs were started in.
+pub fn rows_for(backend: &Path, cwd: &Path, tag: &str) -> Result<Vec<JobRow>, ListingError> {
+    owned_rows(backend, cwd, Scope::Session, Some(tag)).map_err(|code| {
+        if code == EXIT_NO_BACKEND {
+            ListingError::NoBackend
+        } else {
+            ListingError::Failed(format!("the listing exited with {code}"))
+        }
+    })
 }
 
 /// `job shutdown`: stop every job this session started. Other sessions'

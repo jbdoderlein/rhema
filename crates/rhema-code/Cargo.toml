@@ -38,6 +38,8 @@ rhema-agent-tools = { path = "../rhema-agent-tools", version = "0.3.0" }
 rhema-coding-agent = { path = "../rhema-coding-agent", version = "0.3.0" }
 # The subagent extension: discovered definitions wired in as one tool
 rhema-subagents = { path = "../rhema-subagents", version = "0.3.0" }
+# The submission ledger a resumed session reconciles before any turn
+rhema-submissions = { path = "../rhema-submissions", version = "0.3.0" }
 # The bounded request view, when --transcript is set
 rhema-transcript = { path = "../rhema-transcript", version = "0.3.0" }
 # The `rhema acp` subcommand: the Agent Client Protocol server

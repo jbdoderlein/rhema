@@ -225,6 +225,25 @@ impl App {
             }
         };
         let ResumedLoad { session, stats } = loaded;
+        let mut session = session;
+        // The conversation's tag is its file's id: a resumed process
+        // must list the jobs its previous one started, not a fresh
+        // process's empty set. The poller restarts before the agent
+        // builds, so the rebuilt steering chain reads the new feed.
+        self.session_file = Some(path.to_path_buf());
+        if let Some(tag) = crate::jobs::tag_from_path(path) {
+            self.jobs_tag = tag;
+        }
+        // A crash leaves the self-stop record behind; its entries are
+        // backend ids, which the daemon reuses, so a stale one must not
+        // silence a new job that happens to get the same id.
+        rhema_agent_tools::jobs::forget_stopped(&self.jobs_tag);
+        if self.sandboxed.is_none() {
+            self.jobs = crate::jobs::JobsHandle::spawn(self.jobs_tag.clone());
+        }
+        // Loading tells the truth and starts nothing: adopt what the
+        // ledger missed, settle what the crash left, and save once.
+        let changes = self.reconcile_loaded(&mut session);
         let (mut agent, subagents, missing) = match self.build_agent(session.clone()) {
             Ok(built) => built,
             Err(err) => {
@@ -232,6 +251,12 @@ impl App {
                 return;
             }
         };
+        Self::attach_subagents(
+            &subagents,
+            self.sessions_base().ok().as_deref(),
+            &crate::args::canonical(&self.options.workspace),
+            &self.jobs_tag,
+        );
         let messages = session.history.len();
         self.session = session;
         // The saved usage accounting came with the load: the last
@@ -252,7 +277,6 @@ impl App {
         self.agent = Some(agent);
         self.subagents = Some(subagents);
         self.missing_tools = missing;
-        self.session_file = Some(path.to_path_buf());
         self.transcript = Transcript::from_history(&self.session.history);
         // The saved session carries what it spent; the footer continues
         // the story instead of quoting a fresh zero.
@@ -262,6 +286,318 @@ impl App {
         self.screen = Screen::Chat;
         self.transcript
             .push_notice(&format!("resumed {messages} messages"));
+        // What the load found: an interrupted subagent is announced and
+        // left alone, a job that ended while the process was down
+        // becomes the notice and steering line the live feed would have
+        // produced.
+        self.announce_changes(&changes);
+    }
+
+    /// The kinds this build links for one loaded session: the turn
+    /// kind always, the subagent kind when a store is reachable, the
+    /// job kind when a poller is running.
+    pub(crate) fn kinds_for(
+        sessions_base: Option<&Path>,
+        workspace: &Path,
+        jobs_tag: &str,
+        with_jobs: bool,
+    ) -> rhema_submissions::Kinds {
+        let mut kinds =
+            rhema_submissions::Kinds::new().with(Arc::new(rhema_submissions::turn::Turn));
+        if let (Some(base), Ok(parent)) =
+            (sessions_base, rhema_session_store::SessionId::new(jobs_tag))
+        {
+            let store: Arc<dyn rhema_session_store::SessionStore> =
+                Arc::new(rhema_session_store_file::FileStore::scoped(base, workspace));
+            kinds = kinds.with(Arc::new(rhema_subagents::SubagentKind::new(store, parent)));
+        }
+        if with_jobs {
+            kinds = kinds.with(Arc::new(rhema_agent_tools::jobs::kind::JobKind::new(
+                jobs_tag,
+            )));
+        }
+        kinds
+    }
+
+    /// Points the subagent tool at the store its children are saved
+    /// under, and names the parent session they belong to. Without the
+    /// attachment a subagent runs in memory and leaves no child.
+    pub(crate) fn attach_subagents(
+        handle: &rhema_subagents::SubagentHandle,
+        sessions_base: Option<&Path>,
+        workspace: &Path,
+        jobs_tag: &str,
+    ) {
+        let (Some(base), Ok(parent)) =
+            (sessions_base, rhema_session_store::SessionId::new(jobs_tag))
+        else {
+            return;
+        };
+        let store: Arc<dyn rhema_session_store::SessionStore> =
+            Arc::new(rhema_session_store_file::FileStore::scoped(base, workspace));
+        handle.attach_store(store, parent);
+    }
+
+    /// Reconciles a freshly loaded session, saving once when anything
+    /// changed. Never starts work.
+    pub(crate) fn reconcile_loaded(
+        &mut self,
+        session: &mut Session,
+    ) -> Vec<rhema_submissions::Change> {
+        let base = self.sessions_base().ok();
+        let workspace = crate::args::canonical(&self.options.workspace);
+        let kinds = Self::kinds_for(
+            base.as_deref(),
+            &workspace,
+            &self.jobs_tag,
+            self.jobs.is_some(),
+        );
+        match rhema_submissions::reconcile(session, &kinds, rhema_submissions::now()) {
+            Ok(changes) => {
+                if !changes.is_empty()
+                    && let Some(path) = self.checkpoint_target()
+                    && let Err(err) = crate::sessions::write_session(&path, session)
+                {
+                    self.transcript
+                        .push_notice(&format!("the reconciled session was not saved: {err}"));
+                }
+                changes
+            }
+            Err(err) => {
+                self.transcript
+                    .push_notice(&format!("the submission ledger could not be read: {err}"));
+                Vec::new()
+            }
+        }
+    }
+
+    /// Writes the starts the ledger has not recorded, and settles the
+    /// jobs the poller saw end. A tool cannot write the session it runs
+    /// inside, so the subagent registry and the jobs poller hand over
+    /// what they saw, and the frontend writes it at the next point it
+    /// owns the agent. The load-time `adopt` covers this window when the
+    /// process dies before one.
+    pub(crate) fn drain_submission_writes(&mut self) {
+        // Nothing to write with while a turn owns the agent: the starts
+        // stay in the queues for the next point that does.
+        let Some(agent) = self.agent.as_mut() else {
+            return;
+        };
+        let mut changed = false;
+        if let Some(handle) = self.subagents.clone() {
+            for start in handle.take_starts() {
+                let payload = serde_json::to_value(rhema_subagents::Payload {
+                    child: start.child,
+                    def: start.def,
+                    prompt: start.prompt,
+                    model: start.model,
+                })
+                .unwrap_or(serde_json::Value::Null);
+                let at = rhema_submissions::now();
+                if let Ok(record) = rhema_submissions::submit(
+                    agent.session_mut(),
+                    rhema_subagents::kind::kind(),
+                    payload,
+                    at,
+                ) && rhema_submissions::start(agent.session_mut(), &record.id, at, None).is_ok()
+                {
+                    changed = true;
+                }
+            }
+        }
+        // The jobs poller saw its own starts; the same write applies,
+        // and a row the ledger already names is skipped: the load's
+        // adopt wrote it, and a second record would be a second job.
+        if let Some(jobs) = self.jobs.as_ref() {
+            let known: Vec<String> = rhema_submissions::snapshot(agent.session())
+                .map(|snapshot| {
+                    snapshot
+                        .iter()
+                        .filter(|record| record.kind.as_str() == "job")
+                        .filter_map(|record| {
+                            serde_json::from_value::<rhema_agent_tools::jobs::kind::Payload>(
+                                record.payload.clone(),
+                            )
+                            .ok()
+                            .map(|payload| payload.id)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            for started in jobs.take_started() {
+                if known.contains(&started.id) {
+                    continue;
+                }
+                let payload = serde_json::json!({
+                    "tag": jobs.tag(),
+                    "id": started.id,
+                    "command": started.command,
+                });
+                let at = rhema_submissions::now();
+                if let Ok(record) = rhema_submissions::submit(
+                    agent.session_mut(),
+                    rhema_submissions::KindName::new(rhema_agent_tools::jobs::kind::NAME)
+                        .expect("the job kind name is valid"),
+                    payload,
+                    at,
+                ) && rhema_submissions::start(agent.session_mut(), &record.id, at, None).is_ok()
+                {
+                    changed = true;
+                }
+            }
+            // A record settles when the poller mints its finish,
+            // without waiting for a load. The ids come from the feed,
+            // so no extra listing is asked.
+            let finished = jobs.take_finished_ids();
+            if !finished.is_empty() {
+                let running: Vec<(rhema_submissions::SubmissionId, String)> =
+                    rhema_submissions::snapshot(agent.session())
+                        .map(|snapshot| {
+                            snapshot
+                                .iter()
+                                .filter(|record| {
+                                    record.kind.as_str() == "job"
+                                        && record.status == rhema_submissions::Status::Running
+                                })
+                                .filter_map(|record| {
+                                    serde_json::from_value::<
+                                        rhema_agent_tools::jobs::kind::Payload,
+                                    >(record.payload.clone())
+                                    .ok()
+                                    .map(|payload| (record.id.clone(), payload.id))
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                for (id, backend_id) in running {
+                    if finished.contains(&backend_id)
+                        && rhema_submissions::settle(
+                            agent.session_mut(),
+                            &id,
+                            rhema_submissions::Outcome::Done,
+                            rhema_submissions::now(),
+                        )
+                        .is_ok()
+                    {
+                        changed = true;
+                    }
+                }
+            }
+        }
+        if changed {
+            let session = agent.session().clone();
+            if let Some(path) = self.checkpoint_target()
+                && let Err(err) = crate::sessions::write_session(&path, &session)
+            {
+                self.transcript
+                    .push_notice(&format!("the start was not saved: {err}"));
+            }
+        }
+    }
+
+    /// Delivers what a reconcile found: unclaimed records name their
+    /// missing kind, a recovered job or subagent becomes the finish
+    /// notice the live feed would have produced, and an interrupted
+    /// subagent is announced with its id so the model can report it.
+    pub(crate) fn announce_changes(&mut self, changes: &[rhema_submissions::Change]) {
+        if changes.is_empty() {
+            return;
+        }
+        let snapshot = rhema_submissions::snapshot(&self.session).ok();
+        for change in changes {
+            let (id, kind, to) = match change {
+                rhema_submissions::Change::Unclaimed { id, kind } => {
+                    self.transcript.push_notice(&format!(
+                        "submission {id} belongs to the extension kind {kind}, \
+                         which this build does not link"
+                    ));
+                    continue;
+                }
+                rhema_submissions::Change::Recovered { id, kind, to } => (id, kind, *to),
+            };
+            let Some(record) = snapshot.as_ref().and_then(|snapshot| snapshot.get(id)) else {
+                continue;
+            };
+            match kind.as_str() {
+                "job" if to == rhema_submissions::Status::Done => {
+                    self.announce_recovered_job(&record.payload);
+                }
+                "subagent" => self.announce_recovered_subagent(&record.payload, to),
+                _ => {}
+            }
+        }
+    }
+
+    /// A job that ended while no process watched it: the listing's row
+    /// still names the command and the exit code, so the notice and the
+    /// steering line read exactly as the live feed's would.
+    fn announce_recovered_job(&mut self, payload: &serde_json::Value) {
+        let Ok(payload) =
+            serde_json::from_value::<rhema_agent_tools::jobs::kind::Payload>(payload.clone())
+        else {
+            return;
+        };
+        let cwd = crate::args::canonical(&self.options.workspace);
+        let rows = rhema_agent_tools::jobs::rows_for(
+            std::path::Path::new(rhema_agent_tools::jobs::BACKEND),
+            &cwd,
+            &self.jobs_tag,
+        )
+        .unwrap_or_default();
+        let row = rows.iter().find(|row| row.id == payload.id);
+        let command = row.map_or(payload.command.clone(), |row| row.command.clone());
+        let exit_code = row.and_then(|row| row.exit_code);
+        let line = crate::jobs::announcement(&payload.id, &command, exit_code);
+        if let Some(jobs) = &self.jobs {
+            jobs.note_finished(crate::jobs::JobFinished {
+                id: payload.id,
+                command,
+                exit_code,
+                line,
+            });
+        } else {
+            self.transcript.push_notice(&line);
+        }
+    }
+
+    /// A subagent's child outlived the parent process: done becomes a
+    /// finish whose report the model fetches from the child's file, any
+    /// unfinished state is announced with the child's id and started
+    /// never.
+    fn announce_recovered_subagent(
+        &mut self,
+        payload: &serde_json::Value,
+        to: rhema_submissions::Status,
+    ) {
+        let Ok(payload) = serde_json::from_value::<rhema_subagents::Payload>(payload.clone())
+        else {
+            return;
+        };
+        let name = payload.def;
+        let child = payload.child;
+        match to {
+            rhema_submissions::Status::Done => {
+                let line = format!("Subagent {name} ({child}) has finished.");
+                if let Some(handle) = &self.subagents {
+                    handle.note_finished(rhema_subagents::JobFinished {
+                        id: child.to_string(),
+                        name,
+                        line,
+                    });
+                } else {
+                    self.transcript.push_notice(&line);
+                }
+            }
+            rhema_submissions::Status::Failed => {
+                self.transcript.push_notice(&format!(
+                    "subagent {name} ({child}) failed; it is not started again"
+                ));
+            }
+            _ => self.transcript.push_notice(&format!(
+                "subagent {name} ({child}) is interrupted; it is not started, \
+                 and a later request can resume it"
+            )),
+        }
     }
 
     /// Reads and derives a resume's parts: the session file plus the

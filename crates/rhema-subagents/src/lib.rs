@@ -26,13 +26,18 @@
 //! the notifications, the driver drains them at step boundaries while
 //! a turn runs, and a frontend with no running turn takes them to run
 //! as the next turn's prompt. Jobs are bound to the agent's lifetime,
-//! dropped with it, reports lost.
+//! dropped with it. When the frontend attached a store, each job also
+//! writes a real child session with its own descriptor and turn record,
+//! so the report outlives the registry and an interrupted child can be
+//! resumed.
 //!
 //! Layout:
 //! - [`def`]: `SubagentDef`, discovery over markdown definitions
 //! - [`tools`]: `SubagentTools`, the `subagent` tool and the inner run
 //! - [`registry`]: the job registry: ids, states, the cap, the
 //!   subscription
+//! - [`kind`]: the `subagent` submission kind: child sessions, adoption,
+//!   recovery, the report read from disk
 //! - [`wire`]: the explicit `CodingAgentConfig` helper frontends call
 //!
 //! The crate is an extension: it depends on the existing stack and
@@ -50,11 +55,13 @@
 #![forbid(unsafe_code)]
 
 pub mod def;
+pub mod kind;
 pub mod registry;
 pub mod tools;
 pub mod wire;
 
 pub use def::{SubagentDef, builtin, discover};
-pub use registry::{JobFailure, JobFinished, JobStatus, Restarted};
+pub use kind::{Descriptor, Payload, SubagentKind, child_id, is_child, is_child_of};
+pub use registry::{JobFailure, JobFinished, JobStatus, Restarted, Started};
 pub use tools::SubagentTools;
 pub use wire::{SubagentHandle, extra_specs, wire, wire_at};

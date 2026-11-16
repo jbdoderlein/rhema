@@ -64,6 +64,34 @@ impl SubagentHandle {
         }
     }
 
+    /// Attaches the store a child session is saved under and the parent
+    /// it belongs to: the frontend calls this once it knows which
+    /// conversation it opened. Before it, a subagent runs in memory and
+    /// leaves no child behind.
+    pub fn attach_store(
+        &self,
+        store: Arc<dyn rhema_session_store::SessionStore>,
+        parent: rhema_session_store::SessionId,
+    ) {
+        if let Some(tools) = self.tools.upgrade() {
+            tools.attach_store(store, parent);
+        }
+    }
+
+    /// Notes a finish the registry did not observe: a child that ended
+    /// while the parent was down. It reaches the transcript notices and
+    /// the notification feed, once each.
+    pub fn note_finished(&self, finished: crate::registry::JobFinished) {
+        self.registry.note_finished(finished);
+    }
+
+    /// The starts the parent's ledger has not recorded yet: the child
+    /// session and the recipe a record needs. The frontend submits them
+    /// into the session and saves once. Empty after a drain.
+    pub fn take_starts(&self) -> Vec<crate::registry::Started> {
+        self.registry.take_starts()
+    }
+
     /// The jobs' screen-facing state: one entry per working job,
     /// queued or running, oldest first. A finished job left at once;
     /// its outcome arrived on [`Self::take_finished`]. Empty when the

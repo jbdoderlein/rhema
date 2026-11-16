@@ -447,7 +447,7 @@ async fn an_unknown_id_fetches_as_gone() {
     let result = tools.resolve(fetch("job-9"), &ToolContext::default()).await;
     assert!(result.is_error);
     assert!(
-        result.content.contains("no such job") && result.content.contains("gone"),
+        result.content.contains("no such subagent job") && result.content.contains("job-9"),
         "{}",
         result.content
     );

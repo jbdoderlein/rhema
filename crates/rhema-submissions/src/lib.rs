@@ -38,7 +38,7 @@ pub mod turn;
 pub mod view;
 
 pub use error::SubmissionError;
-pub use kind::{Kind, Kinds, RecoverCtx, Recovery};
+pub use kind::{AdoptCtx, Kind, Kinds, RecoverCtx, Recovery};
 pub use record::{KindName, MAX_KIND_NAME, Millis, Outcome, Owner, Record, Status, SubmissionId};
 pub use state::{
     Cancel, Change, RETAIN_SETTLED, cancel, next_id, reconcile, retry, settle, start, submit,

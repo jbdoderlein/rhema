@@ -202,10 +202,17 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     if let Some(problem) = rhema_agent_tools::jobs::backend_problem() {
         eprintln!("warning: background jobs disabled: {problem}");
     }
+    // Headless has no `/resume`: `--save` names a file, and its stem is
+    // the tag a later run reading that file can list. Without one the
+    // tag is random and the jobs are not resumable, which the spec says
+    // rather than pretending otherwise.
+    let jobs_tag = args
+        .save
+        .as_deref()
+        .and_then(crate::jobs::tag_from_path)
+        .unwrap_or_else(crate::jobs::fallback_tag);
     let jobs_wiring = (sandboxed.is_none())
-        .then(|| {
-            rhema_agent_tools::jobs::wire(std::env::var_os("BASH_ENV"), crate::jobs::session_id())
-        })
+        .then(|| rhema_agent_tools::jobs::wire(std::env::var_os("BASH_ENV"), &jobs_tag))
         .flatten();
     if let Some(wiring) = &jobs_wiring {
         agent_config.shell_env.extend(wiring.shell_env.clone());
@@ -217,7 +224,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     // comes. The one-shot has no idle path: a job outliving the run is
     // the daemon's, and a later run sees it only through `job ls`.
     let jobs = (jobs_wiring.is_some())
-        .then(crate::jobs::JobsHandle::spawn)
+        .then(|| crate::jobs::JobsHandle::spawn(jobs_tag))
         .flatten();
     let bash_env = jobs_wiring
         .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))

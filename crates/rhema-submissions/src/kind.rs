@@ -25,6 +25,25 @@ pub trait Kind: Send + Sync {
     /// at the session, another store, a daemon, but it returns a verdict
     /// and this crate does the write.
     fn recover(&self, ctx: &RecoverCtx<'_>) -> Recovery;
+
+    /// Work this kind can see but the ledger has no record of.
+    ///
+    /// Called once per kind at load, before any `recover`. The kind reads
+    /// its own store, checks the snapshot, and returns a payload only for
+    /// work without a record, so a second load returns nothing. The crate
+    /// assigns the id and classifies each payload with `recover` in the
+    /// same pass.
+    fn adopt(&self, _ctx: &AdoptCtx<'_>) -> Vec<serde_json::Value> {
+        Vec::new()
+    }
+}
+
+/// What a kind gets to read while it rebuilds the records it owns.
+pub struct AdoptCtx<'a> {
+    /// The session the ledger was loaded with.
+    pub session: &'a Session,
+    /// The ledger as it stands, before this kind adds anything.
+    pub snapshot: &'a crate::view::Snapshot,
 }
 
 /// What a kind gets to read while it decides a stale record's fate.
@@ -48,8 +67,8 @@ impl RecoverCtx<'_> {
     }
 }
 
-/// What a dead process left behind. Exactly three answers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What a dead process left behind. Exactly four answers.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Recovery {
     /// The work finished; the record is settled.
     Done,
@@ -57,6 +76,13 @@ pub enum Recovery {
     Queued,
     /// Some of it landed; the driver knows how to continue.
     Interrupted,
+    /// The work's own state is gone (a deleted child session, a daemon
+    /// that lost the job), so it can never finish. Settles as `Failed`
+    /// with `retryable: false`.
+    Failed {
+        /// What the kind found missing, worded for the user.
+        error: String,
+    },
 }
 
 /// The kinds a frontend links, by tag.
@@ -96,6 +122,11 @@ impl Kinds {
     /// The kind registered under `name`, if this build links it.
     pub fn get(&self, name: &KindName) -> Option<&Arc<dyn Kind>> {
         self.by_name.get(name)
+    }
+
+    /// Every registered kind, in tag order.
+    pub fn iter(&self) -> impl Iterator<Item = (&KindName, &Arc<dyn Kind>)> {
+        self.by_name.iter()
     }
 
     /// How many kinds are registered.

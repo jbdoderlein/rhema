@@ -7437,3 +7437,190 @@ fn a_paste_reaches_the_websearch_dialogs_input() {
         .expect("the keychain ref");
     assert_eq!(secrets.get(id).unwrap().as_deref(), Some("sk-pasted-123"));
 }
+
+#[test]
+fn resume_retags_the_jobs_and_announces_an_interrupted_subagent() {
+    use rhema_session_store::{SessionId, SessionStore};
+
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    let workspace = crate::args::canonical(&h.app.options.workspace);
+    let parent_path = crate::sessions::save_session(h.sessions.path(), &workspace, &{
+        let mut session = Session::default();
+        session
+            .history
+            .push(Message::text(Role::User, "the prompt"));
+        session
+    })
+    .unwrap()
+    .expect("a spoken session saves");
+    let parent_id = parent_path
+        .file_stem()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
+
+    // A child with a working tail: its turn record still says running,
+    // and the history ends inside the tool loop.
+    let store = rhema_session_store_file::FileStore::scoped(h.sessions.path(), &workspace);
+    let child = SessionId::new(format!("{parent_id}.sub-0000000000000002")).unwrap();
+    let mut child_session = Session::default();
+    rhema_subagents::kind::write_descriptor(
+        &mut child_session,
+        &rhema_subagents::Descriptor {
+            def: "worker".into(),
+            prompt: "do the work".into(),
+            model: None,
+            parent: SessionId::new(parent_id.clone()).unwrap(),
+        },
+    );
+    let queued = rhema_submissions::turn::submit(&mut child_session, "do the work", 1).unwrap();
+    rhema_submissions::turn::start(&mut child_session, &queued.id, "do the work", 2).unwrap();
+    child_session
+        .history
+        .push(Message::text(Role::User, "do the work"));
+    child_session.history.push(Message {
+        role: Role::Assistant,
+        content: vec![rhema_core::Content::ToolCall(rhema_core::ToolCall {
+            id: "c1".into(),
+            name: "bash".into(),
+            args: serde_json::json!({ "command": "true" }),
+            ..Default::default()
+        })],
+    });
+    store.save(&child, &child_session).unwrap();
+
+    h.app.resume_session(&parent_path);
+    assert_eq!(h.app.jobs_tag, parent_id, "the poller reads the loaded id");
+    let notice = h
+        .app
+        .transcript
+        .lines()
+        .iter()
+        .find_map(|line| match line {
+            Line::Notice(text) if text.contains("interrupted") => Some(text.clone()),
+            _ => None,
+        })
+        .expect("the interrupted subagent is announced");
+    assert!(notice.contains(child.as_str()), "{notice}");
+    assert!(notice.contains("worker"), "{notice}");
+
+    // Loading starts nothing: the child's tail is untouched, its record
+    // is still running, and the parent says interrupted.
+    let reloaded = store.load(&child).unwrap().unwrap();
+    assert_eq!(reloaded.history, child_session.history);
+    let snapshot = rhema_submissions::snapshot(&h.app.session).unwrap();
+    let record = snapshot.newest().expect("the parent holds a record");
+    assert_eq!(record.kind.as_str(), "subagent");
+    assert_eq!(record.status, rhema_submissions::Status::Interrupted);
+
+    // A second load leaves the same record, still interrupted.
+    h.app.resume_session(&parent_path);
+    let snapshot = rhema_submissions::snapshot(&h.app.session).unwrap();
+    assert_eq!(snapshot.len(), 1);
+    assert_eq!(
+        snapshot.newest().unwrap().status,
+        rhema_submissions::Status::Interrupted
+    );
+}
+
+#[test]
+fn a_job_that_ended_while_the_process_was_down_becomes_a_notice() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    h.app.jobs = Some(crate::jobs::JobsHandle::stub(Vec::new()));
+    let tag = h.app.jobs_tag.clone();
+
+    // The record the reconcile recovered: a done job for this session.
+    let mut session = Session::default();
+    let record = rhema_submissions::submit(
+        &mut session,
+        rhema_submissions::KindName::new("job").unwrap(),
+        serde_json::json!({
+            "tag": tag,
+            "id": "abc",
+            "command": "npm run dev",
+        }),
+        1,
+    )
+    .unwrap();
+    rhema_submissions::start(&mut session, &record.id, 2, None).unwrap();
+    let settled = rhema_submissions::settle(
+        &mut session,
+        &record.id,
+        rhema_submissions::Outcome::Done,
+        3,
+    )
+    .unwrap();
+    h.app.session = session;
+
+    h.app
+        .announce_changes(&[rhema_submissions::Change::Recovered {
+            id: settled.id,
+            kind: rhema_submissions::KindName::new("job").unwrap(),
+            to: rhema_submissions::Status::Done,
+        }]);
+
+    let finished = h
+        .app
+        .jobs
+        .as_ref()
+        .expect("the stub poller")
+        .take_finished();
+    assert_eq!(finished.len(), 1);
+    assert_eq!(finished[0].id, "abc");
+    assert_eq!(finished[0].command, "npm run dev");
+    assert_eq!(
+        finished[0].line,
+        "Background job abc (\"npm run dev\") was stopped."
+    );
+}
+
+#[test]
+fn a_job_the_poller_saw_start_becomes_one_running_record() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    assert!(h.app.agent.is_some(), "the harness builds an agent");
+    h.app.jobs = Some(crate::jobs::JobsHandle::stub(Vec::new()));
+    h.app
+        .jobs
+        .as_ref()
+        .unwrap()
+        .note_started(crate::jobs::JobStarted {
+            id: "abc".into(),
+            command: "npm run dev".into(),
+        });
+
+    h.app.drain_submission_writes();
+    let snapshot = rhema_submissions::snapshot(h.app.agent.as_ref().unwrap().session()).unwrap();
+    assert_eq!(snapshot.len(), 1);
+    let record = snapshot.newest().unwrap();
+    assert_eq!(record.kind.as_str(), "job");
+    assert_eq!(record.status, rhema_submissions::Status::Running);
+    let payload: rhema_agent_tools::jobs::kind::Payload =
+        serde_json::from_value(record.payload.clone()).unwrap();
+    assert_eq!(payload.id, "abc");
+    assert_eq!(payload.tag, h.app.jobs.as_ref().unwrap().tag());
+
+    // The queue is empty now: a second drain writes nothing.
+    h.app.drain_submission_writes();
+    let snapshot = rhema_submissions::snapshot(h.app.agent.as_ref().unwrap().session()).unwrap();
+    assert_eq!(snapshot.len(), 1);
+
+    // The poller minted the finish: the record settles without a load.
+    h.app
+        .jobs
+        .as_ref()
+        .unwrap()
+        .note_finished(crate::jobs::JobFinished {
+            id: "abc".into(),
+            command: "npm run dev".into(),
+            exit_code: Some(0),
+            line: "Background job abc finished".into(),
+        });
+    h.app.drain_submission_writes();
+    let snapshot = rhema_submissions::snapshot(h.app.agent.as_ref().unwrap().session()).unwrap();
+    assert_eq!(snapshot.len(), 1);
+    assert_eq!(
+        snapshot.newest().unwrap().status,
+        rhema_submissions::Status::Done
+    );
+}

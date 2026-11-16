@@ -45,12 +45,28 @@ A crate that owns a kind of work implements two methods:
 pub trait Kind: Send + Sync {
     fn name(&self) -> &'static str;
     fn recover(&self, ctx: &RecoverCtx<'_>) -> Recovery;
+
+    fn adopt(&self, ctx: &AdoptCtx<'_>) -> Vec<serde_json::Value> {
+        Vec::new()
+    }
 }
 ```
 
 `recover` answers what a `Running` record left by a dead process means
-now, and there are exactly three answers: `Done`, `Queued`, or
-`Interrupted`. It cannot write; the lifecycle applies the verdict.
+now, and there are exactly four answers: `Done`, `Queued`,
+`Interrupted`, or `Failed { error }` when the work's own state is gone.
+It cannot write; the lifecycle applies the verdict once per stale
+record.
+
+`adopt` covers work that started inside a tool call, where the ledger
+could not be written first. The kind reads its own store, checks the
+snapshot, and returns only the payloads without a record. The crate
+assigns their ids and classifies them with `recover` in the same pass,
+so a second load adopts nothing.
+
+The subagent kind lives in `rhema-subagents` and reads child sessions.
+The job kind lives in `rhema-agent-tools` and reads the job daemon's
+listing.
 
 Register the kinds a frontend links in a `Kinds`. A record whose kind is
 not registered reconciles to `Interrupted` and is reported as
@@ -67,6 +83,12 @@ the input twice, and `turn::answer` reads the reply from history.
 
 `base` pins the history index the input landed at, so recovery never
 matches prompt text: two identical prompts in a row cannot confuse it.
+
+## The TUI and ACP
+
+ACP records each prompt and reconciles on `session/load`. The TUI
+reconciles a resumed session, restarts its jobs poller under the loaded
+session's tag, and announces what it found without starting any work.
 
 ## Retention
 

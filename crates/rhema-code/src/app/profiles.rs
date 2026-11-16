@@ -257,6 +257,7 @@ impl App {
             &self.config.disabled_mcp_servers,
             self.secrets.as_ref(),
             self.jobs.as_ref().map(crate::jobs::JobsHandle::steering),
+            &self.jobs_tag,
         );
         match CodingAgent::from_session(agent_config, session) {
             Ok(mut agent) => {

@@ -150,6 +150,11 @@ pub fn list_sessions(base: &Path, workspace: &Path) -> io::Result<Vec<SavedSessi
     let rows = store.list().map_err(to_io)?;
     Ok(rows
         .into_iter()
+        // A subagent's session is a real file next to its parent, and a
+        // conversation picker must not offer it: resuming it as a
+        // conversation would make a second parent for work that has
+        // one.
+        .filter(|meta| !rhema_subagents::is_child(&meta.id))
         .map(|meta| SavedSession {
             path: store.path_for(&meta.id),
             saved_at: meta.saved_at,
@@ -356,5 +361,33 @@ mod tests {
         assert_eq!(ago(now - 26 * 3_600_000, now), "1d ago");
         // A timestamp from the future (clock skew) reads as now.
         assert_eq!(ago(now + 5_000, now), "just now");
+    }
+}
+
+#[cfg(test)]
+mod picker_tests {
+    use super::*;
+    use rhema_core::{Message, Role};
+    use rhema_session_store::{SessionId, SessionStore};
+
+    #[test]
+    fn a_subagent_child_is_not_offered_as_a_conversation() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("sessions");
+        let workspace = Path::new("/home/u/proj");
+        let store = FileStore::scoped(&base, workspace);
+        let parent = SessionId::new("0000000000000001-00").unwrap();
+        let child = SessionId::new("0000000000000001-00.sub-0000000000000002").unwrap();
+        let mut session = Session::default();
+        session.history.push(Message::text(Role::User, "a prompt"));
+        store.save(&parent, &session).unwrap();
+        store.save(&child, &session).unwrap();
+
+        let listed = list_sessions(&base, workspace).unwrap();
+        assert_eq!(listed.len(), 1, "only the conversation lists: {listed:?}");
+        assert_eq!(
+            listed[0].path.file_stem().and_then(|stem| stem.to_str()),
+            Some(parent.as_str())
+        );
     }
 }

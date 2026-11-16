@@ -583,3 +583,124 @@ fn a_backend_with_the_flag_is_ready() {
     );
     assert!(matches!(probe(&bin), Installed::Ready));
 }
+
+/// A record carrying a job payload, the shape `reconcile` hands a kind.
+fn job_record(tag: &str, id: &str, command: &str) -> rhema_submissions::Record {
+    rhema_submissions::Record {
+        id: rhema_submissions::SubmissionId::new("0000000000000001-00").unwrap(),
+        kind: rhema_submissions::KindName::new(kind::NAME).unwrap(),
+        payload: serde_json::json!({ "tag": tag, "id": id, "command": command }),
+        status: rhema_submissions::Status::Running,
+        created_at: 1,
+        started_at: Some(2),
+        settled_at: None,
+        owner: None,
+        outcome: None,
+        attempts: 1,
+    }
+}
+
+/// A listing entry carrying an explicit tag and command.
+#[cfg(unix)]
+fn tagged_entry(id: &str, status: &str, tag: &str, exit_code: Option<i32>) -> String {
+    let exit = exit_code.map_or_else(|| "null".to_owned(), |code| code.to_string());
+    format!(
+        "{{\"id\":\"{id}\",\"status\":\"{status}\",\"command\":[\"bash\",\"-c\",\"npm run dev\"],\
+         \"description\":\"[{tag}] npm run dev\",\"exit_code\":{exit},\
+         \"workdir\":null,\"started_at\":\"2026-11-11T11:20:38+01:00\"}}"
+    )
+}
+
+#[cfg(unix)]
+#[test]
+fn a_job_row_becomes_a_verdict() {
+    use rhema_submissions::{Kind, RecoverCtx, Recovery};
+
+    let fake = Fake::new(&listing(&tagged_entry("abc", "running", "s1", None)));
+    let kind = kind::JobKind::at("s1", fake.backend.clone(), fake.dir.path().to_path_buf());
+    let session = rhema_core::Session::default();
+    let record = job_record("s1", "abc", "npm run dev");
+    assert_eq!(
+        kind.recover(&RecoverCtx {
+            session: &session,
+            record: &record,
+        }),
+        Recovery::Interrupted
+    );
+
+    fake.set_listing(&listing(&tagged_entry("abc", "stopped", "s1", Some(0))));
+    assert_eq!(
+        kind.recover(&RecoverCtx {
+            session: &session,
+            record: &record,
+        }),
+        Recovery::Done
+    );
+
+    // A reaped row is a finish, the live feed's own reading of an
+    // absence.
+    fake.set_listing("[]");
+    assert_eq!(
+        kind.recover(&RecoverCtx {
+            session: &session,
+            record: &record,
+        }),
+        Recovery::Done
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_missing_backend_settles_the_record_failed() {
+    use rhema_submissions::{Kind, RecoverCtx, Recovery};
+
+    let dir = tempfile::tempdir().unwrap();
+    let kind = kind::JobKind::at(
+        "s1",
+        dir.path().join("no-such-backend"),
+        dir.path().to_path_buf(),
+    );
+    let session = rhema_core::Session::default();
+    let record = job_record("s1", "abc", "npm run dev");
+    assert_eq!(
+        kind.recover(&RecoverCtx {
+            session: &session,
+            record: &record,
+        }),
+        Recovery::Failed {
+            error: "no job backend".to_owned(),
+        }
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn adopt_rebuilds_the_records_that_are_missing() {
+    use rhema_submissions::{Kinds, Status, reconcile, snapshot};
+
+    let fake = Fake::new(&listing(&format!(
+        "{},{}",
+        tagged_entry("abc", "stopped", "s1", Some(0)),
+        tagged_entry("def", "running", "s2", None)
+    )));
+    let kind = kind::JobKind::at("s1", fake.backend.clone(), fake.dir.path().to_path_buf());
+    let mut session = rhema_core::Session::default();
+    let kinds = Kinds::new().with(std::sync::Arc::new(kind));
+
+    // Only this session's row is adopted; the other session's job is
+    // not ours to index.
+    let changed = reconcile(&mut session, &kinds, 10).unwrap();
+    assert_eq!(changed.len(), 1);
+    let after = snapshot(&session).unwrap();
+    assert_eq!(after.len(), 1);
+    let record = after.newest().unwrap();
+    assert_eq!(record.status, Status::Done);
+    let payload: kind::Payload = serde_json::from_value(record.payload.clone()).unwrap();
+    assert_eq!(payload.tag, "s1");
+    assert_eq!(payload.id, "abc");
+    assert_eq!(payload.command, "npm run dev");
+
+    // A second pass adopts nothing.
+    assert!(reconcile(&mut session, &kinds, 11).unwrap().is_empty());
+    assert_eq!(snapshot(&session).unwrap().len(), 1);
+}

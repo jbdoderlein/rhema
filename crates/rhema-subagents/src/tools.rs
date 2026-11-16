@@ -37,10 +37,9 @@
 //! nested call runs to its report inside the job's step loop.
 
 use std::path::Path;
-use std::sync::Arc;
-use std::sync::Weak;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex, Weak};
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -55,8 +54,10 @@ use rhema_core::{
     ToolContext, ToolProgress, ToolResolver, ToolResult, ToolSpec,
 };
 use rhema_provider::Retrying;
+use rhema_session_store::{SessionId, SessionStore};
 
 use crate::def::SubagentDef;
+use crate::kind;
 use crate::registry::{Fetched, JobFailure, JobRerun, Registry, RestartJob};
 
 /// The report is cut at this size, in bytes and in char boundaries,
@@ -136,6 +137,48 @@ struct Inner {
     /// computed once at wire time off the config. Empty on direct
     /// constructions (tests): the body runs alone.
     base: String,
+    /// Where a child session is saved and which session is its parent.
+    /// `None` on a tool that has no store (tests, and the nested level
+    /// inside a job): the inner session stays in memory, the way it
+    /// behaved before child sessions existed.
+    children: Arc<Mutex<Option<ChildStore>>>,
+}
+
+/// The store and parent identity a child session is written under.
+#[derive(Clone)]
+struct ChildStore {
+    store: Arc<dyn SessionStore>,
+    parent: SessionId,
+}
+
+/// One run's child session: the store to write it to, its id, and its
+/// own turn record.
+struct ChildRun {
+    store: Arc<dyn SessionStore>,
+    child: SessionId,
+    parent: SessionId,
+    turn: Option<rhema_submissions::SubmissionId>,
+}
+
+impl ChildRun {
+    /// The engine's commit hook over this child: the same write, fired
+    /// at every boundary the engine owns, so a crash mid-tool leaves
+    /// the committed intent instead of the step before it.
+    fn commit_hook(&self) -> rhema_core::CommitHook {
+        let store = self.store.clone();
+        let child = self.child.clone();
+        Box::new(move |session: &Session| {
+            store
+                .save(&child, session)
+                .map_err(|err| rhema_core::CommitError(err.to_string()))
+        })
+    }
+
+    fn save(&self, session: &Session) -> Result<(), JobFailure> {
+        self.store.save(&self.child, session).map_err(|err| {
+            JobFailure::Permanent(format!("its child session could not be saved: {err}"))
+        })
+    }
 }
 
 /// Where one run rides: the provider its requests turn on and the
@@ -145,6 +188,9 @@ struct Inner {
 struct Ride {
     provider: Arc<dyn ModelProvider>,
     model: String,
+    /// The call's own spelling before resolution, so a restart or a
+    /// child's descriptor aims the same way it did the first time.
+    spelling: Option<String>,
 }
 
 impl Inner {
@@ -186,8 +232,28 @@ impl Inner {
     fn clone_with_depth(&self, max_depth: u32) -> Self {
         Self {
             max_depth,
+            // A nested run is part of its parent job's work, not a
+            // child of the parent session: it keeps no session of its
+            // own.
+            children: Arc::new(Mutex::new(None)),
             ..self.clone()
         }
+    }
+
+    /// The child target a run writes to, when a store is wired.
+    fn child_run(&self, child: Option<&SessionId>) -> Option<ChildRun> {
+        let child = child?;
+        let children = self
+            .children
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()?;
+        Some(ChildRun {
+            store: children.store,
+            child: child.clone(),
+            parent: children.parent,
+            turn: None,
+        })
     }
 
     /// Resolves where one run rides: the call's `model` argument wins
@@ -205,6 +271,7 @@ impl Inner {
             return Ok(Ride {
                 provider: self.provider.clone(),
                 model: self.default_model.clone(),
+                spelling: None,
             });
         };
         let spelling = spelling.trim();
@@ -235,27 +302,26 @@ impl Inner {
                 return Ok(Ride {
                     provider,
                     model: model.to_owned(),
+                    spelling: Some(spelling.to_owned()),
                 });
             }
         }
         Ok(Ride {
             provider: self.provider.clone(),
             model: spelling.to_owned(),
+            spelling: Some(spelling.to_owned()),
         })
     }
 
-    /// Runs one definition to its report, or to the reason it failed.
-    /// `ride` is the caller's resolution, this never consults the
-    /// frontmatter or the default itself.
-    async fn run(
+    /// Builds the inner agent one run rides: the stamped prompt with
+    /// the definition's body, the run's resolver, and the provider
+    /// wrapped in the job-tuned retry ladder.
+    fn agent(
         &self,
         ride: &Ride,
         def: &SubagentDef,
-        prompt: &str,
-        ctx: &ToolContext,
         inner_shell: &Arc<ShellTools>,
-        progress: &mut dyn ToolProgress,
-    ) -> Result<String, JobFailure> {
+    ) -> Result<Agent, JobFailure> {
         // The inner system prompt: the stamp with this definition's
         // body appended verbatim. A body is plain text, never
         // rendered, template syntax in it reaches the model as the
@@ -282,7 +348,7 @@ impl Inner {
         ));
         let (retrying, _zoom) =
             rhema_transcript::attach(retrying, rhema_transcript::TranscriptSettings::default());
-        let mut agent = Agent::builder()
+        Agent::builder()
             .provider(retrying)
             .resolver(resolver)
             .system(system)
@@ -291,15 +357,33 @@ impl Inner {
                 ..ChatParams::new(ride.model.clone())
             })
             .build()
-            .map_err(|err| JobFailure::Permanent(format!("its engine failed to build: {err}")))?;
+            .map_err(|err| JobFailure::Permanent(format!("its engine failed to build: {err}")))
+    }
 
-        let mut session = Session::default();
-        session.history.push(Message::text(Role::User, prompt));
-        let inner_ctx = ToolContext {
-            cwd: inner_shell.workspace().to_path_buf(),
-            run_id: format!("{}/subagent:{}", ctx.run_id, def.name),
-            cancelled: ctx.cancelled.clone(),
-        };
+    /// Runs one definition to its report, or to the reason it failed.
+    /// `ride` is the caller's resolution, this never consults the
+    /// frontmatter or the default itself.
+    ///
+    /// With a child id, the run writes a real session: the descriptor
+    /// and a `turn` record before the first model call, the history at
+    /// every step boundary, and the settled record at the end. A kill
+    /// anywhere in between leaves both, which is what the parent's
+    /// `adopt` and `recover` read.
+    #[allow(clippy::too_many_arguments)]
+    async fn run(
+        &self,
+        ride: &Ride,
+        def: &SubagentDef,
+        prompt: &str,
+        ctx: &ToolContext,
+        inner_shell: &Arc<ShellTools>,
+        progress: &mut dyn ToolProgress,
+        child: Option<&SessionId>,
+    ) -> Result<String, JobFailure> {
+        let mut agent = self.agent(ride, def, inner_shell)?;
+        if let Some(target) = self.child_run(child) {
+            agent.set_commit_hook(Some(target.commit_hook()));
+        }
         let mut sink = Forwarder {
             progress,
             model: ride.model.clone(),
@@ -307,24 +391,100 @@ impl Inner {
             context: None,
             spent: rhema_core::Usage::default(),
         };
+        let inner_ctx = ToolContext {
+            cwd: inner_shell.workspace().to_path_buf(),
+            run_id: format!("{}/subagent:{}", ctx.run_id, def.name),
+            cancelled: ctx.cancelled.clone(),
+        };
 
+        let mut session = Session::default();
+        let mut child_run = self.child_run(child);
+        if let Some(run) = child_run.as_mut() {
+            kind::write_descriptor(
+                &mut session,
+                &kind::Descriptor {
+                    def: def.name.clone(),
+                    prompt: prompt.to_owned(),
+                    model: ride.spelling.clone(),
+                    parent: run.parent.clone(),
+                },
+            );
+            let at = rhema_submissions::now();
+            if let Ok(record) = rhema_submissions::turn::submit(&mut session, prompt, at)
+                && let Ok(started) =
+                    rhema_submissions::turn::start(&mut session, &record.id, prompt, at)
+            {
+                run.turn = Some(started.id);
+            }
+        }
+        session.history.push(Message::text(Role::User, prompt));
+        if let Some(run) = &child_run {
+            run.save(&session)?;
+        }
+
+        let result = self
+            .steps(
+                &mut agent,
+                &mut session,
+                def,
+                ctx,
+                &inner_ctx,
+                &mut sink,
+                child_run.as_ref(),
+            )
+            .await;
+
+        if let Some(run) = &child_run {
+            if let Some(turn) = &run.turn {
+                let outcome = match &result {
+                    Ok(_) => rhema_submissions::Outcome::Done,
+                    Err(failure) => rhema_submissions::Outcome::Failed {
+                        error: failure.reason().to_owned(),
+                        retryable: failure.is_transient(),
+                    },
+                };
+                let _ = rhema_submissions::settle(
+                    &mut session,
+                    turn,
+                    outcome,
+                    rhema_submissions::now(),
+                );
+            }
+            run.save(&session)?;
+        }
+        result
+    }
+
+    /// The step loop over one session, saving the child at each
+    /// boundary when there is one.
+    #[allow(clippy::too_many_arguments)]
+    async fn steps(
+        &self,
+        agent: &mut Agent,
+        session: &mut Session,
+        def: &SubagentDef,
+        ctx: &ToolContext,
+        inner_ctx: &ToolContext,
+        sink: &mut Forwarder<'_>,
+        child: Option<&ChildRun>,
+    ) -> Result<String, JobFailure> {
         for _ in 0..def.max_steps() {
             if ctx.cancelled.load(Ordering::Relaxed) {
                 return Err(JobFailure::Permanent("cancelled".to_owned()));
             }
-            let step = agent
-                .step(&mut session, &mut sink, &inner_ctx)
-                .await
-                .map_err(|err| {
-                    // The failure class is decided where the error is
-                    // known: a retryable provider failure names the
-                    // infrastructure, everything else names the work.
-                    if err.is_retryable() {
-                        JobFailure::Transient(err.to_string())
-                    } else {
-                        JobFailure::Permanent(err.to_string())
-                    }
-                })?;
+            let step = agent.step(session, sink, inner_ctx).await.map_err(|err| {
+                // The failure class is decided where the error is
+                // known: a retryable provider failure names the
+                // infrastructure, everything else names the work.
+                if err.is_retryable() {
+                    JobFailure::Transient(err.to_string())
+                } else {
+                    JobFailure::Permanent(err.to_string())
+                }
+            })?;
+            if let Some(child) = child {
+                child.save(session)?;
+            }
             if step.output.stop_reason != rhema_core::StopReason::ToolUse {
                 let report: String = step
                     .output
@@ -366,6 +526,165 @@ pub struct SubagentTools {
 }
 
 impl SubagentTools {
+    /// Attaches the store a child session is saved under and the parent
+    /// it belongs to. Called after wiring, when the frontend knows
+    /// which conversation it opened; without it a run stays in memory.
+    pub fn attach_store(&self, store: Arc<dyn SessionStore>, parent: SessionId) {
+        *self
+            .inner
+            .children
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some(ChildStore { store, parent });
+    }
+
+    /// Reads a finished child's report out of the store, or reports the
+    /// state it is stuck in. `None` when the id names no child.
+    fn child_fetch(&self, id: &str) -> Option<Fetched> {
+        let children = self
+            .inner
+            .children
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()?;
+        let child = SessionId::new(id).ok()?;
+        let session = children.store.load(&child).ok().flatten()?;
+        let descriptor = kind::descriptor(&session)?;
+        if kind::finished(&session) {
+            let report = kind::report(&session)?;
+            return Some(Fetched::Report {
+                name: descriptor.def,
+                report,
+            });
+        }
+        Some(Fetched::Interrupted {
+            name: descriptor.def,
+            child,
+        })
+    }
+
+    /// Continues an interrupted child from its own session file: the
+    /// explicit request a driver makes, never a load side effect.
+    ///
+    /// The child's ledger is reconciled first, so a record the dead
+    /// process left `Running` becomes `Interrupted` or `Queued`
+    /// through the turn kind's own rules. A queued record starts the
+    /// child from its prompt; an interrupted one retries and continues
+    /// the tail. Both settle and save when the run returns.
+    pub async fn resume(&self, child: &SessionId, ctx: &ToolContext) -> Result<String, String> {
+        let children = self
+            .inner
+            .children
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .ok_or_else(|| "no child store is wired for this subagent tool".to_owned())?;
+        let mut session = children
+            .store
+            .load(child)
+            .map_err(|err| err.to_string())?
+            .ok_or_else(|| format!("child session {child} is gone"))?;
+        let descriptor =
+            kind::descriptor(&session).ok_or_else(|| format!("{child} is not a subagent child"))?;
+        let def = kind::definition(&self.inner.defs, &descriptor.def)
+            .ok_or_else(|| format!("no subagent named {}", descriptor.def))?;
+        let ride = self
+            .inner
+            .resolve_model(descriptor.model.as_deref(), def)
+            .map_err(|why| why.to_string())?;
+        let inner_shell = self
+            .inner
+            .inner_shell(&self.shell, self.shell.current_approval());
+        let mut agent = self
+            .inner
+            .agent(&ride, def, &inner_shell)
+            .map_err(|failure| failure.reason().to_owned())?;
+
+        // Classify what the dead process left, then repair the tail:
+        // orphaned calls become synthetic failures so the model is not
+        // asked to answer a call that never returned.
+        let kinds = rhema_submissions::Kinds::new().with(Arc::new(rhema_submissions::turn::Turn));
+        rhema_submissions::reconcile(&mut session, &kinds, rhema_submissions::now())
+            .map_err(|err| err.to_string())?;
+        let turn_id = rhema_submissions::snapshot(&session)
+            .map_err(|err| err.to_string())?
+            .iter()
+            .rev()
+            .find(|record| record.kind == rhema_submissions::turn::kind())
+            .map(|record| (record.id.clone(), record.status));
+        if session.history.is_empty() {
+            session
+                .history
+                .push(Message::text(Role::User, &descriptor.prompt));
+        }
+        if let Some((id, status)) = &turn_id {
+            let at = rhema_submissions::now();
+            match status {
+                rhema_submissions::Status::Queued => {
+                    let payload = serde_json::json!({
+                        "input": descriptor.prompt,
+                        "base": 0,
+                    });
+                    rhema_submissions::start(&mut session, id, at, Some(payload))
+                        .map_err(|err| err.to_string())?;
+                }
+                rhema_submissions::Status::Interrupted => {
+                    rhema_submissions::retry(&mut session, id, at)
+                        .map_err(|err| err.to_string())?;
+                }
+                _ => {}
+            }
+        }
+        rhema_core::close_orphaned_calls(&mut session.history);
+        agent.set_commit_hook(Some(
+            ChildRun {
+                store: children.store.clone(),
+                child: child.clone(),
+                parent: descriptor.parent.clone(),
+                turn: turn_id.as_ref().map(|(id, _)| id.clone()),
+            }
+            .commit_hook(),
+        ));
+        children
+            .store
+            .save(child, &session)
+            .map_err(|err| err.to_string())?;
+
+        let inner_ctx = ToolContext {
+            cwd: inner_shell.workspace().to_path_buf(),
+            run_id: format!("{}/subagent:{}", ctx.run_id, def.name),
+            cancelled: ctx.cancelled.clone(),
+        };
+        let mut silent = rhema_core::OutputOnly(|_| {});
+        let mut sink = Forwarder {
+            progress: &mut silent,
+            model: ride.model.clone(),
+            phase: None,
+            context: None,
+            spent: rhema_core::Usage::default(),
+        };
+        let result = agent.resume_turn(&mut session, &mut sink, &inner_ctx).await;
+        let outcome = match &result {
+            Ok(_) => rhema_submissions::Outcome::Done,
+            Err(err) => rhema_submissions::Outcome::Failed {
+                error: err.to_string(),
+                retryable: err.is_retryable(),
+            },
+        };
+        let failed = result.is_err();
+        if let Some((id, _)) = &turn_id {
+            let _ = rhema_submissions::settle(&mut session, id, outcome, rhema_submissions::now());
+        }
+        children
+            .store
+            .save(child, &session)
+            .map_err(|err| err.to_string())?;
+        if failed {
+            return Err(result.expect_err("just checked").to_string());
+        }
+        kind::report(&session).ok_or_else(|| format!("{child} finished without a report"))
+    }
+
     /// A resolver over `defs`, running on the parent's `provider` and
     /// `shell`, defaulting to one level of nesting (none) and a
     /// registry capped at [`crate::registry::DEFAULT_MAX_RUNNING`]
@@ -388,6 +707,7 @@ impl SubagentTools {
                 thinking: ThinkingEffort::Default,
                 max_depth: 1,
                 base: String::new(),
+                children: Arc::new(Mutex::new(None)),
             },
             shell,
             registry: Some(Arc::new(Registry::new(
@@ -721,13 +1041,38 @@ impl SubagentTools {
         // turn's policy, never the fail-safe reject. No hook installed
         // means the inner tools reject, the fail-safe default.
         let hook = self.shell.current_approval();
+        // A child session is minted before the first model call, so
+        // the record and the file cannot disagree about which session
+        // the work is.
+        let children = self
+            .inner
+            .children
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        let child = children.as_ref().map(|children| {
+            kind::child_id(
+                children.store.as_ref(),
+                &children.parent,
+                rhema_submissions::now(),
+            )
+        });
         let rerun = JobRerun {
             def: def.clone(),
             prompt: prompt.to_owned(),
             parent_run: ctx.run_id.clone(),
             hook: hook.clone(),
             model: model.map(str::to_owned),
+            child: child.clone(),
         };
+        if let Some(child) = child {
+            registry.announce_start(crate::registry::Started {
+                child,
+                def: def.name.clone(),
+                prompt: prompt.to_owned(),
+                model: model.map(str::to_owned),
+            });
+        }
         registry.arm_restart(&minted.id, rerun.clone());
         let id = minted.id.clone();
         self.spawn(&registry, &minted.id, minted.cancel.clone(), rerun);
@@ -799,6 +1144,7 @@ impl SubagentTools {
                     &ctx,
                     &inner_shell,
                     &mut progress,
+                    rerun.child.as_ref(),
                 )
                 .await;
             if let Some(registry) = weak_registry.upgrade() {
@@ -904,14 +1250,47 @@ impl ToolResolver for SubagentTools {
                              then fetch again"
                         ),
                     ),
-                    Fetched::Unknown => ToolResult::failure(
+                    Fetched::Interrupted { name, child } => ToolResult::failure(
                         id,
                         format!(
-                            "no such job: {job} is gone, jobs live in this \
-                             agent's memory and are lost on restart; start \
-                             a new subagent"
+                            "subagent {name} ({child}) is interrupted: its \
+                             session is on disk and no process is driving \
+                             it; resuming it is an explicit request, not a \
+                             fetch"
                         ),
                     ),
+                    Fetched::Unknown => match self.child_fetch(job) {
+                        Some(fetched) => match fetched {
+                            Fetched::Report { report, .. } => ToolResult::success(id, report),
+                            Fetched::Failed { name, reason } => {
+                                ToolResult::failure(id, format!("subagent {name}: {reason}"))
+                            }
+                            Fetched::Interrupted { name, child } => ToolResult::failure(
+                                id,
+                                format!(
+                                    "subagent {name} ({child}) is interrupted: its \
+                                     session is on disk and no process is \
+                                     driving it; resuming it is an explicit \
+                                     request, not a fetch"
+                                ),
+                            ),
+                            Fetched::Busy { name } => ToolResult::failure(
+                                id,
+                                format!("subagent {name} ({job}) is still running"),
+                            ),
+                            Fetched::Unknown => {
+                                ToolResult::failure(id, format!("no such child session: {job}"))
+                            }
+                        },
+                        None => ToolResult::failure(
+                            id,
+                            format!(
+                                "no such subagent job: {job}; a job lives in the \
+                                 agent's memory, and a finished child's report \
+                                 lives in its session file"
+                            ),
+                        ),
+                    },
                 }
             }
             Ok(Parsed::Start { def, prompt, model }) if self.registry.is_some() => {
@@ -927,7 +1306,7 @@ impl ToolResolver for SubagentTools {
                         let inner_shell = self.inner.inner_shell(&self.shell, hook);
                         let outcome = self
                             .inner
-                            .run(&ride, def, prompt, ctx, &inner_shell, progress)
+                            .run(&ride, def, prompt, ctx, &inner_shell, progress, None)
                             .await;
                         inner_shell.clear_approval();
                         outcome

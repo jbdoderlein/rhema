@@ -122,6 +122,7 @@ impl App {
     /// take, the re-announce in between is the registry's crash
     /// durability, not a second delivery.
     pub fn on_tick(&mut self) -> Vec<Effect> {
+        self.drain_submission_writes();
         let promptable = !self.turn.running
             && !self.confirm_quit
             && self.agent.is_some()
@@ -278,6 +279,7 @@ impl App {
         self.agent = Some(*agent);
         self.turn.finished();
         self.retryable = false;
+        self.drain_submission_writes();
         self.transcript.push_notice("turn cancelled");
         // A steered message that raced the cancel goes back to the input:
         // the user stopped the turn, so the words are not spent.
@@ -314,6 +316,7 @@ impl App {
         self.transcript_stats = agent.transcript_stats();
         self.agent = Some(*agent);
         self.turn.finished();
+        self.drain_submission_writes();
         match result {
             Ok(output) => {
                 self.retryable = false;

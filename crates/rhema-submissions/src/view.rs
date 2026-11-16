@@ -25,14 +25,14 @@ impl Snapshot {
         self.records.iter().find(|record| &record.id == id)
     }
 
-    /// The queued or running record a driver should pick up, if any.
+    /// The oldest `Queued` record: what a serial driver starts next.
     ///
-    /// v1 runs one submission at a time, in submission order, so this is
-    /// the oldest record that is `Queued` or `Running`.
+    /// Running records do not appear here, because several kinds can run
+    /// at once and each driver owns the ones it started.
     pub fn active(&self) -> Option<&Record> {
         self.records
             .iter()
-            .find(|record| matches!(record.status, Status::Queued | Status::Running))
+            .find(|record| record.status == Status::Queued)
     }
 
     /// The newest record, settled or not.
@@ -41,7 +41,7 @@ impl Snapshot {
     }
 
     /// Every record, oldest first.
-    pub fn iter(&self) -> impl Iterator<Item = &Record> {
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &Record> {
         self.records.iter()
     }
 

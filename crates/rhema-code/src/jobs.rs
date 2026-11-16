@@ -30,6 +30,10 @@
 //! one live tick; delivery, once detected, is the registry's and
 //! instant.
 //!
+//! The tag is the conversation's checkpoint id, not a per-process name:
+//! a resumed process lists the jobs its previous one started, and
+//! `/resume` restarts this poller under the loaded tag.
+//!
 //! One delivery per finish, like a subagent's: steering mid-turn or
 //! the idle prompt, never both. The registry earns that with its
 //! fetch, the model fetching the report retires everything, so
@@ -100,6 +104,24 @@ struct Pending {
 #[derive(Default)]
 struct Feed {
     pending: Vec<Pending>,
+    /// Running rows this poller saw first: the frontend writes them into
+    /// the ledger when it next owns the agent. Unbounded would be a
+    /// leak in a headless run that never drains; a missed start is
+    /// adopted at the next load.
+    started: Vec<JobStarted>,
+    /// Ids whose finish the poller minted: the frontend settles the
+    /// ledger's record for each, without asking the daemon again.
+    finished_ids: Vec<String>,
+}
+
+/// A job this poller saw start: the record's payload before a record
+/// exists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobStarted {
+    /// The backend's short id.
+    pub id: String,
+    /// The shell line as the listing names it.
+    pub command: String,
 }
 
 impl Feed {
@@ -108,6 +130,7 @@ impl Feed {
     /// or the job vanished.
     fn mint(&mut self, seen: JobRow, exit_code: Option<i32>) {
         let line = announcement(&seen.id, &seen.command, exit_code);
+        self.finished_ids.push(seen.id.clone());
         self.pending.push(Pending {
             finished: JobFinished {
                 id: seen.id,
@@ -134,7 +157,7 @@ impl Feed {
 /// The notification line for one finished job, the driver's steering
 /// vocabulary and the finish notice's text, in the registry's shape:
 /// what ended, and how.
-fn announcement(id: &str, command: &str, exit_code: Option<i32>) -> String {
+pub(crate) fn announcement(id: &str, command: &str, exit_code: Option<i32>) -> String {
     match exit_code {
         Some(0) => format!("Background job {id} (\"{command}\") has finished (exit 0)."),
         Some(code) => {
@@ -168,6 +191,12 @@ fn observe(
     }
     for row in rows.iter().filter(|row| row.status.starts_with("running")) {
         if !alive.iter().any(|(id, _)| *id == row.id) {
+            if feed.started.len() < 32 {
+                feed.started.push(JobStarted {
+                    id: row.id.clone(),
+                    command: row.command.clone(),
+                });
+            }
             alive.push((row.id.clone(), row.clone()));
         }
     }
@@ -194,14 +223,14 @@ impl Drop for JobsHandle {
 }
 
 impl JobsHandle {
-    /// Starts the poll thread, or `None` when there is nothing to
-    /// poll: no backend installed, or no binary to run the shim from.
-    pub fn spawn() -> Option<Self> {
+    /// Starts the poll thread over `session`'s tag, or `None` when
+    /// there is nothing to poll: no backend installed, or no binary to
+    /// run the shim from.
+    pub fn spawn(session: String) -> Option<Self> {
         if !rhema_agent_tools::jobs::available() {
             return None;
         }
         let bin = std::env::current_exe().ok()?;
-        let session = session_id().to_owned();
         // A copy for the handle: the thread's own goes with the
         // closure, and the record's cleanup reads it after both.
         let own = session.clone();
@@ -221,6 +250,53 @@ impl JobsHandle {
             stop,
             session: own,
         })
+    }
+
+    /// The tag this poller reads: the conversation's checkpoint id, so
+    /// a resumed process lists the same jobs it started.
+    pub fn tag(&self) -> &str {
+        &self.session
+    }
+
+    /// Adds a finish the poller did not observe, the recovered-record
+    /// path: a job that ended while no process ran still reaches the
+    /// transcript and the model, once, in the live feed's own wording.
+    pub fn note_finished(&self, finished: JobFinished) {
+        if let Ok(mut feed) = self.feed.lock() {
+            feed.finished_ids.push(finished.id.clone());
+            feed.pending.push(Pending {
+                finished,
+                noticed: false,
+                announced: false,
+            });
+        }
+    }
+
+    /// Takes the backend ids whose finish the poller minted: the
+    /// frontend settles the ledger's record for each.
+    pub fn take_finished_ids(&self) -> Vec<String> {
+        self.feed
+            .lock()
+            .map(|mut feed| std::mem::take(&mut feed.finished_ids))
+            .unwrap_or_default()
+    }
+
+    /// Takes the starts the poller observed, oldest first: the frontend
+    /// writes a `job` record for each, unless the ledger already names
+    /// the row.
+    pub fn take_started(&self) -> Vec<JobStarted> {
+        self.feed
+            .lock()
+            .map(|mut feed| std::mem::take(&mut feed.started))
+            .unwrap_or_default()
+    }
+
+    /// Notes a start for the tests: no poll thread, just the queue.
+    #[cfg(test)]
+    pub fn note_started(&self, started: JobStarted) {
+        if let Ok(mut feed) = self.feed.lock() {
+            feed.started.push(started);
+        }
     }
 
     /// The snapshot the last poll left, oldest first.
@@ -315,22 +391,26 @@ impl Steering for JobSteering {
     }
 }
 
-/// This process's session id: what every job it starts is tagged with,
-/// and what the strip filters on. Unique per process, short enough to
-/// stay inside a description tag, and never shown to the model: the
-/// shim writes it, the model never types it.
-pub fn session_id() -> &'static str {
-    static ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    ID.get_or_init(|| {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        // `s` for readability in the backend's own listing, then the pid
-        // and the low nanos: a restarted process lands on a different id
-        // even where the pid was reused.
-        format!("s{:x}{:06x}", std::process::id(), nanos & 0xff_ffff)
-    })
+/// The tag a checkpoint file names: the conversation's store id, which
+/// survives a restart and is what a resumed process lists its jobs by.
+/// `None` for a path whose stem is not a valid session id.
+pub fn tag_from_path(path: &std::path::Path) -> Option<String> {
+    let stem = path.file_stem()?.to_str()?;
+    rhema_session_store::SessionId::new(stem).ok()?;
+    Some(stem.to_owned())
+}
+
+/// The tag a process without a checkpoint uses: unique per process, and
+/// honestly not resumable, so its jobs are nobody's after it exits.
+pub fn fallback_tag() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    // `s` for readability in the backend's own listing, then the pid
+    // and the low nanos: a restarted process lands on a different id
+    // even where the pid was reused.
+    format!("s{:x}{:06x}", std::process::id(), nanos & 0xff_ffff)
 }
 
 #[cfg(test)]
@@ -342,7 +422,7 @@ impl JobsHandle {
             entries: Arc::new(Mutex::new(entries)),
             feed: Arc::new(Mutex::new(Feed::default())),
             stop: Arc::new(AtomicBool::new(false)),
-            session: session_id().to_owned(),
+            session: fallback_tag(),
         }
     }
 
@@ -360,9 +440,11 @@ impl JobsHandle {
                         announced: false,
                     })
                     .collect(),
+                started: Vec::new(),
+                finished_ids: Vec::new(),
             })),
             stop: Arc::new(AtomicBool::new(false)),
-            session: session_id().to_owned(),
+            session: fallback_tag(),
         }
     }
 }

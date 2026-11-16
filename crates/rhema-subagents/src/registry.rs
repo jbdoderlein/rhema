@@ -113,6 +113,15 @@ pub enum Fetched {
         /// The subagent definition the job runs.
         name: String,
     },
+    /// The child session exists, but its work is unfinished and no
+    /// process is driving it. Fetching never starts it: a resume is an
+    /// explicit request.
+    Interrupted {
+        /// The subagent definition the child runs.
+        name: String,
+        /// The child session a resume would take.
+        child: rhema_session_store::SessionId,
+    },
     /// No job by that id, one the model invented, or one a restart
     /// lost (the registry is in-memory).
     Unknown,
@@ -172,6 +181,9 @@ pub struct JobRerun {
     /// wire-time snapshot put it. `None` inherits the definition's
     /// frontmatter, then the parent's model.
     pub(crate) model: Option<String>,
+    /// The child session this job writes to, when a store is wired.
+    /// A restart keeps it, so the re-run continues the same child.
+    pub(crate) child: Option<rhema_session_store::SessionId>,
 }
 
 impl std::fmt::Debug for JobRerun {
@@ -184,6 +196,7 @@ impl std::fmt::Debug for JobRerun {
             .field("parent_run", &self.parent_run)
             .field("hook", &self.hook.as_ref().map(|_| "<dyn Approval>"))
             .field("model", &self.model)
+            .field("child", &self.child)
             .finish()
     }
 }
@@ -223,6 +236,21 @@ pub struct JobFinished {
     /// The outcome in the notification wording: the job finished, or
     /// finished with an error and its reason.
     pub line: String,
+}
+
+/// One start the parent's ledger has not recorded yet: the child
+/// session and the recipe a record needs. A tool cannot write the
+/// parent session, so the frontend drains these at its next commit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Started {
+    /// The child session the work writes to.
+    pub child: rhema_session_store::SessionId,
+    /// The subagent definition it runs.
+    pub def: String,
+    /// What the parent asked.
+    pub prompt: String,
+    /// The model spelling the call carried.
+    pub model: Option<String>,
 }
 
 /// A minted job: its id and the cancel flag the spawned task owns.
@@ -304,6 +332,13 @@ struct RegistryInner {
     finished: Vec<JobFinished>,
     /// Finished events dropped for nobody reading fast enough.
     dropped: usize,
+    /// Starts not yet drained by the frontend: the parent ledger's
+    /// writes, waiting for a session it can write.
+    starts: Vec<Started>,
+    /// Notification lines for finishes the registry did not observe: a
+    /// child that ended while the parent was down, adopted at load. They
+    /// ride the steering drain or the idle take, whichever lands first.
+    extra: Vec<String>,
 }
 
 impl Registry {
@@ -316,6 +351,8 @@ impl Registry {
                 jobs: BTreeMap::new(),
                 finished: Vec::new(),
                 dropped: 0,
+                starts: Vec::new(),
+                extra: Vec::new(),
             }),
             permits: Arc::new(tokio::sync::Semaphore::new(max_running.max(1))),
         }
@@ -348,6 +385,28 @@ impl Registry {
             },
         );
         Minted { id, cancel }
+    }
+
+    /// Records a start the parent's ledger has not written: the child
+    /// session and the recipe a record needs. Drained by the frontend
+    /// at its next commit, and redundant with `adopt` if it never is.
+    pub(crate) fn announce_start(&self, started: Started) {
+        self.lock().starts.push(started);
+    }
+
+    /// Takes the pending starts out, oldest first. The frontend submits
+    /// each one into the parent's ledger, then saves once.
+    pub fn take_starts(&self) -> Vec<Started> {
+        std::mem::take(&mut self.lock().starts)
+    }
+
+    /// Notes a finish the registry did not observe: a child that ended
+    /// while the parent was down. It reaches the transcript take and
+    /// the notification feed, once each, like a live finish.
+    pub fn note_finished(&self, finished: JobFinished) {
+        let mut inner = self.lock();
+        inner.extra.push(finished.line.clone());
+        inner.finished.push(finished);
     }
 
     /// Arms a minted job for a later restart: the spawn ingredients a
@@ -465,30 +524,14 @@ impl Registry {
     /// returns the same lines; the driver deduplicates within a turn,
     /// and a line a frontend took for its prompt is retired at the
     /// take, not here.
+    /// The notification lines without consuming them: the tests read
+    /// the feed twice to assert the steering stays a query.
+    #[cfg(test)]
     pub(crate) fn notifications(&self) -> Vec<String> {
         let inner = self.lock();
-        let mut jobs: Vec<(&str, &Job)> = inner
-            .jobs
-            .iter()
-            .filter(|(_, job)| {
-                matches!(
-                    job.state,
-                    State::Finished {
-                        fetched: false,
-                        announced: false,
-                        ..
-                    }
-                )
-            })
-            .map(|(id, job)| (id.as_str(), job))
-            .collect();
-        jobs.sort_by_key(|(_, job)| job.seq);
-        jobs.iter()
-            .map(|(id, job)| match &job.state {
-                State::Finished { outcome, .. } => announcement(&job.name, id, outcome),
-                _ => unreachable!("filtered to finished jobs"),
-            })
-            .collect()
+        let mut lines = notification_lines(&inner);
+        lines.extend(inner.extra.iter().cloned());
+        lines
     }
 
     /// Takes the pending notification lines out, oldest first, marking
@@ -520,7 +563,9 @@ impl Registry {
                 *announced = true;
             }
         }
-        taken.into_iter().map(|(_, _, line)| line).collect()
+        let mut lines: Vec<String> = taken.into_iter().map(|(_, _, line)| line).collect();
+        lines.append(&mut inner.extra);
+        lines
     }
 
     /// Takes the finish events out, oldest first, one per job,
@@ -701,8 +746,41 @@ fn announcement(name: &str, id: &str, outcome: &Result<String, JobFailure>) -> S
 
 impl Steering for Registry {
     fn drain(&self) -> Vec<String> {
-        self.notifications()
+        // The observed lines stay a pure query, an unfetched report must
+        // not be lost; the injected ones are delivered once, because
+        // there is nothing to fetch behind them.
+        let mut inner = self.lock();
+        let mut lines = notification_lines(&inner);
+        lines.append(&mut inner.extra);
+        lines
     }
+}
+
+/// The notification lines of the jobs the registry observed, oldest
+/// first, a pure query.
+fn notification_lines(inner: &RegistryInner) -> Vec<String> {
+    let mut jobs: Vec<(&str, &Job)> = inner
+        .jobs
+        .iter()
+        .filter(|(_, job)| {
+            matches!(
+                job.state,
+                State::Finished {
+                    fetched: false,
+                    announced: false,
+                    ..
+                }
+            )
+        })
+        .map(|(id, job)| (id.as_str(), job))
+        .collect();
+    jobs.sort_by_key(|(_, job)| job.seq);
+    jobs.iter()
+        .map(|(id, job)| match &job.state {
+            State::Finished { outcome, .. } => announcement(&job.name, id, outcome),
+            _ => unreachable!("filtered to finished jobs"),
+        })
+        .collect()
 }
 
 /// Waits for a concurrency slot while the owning registry stays alive.
@@ -748,6 +826,7 @@ mod tests {
                 parent_run: "turn-1".into(),
                 model: None,
                 hook: None,
+                child: None,
             },
         );
     }

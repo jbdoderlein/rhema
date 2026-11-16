@@ -103,6 +103,9 @@ pub struct App {
     /// `None` on a machine without the backend, and in a sandbox session,
     /// whose jobs run where this process cannot see them.
     pub jobs: Option<crate::jobs::JobsHandle>,
+    /// The tag this conversation's jobs carry: its checkpoint id, stable
+    /// across a restart and reloaded by `/resume`.
+    pub jobs_tag: String,
     /// The subagent job registry the current agent's tool resolver
     /// starts jobs into, the wire's handle, replaced at every agent
     /// rebuild, exactly when the old registry dies with its agent. The
@@ -431,8 +434,12 @@ impl App {
     /// commands to fix it are one keystroke away, and nothing gates the
     /// session behind a login screen.
     pub fn new(setup: AppSetup) -> Result<Self, CodingAgentError> {
-        let session = setup.session;
-        let transcript = Transcript::from_history(&session.history);
+        let mut session = setup.session;
+        let sessions_base = setup
+            .sessions_base
+            .clone()
+            .or_else(|| crate::sessions::base_dir().ok());
+        let startup_workspace = crate::args::canonical(&setup.options.workspace);
         // The settings that apply to this session's profile are computed
         // on demand (they change when the model switches or a login lands).
         let mut agent = None;
@@ -451,11 +458,48 @@ impl App {
         // in `session_agent_config` is gated the same way). Spawned
         // before the screen builds, so the first session's config
         // chains the poller's steering with the subagent registry's.
+        let jobs_tag = setup
+            .checkpoint
+            .as_deref()
+            .and_then(crate::jobs::tag_from_path)
+            .unwrap_or_else(crate::jobs::fallback_tag);
         let jobs = setup
             .sandboxed
             .is_none()
-            .then(crate::jobs::JobsHandle::spawn)
+            .then(|| crate::jobs::JobsHandle::spawn(jobs_tag.clone()))
             .flatten();
+        // A session that came from a file may hold work the last process
+        // left running. Loading tells the truth and starts nothing:
+        // adopt from the children and the daemon, settle what the crash
+        // left, and write once when that changed anything.
+        let mut startup_changes = Vec::new();
+        if !session.history.is_empty() {
+            let kinds = Self::kinds_for(
+                sessions_base.as_deref(),
+                &startup_workspace,
+                &jobs_tag,
+                jobs.is_some(),
+            );
+            match rhema_submissions::reconcile(&mut session, &kinds, rhema_submissions::now()) {
+                Ok(changes) => {
+                    if !changes.is_empty()
+                        && let Some(path) = &setup.checkpoint
+                        && let Err(err) = crate::sessions::write_session(path, &session)
+                    {
+                        eprintln!(
+                            "rhema-code: warning: the reconciled session was not saved: {err}"
+                        );
+                    }
+                    startup_changes = changes;
+                }
+                Err(err) => {
+                    eprintln!(
+                        "rhema-code: warning: the submission ledger could not be read: {err}"
+                    );
+                }
+            }
+        }
+        let transcript = Transcript::from_history(&session.history);
         let screen = if setup.onboard {
             let workspace = crate::args::canonical(&setup.options.workspace);
             let agents = rhema_home.as_ref().map(|home| home.agents_skills());
@@ -503,8 +547,15 @@ impl App {
                         &setup.config.disabled_mcp_servers,
                         setup.secrets.as_ref(),
                         jobs.as_ref().map(crate::jobs::JobsHandle::steering),
+                        &jobs_tag,
                     );
                     agent = Some(CodingAgent::from_session(agent_config, session.clone())?);
+                    Self::attach_subagents(
+                        &subagents,
+                        sessions_base.as_deref(),
+                        &startup_workspace,
+                        &jobs_tag,
+                    );
                     subagents_handle = Some(subagents);
                     missing = missing_tools;
                     Screen::Chat
@@ -516,7 +567,7 @@ impl App {
             }
         };
         let config_disabled_mcp = setup.config.disabled_mcp_servers.clone();
-        Ok(Self {
+        let mut app = Self {
             secrets: setup.secrets,
             // Read before `options` moves into the struct.
             theme: setup.options.resolved_theme(),
@@ -547,6 +598,7 @@ impl App {
             catalog_failed: Vec::new(),
             agent,
             jobs,
+            jobs_tag,
             subagents: subagents_handle,
             missing_tools: missing,
             turn: TurnState::idle(),
@@ -579,7 +631,9 @@ impl App {
             cursor_anchor: None,
             graphics: false,
             card_graphics: false,
-        })
+        };
+        app.announce_changes(&startup_changes);
+        Ok(app)
     }
 
     /// Effects the runner must perform once, before the first draw.
