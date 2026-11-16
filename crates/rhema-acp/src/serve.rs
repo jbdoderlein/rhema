@@ -51,12 +51,13 @@ use rhema_coding_agent::{CodingAgent, CodingAgentConfig, CodingAgentError, repai
 use rhema_config::Settings;
 use rhema_core::request::ThinkingEffort;
 use rhema_core::{Content, ModelProvider, Role, Session, StopReason as EngineStop};
+use rhema_session_store::{SessionId as StoreSessionId, SessionStore};
+use rhema_session_store_file::FileStore;
 use tokio::sync::watch;
 
 use crate::approval::{AcpApproval, AlwaysMemory};
 use crate::backend;
 use crate::sink::{AcpSink, tool_kind};
-use crate::store;
 
 mod app;
 mod wire;
@@ -255,10 +256,21 @@ async fn serve_connection(
                     let base = app.base.as_ref().ok_or_else(|| {
                         Error::internal_error().data("no cache directory: cannot restore sessions")
                     })?;
-                    let session =
-                        store::load_session(base, &request.session_id.0).map_err(|err| {
+                    let id = StoreSessionId::new(&*request.session_id.0).map_err(|err| {
+                        Error::invalid_params()
+                            .data(format!("session {}: {err}", request.session_id.0))
+                    })?;
+                    let session = FileStore::new(base)
+                        .load(&id)
+                        .map_err(|err| {
                             Error::invalid_params()
                                 .data(format!("session {}: {err}", request.session_id.0))
+                        })?
+                        .ok_or_else(|| {
+                            Error::invalid_params().data(format!(
+                                "session {}: no saved session",
+                                request.session_id.0
+                            ))
                         })?;
                     let provider = backend.provider.clone();
                     let agent = CodingAgent::from_session(
@@ -412,6 +424,20 @@ async fn serve_connection(
                             // connection: a fresh round, a fresh
                             // approval bridge.
                             agent.set_approval(approval);
+                            // Every stream boundary commits like the
+                            // TUI's and headless' runs: a turn that
+                            // dies mid-step leaves the last boundary
+                            // on disk instead of losing the whole turn.
+                            let commit = app
+                                .base
+                                .as_ref()
+                                .map(|base| Arc::new(FileStore::new(base)))
+                                .zip(StoreSessionId::new(&*session_id.0).ok());
+                            if let Some((store, id)) = commit {
+                                agent.set_commit_hook(Some(Box::new(move |session: &Session| {
+                                    store.save(&id, session).map_err(Into::into)
+                                })));
+                            }
                             let turn = agent.turn(prompt, &mut sink);
                             tokio::pin!(turn);
                             tokio::select! {
@@ -419,6 +445,12 @@ async fn serve_connection(
                                 result = &mut turn => Some(result),
                             }
                         };
+                        // The hook was this turn's; a later command on
+                        // the slot must not checkpoint behind the
+                        // post-turn save below.
+                        if let Some(agent) = restore.agent.as_mut() {
+                            agent.set_commit_hook(None);
+                        }
                         match outcome {
                             Some(Ok(output)) => {
                                 let agent = restore

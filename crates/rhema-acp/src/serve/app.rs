@@ -4,6 +4,7 @@
 
 use super::wire::*;
 use super::*;
+use rhema_session_store::SessionStore;
 
 /// The most live sessions one connection holds. Real clients keep a
 /// handful open; the cap is the server's guard, not a quota clients
@@ -129,10 +130,7 @@ impl App {
             .ok()
             .map(|home| home.system_prompt())
             .and_then(|path| std::fs::read_to_string(path).ok());
-        let base = options
-            .session_dir
-            .clone()
-            .or_else(|| store::base_dir().ok());
+        let base = options.session_dir.clone().or_else(|| base_dir().ok());
         Self {
             options,
             effective,
@@ -724,7 +722,15 @@ impl App {
         let Some(base) = &self.base else {
             return;
         };
-        if let Err(err) = store::save_session(base, id, session) {
+        // A turn that succeeded must still write once more: the sink's
+        // meter records cost on StepEnd, and the engine's last commit
+        // fires before that event, so the final totals reach disk only
+        // here.
+        let Ok(id) = rhema_session_store::SessionId::new(id) else {
+            eprintln!("rhema-acp: warning: session {id} is not a valid id");
+            return;
+        };
+        if let Err(err) = rhema_session_store_file::FileStore::new(base).save(&id, session) {
             eprintln!("rhema-acp: warning: session {id} was not saved: {err}");
         }
     }
@@ -735,4 +741,17 @@ impl App {
 pub(crate) struct CommandAnswer {
     pub(crate) message: String,
     pub(crate) selects: Vec<SessionConfigOption>,
+}
+
+/// The saved-session base for ACP sessions: the family's cache root plus
+/// `acp-sessions`. A cache, like the TUI's saved sessions: losing it
+/// loses history, never settings. `AcpOptions::session_dir` overrides it.
+fn base_dir() -> std::io::Result<std::path::PathBuf> {
+    match rhema_config::Home::discover() {
+        Ok(home) => Ok(home.cache.join("acp-sessions")),
+        Err(err) => Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            err.to_string(),
+        )),
+    }
 }

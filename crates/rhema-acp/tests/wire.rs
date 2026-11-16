@@ -20,6 +20,8 @@ use agent_client_protocol::schema::v1::{
 use agent_client_protocol::{Channel, Client, on_receive_notification, on_receive_request};
 use rhema_acp::AcpOptions;
 use rhema_core::{Content, Message, ModelOutput, Role, StopReason as EngineStop, ToolCall, Usage};
+use rhema_session_store::{SessionId as StoreSessionId, SessionStore};
+use rhema_session_store_file::FileStore;
 
 /// A text reply: `text` streamed and appended, turn over.
 fn reply(text: &str) -> ModelOutput {
@@ -518,6 +520,170 @@ async fn cancel_drops_a_hung_turn() {
                 .await
                 .expect("post-cancel prompt");
             assert_eq!(after.stop_reason, StopReason::EndTurn);
+            Ok(())
+        },
+    )
+    .await;
+    let _ = outcome;
+}
+
+/// The session a save landed under `id`, read back through the store the
+/// agent writes.
+fn saved_session(session_dir: &Path, id: &SessionId) -> rhema_core::Session {
+    let id = StoreSessionId::new(id.0.to_string()).expect("the agent allocates valid ids");
+    FileStore::new(session_dir)
+        .load(&id)
+        .expect("the checkpoint reads back")
+        .expect("the checkpoint was committed")
+}
+
+/// Waits until the sink announced the tool call, which the engine emits
+/// only after its commit-before-execute, so the checkpoint on disk
+/// already holds the call.
+async fn wait_for_call(updates: &Updates, id: &str) {
+    for _ in 0..500 {
+        let seen = updates.lock().unwrap().iter().any(|update| match update {
+            SessionUpdate::ToolCall(call) => call.tool_call_id.0.as_ref() == id,
+            _ => false,
+        });
+        if seen {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("the tool call {id} was never announced");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cancelled_tool_call_leaves_the_committed_intent_and_a_reload_closes_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = dir.path().join("ws");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let session_dir = dir.path().join("sessions");
+    let updates = updates();
+    let collected = updates.clone();
+
+    let permissions: Permissions = Arc::new(Mutex::new(Vec::new()));
+    let outcome = with_agent(
+        options(
+            vec![reply_call("call-1", "sleep 2"), reply("recovered")],
+            &session_dir,
+        ),
+        updates,
+        permissions,
+        RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
+            PermissionOptionId::new("allow-once"),
+        )),
+        async move |cx| {
+            initialize(&cx).await;
+            let session = new_session(&cx, &workspace).await.session_id;
+            let pending = cx.send_request(PromptRequest::new(
+                session.clone(),
+                vec![ContentBlock::from("run the command")],
+            ));
+            // The call's start event arrives after the intent commit,
+            // so this cancel lands with the call durably on disk and
+            // its result not yet produced.
+            wait_for_call(&collected, "call-1").await;
+            cx.send_notification(CancelNotification::new(session.clone()))?;
+            let response: PromptResponse = pending.block_task().await.expect("cancelled turn");
+            assert_eq!(response.stop_reason, StopReason::Cancelled);
+
+            // The commit hook survives the turn's death: the file ends
+            // with the assistant call and no answer to it.
+            let saved = saved_session(&session_dir, &session);
+            let last = saved.history.last().expect("the prompt was committed");
+            assert_eq!(last.role, Role::Assistant);
+            assert!(
+                last.content
+                    .iter()
+                    .any(|content| matches!(content, Content::ToolCall(call) if call.id == "call-1")),
+                "the committed intent carries the call: {last:?}"
+            );
+            assert!(
+                !saved
+                    .history
+                    .iter()
+                    .any(|message| message.role == Role::Tool),
+                "the result never reached disk: {saved:?}"
+            );
+
+            // A reopened agent revives the dangling call before its next
+            // request, and the turn serves.
+            cx.send_request(LoadSessionRequest::new(
+                session.clone(),
+                workspace.to_path_buf(),
+            ))
+            .block_task()
+            .await
+            .expect("session/load");
+            let after = cx
+                .send_request(PromptRequest::new(
+                    session.clone(),
+                    vec![ContentBlock::from("continue")],
+                ))
+                .block_task()
+                .await
+                .expect("post-load prompt");
+            assert_eq!(after.stop_reason, StopReason::EndTurn);
+
+            // The revive's answer is committed with the next turn.
+            let saved = saved_session(&session_dir, &session);
+            assert!(
+                saved.history.iter().any(|message| message
+                    .content
+                    .iter()
+                    .any(|content| matches!(content, Content::ToolResult(result) if result.id == "call-1"))),
+                "revive closed the call: {saved:?}"
+            );
+            Ok(())
+        },
+    )
+    .await;
+    let _ = outcome;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_provider_failure_keeps_the_committed_step_on_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = dir.path().join("ws");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let session_dir = dir.path().join("sessions");
+    let updates = updates();
+
+    // Exactly one reply: the tool call runs, then the next step's
+    // provider request finds the script exhausted and fails the turn.
+    let permissions: Permissions = Arc::new(Mutex::new(Vec::new()));
+    let outcome = with_agent(
+        options(vec![reply_call("call-1", "echo committed")], &session_dir),
+        updates,
+        permissions,
+        RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
+            PermissionOptionId::new("allow-once"),
+        )),
+        async move |cx| {
+            initialize(&cx).await;
+            let session = new_session(&cx, &workspace).await.session_id;
+            let failed = cx
+                .send_request(PromptRequest::new(
+                    session.clone(),
+                    vec![ContentBlock::from("run it")],
+                ))
+                .block_task()
+                .await;
+            assert!(failed.is_err(), "the exhausted provider fails the turn");
+
+            // Before the commit hook this failure wrote nothing; the
+            // whole step now survives for the next resume.
+            let saved = saved_session(&session_dir, &session);
+            assert!(saved.history.iter().any(|message| message
+                .content
+                .iter()
+                .any(|content| matches!(content, Content::ToolCall(call) if call.id == "call-1"))));
+            assert!(saved.history.iter().any(|message| message
+                .content
+                .iter()
+                .any(|content| matches!(content, Content::ToolResult(result) if result.id == "call-1"))));
             Ok(())
         },
     )

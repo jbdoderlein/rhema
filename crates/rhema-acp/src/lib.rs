@@ -21,7 +21,6 @@
 //! Layout:
 //! - `serve`: the agent surface: handlers, session slots, `serve()`
 //! - [`backend`]: provider/model resolution from stored config + flags
-//! - [`store`]: session persistence keyed by the ACP session id
 //! - `sink`: engine events to `session/update`, and the session's
 //!   usage meter (crate-private)
 //! - `approval`: `Approval` to `session/request_permission`
@@ -35,7 +34,6 @@
 
 pub mod backend;
 pub mod serve;
-pub mod store;
 
 mod approval;
 mod sink;

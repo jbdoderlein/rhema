@@ -16,6 +16,9 @@ mock = ["rhema-core/mock", "rhema-coding-agent/mock"]
 rhema-config = { path = "../rhema-config", version = "0.3.0" }
 rhema-core = { path = "../rhema-core", version = "0.3.0" }
 rhema-coding-agent = { path = "../rhema-coding-agent", version = "0.3.0" }
+# Session persistence: the seam's types and the shared file backend
+rhema-session-store = { path = "../rhema-session-store", version = "0.3.0" }
+rhema-session-store-file = { path = "../rhema-session-store-file", version = "0.3.0" }
 # The vision wiring's env map, for the agent config's shell_env
 rhema-agent-tools = { path = "../rhema-agent-tools", version = "0.3.0" }
 # The adapter family, resolved from config the same way the other
@@ -34,7 +37,7 @@ tokio = { workspace = true, features = ["io-std", "rt-multi-thread", "sync"] }
 
 [dev-dependencies]
 tempfile = "3"
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [lints]
 workspace = true
