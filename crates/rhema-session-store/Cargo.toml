@@ -1,0 +1,28 @@
+[package]
+name = "rhema-session-store"
+description = "The session store seam: saved sessions behind one small synchronous trait, the reusable contract suite included"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+# The reusable SessionStore-contract suite, for replay against any
+# backend; see `contract`.
+store-contract = []
+
+[dependencies]
+# The saved value is rhema-core's caller-owned Session
+rhema-core = { path = "../rhema-core", version = "0.3.0" }
+# SessionId's Serialize/Deserialize
+serde = { workspace = true }
+# Corrupt bodies carry the parser's error
+serde_json = { workspace = true }
+# Typed public errors
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

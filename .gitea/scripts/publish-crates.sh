@@ -25,6 +25,9 @@ set -euo pipefail
 CRATES=(
   rhema-core
   rhema-config
+  rhema-session-store
+  rhema-session-store-file
+  rhema-session-store-sqlite
   rhema-provider
   rhema-agent-tools
   rhema-sandbox

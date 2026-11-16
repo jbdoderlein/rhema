@@ -1,0 +1,27 @@
+[package]
+name = "rhema-session-store-file"
+description = "The reference session store backend: one bare-JSON Session per file, atomically written and fsynced"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# The trait, ids, metadata, errors, and the opening-prompt helper
+rhema-session-store = { path = "../rhema-session-store", version = "0.3.0" }
+# The saved value
+rhema-core = { path = "../rhema-core", version = "0.3.0" }
+# The 0700/0600 privacy helpers
+rhema-config = { path = "../rhema-config", version = "0.3.0" }
+# The body is the bare Session JSON, written streaming
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# The replayable contract suite
+rhema-session-store = { path = "../rhema-session-store", version = "0.3.0", features = ["store-contract"] }
+tempfile = "3"
+
+[lints]
+workspace = true
