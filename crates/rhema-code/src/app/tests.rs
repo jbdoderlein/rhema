@@ -192,6 +192,10 @@ struct Harness {
     /// The keychain the app places logins in, when the test gave it
     /// one.
     secrets: Option<Arc<rhema_config::secrets::VolatileSecretStore>>,
+    /// The scratch sessions cache /clear backs up into and allocates
+    /// the next conversation's file under, kept alive for the test so
+    /// nothing touches the machine's real cache.
+    sessions: tempfile::TempDir,
 }
 
 /// Stores `key` as `provider`'s instance on `profile`, the login
@@ -311,9 +315,11 @@ fn harness_inner(
     let backend: Option<Backend> = api_key.map(|key| Backend::Google {
         api_key: key.to_owned(),
     });
+    let sessions = tempfile::tempdir().unwrap();
     let app = App::new(AppSetup {
         store: store.clone(),
         checkpoint: None,
+        sessions_base: Some(sessions.path().to_path_buf()),
         config,
         backend,
         session,
@@ -346,6 +352,7 @@ fn harness_inner(
         app,
         store,
         secrets,
+        sessions,
     }
 }
 
@@ -4273,6 +4280,7 @@ fn a_logged_in_profile_opens_the_chat_without_the_login_screen() {
     let app = App::new(AppSetup {
         store: Arc::new(MemoryStore::new(config.clone())),
         checkpoint: None,
+        sessions_base: None,
         config,
         backend,
         session: Session::default(),
@@ -4793,16 +4801,17 @@ fn session_of(prompt: &str) -> Session {
 }
 
 #[test]
-fn slash_new_starts_a_fresh_session() {
-    let mut h = harness(Some("k"), Some("m-a"), Session::default());
-    h.app
-        .session
-        .history
-        .push(Message::text(Role::User, "talk"));
-    h.app.transcript.push_user("talk", Vec::new());
-    h.app.session_file = Some(PathBuf::from("/tmp/old.json"));
+fn slash_new_backs_up_the_conversation_then_starts_a_fresh_one() {
+    let mut h = harness(Some("k"), Some("m-a"), session_of("talk"));
+    let old = h.sessions.path().join("old.json");
+    h.app.session_file = Some(old.clone());
 
     crate::commands::dispatch(&mut h.app, "/new");
+
+    // The outgoing conversation landed before the wipe, in the file its
+    // turns checkpointed into, now holding the final state.
+    let saved = CodingAgent::load_session_from(&old).expect("the old conversation was written");
+    assert_eq!(saved.history.len(), 1);
 
     // A fresh session: no history to save, no resume binding, the
     // transcript down to the notice.
@@ -4810,8 +4819,97 @@ fn slash_new_starts_a_fresh_session() {
     assert_eq!(h.app.session_file, None);
     assert!(matches!(
         h.app.transcript.lines().last(),
-        Some(Line::Notice(text)) if text.contains("cleared")
+        Some(Line::Notice(text)) if text.contains("starting fresh")
     ));
+}
+
+#[test]
+fn new_and_clear_are_one_command() {
+    let row = |name: &str| {
+        crate::commands::COMMANDS
+            .iter()
+            .find(|spec| spec.name == name)
+            .unwrap_or_else(|| panic!("no {name} row"))
+    };
+    // Two palette entries, one behavior: the same handler, word, and
+    // argument rule.
+    assert!(std::ptr::fn_addr_eq(
+        row("/new").handler,
+        row("/clear").handler
+    ));
+    assert_eq!(row("/new").description, row("/clear").description);
+    assert_eq!(row("/new").argument, row("/clear").argument);
+}
+
+#[test]
+fn slash_clear_backs_up_a_conversation_that_had_no_file() {
+    let mut h = harness(Some("k"), Some("m-a"), session_of("unfiled"));
+    assert_eq!(h.app.session_file, None);
+
+    crate::commands::dispatch(&mut h.app, "/clear");
+
+    // The conversation had no binding, so the clear allocated one in
+    // the sessions cache before wiping the history.
+    let workspace = crate::args::canonical(&h.app.options.workspace);
+    let rows = crate::sessions::list_sessions(h.sessions.path(), &workspace).unwrap();
+    assert_eq!(rows.len(), 1);
+    let saved = CodingAgent::load_session_from(&rows[0].path).expect("the talk was written");
+    assert_eq!(saved.history.len(), 1);
+    assert_eq!(h.app.session_file, None);
+    assert_eq!(h.app.export_session(), None);
+}
+
+#[test]
+fn a_clear_keeps_the_backup_out_of_the_explicit_save_file() {
+    let mut h = harness(Some("k"), Some("m-a"), session_of("first talk"));
+    let own = h.sessions.path().join("own.json");
+    let explicit = h.sessions.path().join("explicit.json");
+    h.app.session_file = Some(own.clone());
+    h.app.options.save = Some(explicit.clone());
+
+    crate::commands::dispatch(&mut h.app, "/clear");
+
+    // The outgoing conversation landed in its own file, so the run's
+    // explicit checkpoint path stays free for the conversation that
+    // follows instead of being overwritten by it.
+    let saved = CodingAgent::load_session_from(&own).expect("the talk was written");
+    assert_eq!(saved.history.len(), 1);
+    assert!(!explicit.exists());
+}
+
+#[test]
+fn a_failed_backup_does_not_block_the_clear() {
+    let mut h = harness(Some("k"), Some("m-a"), session_of("cannot land"));
+    // A directory is not a writable session file.
+    let dir = h.sessions.path().join("not-a-file");
+    std::fs::create_dir_all(&dir).unwrap();
+    h.app.session_file = Some(dir);
+
+    crate::commands::dispatch(&mut h.app, "/clear");
+
+    assert_eq!(h.app.export_session(), None);
+    assert!(matches!(
+        h.app.transcript.lines().last(),
+        Some(Line::Notice(text)) if text.contains("was not saved")
+    ));
+}
+
+#[test]
+fn a_cleared_conversation_gets_a_fresh_checkpoint_file_on_its_next_turn() {
+    let mut h = harness(Some("k"), Some("m-a"), session_of("first"));
+    let first = h.sessions.path().join("first.json");
+    h.app.session_file = Some(first.clone());
+    crate::commands::dispatch(&mut h.app, "/clear");
+    assert_eq!(h.app.session_file, None, "the backup keeps its own file");
+
+    // The next turn allocates a file of its own instead of overwriting
+    // the backup.
+    let next = h.app.ensure_checkpoint_target().expect("a fresh file");
+    assert_ne!(next, first);
+    assert_eq!(h.app.session_file, Some(next.clone()));
+    assert_eq!(h.app.checkpoint_target(), Some(next.clone()));
+    // A second call keeps the conversation's file: no per-turn growth.
+    assert_eq!(h.app.ensure_checkpoint_target(), Some(next));
 }
 
 #[test]

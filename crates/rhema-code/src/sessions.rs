@@ -119,7 +119,7 @@ pub fn next_session_path(base: &Path, workspace: &Path) -> io::Result<PathBuf> {
 
 /// Writes `session` under `base` for `workspace`, returning the file it
 /// landed in. A session with no history is not written: there is nothing
-/// to resume, and /clear should not leave a husk behind.
+/// to resume, and an empty conversation leaves no file behind.
 pub fn save_session(
     base: &Path,
     workspace: &Path,

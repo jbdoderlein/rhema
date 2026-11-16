@@ -469,6 +469,7 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
             backend,
             session,
             checkpoint: session_file,
+            sessions_base: None,
             options,
             secrets: Some(Arc::clone(&secrets)),
             sandboxed,
@@ -977,10 +978,11 @@ fn dispatch(
             // The status names the prompt until a tool call takes over.
             status.note_prompt(&text);
             app.begin_turn(cancel, steer, None);
+            let checkpoint = app.ensure_checkpoint_target();
             spawn_turn(
                 agent,
                 crate::turn::Prompt::User { text, images },
-                app.checkpoint_target(),
+                checkpoint,
                 cancelled,
                 steered,
                 tx.clone(),
@@ -995,10 +997,11 @@ fn dispatch(
             // The strip names the rerun until a tool call takes over.
             status.note_prompt("retrying");
             app.begin_turn(cancel, steer, None);
+            let checkpoint = app.ensure_checkpoint_target();
             spawn_turn(
                 agent,
                 crate::turn::Prompt::Retry,
-                app.checkpoint_target(),
+                checkpoint,
                 cancelled,
                 steered,
                 tx.clone(),

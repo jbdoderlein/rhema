@@ -4,12 +4,16 @@
 use super::*;
 
 impl App {
-    /// Drops the conversation: a fresh transcript and a fresh session.
-    /// The session file drops with it, what is typed after /clear is a
-    /// new conversation, not a continuation of the loaded file, so the
-    /// next turn allocates a file of its own instead of overwriting the
-    /// cleared one's history.
+    /// Backs the outgoing conversation up, then drops it: a fresh
+    /// transcript and a fresh session. The file binding drops with it,
+    /// what is typed after /clear is a new conversation, not a
+    /// continuation of the backed-up file, so the next turn allocates a
+    /// file of its own instead of overwriting that history (see
+    /// [`Self::ensure_checkpoint_target`]).
     pub fn clear_session(&mut self) {
+        // The backup lands before the history clears: a clear is a
+        // conversation boundary the user asked for, not a discard.
+        let backup = self.back_up_session();
         if let Some(agent) = self.agent.as_mut() {
             agent.session_mut().history.clear();
         }
@@ -32,7 +36,62 @@ impl App {
         if let Some(agent) = self.agent.as_mut() {
             agent.reset_transcript_stats();
         }
-        self.transcript.push_notice("conversation cleared");
+        match backup {
+            Some(Err(err)) => self.transcript.push_notice(&format!(
+                "conversation cleared; the old one was not saved: {err}"
+            )),
+            Some(Ok(_)) => self
+                .transcript
+                .push_notice("conversation saved; starting fresh"),
+            None => self.transcript.push_notice("conversation cleared"),
+        }
+    }
+
+    /// Writes the conversation out before [`Self::clear_session`] drops
+    /// it: into this conversation's own file, the one it was resumed
+    /// from or the runner allocated, so the run's `--save` path stays
+    /// free for the conversation that follows. A conversation with no
+    /// file (a run whose startup allocation failed) gets a fresh one in
+    /// the sessions cache. `None` when the history is empty, so there is
+    /// nothing to back up; `Some(Err)` when the write failed, the clear
+    /// proceeds either way and says so.
+    fn back_up_session(&self) -> Option<std::io::Result<PathBuf>> {
+        let (session, _) = self.export_session()?;
+        let saved = match self.session_file.clone() {
+            Some(path) => crate::sessions::write_session(&path, &session).map(|()| path),
+            None => self
+                .sessions_base()
+                .and_then(|base| self.save_new_session(&base, &session)),
+        };
+        Some(saved)
+    }
+
+    /// Allocates a file under `base` and writes `session` there. The
+    /// same shape [`crate::sessions::save_session`] takes, but the path
+    /// comes back: the caller just proved the history is not empty.
+    fn save_new_session(&self, base: &Path, session: &Session) -> std::io::Result<PathBuf> {
+        let workspace = crate::args::canonical(&self.options.workspace);
+        let path = crate::sessions::next_session_path(base, &workspace)?;
+        crate::sessions::write_session(&path, session)?;
+        Ok(path)
+    }
+
+    /// The sessions cache: the setup's own base (the test isolation
+    /// seam), else the environment's.
+    fn sessions_base(&self) -> std::io::Result<PathBuf> {
+        match &self.sessions_base {
+            Some(base) => Ok(base.clone()),
+            None => crate::sessions::base_dir(),
+        }
+    }
+
+    /// A fresh file for the next conversation, named from the sessions
+    /// cache. `None` when the cache is unreachable, the turn then runs
+    /// uncheckpointed rather than failing.
+    fn next_session_file(&self) -> Option<PathBuf> {
+        let base = self.sessions_base().ok()?;
+        let workspace = crate::args::canonical(&self.options.workspace);
+        crate::sessions::next_session_path(&base, &workspace).ok()
     }
 
     /// The file a turn checkpoints into and the exit save updates:
@@ -44,6 +103,18 @@ impl App {
             .save
             .clone()
             .or_else(|| self.session_file.clone())
+    }
+
+    /// The checkpoint target a turn takes: [`Self::checkpoint_target`],
+    /// allocated first when the conversation has none. `/clear` drops
+    /// the binding so the next conversation does not overwrite the
+    /// backed-up file; its first turn then gets a fresh name (unless
+    /// `--save` names the run's file) and streams to disk from then on.
+    pub fn ensure_checkpoint_target(&mut self) -> Option<PathBuf> {
+        if self.checkpoint_target().is_none() {
+            self.session_file = self.next_session_file();
+        }
+        self.checkpoint_target()
     }
 
     /// The session to save for /resume, and the file it belongs to: the

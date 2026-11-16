@@ -149,6 +149,11 @@ pub struct App {
     /// land. `None` once /clear drops the conversation, the next turn
     /// allocates a new file for what follows.
     pub session_file: Option<PathBuf>,
+    /// The sessions cache /clear backs the outgoing conversation up
+    /// into and allocates the next conversation's file under, when the
+    /// setup named one (the test isolation seam); `None` reads the
+    /// environment through `sessions::base_dir`.
+    sessions_base: Option<PathBuf>,
     /// Set by the runner to end the event loop.
     pub should_quit: bool,
     /// The resolved design tokens every render pass reads.
@@ -554,6 +559,7 @@ impl App {
             confirm_quit: false,
             login_cancel: None,
             session_file: setup.checkpoint,
+            sessions_base: setup.sessions_base,
             should_quit: false,
             chat: ChatState::new(),
             settings_hits: Vec::new(),

@@ -22,6 +22,12 @@ pub struct AppSetup {
     /// allocated under the sessions cache. Naming a file writes nothing,
     /// so a run that never speaks leaves no husk behind.
     pub checkpoint: Option<PathBuf>,
+    /// The sessions cache `/clear` backs the outgoing conversation up
+    /// into and allocates the next conversation's file under. `None`
+    /// reads `sessions::base_dir()` (`$XDG_CACHE_HOME/rhema/sessions`);
+    /// a test points it at a scratch directory so a clear never writes
+    /// the machine's real cache.
+    pub sessions_base: Option<PathBuf>,
     /// The startup flags.
     pub options: RunOptions,
     /// The keychain fresh logins place keys in and removed logins
