@@ -1,6 +1,7 @@
 # rhema-submissions, durable identity for requested work
 
-> **Status:** v1, 2026-11-16, reviewed. Nothing implemented yet.
+> **Status:** v1, 2026-11-16, three phases (§0), nothing implemented
+> yet.
 > **Framework grounding:** SPEC.md §6 (the `Session` is the durable record
 > and the driver checkpoints it at step boundaries),
 > `rhema_core::CommitHook` (the engine's persistence seam),
@@ -22,29 +23,50 @@ through which any crate teaches it how to read a crash. It knows the
 engine's turn because the turn is the engine's unit of work; it knows no
 other kind.
 
-**In v1:**
+**In v1, in three phases.** Each lands green before the next starts.
 
-- `Record`, `Kind`, `Status`, `Outcome`, the `submissions` key, and the
-  `Snapshot` plus mutator API over `&mut Session`.
+### Phase 1: the layer, the turn, ACP
+
+- `Record`, `KindName`, `Status`, `Outcome`, the `submissions` key, and
+  the `Snapshot` plus mutator API over `&mut Session`.
 - The lifecycle: `submit`, `start`, `settle`, `cancel`, `retry`,
   `reconcile`.
-- The kind seam: `Kind`, `RecoverCtx`, `Recovery`, `Kinds`, and the
-  unknown-kind rule.
-- One built-in kind, `turn`, because `rhema_core::Agent::turn` is the
+- The kind seam: `Kind` (`recover` and `adopt`), `RecoverCtx`,
+  `Recovery` with four verdicts, `Kinds`, and the unknown-kind rule.
+- The built-in kind `turn`, because `rhema_core::Agent::turn` is the
   unit every frontend already has (§6).
 - `Agent::resume_turn` in `rhema-core` (§9), so an interrupted turn
   continues instead of duplicating its input.
-- ACP adoption: `session/prompt` records a turn submission, a dropped
-  connection settles it, `session/load` reconciles.
+- ACP adoption: a prompt records a turn, a dropped connection settles
+  it, `session/load` reconciles.
 
-**OUT of v1** (each deliberately out, with the reason):
+### Phase 2: the kinds that outlive a turn
+
+- The `subagent` kind in `rhema-subagents`: the child session saved by
+  the store, the record submitted when the run is announced and
+  adopted at load, resume of an interrupted child (§10.1).
+- The `job` kind in the `job` wiring: a session-durable tag, the record
+  built from the poller's first sight and adopted from the listing,
+  re-attach to a daemon that outlived the process (§10.2).
+- `Kind::adopt` and `Recovery::Failed` in the seam, because work
+  started by a tool call has no moment at which the session can be
+  written before it (§2, §5).
+
+### Phase 3: the TUI
+
+- `/resume` reconciles the loaded session, re-tags the jobs poller with
+  that session's id, surfaces interrupted subagents, and delivers the
+  finishes that happened while the process was gone. Load starts no
+  work (§10.3).
+
+**OUT of v1** (all phases, each with the reason):
 
 - ❌ **A closed set of kinds.** §1 and §5. The crate ships one, the
   seam has no list, and a kind is a string tag plus a trait impl in the
   crate that owns it.
-- ❌ **Subagent, job, and ask kinds.** Their crates implement the seam
-  when they land (§10). The schema already carries everything they need:
-  a tag, an opaque payload, and a recovery callback.
+- ❌ **The ask kind.** No consumer yet. It needs a record and a
+  `recover` that says `Interrupted`, because a question nobody answered
+  cannot be resumed, and a payload shape nobody has exercised yet.
 - ❌ **A submissions table or a second store.** §2.
 - ❌ **Leases, heartbeats, CAS, cross-process attach.** One process per
   session is today's rule (the store is last-writer-wins). A lease
@@ -52,10 +74,16 @@ other kind.
 - ❌ **A `Waiting` status.** A status names who owns a record, not what
   the work is doing. An ask blocked on the user is still owned by a live
   process, so it is `Running`, and its payload says what it waits for.
-- ❌ **A queue.** v1 runs one submission at a time in submission order.
+- ❌ **A queue.** A frontend starts one `Queued` record at a time, in
+  id order. Running records coexist (a turn while a job runs while a
+  subagent works), and each driver owns the ones it started.
 - ❌ **Auto-retry.** A terminal record stays terminal until a driver
   calls `retry`; the crate never retries on its own.
-- ❌ **Submissions in the TUI and headless.** §10.
+- ❌ **Headless.** One shot. `--save` is already its record, and a
+  headless run has no session to reattach to (§10.3).
+- ❌ **Deleting a child session with its record.** Retention drops the
+  record after 32 settled ones; the child file stays, as the store's
+  own session. Garbage collection is the store's problem.
 
 ---
 
@@ -66,7 +94,8 @@ across a disconnect. It is three things the framework can keep without
 understanding the work:
 
 1. **Identity and payload.** Who asked for what, durably, before any
-   side effect.
+   side effect. The two kinds that start inside a tool call are the
+   exception, and they pay for it with `adopt` (§2, §5).
 2. **Status.** Queued, running, or one of four terminal outcomes.
 3. **A kind.** A tag naming the crate that owns the work, plus that
    crate's promise that it can read a crash.
@@ -78,12 +107,12 @@ where in its life it is.
 
 The kinds are open, and each one is small:
 
-| Kind | Lives in | Payload | State lives in | Recovery |
-|---|---|---|---|---|
-| `turn` | this crate | the prompt | session history | read the history tail |
-| `subagent` | `rhema-subagents` | the child's id | the child session | recurse into it |
-| `job` | the `job` wiring | command, backend id | the daemon | ask the daemon |
-| `ask` | future crate | the question | UI pending state | `Interrupted` (no resume) |
+| Kind | Lives in | Written | Payload | State | Recovery |
+|---|---|---|---|---|---|
+| `turn` | this crate | before the turn | prompt | history | the tail |
+| `subagent` | `rhema-subagents` | after the call | child, def, prompt | child | ledger |
+| `job` | the `job` wiring | on first poll | tag, id, command | the daemon | the listing |
+| `ask` | future crate | before the wait | the question | UI state | `Interrupted` |
 
 Nothing in the list is in this crate's code. The table is illustrative;
 the seam does not change when a new row appears.
@@ -140,13 +169,23 @@ The alternative, a `submissions` table beside `sessions` in
 The one-write rule is therefore **conditional on where the work's state
 lives**, and the spec says so instead of pretending otherwise:
 
-- Work whose state is the session (a turn, a child session later): one
+- Work whose state is the session (a turn, a subagent's child): one
   write, and the crash window between answer and status is narrow and
   recoverable from the same file (§7).
 - Work whose state is elsewhere (a daemon, a pending question): two
   stores, two clocks, and recovery is where they are reconciled. The
   record is still the durable index; a status may trail the daemon by
   one poll, and that is the kind's business.
+
+There is a third case, and phase 2 adds it. Work that starts inside a
+tool call cannot write the ledger first: the engine owns the session
+during a turn, and a tool gets `ToolContext`, never `&mut Session`. A
+subagent and a shell job both start that way. Their record is written
+after the fact, from the tool result or from the first poll, and
+`Kind::adopt` rebuilds whatever the crash window swallowed before
+anything is read (§5, §10.1, §10.2). Their invariant is the weaker one:
+the work's own state is durable first (the child session, the daemon's
+job), and the record catches up.
 
 The cost is real and accepted: `driver_state` is rewritten with the
 session on every commit, so the ledger is serialized on every step
@@ -280,6 +319,7 @@ back until the first `submit`, so `--save` files stay as they are.
 | `Running` | `reconcile` → `Done` | `Done` | `outcome`, `settled_at` |
 | `Running` | `reconcile` → `Queued` | `Queued` | `settled_at = None` |
 | `Running` | `reconcile` → `Interrupted` | `Interrupted` | `settled_at` |
+| `Running` | `reconcile` → `Failed` | `Failed` | `outcome`, `settled_at` |
 | `Interrupted` | `retry` | `Running` | `settled_at = None`, `attempts += 1` |
 | `Failed` (retryable) | `retry` | `Running` | `outcome` and `settled_at` cleared |
 | `Interrupted` | `cancel` | `Cancelled` | `settled_at` |
@@ -310,7 +350,9 @@ pub struct Snapshot { /* version + records, oldest first by id */ }
 
 impl Snapshot {
     pub fn get(&self, id: &SubmissionId) -> Option<&Record>;
-    /// The queued or running record a driver should pick up, if any.
+    /// The oldest `Queued` record: what a serial driver starts next.
+    /// Running records do not appear here, because several kinds can
+    /// be running at once and each driver owns its own.
     pub fn active(&self) -> Option<&Record>;
     /// The newest record, settled or not.
     pub fn newest(&self) -> Option<&Record>;
@@ -358,10 +400,14 @@ pub enum Change {
   its infrastructure or the work. A retried `Failed` record drops its
   `outcome` and keeps its `attempts` count. A `Queued` record needs no
   retry; `start` is its path.
-- `reconcile` returns the changes it made so a caller can log or
-  surface them, and a test can assert the turn kind's rules in §6 row
-  by row. It never writes when nothing changed, so a reconnect does not
-  rewrite a large session.
+- `reconcile` asks every registered kind to `adopt` work the ledger
+  missed, writes each adopted payload as `Running`, then classifies
+  every `Running` record through the same `recover` path. One pass, one
+  save, one place where a load turns a crash into statuses. It returns
+  the changes it made so a caller can log or surface them, and a test
+  can assert the turn kind's rules in §6 row by row. It never writes
+  when nothing changed, so a reconnect does not rewrite a large
+  session.
 
 ---
 
@@ -378,6 +424,21 @@ pub trait Kind: Send + Sync {
     /// another store, a daemon, but returns a verdict and this crate
     /// does the write.
     fn recover(&self, ctx: &RecoverCtx<'_>) -> Recovery;
+
+    /// Work this kind can see but the ledger has no record of: a tool
+    /// result naming a child session, a daemon job tagged with this
+    /// session. Called once per kind at load, before any `recover`.
+    /// The kind checks the snapshot and returns only what is missing;
+    /// the crate assigns ids and classifies each payload with
+    /// `recover` in the same pass.
+    fn adopt(&self, ctx: &AdoptCtx<'_>) -> Vec<serde_json::Value> {
+        Vec::new()
+    }
+}
+
+pub struct AdoptCtx<'a> {
+    pub session: &'a Session,
+    pub snapshot: &'a Snapshot,
 }
 
 pub struct RecoverCtx<'a> {
@@ -390,7 +451,7 @@ impl RecoverCtx<'_> {
     pub fn payload<T: DeserializeOwned>(&self) -> Result<T, SubmissionError>;
 }
 
-/// What a dead process left behind. Exactly three answers.
+/// What a dead process left behind. Exactly four answers.
 pub enum Recovery {
     /// The work finished; the record is settled.
     Done,
@@ -398,9 +459,14 @@ pub enum Recovery {
     Queued,
     /// Half done; the driver knows how to continue.
     Interrupted,
+    /// The work's own state is gone (a deleted child session, a daemon
+    /// that lost the job), so it can never finish. Settles as
+    /// `Failed { retryable: false }`.
+    Failed { error: String },
 }
 
-/// The kinds a frontend links, by tag.
+/// The kinds a frontend links, by tag. Rebuilt per loaded session: a
+/// kind may need that session's identity (the job tag) or its store.
 pub struct Kinds { /* BTreeMap<KindName, Arc<dyn Kind>> */ }
 
 impl Kinds {
@@ -421,23 +487,35 @@ Rules the seam keeps:
   session, cannot save, and runs once per stale record at load. A kind
   that needs to look at a daemon does so read-only; the write stays the
   crate's, so the state machine has one owner.
-- **Three verdicts, not more.** `Done`, `Queued`, `Interrupted` are the
-  only answers to "what did the crash leave": the work finished,
-  nothing landed, or something landed. `Interrupted` already means the
-  driver resumes it, and how it resumes is the kind's business.
+- **Four verdicts, not more.** The work finished (`Done`), nothing
+  landed (`Queued`), something landed (`Interrupted`), or its state is
+  gone (`Failed`). `Interrupted` means the driver resumes it, and how
+  is the kind's business. `Failed` exists for the kinds whose state
+  lives elsewhere: a child session deleted under a running subagent, a
+  daemon that no longer lists the job. Without it those records stay
+  `Interrupted` for the life of the file, which is a lie the frontend
+  would have to work around.
+- **`adopt` is idempotent and sees the ledger.** It runs once per kind
+  at load, gets the snapshot, and returns only work without a record.
+  A second load returns nothing. An adopted record is written
+  `Running` and classified by `recover` in the same pass, so the
+  frontend sees it as an ordinary `Recovered` change.
 - **Synchronous.** A frontend doing its recovery before it accepts
   work can afford a read per stale record. A `recover` that must do
   network I/O is a design smell in the kind, not a reason to make this
   async.
 - **A kind brings what it needs.** `RecoverCtx` carries only the
   session and the record. A kind that must read another store (a
-  subagent loading the child session) holds that store in the struct
-  the frontend constructed when it registered the kind, so this crate
-  never names a second backend.
+  subagent loading the child session), or that needs an identity the
+  session does not carry (the job tag), holds it in the struct the
+  frontend constructed when it registered the kind. This crate never
+  names a second backend. That is also why `Kinds` is per loaded
+  session: `/resume` replaces the tag a job kind queries with.
 
-The frontend assembles `Kinds` from the extension crates it links. A
-harness that does not link subagents never registers that kind and
-never sees those records; nothing changes in this crate when it does.
+The frontend assembles `Kinds` from the extension crates it links,
+once per loaded session. A harness that does not link subagents never
+registers that kind and never sees those records; nothing changes in
+this crate when it does.
 
 ---
 
@@ -572,6 +650,8 @@ of: keep the entries a live record points at, re-base the record's
 The generic invariant, true for every kind:
 
 1. The record exists and is durable before any side effect (`submit`).
+   The tool-started kinds are the exception and pay for it with
+   `adopt`.
 2. `start` is durable before the work begins.
 3. Work writes its own progress in its own store.
 4. `settle` happens after the work returns.
@@ -595,6 +675,22 @@ invariant, and its `recover` closes the gap the two stores open: the
 daemon may say "exited 0" while the record still says `Running`, and
 `recover` returns `Done`. The crate cannot make two stores atomic, and
 does not pretend to; it makes the gap explicit and testable per kind.
+
+The tool-started kinds add a sixth window before step 1, because they
+cannot write a record before the work:
+
+- **The tool returned, the record is not written.** The tool result is
+  in history, the child session or the daemon row exists, and `adopt`
+  writes the record on the next load.
+- **The tool started the work and the process died before the result
+  committed.** Nothing in the parent names the work. Only a kind with
+  an independent listing can find it: the daemon for a job, the child
+  session for a subagent. A kind without one loses the record, and its
+  work stays invisible until someone finds it by hand.
+
+The engine's commit of the tool result is the boundary: after it, the
+parent's history names the work, and the index can be rebuilt from the
+work's own state.
 
 ---
 
@@ -658,7 +754,7 @@ finds nothing to close.
 
 ## 10. Consumers
 
-**ACP (v1).** The one frontend whose disconnect actually loses
+**ACP (phase 1).** The one frontend whose disconnect actually loses
 information today: a dropped connection cancels the turn, and the next
 `session/load` sees a history with no record of what was asked.
 
@@ -671,29 +767,178 @@ information today: a dropped connection cancels the turn, and the next
 - No new wire method in v1. An ACP extension to list submissions is a
   wire decision, not a storage one.
 
-**Extension crates.** Each brings its own kind and registers it:
+### 10.1 The subagent kind
 
-- `rhema-subagents` implements `Kind` with payload
-  `{ child: SessionId }`: the child session is saved by the store,
-  `recover` loads it and reads the turn submission the subagent started
-  there. This is the change `specs/rhema-subagents.md` would need
-  (§0 there currently rules persistent subagent sessions out), and it is
-  now an implementation of this seam, not a schema change.
-- The `job` wiring implements `Kind` with payload
-  `{ command, backend_id, tag }`, `recover` reading the daemon's
-  listing. It needs one extra move: the session tag (`RHEMA_SESSION`,
-  today a per-process `OnceLock` in `rhema-code/src/jobs.rs`) becomes
-  session state, or a resumed session cannot see its own jobs.
-- A future `ask` kind is a payload and a `recover` that says
-  `Interrupted` because a question nobody answered cannot be resumed.
+Lives in `rhema-subagents`, phase 2. The payload is the restart recipe:
 
-None of this changes this crate.
+```rust
+{ "child": SessionId,        // the subagent's own session
+  "def": String,             // which definition it runs
+  "prompt": String,          // what the parent asked
+  "model": Option<String> }  // the spelling it resolved
+```
 
-**TUI and headless: unchanged.** The TUI is single-turn, in-process,
-and its `/resume` already repairs a dangling call and shows the last
-boundary; a record would add writes and nothing a terminal can reattach
-to. Headless is one shot, and `--save` is already its record. Both can
-adopt later without a schema change.
+`child` is a real session the store owns, saved like the parent's: a
+child session is the subagent's own `Session`, its own history, its own
+file, not a submission record. The parent's ledger holds the record
+that points at it. The other three fields are the ingredients
+`JobRerun` holds in memory today, copied at start so a later process
+can start the same work again.
+
+**Where the record comes from.** A subagent starts inside a tool call,
+and a tool cannot write the session (§2). So the subagents crate
+announces the start with the child's id and the ingredients, and the
+frontend submits the record in that turn, before the next boundary
+commit. For the window before the announcement is written, `adopt`
+covers it: the child session carries its own descriptor in
+`driver_state` (`{ "subagent": { def, prompt, model, parent } }`,
+written before the first model call), and the subagents crate lists the
+children of one parent through the store. A parent's ledger is
+therefore rebuildable from its children, with no parsing of tool result
+text.
+
+**Recovery** reads the child's ledger, which has one `turn` record:
+
+| The child at load | Parent verdict |
+|---|---|
+| turn `Done`, or tail is a final assistant message | `Done` |
+| turn `Queued` | `Queued` (the child never spoke) |
+| turn `Interrupted` | `Interrupted` |
+| turn `Failed` with a retryable error | `Interrupted` |
+| turn `Failed` for good, or no child file | `Failed { error }` |
+| no ledger (older build) | the tail: final answer is `Done`, else `Interrupted` |
+
+A retryable child failure reads as `Interrupted` at the parent, because
+the driver restarts it; the child's own record keeps the failure and
+its `retryable` flag, and the driver settles both when the retry runs.
+
+The report is derived, never copied: `subagent(id)` on a `Done` record
+reads the child's last assistant message. That also fixes the case the
+registry cannot fix today: a child that finished while the parent was
+down has a report the parent's process never saw, and the frontend
+delivers it as the next turn's steering line, the shape the live
+finish feed already uses.
+
+**Resume is an action, never a load side effect.** Loading a session
+leaves an unsettled subagent exactly where a turn leaves an
+interrupted one: `Interrupted`, announced, costing nothing. Starting
+it again is a separate request. When that request comes, the driver
+loads the child, repairs dangling calls, calls `resume_turn` (§9), and
+settles both records. A `Queued` record starts the child from the
+payload, the same code path as a fresh start with a known id.
+
+That request has no verb yet: `subagent(id)` fetches a report, and a
+`subagent retry <id>` (or a `/retry` that understands the kind) is the
+later change, in the subagent tool, not here. Until it exists,
+`subagent(id)` on an `Interrupted` record answers with the state and
+the child's id, which is enough for the model to report it to the
+user.
+
+**What changes in `rhema-subagents`:** the store at wiring, a commit
+hook that saves the child at every boundary, the descriptor, a resume
+entry point, and a fetch that reads a done child from disk. Plus one
+naming rule the rest depends on: the child's id carries the parent's
+id as a prefix and is minted before the first model call. Then listing
+one parent's children is a prefix filter, the picker hides them by the
+same rule (§10.3), and the record and the file cannot disagree about
+which session the work is. `specs/rhema-subagents.md` §0 rules
+persistent child sessions out today; that paragraph is the one this
+changes.
+
+### 10.2 The job kind
+
+Lives in the `job` wiring (`rhema-agent-tools` plus the frontend that
+provisions it), phase 2. The payload is:
+
+```rust
+{ "tag": String,      // the session identity the job runs under
+  "id": String,       // the backend's short id
+  "command": String } // the shell line as the model wrote it
+```
+
+**The tag has to become durable.** Today `rhema-code`'s
+`jobs::session_id` mints `s<pid><nanos>` per process, so a resumed
+process lists its own jobs under a new name and sees none of them. The
+tag becomes the session's store id: allocated at startup, reloaded by
+`/resume`, and unchanged for the session's life. `MAX_ID_CHARS` in the
+shim grows from 16 to 32, because a `SessionId` is 19 characters and
+`owner_of` rejects anything longer.
+
+**Where the record comes from.** `job run` is a shell function; there
+is no Rust point at which the session can be written. The poller
+submits a record the first time it sees a running row for the tag, and
+`adopt` covers the rest from one listing at load. A job that starts
+and ends between two ticks is one poll's notice; that is the existing
+behavior and not worse.
+
+**Recovery** asks the daemon once per tag, with the listing cached for
+the pass:
+
+| The listing | Verdict |
+|---|---|
+| the row is running | `Interrupted` (the driver re-attaches) |
+| the row exited, with or without a code | `Done` |
+| the row is gone (reaped or lost) | `Done`, no exit code: today's shape |
+| the backend is missing (`EXIT_NO_BACKEND`) | `Failed { error: "no job backend" }` |
+
+`Interrupted` for a running job does not mean start it again: the
+daemon still runs it, and starting a second copy would be the one real
+damage this feature could do. The driver re-attaches the poller, and
+the record settles when the row ends.
+
+A recovered `Done` job becomes the notice and steering line the live
+feed would have produced, with the exit code from the listing, so the
+model learns what it missed. `job logs` still works: the daemon kept
+the output.
+
+**One cleanup at load.** The self-stop record (`rhema-jobs-<tag>-stopped`)
+is deleted on a clean drop, and survives a crash. Its entries are
+backend ids, and backend ids are short and reused, so `/resume` clears
+the file for the tag before the first poll. A stale entry must not
+silence a new job that happens to get the same id.
+
+**Headless without `--save`** has no session id to tag with. It keeps
+a random tag and its jobs are not resumable; nothing claims them after
+the process exits. That is stated, not silently broken.
+
+### 10.3 The TUI (`/resume`)
+
+Phase 3. After `SessionResumed` applies the loaded session, the app:
+
+1. builds `Kinds` for that session: the turn kind, the subagent kind
+   with the store, the job kind with the tag from the checkpoint's id;
+2. calls `reconcile`, which adopts what the ledger missed, settles what
+   the crash left, and is followed by one save when anything changed;
+3. clears the stale stop record, then re-spawns the jobs poller with
+   the loaded tag, so the strip shows the resumed session's running
+   jobs instead of the new process's empty set;
+4. leaves every unsettled subagent `Interrupted` and announces it in
+   the transcript with its id, so the model can report it and a later
+   retry can find it; nothing is started;
+5. turns every recovered `Done` job or subagent into the notice the
+   live finish feed would have produced, so the model learns what
+   ended while it was gone.
+
+A new session allocates its checkpoint id at startup, as it does today,
+so its jobs carry the id from the first command rather than from the
+first save.
+
+The picker shows conversations, not work. A subagent's session is a
+real file next to its parent, and `/resume` must not offer it. The
+filter is one predicate, `rhema_subagents::is_child(&SessionId)`, and
+it is the prefix rule `adopt` already needs to list one parent's
+children. One rule, two callers, no store change: the file backend and
+the SQLite backend both key rows by the same id.
+
+A flag on `Meta` would also be cheap, since `list` parses every session
+to build the opening prompt. It is still worse: the store would have to
+know what a subagent is, and a layout fact would become a store fact.
+
+What `/resume` does not do: start any work. An interrupted subagent
+stays interrupted, a `Failed` one stays failed (a retry verb is the
+later change, §10.1), a job that ended stays ended, and a ledger that
+cannot be parsed shows its error and nothing else. The same rule a
+turn follows: loading tells the truth, it does not act on it.
 
 **RSD: never.** `driver_state` in an RSD session holds its key/plan
 shape; a session is one or the other.
@@ -764,8 +1009,8 @@ Generic lifecycle:
    `NotRetryable` and the record is untouched; on `Interrupted` it
    reaches `Running` with `attempts` incremented.
 8. **A registered kind wins.** A test kind whose `recover` returns
-   `Done`/`Queued`/`Interrupted` lands each verdict, and its `recover`
-   sees its own payload through the typed accessor.
+   `Done`/`Queued`/`Interrupted`/`Failed` lands each verdict, and its
+   `recover` sees its own payload through the typed accessor.
 9. **Idempotent reconcile.** Two passes, the second returns no changes,
    including with a registered kind.
 
@@ -792,6 +1037,35 @@ Core and wire:
     connection leaves `Cancelled`; `session/load` writes once for the
     first reconcile and nothing on the next load.
 
+Subagents:
+
+17. **Child to parent.** A child whose turn is `Done` settles the parent
+    `Done`, and the report is the child's last assistant message; a
+    child `Interrupted` leaves the parent `Interrupted`; a missing child
+    file settles `Failed`; a child with no ledger (as an older build
+    writes it) is decided by its tail.
+18. **Adoption.** A parent with an empty ledger and one child session
+    adopts it on the first reconcile and nothing on the second; the
+    adopted record is classified by the same pass, not left `Running`.
+
+Jobs:
+
+19. **Row to verdict.** A running row leaves `Interrupted`; an exited
+    row settles `Done`; an absent row and a missing backend settle
+    `Failed` with the error text.
+20. **The tag survives.** A job started under one process is listed by
+    a second process that loads the session, because the tag is the
+    checkpoint's id, not a pid.
+
+TUI:
+
+21. **`/resume` re-tags.** After a load, the poller queries the loaded
+    session's tag and the strip shows its running jobs; an interrupted
+    subagent is announced and not started.
+22. **A missed finish.** A job that ended while the process was down
+    lands as a transcript notice and a steering line on the next turn,
+    with the exit code from the listing.
+
 ---
 
 ## 13. Resolved during review
@@ -801,7 +1075,11 @@ Core and wire:
    `outcome.retryable`, set by the driver at settle time when it has the
    failure in hand. `retry` then allows `Failed → Running` only for a
    retryable failure, and `Interrupted → Running` unconditionally.
-2. **Retention.** 32 **settled submission records** per session, every
+2. **Nothing starts on load.** Agreed: `/resume` announces an
+   interrupted subagent and stops, the same courtesy an interrupted
+   turn gets. Restarting is an explicit request, and the subagent tool
+   needs a verb for it later (§10.1).
+3. **Retention.** 32 **settled submission records** per session, every
    unsettled one kept. This counts records in the ledger, not history
    messages: a record is an id, a tag, a payload, three timestamps and a
    status, so 32 of them are roughly 100 KB with typical payloads.
@@ -821,9 +1099,19 @@ Core and wire:
   lifecycle is universal; the payload and the meaning of "finished" are
   not. A closed set would make every future consumer an edit to this
   crate.
-- **Three recovery verdicts.** `Done`, `Queued`, `Interrupted` are the
-  only answers to "what did the crash leave", and every kind's recovery
-  is a function into them.
+- **Four recovery verdicts.** `Done`, `Queued`, `Interrupted`,
+  `Failed`. The fourth is for work whose state lives elsewhere and is
+  gone; without it the record would claim a resumability it does not
+  have.
+- **`adopt` is per kind, not a scan.** This crate never guesses what a
+  child session or a daemon row is. The kind that owns the work names
+  it, and the snapshot keeps the pass idempotent.
+- **A subagent's child is a real session.** One store, one save path,
+  one crash story. The report is derived from it, which is also how a
+  finish that happened while the parent was down becomes visible.
+- **The job tag is the session's id.** A per-process tag made a
+  resumed process blind to its own jobs; the checkpoint id is stable,
+  allocated at startup, and reloaded by `/resume`.
 - **Unknown kinds reconcile to `Interrupted` and are reported.** A
   session never refuses to load because an extension is missing, a
   record is never silently dropped, and `reconcile` returns
@@ -837,6 +1125,10 @@ Core and wire:
   derive from its own store.
 - **The built-in kind is `turn`, in this crate.** A turn is core's unit
   of work; coding-agent is an assembly, not an owner.
+- **Load never starts work.** `reconcile` settles statuses and reports
+  them; every `Interrupted` record, turn or subagent, waits for an
+  explicit request. A load that starts work spends tokens and does
+  things nobody asked for.
 - **No `Waiting` status.** A status says who owns the record: nothing
   (`Queued`), a live owner (`Running`), or the end. A kind that blocks
   on a human or a port is still `Running`; the payload carries the
@@ -855,6 +1147,8 @@ Core and wire:
 
 ## 15. Acceptance
 
+Phase 1:
+
 - `cargo test -p rhema-submissions`, `-p rhema-core`, and `-p rhema-acp`
   pass; `cargo clippy --all-targets -- -D warnings` is clean.
 - The five turn recovery rules and the cut-at-each-commit cases each
@@ -868,3 +1162,23 @@ Core and wire:
   lists, and resumes unchanged; no empty ledger is stamped on it.
 - `cargo tree -p rhema-submissions | rg "rhema-(coding-agent|agent-tools)"`
   finds no match: the turn kind needs core only.
+
+Phase 2:
+
+- A subagent killed mid-run leaves a child session and a parent record;
+  a load settles the parent from the child, and a resumed child
+  continues its tail.
+- A job started under one process is listed and settled by another
+  process that loaded the session; a job that ended while no process
+  ran surfaces once, as a notice.
+- `cargo tree -p rhema-submissions | rg "rhema-(subagents|code)"`
+  still finds no match: the kinds live with their work, not here.
+
+Phase 3:
+
+- `/resume` on a session with a running job shows it in the strip and
+  re-attaches the poller without starting a second copy.
+- `/resume` on a session with an interrupted subagent announces it,
+  starts nothing, spends no tokens, and leaves the same `Interrupted`
+  record after a second load.
+- The picker does not list subagent child sessions.
