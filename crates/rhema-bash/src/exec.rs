@@ -6,8 +6,11 @@
 //! spawns `bash -c` child processes (feature `local-shell`, default on);
 //! hosts whose shell lives elsewhere bring their own executor, the cloud
 //! deployment runs every command in a remote sandbox through this same
-//! seam. The trait's futures are `Send` like every seam in this tree, so
-//! the executor object crosses await points freely.
+//! seam. Captured runs are never handed the frontend's terminal: the
+//! local executor gives the child `/dev/null` and a session with no
+//! controlling tty, so an interactive program fails instead of taking
+//! over the UI. The trait's futures are `Send` like every seam in this
+//! tree, so the executor object crosses await points freely.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -92,6 +95,48 @@ pub fn bash_missing_message() -> String {
     .to_owned()
 }
 
+/// The environment every captured command runs with, layered over the
+/// inherited one: the variables that would otherwise make a tool wait on
+/// a terminal the command does not have. Git's editor slot is the one
+/// that bit in the field: `git commit` without `-m` launches
+/// `$GIT_EDITOR` (micro, vim), which opens `/dev/tty` and takes the
+/// frontend's screen and keyboard. `false` ends that editor at once, and
+/// git's own error tells the model to pass `-m` or `-F`. A frontend's
+/// provisioned env is layered over these, so an explicit choice wins.
+pub const NONINTERACTIVE_ENV: &[(&str, &str)] = &[
+    ("GIT_EDITOR", "false"),
+    ("GIT_SEQUENCE_EDITOR", "false"),
+    ("GIT_PAGER", "cat"),
+    ("PAGER", "cat"),
+    ("GIT_TERMINAL_PROMPT", "0"),
+    ("DEBIAN_FRONTEND", "noninteractive"),
+];
+
+/// The `setsid` binary on this host, resolved from `PATH` once. A
+/// captured command runs in a new session under it, so a program that
+/// opens `/dev/tty` gets `ENXIO` instead of the frontend's terminal.
+/// `None` on hosts without util-linux (macOS, Git Bash): there the
+/// `/dev/null` stdin and [`NONINTERACTIVE_ENV`] are the whole guard.
+#[cfg(unix)]
+pub fn setsid_executable() -> Option<&'static Path> {
+    use std::sync::OnceLock;
+    static SETSID: OnceLock<Option<PathBuf>> = OnceLock::new();
+    SETSID
+        .get_or_init(|| {
+            let path = std::env::var_os("PATH")?;
+            std::env::split_paths(&path)
+                .map(|directory| directory.join("setsid"))
+                .find(|candidate| candidate.is_file())
+        })
+        .as_deref()
+}
+
+/// The non-unix counterpart: no `setsid` to find.
+#[cfg(not(unix))]
+pub fn setsid_executable() -> Option<&'static Path> {
+    None
+}
+
 /// Shapes a spawn failure: not-found names the gap (see
 /// [`bash_missing_message`]), anything else rides the io error text.
 /// The shell's shape: the one caller is the local executor, and the
@@ -112,8 +157,11 @@ pub trait ShellExecutor: Send + Sync {
     /// and returning what the command left behind. A command outliving
     /// `timeout` is killed and reported as [`ShellError::Timeout`]; a
     /// flip of `cancelled` mid-run stops the run with
-    /// [`ShellError::Cancelled`]. Implementations must not panic and
-    /// must not abort: every failure comes back as a [`ShellError`].
+    /// [`ShellError::Cancelled`]. A captured run is non-interactive: the
+    /// child never receives the frontend's terminal on stdin, and an
+    /// implementation must not hand it one. Implementations must not
+    /// panic and must not abort: every failure comes back as a
+    /// [`ShellError`].
     async fn run(
         &self,
         command: &str,
@@ -148,7 +196,11 @@ const CAPTURE_EVICT: usize = 256 * 1024;
 
 /// The local executor: commands run as `bash -c` child processes on this
 /// host, streamed line by line, killed past their timeout (`kill_on_drop`
-/// so the dropped child handle kills a still-running process).
+/// so the dropped child handle kills a still-running process). Captured
+/// commands get no terminal: `/dev/null` on stdin, no controlling tty
+/// under `setsid` where the host has it, and [`NONINTERACTIVE_ENV`] so
+/// an editor or pager fails fast instead of taking the frontend's screen
+/// and keyboard.
 #[cfg(feature = "local-shell")]
 #[derive(Debug, Clone)]
 pub struct LocalShell {
@@ -177,23 +229,11 @@ impl ShellExecutor for LocalShell {
         cancelled: &AtomicBool,
         progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
     ) -> Result<Executed, ShellError> {
-        use std::process::Stdio;
         use std::sync::atomic::Ordering;
 
         // kill_on_drop so the timeout dropping the child handle kills the
         // process; without it an expired command would keep running.
-        let mut child = tokio::process::Command::new(bash_executable())
-            .arg("-c")
-            .arg(command)
-            .current_dir(cwd)
-            .envs(
-                self.env
-                    .iter()
-                    .map(|(key, value)| (key.as_str(), value.as_str())),
-            )
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
+        let mut child = captured_command(command, cwd, &self.env)
             .spawn()
             .map_err(spawn_error)?;
         // One reader per stream, complete lines into one channel: each
@@ -270,6 +310,48 @@ impl ShellExecutor for LocalShell {
             code: status.code(),
         })
     }
+}
+
+/// Builds the `bash -c` command for one captured run: no terminal on
+/// stdin, [`NONINTERACTIVE_ENV`] under the frontend's own env, and
+/// `setsid` in front when the host has it, so a program that reaches for
+/// `/dev/tty` finds no controlling terminal instead of taking the
+/// frontend's screen and keyboard. Without `setsid` the stdio contract
+/// still holds: stdin is `/dev/null`, so a reader gets EOF rather than
+/// the user's keys.
+#[cfg(feature = "local-shell")]
+fn captured_command(
+    command: &str,
+    cwd: &Path,
+    env: &[(String, String)],
+) -> tokio::process::Command {
+    use std::process::Stdio;
+
+    let bash = bash_executable();
+    let mut process = match setsid_executable() {
+        Some(setsid) => {
+            let mut process = tokio::process::Command::new(setsid);
+            process.arg(&bash);
+            process
+        }
+        None => tokio::process::Command::new(&bash),
+    };
+    process
+        .arg("-c")
+        .arg(command)
+        .current_dir(cwd)
+        // The guards first, the frontend's env over them: a provisioned
+        // value is an explicit choice and wins.
+        .envs(NONINTERACTIVE_ENV.iter().copied())
+        .envs(
+            env.iter()
+                .map(|(key, value)| (key.as_str(), value.as_str())),
+        )
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    process
 }
 
 /// Reads `stream` line by line into `tx`, tagged with its stream, until
@@ -362,6 +444,147 @@ mod tests {
     use std::sync::atomic::AtomicBool;
 
     fn silent(_line: &str) {}
+
+    /// One run through an executor, the deadline and the cwd the tests
+    /// share; the output is the assertion, so a nonzero exit still
+    /// comes back here.
+    async fn run_collected(executor: &dyn ShellExecutor, command: &str) -> Executed {
+        let cancelled = AtomicBool::new(false);
+        executor
+            .run(
+                command,
+                Path::new("/tmp"),
+                Duration::from_secs(30),
+                &cancelled,
+                &mut silent,
+            )
+            .await
+            .expect("the command runs")
+    }
+
+    #[tokio::test]
+    async fn a_captured_command_reads_eof_instead_of_the_terminal() {
+        let shell = LocalShell::default();
+        // Without `Stdio::null` this reads the test harness's stdin: a
+        // terminal in a local run, and the test blocks forever.
+        let executed = run_collected(&shell, "read -r line; echo \"status:$?\"").await;
+        assert_eq!(executed.code, Some(0));
+        assert_eq!(String::from_utf8_lossy(&executed.stdout), "status:1\n");
+    }
+
+    #[tokio::test]
+    async fn a_captured_command_carries_the_noninteractive_guards() {
+        let shell = LocalShell::default();
+        let executed = run_collected(
+            &shell,
+            "printf '%s|%s|%s|%s\\n' \"$GIT_EDITOR\" \"$GIT_SEQUENCE_EDITOR\" \"$GIT_PAGER\" \"$GIT_TERMINAL_PROMPT\"",
+        )
+        .await;
+        assert_eq!(
+            String::from_utf8_lossy(&executed.stdout),
+            "false|false|cat|0\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_frontend_env_overrides_a_guard() {
+        let mut env = BTreeMap::new();
+        env.insert("GIT_EDITOR".to_owned(), "true".to_owned());
+        let executor = default_executor_with(&env);
+        let executed = run_collected(executor.as_ref(), "printf '%s\\n' \"$GIT_EDITOR\"").await;
+        assert_eq!(String::from_utf8_lossy(&executed.stdout), "true\n");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_captured_command_has_no_controlling_terminal_when_setsid_exists() {
+        if setsid_executable().is_none() {
+            return;
+        }
+        let shell = LocalShell::default();
+        let executed = run_collected(
+            &shell,
+            "if { : </dev/tty; } 2>/dev/null; then echo attached; else echo detached; fi",
+        )
+        .await;
+        assert_eq!(String::from_utf8_lossy(&executed.stdout), "detached\n");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_detached_wrapper_preserves_the_exit_code() {
+        if setsid_executable().is_none() {
+            return;
+        }
+        let shell = LocalShell::default();
+        let executed = run_collected(&shell, "exit 7").await;
+        assert_eq!(executed.code, Some(7));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_git_commit_without_a_message_never_launches_the_editor() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let git_available = std::process::Command::new("git")
+            .arg("--version")
+            .output()
+            .is_ok_and(|output| output.status.success());
+        if !git_available {
+            return;
+        }
+        let dir = tempfile::tempdir().expect("tempdir");
+        let setup = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir.path())
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_SYSTEM", "/dev/null")
+                .status()
+                .expect("git runs");
+            assert!(status.success(), "git {args:?}");
+        };
+        setup(&["init", "-q"]);
+        std::fs::write(dir.path().join("f"), b"x").expect("the file is written");
+        setup(&["add", "f"]);
+
+        // The editor the environment names must never run: the guard in
+        // NONINTERACTIVE_ENV wins over `$EDITOR`, and there is no tty
+        // for it to take either way.
+        let marker = dir.path().join("editor-ran");
+        let editor = dir.path().join("editor.sh");
+        std::fs::write(
+            &editor,
+            format!("#!/bin/sh\ntouch '{}'\nexit 1\n", marker.display()),
+        )
+        .expect("the editor script is written");
+        std::fs::set_permissions(&editor, std::fs::Permissions::from_mode(0o755))
+            .expect("the editor script is executable");
+
+        let mut env = BTreeMap::new();
+        env.insert("EDITOR".to_owned(), editor.display().to_string());
+        env.insert("GIT_CONFIG_GLOBAL".to_owned(), "/dev/null".to_owned());
+        env.insert("GIT_CONFIG_SYSTEM".to_owned(), "/dev/null".to_owned());
+        let executor = default_executor_with(&env);
+        let cancelled = AtomicBool::new(false);
+        let executed = executor
+            .run(
+                "git -c user.name=t -c user.email=t@example.com commit",
+                dir.path(),
+                Duration::from_secs(30),
+                &cancelled,
+                &mut silent,
+            )
+            .await
+            .expect("the command runs");
+        assert_ne!(
+            executed.code,
+            Some(0),
+            "git must abort without a message: {}",
+            String::from_utf8_lossy(&executed.stderr)
+        );
+        assert!(!marker.exists(), "the editor was launched");
+    }
 
     #[tokio::test]
     async fn a_chatty_command_cannot_grow_the_capture_without_bound() {

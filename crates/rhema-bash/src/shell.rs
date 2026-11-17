@@ -71,7 +71,9 @@ impl ShellTools {
              working directory. Reading, listing, and editing files are \
              shell work. Output is capped and the exit status reported; a \
              non-zero exit comes back as an error. Commands run in the \
-             session's sandbox.",
+             session's sandbox with no terminal: a program that waits for \
+             input or opens an editor fails instead of hanging, so use \
+             non-interactive forms (`git commit -m`, `-y`, `--no-pager`).",
             json!({
                 "type": "object",
                 "properties": {
