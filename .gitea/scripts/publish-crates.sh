@@ -28,6 +28,7 @@ CRATES=(
   rhema-session-store
   rhema-session-store-file
   rhema-session-store-sqlite
+  rhema-submissions
   rhema-provider
   rhema-agent-tools
   rhema-sandbox
