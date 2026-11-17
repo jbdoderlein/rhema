@@ -158,7 +158,7 @@ pub fn stamped_system_with_sections(
 /// config holds is a section the prompt has.
 fn config_sections<'a>(
     config: &'a CodingAgentConfig,
-    mcp: &'a [rhema_prompt::prompt::McpServerLine],
+    mcp: &'a [rhema_config::mcp::McpServerLine],
 ) -> Vec<(&'a str, serde_json::Value)> {
     let mut sections: Vec<(&str, serde_json::Value)> = Vec::new();
     for (name, text) in [
@@ -205,7 +205,7 @@ pub struct CodingAgent {
 impl CodingAgent {
     /// A fresh agent with an empty session. The workspace is canonicalized
     /// for tool scoping; the system prompt defaults to the built-in
-    /// template rendered by [`crate::prompt::render_system`] unless
+    /// template rendered by [`crate::render_system`] unless
     /// `config.system` replaces it. A base prompt that fails to render
     /// fails the construction.
     pub fn new(config: CodingAgentConfig) -> Result<Self, CodingAgentError> {
@@ -270,7 +270,7 @@ impl CodingAgent {
         // wire step already filtered before spawning; this is the
         // prompt-side echo, so a frontend feeding lines directly is
         // still governed by the switch.
-        let mcp: Vec<rhema_prompt::prompt::McpServerLine> = config
+        let mcp: Vec<rhema_config::mcp::McpServerLine> = config
             .mcp_servers
             .iter()
             .filter(|line| !config.disabled_mcp_servers.contains(&line.server))
@@ -1199,7 +1199,7 @@ mod extra_tools_tests {
                 AllowAll,
             )
         };
-        let lines = vec![rhema_prompt::McpServerLine {
+        let lines = vec![rhema_config::mcp::McpServerLine {
             name: "atlassian".into(),
             server: "atlassian".into(),
             description: "Jira".into(),

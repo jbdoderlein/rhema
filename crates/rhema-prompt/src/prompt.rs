@@ -25,21 +25,6 @@ use crate::skills::Skill;
 /// should not need a minijinja dependency to name it.
 pub use minijinja::Error as TemplateError;
 
-/// One wired MCP server, as the prompt's `mcp` section carries it: the
-/// stub's name, the command the model types, and the user-written
-/// description. Content comes from config only, an MCP server never
-/// gets prose into the system prompt beyond its own yaml line.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-pub struct McpServerLine {
-    /// The bash command and function name (`command_name` or the
-    /// server name).
-    pub name: String,
-    /// The server's config name, for `mcp tools <server>` style calls.
-    pub server: String,
-    /// The user-written description, verbatim.
-    pub description: String,
-}
-
 /// One render's inputs: the three values the driver produces, and the
 /// named sections the caller's template references.
 ///
@@ -282,12 +267,14 @@ mod tests {
     #[test]
     fn the_mcp_section_renders_lines_and_vanishes_when_empty() {
         let template = "{% if mcp %}MCP:\n{% for server in mcp %}- {{ server.name }} (server: {{ server.server }}): {{ server.description }}\n{% endfor %}{% endif %}";
-        let lines = vec![McpServerLine {
-            name: "atlassian".into(),
-            server: "atlassian".into(),
-            description: "Jira and Confluence".into(),
-        }];
-        let with = Prompt::new(Path::new("/ws"), &[], &[]).section("mcp", json!(lines));
+        // Any list of rows renders; naming the type is not this
+        // crate's business, a literal stands in.
+        let lines = serde_json::json!([{
+            "name": "atlassian",
+            "server": "atlassian",
+            "description": "Jira and Confluence",
+        }]);
+        let with = Prompt::new(Path::new("/ws"), &[], &[]).section("mcp", lines);
         let out = render_system(template, &with).unwrap();
         assert_eq!(
             out,

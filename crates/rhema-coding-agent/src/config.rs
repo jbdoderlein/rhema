@@ -156,7 +156,7 @@ pub struct CodingAgentConfig {
     /// them, the lines a frontend's wire step produced (spec:
     /// `specs/rhema-mcp.md` §10). Empty renders no section: a
     /// frontend that wires nothing advertises nothing.
-    pub mcp_servers: Vec<rhema_prompt::prompt::McpServerLine>,
+    pub mcp_servers: Vec<rhema_config::mcp::McpServerLine>,
     /// MCP server names to drop from the prompt's section, the
     /// persisted off switch a frontend reads out of its stored
     /// settings, the [`disabled_skills`](Self::disabled_skills)

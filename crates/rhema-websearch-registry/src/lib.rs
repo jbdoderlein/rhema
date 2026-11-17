@@ -107,7 +107,7 @@ mod tests {
 
 /// The profile's chain, assembled: the configured instances in
 /// [`Profile::websearch_order`], each key resolved through the tiers
-/// ([`WebSearchInstance::api_key`]), instances whose key stays
+/// ([`WebSearchInstance::api_key`](rhema_config::WebSearchInstance::api_key)), instances whose key stays
 /// unresolved or whose kind spells nothing in [`KINDS`] skipped, and
 /// over an empty result the env-only tier: one entry per kind whose
 /// environment variable resolves, in the fixed kind order. `None`
@@ -133,18 +133,61 @@ pub fn assemble_chain_with(
     secrets: Option<&dyn SecretStore>,
 ) -> Option<Arc<Chain>> {
     let mut chain = Chain::new();
+    for (name, kind, key) in selections(env, profile, secrets) {
+        let Ok(provider) = build(&kind, Some(key)) else {
+            continue;
+        };
+        chain.push(name, provider);
+    }
+    if chain.is_empty() {
+        None
+    } else {
+        Some(Arc::new(chain))
+    }
+}
+
+/// Whether [`assemble_chain`] would return a chain, without building a
+/// provider: the same tier walk, the same key resolution, the same
+/// gate. A preview that must not construct HTTP clients asks this, and
+/// a frontend deciding whether to render the prompt's section asks the
+/// same question the wire does.
+pub fn would_wire(profile: Option<&Profile>, secrets: Option<&dyn SecretStore>) -> bool {
+    would_wire_with(|name| std::env::var(name).ok(), profile, secrets)
+}
+
+/// [`would_wire`] over a caller-supplied environment, the seam tests
+/// drive instead of mutating the process environment.
+pub fn would_wire_with(
+    env: impl Fn(&str) -> Option<String>,
+    profile: Option<&Profile>,
+    secrets: Option<&dyn SecretStore>,
+) -> bool {
+    !selections(env, profile, secrets).is_empty()
+}
+
+/// The providers the chain would carry, as name, kind, and key: the
+/// profile's instances in [`Profile::websearch_order`] whose key
+/// resolves and whose kind spells something in [`KINDS`], and over
+/// none of those the env-only tier, one entry per kind whose variable
+/// resolves, in the fixed kind order.
+fn selections(
+    env: impl Fn(&str) -> Option<String>,
+    profile: Option<&Profile>,
+    secrets: Option<&dyn SecretStore>,
+) -> Vec<(String, String, String)> {
+    let mut selections = Vec::new();
     if let Some(profile) = profile {
         for (name, instance) in profile.websearch_chain() {
+            if !KINDS.contains(&instance.provider.as_str()) {
+                continue;
+            }
             let Some(key) = instance.api_key(secrets) else {
                 continue;
             };
-            let Ok(provider) = build(&instance.provider, Some(key)) else {
-                continue;
-            };
-            chain.push(name, provider);
+            selections.push((name, instance.provider.clone(), key));
         }
     }
-    if chain.is_empty() {
+    if selections.is_empty() {
         for kind in KINDS {
             let key = websearch_env_names(kind)
                 .iter()
@@ -152,19 +195,11 @@ pub fn assemble_chain_with(
                 .map(|value| value.trim().to_owned())
                 .find(|value| !value.is_empty());
             if let Some(key) = key {
-                // The kind is in KINDS, the build cannot fail.
-                let Ok(provider) = build(kind, Some(key)) else {
-                    continue;
-                };
-                chain.push(kind, provider);
+                selections.push((kind.to_owned(), kind.to_owned(), key));
             }
         }
     }
-    if chain.is_empty() {
-        None
-    } else {
-        Some(Arc::new(chain))
-    }
+    selections
 }
 
 #[cfg(test)]
@@ -211,6 +246,39 @@ mod assembly_tests {
         // entry (the test above), this one holds.
         let chain = assemble_chain_with(|_| None, Some(&profile), Some(&store)).unwrap();
         assert_eq!(chain.names(), vec!["brave-main"]);
+    }
+
+    /// The preview's question, the wire's answer: `would_wire` walks the
+    /// same tiers as `assemble_chain` and agrees with it on every case
+    /// the tests above cover.
+    #[test]
+    fn would_wire_answers_what_assemble_chain_returns() {
+        let store = VolatileSecretStore::new();
+        store.set("ws-1", "chain-key").unwrap();
+        let keyed = {
+            let mut profile = Profile::default();
+            let mut brave = instance("brave", None);
+            brave.secret_ref = Some("ws-1".into());
+            profile.websearch.insert("brave-main".into(), brave);
+            profile.websearch_order = vec!["brave-main".into()];
+            profile
+        };
+        let keyless = {
+            let mut profile = Profile::default();
+            profile
+                .websearch
+                .insert("brave-main".into(), instance("brave", None));
+            profile.websearch_order = vec!["brave-main".into()];
+            profile
+        };
+        assert!(would_wire_with(|_| None, Some(&keyed), Some(&store)));
+        assert!(assemble_chain_with(|_| None, Some(&keyed), Some(&store)).is_some());
+        assert!(!would_wire_with(|_| None, Some(&keyless), None));
+        assert!(assemble_chain_with(|_| None, Some(&keyless), None).is_none());
+        let env = |name: &str| (name == "EXA_API_KEY").then(|| "k".to_owned());
+        assert!(would_wire_with(env, None, None));
+        assert!(assemble_chain_with(env, None, None).is_some());
+        assert!(!would_wire_with(|_| None, None, None));
     }
 
     #[test]

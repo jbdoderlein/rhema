@@ -3,8 +3,8 @@
 
 use super::headless::failed_checkpoint_path;
 use super::system::{
-    markdown_ansi, system_edit_at, system_restore_at, system_show_at, system_show_at_with_mcp,
-    without_terminal_controls,
+    markdown_ansi, search_section, system_edit_at, system_restore_at, system_show_at,
+    system_show_at_with_mcp, without_terminal_controls,
 };
 use super::*;
 
@@ -126,7 +126,7 @@ mod system_tests {
         )
         .unwrap();
 
-        let prompt = system_show_at(Some(&base), workspace.path(), None).unwrap();
+        let prompt = system_show_at(Some(&base), workspace.path(), None, None).unwrap();
 
         let canonical = std::fs::canonicalize(workspace.path()).unwrap();
         assert!(
@@ -153,24 +153,52 @@ mod system_tests {
         )
         .unwrap();
         let workspace = tempfile::tempdir().unwrap();
-        let mcp = vec![rhema_prompt::prompt::McpServerLine {
+        let mcp = vec![rhema_config::mcp::McpServerLine {
             name: "blender".to_owned(),
             server: "blender".to_owned(),
             description: "Blender scene operations".to_owned(),
         }];
         let prompt =
-            system_show_at_with_mcp(Some(base.path()), workspace.path(), None, mcp).unwrap();
+            system_show_at_with_mcp(Some(base.path()), workspace.path(), None, mcp, None).unwrap();
         assert!(
             prompt.contains("- blender (server: blender): Blender scene operations"),
             "{prompt}"
         );
     }
 
+    /// The search section's two gates: a local session, and the wire's
+    /// own gate open. A preview that skipped the first would promise a
+    /// `search` a sandboxed session lacks; one that skipped the second
+    /// would hide the function a keychain key wires. The keyless half
+    /// of the gate is the registry's own test, where the environment is
+    /// injected rather than read.
+    #[test]
+    fn the_search_section_follows_the_local_rule_and_the_wire_gate() {
+        use rhema_config::secrets::{SecretStore, VolatileSecretStore};
+        use rhema_config::{Profile, WebSearchInstance};
+        let store = VolatileSecretStore::new();
+        store.set("ws-1", "chain-key").unwrap();
+        let mut profile = Profile::default();
+        profile.websearch.insert(
+            "brave-main".into(),
+            WebSearchInstance {
+                provider: "brave".into(),
+                api_key: None,
+                secret_ref: Some("ws-1".into()),
+            },
+        );
+        profile.websearch_order = vec!["brave-main".into()];
+        // A key that lives only in the store still wires in the
+        // session, so the section renders, and only for a local one.
+        assert!(search_section(None, Some(&profile), Some(&store)));
+        assert!(!search_section(Some("local"), Some(&profile), Some(&store)));
+    }
+
     #[test]
     fn show_falls_back_to_the_built_in_default_without_a_file() {
         let workspace = tempfile::tempdir().unwrap();
 
-        let prompt = system_show_at(None, workspace.path(), None).unwrap();
+        let prompt = system_show_at(None, workspace.path(), None, None).unwrap();
 
         assert!(prompt.contains("bash"), "{prompt}");
         assert!(!prompt.contains("{{"), "the default is rendered: {prompt}");

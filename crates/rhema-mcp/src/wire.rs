@@ -29,8 +29,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use rhema_config::mcp::McpConfig;
-use rhema_prompt::prompt::McpServerLine;
+use rhema_config::mcp::{McpConfig, McpServerLine};
 
 use crate::manager::McpManager;
 use crate::provision::{self, Provision};
@@ -248,11 +247,7 @@ fn wire_with_bin_unix(
     let lines = filtered
         .servers
         .iter()
-        .map(|server| McpServerLine {
-            name: server.command_name.clone(),
-            server: server.name.clone(),
-            description: server.description.clone(),
-        })
+        .map(rhema_config::mcp::McpServer::prompt_line)
         .collect();
 
     Ok(Wiring {

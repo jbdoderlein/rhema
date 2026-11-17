@@ -194,6 +194,35 @@ pub struct McpServer {
     pub command_name: String,
 }
 
+impl McpServer {
+    /// The server as the system prompt's `mcp` section carries it: the
+    /// stub's command name, the config key a `mcp tools <server>` call
+    /// names, and the user-written description, verbatim. Content comes
+    /// from config alone: a server never gets prose into the prompt
+    /// beyond its own yaml line.
+    pub fn prompt_line(&self) -> McpServerLine {
+        McpServerLine {
+            name: self.command_name.clone(),
+            server: self.name.clone(),
+            description: self.description.clone(),
+        }
+    }
+}
+
+/// One wired MCP server as the prompt discloses it, the row
+/// [`McpServer::prompt_line`] builds and a frontend without a config
+/// file (a preview) may build directly.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct McpServerLine {
+    /// The bash command and function name (`command_name` or the
+    /// server name).
+    pub name: String,
+    /// The server's config name, for `mcp tools <server>` style calls.
+    pub server: String,
+    /// The user-written description, verbatim.
+    pub description: String,
+}
+
 /// How a server is reached.
 ///
 /// [`Debug`] shows secret values as `[…]`: presence without the value,

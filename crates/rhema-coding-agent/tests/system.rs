@@ -248,13 +248,13 @@ fn the_skills_share_excludes_the_mcp_section() {
         body: String::new(),
     }];
     let mcp = |description: &str| {
-        vec![rhema_prompt::prompt::McpServerLine {
+        vec![rhema_config::mcp::McpServerLine {
             name: "atlassian".into(),
             server: "atlassian".into(),
             description: description.into(),
         }]
     };
-    let render = |skills: &[rhema_prompt::Skill], mcp: &[rhema_prompt::prompt::McpServerLine]| {
+    let render = |skills: &[rhema_prompt::Skill], mcp: &[rhema_config::mcp::McpServerLine]| {
         let prompt = rhema_prompt::Prompt::new(&workspace, skills, &[])
             .section("mcp", serde_json::json!(mcp));
         rhema_prompt::render_system(rhema_coding_agent::DEFAULT_SYSTEM_MD, &prompt).unwrap()

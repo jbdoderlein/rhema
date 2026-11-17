@@ -18,7 +18,7 @@
 pub mod prompt;
 pub mod skills;
 
-pub use prompt::{McpServerLine, Prompt, render_system, render_template};
+pub use prompt::{Prompt, render_system, render_template};
 // Re-exported so a caller can name the error the renderer returns
 // without depending on minijinja itself.
 pub use prompt::TemplateError;

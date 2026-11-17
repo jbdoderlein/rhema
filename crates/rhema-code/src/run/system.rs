@@ -1,7 +1,9 @@
 //! The `rhema system` utilities and their renderer: the prompt
 //! preview's markdown-to-ANSI path, the theme it picks from config,
-//! and the edit/restore/show actions, all model-free, no provider
-//! or credential touched.
+//! and the edit/restore/show actions, all model-free and provider-free.
+//! `show` reads the keychain once, and only when the profile names a
+//! search provider: the section must say what the session would wire,
+//! and a key that lives only there still wires.
 
 use super::*;
 
@@ -28,6 +30,13 @@ pub(crate) fn system_command(
             if let Some(problem) = rhema_bash::jobs::backend_problem() {
                 eprintln!("warning: background jobs disabled: {problem}");
             }
+            // The session's own keychain decides whether the search
+            // section exists: a key that lives only there still wires
+            // in the session, so the preview reads it. The read only
+            // happens when a profile names search instances.
+            let secrets = rhema_config::secrets::KeyringSecretStore::named(
+                rhema_config::secrets::RHEMA_SERVICE,
+            );
             let prompt = system_show_at(
                 rhema_config::Home::discover()
                     .ok()
@@ -35,6 +44,7 @@ pub(crate) fn system_command(
                     .as_deref(),
                 workspace,
                 profile,
+                Some(&secrets),
             )?;
             // Styled markdown on a terminal; the byte-exact prompt when
             // piped, the same contract the one-shot keeps.
@@ -186,9 +196,10 @@ pub(crate) fn system_show_at(
     path: Option<&std::path::Path>,
     workspace: &std::path::Path,
     profile: Option<&str>,
+    secrets: Option<&dyn rhema_config::secrets::SecretStore>,
 ) -> anyhow::Result<String> {
     let mcp = mcp_preview_lines(profile);
-    system_show_at_with_mcp(path, workspace, profile, mcp)
+    system_show_at_with_mcp(path, workspace, profile, mcp, secrets)
 }
 
 /// The preview over explicit mcp lines, the test seam. Production
@@ -198,7 +209,8 @@ pub(crate) fn system_show_at_with_mcp(
     path: Option<&std::path::Path>,
     workspace: &std::path::Path,
     profile: Option<&str>,
-    mcp: Vec<rhema_prompt::prompt::McpServerLine>,
+    mcp: Vec<rhema_config::mcp::McpServerLine>,
+    secrets: Option<&dyn rhema_config::secrets::SecretStore>,
 ) -> anyhow::Result<String> {
     let workspace = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
     let home = rhema_config::Home::discover().ok();
@@ -258,18 +270,34 @@ pub(crate) fn system_show_at_with_mcp(
     if !mcp.is_empty() {
         sections.push(("mcp", serde_json::json!(mcp)));
     }
-    // The vision section is static text a local session always
-    // carries; the preview never provisions, it just shows the block
-    // the template would render.
-    sections.push((
-        "vision",
-        serde_json::json!(rhema_bash::vision::PROMPT_SECTION),
-    ));
-    // Jobs is the one section a machine may lack outright: its backend
-    // is a separate install, so the preview asks the same probe the
-    // wire uses rather than promising a command that would not exist.
-    if rhema_bash::jobs::available() {
-        sections.push(("jobs", serde_json::json!(rhema_bash::jobs::PROMPT_SECTION)));
+    // The three local sections, gated the way the wire gates them: a
+    // sandboxed session runs its commands on the far side, where none
+    // of the three functions was installed, and setup skips each
+    // provisioning step before it renders anything. A preview that
+    // showed them would promise a `see`, a `job`, or a `search` the
+    // session does not have.
+    if kind.is_none() {
+        // Vision is static text a local session always carries.
+        sections.push((
+            "vision",
+            serde_json::json!(rhema_bash::vision::PROMPT_SECTION),
+        ));
+        // Jobs may be missing outright: its backend is a separate
+        // install, so the preview asks the same probe the wire uses.
+        if rhema_bash::jobs::available() {
+            sections.push(("jobs", serde_json::json!(rhema_bash::jobs::PROMPT_SECTION)));
+        }
+        // Search exists only when a provider and its key resolve:
+        // the wire's own gate, without building a provider. The
+        // keychain is read here, the one credential touch the
+        // utilities make, and only when the profile names search
+        // instances at all.
+        if search_section(kind.as_deref(), effective.as_ref(), secrets) {
+            sections.push((
+                "websearch",
+                serde_json::json!(rhema_bash::websearch::PROMPT_SECTION),
+            ));
+        }
     }
     Ok(rhema_coding_agent::stamped_system_with_sections(
         resolve_base_system(path).as_deref(),
@@ -280,11 +308,23 @@ pub(crate) fn system_show_at_with_mcp(
     )?)
 }
 
+/// The search section's rule: a local session, and the wire's own
+/// gate open. Setup asks the gate once, in `wire_for_session`; the
+/// preview asks the same question here, with the session's keychain
+/// rather than its own provisioning.
+pub(crate) fn search_section(
+    kind: Option<&str>,
+    profile: Option<&rhema_config::Profile>,
+    secrets: Option<&dyn rhema_config::secrets::SecretStore>,
+) -> bool {
+    kind.is_none() && rhema_websearch_registry::would_wire(profile, secrets)
+}
+
 /// The prompt's mcp lines as config would produce them: global file
 /// plus the profile's own entries, profile winning by name, the
 /// muted set filtered out, invalid entries skipped as the wire step
 /// skips them. No bridge, no spawns, a preview, not a wiring.
-fn mcp_preview_lines(profile: Option<&str>) -> Vec<rhema_prompt::prompt::McpServerLine> {
+fn mcp_preview_lines(profile: Option<&str>) -> Vec<rhema_config::mcp::McpServerLine> {
     let config = match Config::load() {
         Ok(config) => config,
         Err(_) => return Vec::new(),
@@ -298,11 +338,7 @@ fn mcp_preview_lines(profile: Option<&str>) -> Vec<rhema_prompt::prompt::McpServ
         .servers
         .iter()
         .filter(|server| !config.disabled_mcp_servers.contains(&server.name))
-        .map(|server| rhema_prompt::prompt::McpServerLine {
-            name: server.command_name.clone(),
-            server: server.name.clone(),
-            description: server.description.clone(),
-        })
+        .map(rhema_config::mcp::McpServer::prompt_line)
         .collect()
 }
 
