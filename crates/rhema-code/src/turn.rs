@@ -15,6 +15,7 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 use crate::events::{FetchWhy, OwnedEvent, UiEvent};
+use rhema_submissions::{Outcome, SubmissionId};
 
 /// The wall-clock bound on one backend's catalog fetch, DNS included:
 /// name resolution sits outside the adapters' request timeouts, so one
@@ -106,6 +107,7 @@ pub fn spawn_turn(
     mut agent: CodingAgent,
     prompt: Prompt,
     save: Option<PathBuf>,
+    submission: Option<SubmissionId>,
     cancel: watch::Receiver<bool>,
     mut steer: Receiver<String>,
     events: UnboundedSender<UiEvent>,
@@ -202,15 +204,26 @@ pub fn spawn_turn(
         }
         match outcome {
             Some(result) => {
-                // Checkpoint after a completed turn: the file's freshest
-                // complete state. A crash can leave a committed intent (a
-                // call without its result) in the file, the next turn's
-                // revive closes exactly that, so it is a resume input now,
-                // not a half-finished write.
-                if result.is_ok()
-                    && let Some(path) = &save
-                {
-                    let _ = agent.save_session_to(path);
+                // Settle with the error still in hand: the failure class
+                // decides whether a retry may start this record again.
+                let outcome = match &result {
+                    Ok(_) => Outcome::Done,
+                    Err(err) => Outcome::Failed {
+                        error: err.to_string(),
+                        retryable: matches!(
+                            err,
+                            CodingAgentError::Agent(agent) if agent.is_retryable()
+                        ),
+                    },
+                };
+                settle_submission(&mut agent, submission.as_ref(), outcome);
+                // Checkpoint after the chain's end: the file's freshest
+                // complete state, status included. A crash can leave a
+                // committed intent (a call without its result) in the
+                // file, the next turn's revive closes exactly that, so it
+                // is a resume input now, not a half-finished write.
+                if let Some(path) = &save {
+                    let _ = crate::sessions::write_session(path, agent.session());
                 }
                 let _ = events.send(UiEvent::TurnFinished {
                     agent: Box::new(agent),
@@ -223,6 +236,10 @@ pub fn spawn_turn(
                 // result; the history must stay load-bearing for the next
                 // turn.
                 repair_dangling_calls(agent.session_mut());
+                settle_submission(&mut agent, submission.as_ref(), Outcome::Cancelled);
+                if let Some(path) = &save {
+                    let _ = crate::sessions::write_session(path, agent.session());
+                }
                 let _ = events.send(UiEvent::TurnCancelled {
                     agent: Box::new(agent),
                     steer,
@@ -230,6 +247,18 @@ pub fn spawn_turn(
             }
         }
     })
+}
+
+/// Settles the chain's record at its end, warning on stderr when the
+/// transition is refused: the session is still the truth either way.
+fn settle_submission(agent: &mut CodingAgent, submission: Option<&SubmissionId>, outcome: Outcome) {
+    let Some(id) = submission else {
+        return;
+    };
+    let at = rhema_submissions::now();
+    if let Err(err) = rhema_submissions::settle(agent.session_mut(), id, outcome, at) {
+        eprintln!("rhema-code: warning: submission {id} was not settled: {err}");
+    }
 }
 
 /// Spawns the sandbox assembly a picker choice asked for on a tokio
@@ -463,6 +492,15 @@ mod mock_tests {
         watch::channel(false)
     }
 
+    /// Queues and starts a turn record the way the UI thread does before
+    /// it spawns the chain.
+    fn start_submission(agent: &mut CodingAgent, input: &str) -> SubmissionId {
+        let at = 1;
+        let record = rhema_submissions::turn::submit(agent.session_mut(), input, at).unwrap();
+        rhema_submissions::turn::start(agent.session_mut(), &record.id, input, at).unwrap();
+        record.id
+    }
+
     /// A provider that never answers: the turn parks in the model stream,
     /// exactly where a keyboard cancel must land.
     struct HangingProvider;
@@ -514,14 +552,23 @@ mod mock_tests {
             entered: tokio::sync::Notify::new(),
             calls: std::sync::atomic::AtomicU32::new(0),
         });
-        let agent = CodingAgent::new(CodingAgentConfig::new(
+        let mut agent = CodingAgent::new(CodingAgentConfig::new(
             Arc::clone(&provider) as Arc<dyn ModelProvider>,
             "test-model",
             std::env::temp_dir(),
             rhema_coding_agent::AllowAll,
         ))
         .unwrap();
-        spawn_turn(agent, Prompt::text("hi"), None, cancelled, steered, tx);
+        let id = start_submission(&mut agent, "hi");
+        spawn_turn(
+            agent,
+            Prompt::text("hi"),
+            None,
+            Some(id.clone()),
+            cancelled,
+            steered,
+            tx,
+        );
 
         // Wait for the first generation to be in flight, then steer: the
         // message drops it and starts the next turn with itself as the
@@ -544,6 +591,13 @@ mod mock_tests {
             }
         };
         assert!(result.is_ok());
+        // The chain is one prompt record, not one per steered round.
+        let snapshot = rhema_submissions::snapshot(agent.session()).unwrap();
+        assert_eq!(snapshot.len(), 1, "one record for the whole chain");
+        assert_eq!(
+            snapshot.get(&id).unwrap().status,
+            rhema_submissions::Status::Done
+        );
         // The interrupted generation left nothing behind: the history is
         // the first prompt, the steered message, and the steered turn's
         // reply, consecutive user messages are valid.
@@ -577,6 +631,128 @@ mod mock_tests {
         assert!(transcript.lines().is_empty());
         drop(cancel);
         // The returned receiver is drained: nothing was lost to the race.
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_completed_chain_settles_done_and_saves_the_answer() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_, cancelled) = watch_cancel();
+        let dir = tempfile::tempdir().unwrap();
+        let save = dir.path().join("session.json");
+        let mut agent = CodingAgent::new(CodingAgentConfig::new(
+            Arc::new(rhema_core::MockProvider::new([scripted_output(
+                "hello agent",
+            )])),
+            "test-model",
+            std::env::temp_dir(),
+            rhema_coding_agent::AllowAll,
+        ))
+        .unwrap();
+        let id = start_submission(&mut agent, "hi");
+        let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
+        spawn_turn(
+            agent,
+            Prompt::text("hi"),
+            Some(save.clone()),
+            Some(id.clone()),
+            cancelled,
+            steered,
+            tx,
+        );
+        let mut transcript = Transcript::new();
+        let (_agent, result) = drive_turn_for_test(&mut rx, &mut transcript).await;
+        assert!(result.is_ok());
+
+        let saved = CodingAgent::load_session_from(&save).unwrap();
+        let snapshot = rhema_submissions::snapshot(&saved).unwrap();
+        let record = snapshot.get(&id).expect("the chain's record survived");
+        assert_eq!(record.status, rhema_submissions::Status::Done);
+        assert_eq!(
+            rhema_submissions::turn::answer(&saved, &snapshot, &id).as_deref(),
+            Some("hello agent")
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_failed_chain_settles_retryable_and_saves() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_, cancelled) = watch_cancel();
+        let dir = tempfile::tempdir().unwrap();
+        let save = dir.path().join("session.json");
+        let mut agent = CodingAgent::new(CodingAgentConfig::new(
+            Arc::new(FailsThenSucceeds::default()) as Arc<dyn ModelProvider>,
+            "test-model",
+            std::env::temp_dir(),
+            rhema_coding_agent::AllowAll,
+        ))
+        .unwrap();
+        let id = start_submission(&mut agent, "hi");
+        let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
+        spawn_turn(
+            agent,
+            Prompt::text("hi"),
+            Some(save.clone()),
+            Some(id.clone()),
+            cancelled,
+            steered,
+            tx,
+        );
+        let mut transcript = Transcript::new();
+        let (_agent, result) = drive_turn_for_test(&mut rx, &mut transcript).await;
+        assert!(result.is_err(), "the network death fails the chain");
+
+        let saved = CodingAgent::load_session_from(&save).unwrap();
+        let snapshot = rhema_submissions::snapshot(&saved).unwrap();
+        let record = snapshot.get(&id).expect("the chain's record survived");
+        assert_eq!(record.status, rhema_submissions::Status::Failed);
+        assert!(matches!(
+            &record.outcome,
+            Some(Outcome::Failed {
+                retryable: true,
+                ..
+            })
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_cancelled_chain_settles_cancelled_and_saves() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let (cancel, cancelled) = watch_cancel();
+        let dir = tempfile::tempdir().unwrap();
+        let save = dir.path().join("session.json");
+        let mut agent = CodingAgent::new(CodingAgentConfig::new(
+            Arc::new(HangingProvider) as Arc<dyn ModelProvider>,
+            "test-model",
+            std::env::temp_dir(),
+            rhema_coding_agent::AllowAll,
+        ))
+        .unwrap();
+        let id = start_submission(&mut agent, "hi");
+        let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
+        spawn_turn(
+            agent,
+            Prompt::text("hi"),
+            Some(save.clone()),
+            Some(id.clone()),
+            cancelled,
+            steered,
+            tx,
+        );
+        cancel.send(true).unwrap();
+        loop {
+            match rx.recv().await.expect("turn task still alive") {
+                UiEvent::TurnCancelled { .. } => break,
+                UiEvent::TurnFinished { .. } => panic!("a cancelled chain must not finish"),
+                _ => {}
+            }
+        }
+
+        let saved = CodingAgent::load_session_from(&save).unwrap();
+        let snapshot = rhema_submissions::snapshot(&saved).unwrap();
+        assert_eq!(
+            snapshot.get(&id).unwrap().status,
+            rhema_submissions::Status::Cancelled
+        );
     }
 
     /// The first call fails the way a dropped connection does; the
@@ -629,7 +805,15 @@ mod mock_tests {
         ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
-        spawn_turn(agent, Prompt::text("hi"), None, cancelled, steered, tx);
+        spawn_turn(
+            agent,
+            Prompt::text("hi"),
+            None,
+            None,
+            cancelled,
+            steered,
+            tx,
+        );
 
         let mut transcript = Transcript::new();
         let (agent, result) = drive_turn_for_test(&mut rx, &mut transcript).await;
@@ -644,7 +828,7 @@ mod mock_tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let (_, cancelled) = watch_cancel();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
-        spawn_turn(*agent, Prompt::Retry, None, cancelled, steered, tx);
+        spawn_turn(*agent, Prompt::Retry, None, None, cancelled, steered, tx);
         let mut transcript = Transcript::new();
         let (agent, result) = drive_turn_for_test(&mut rx, &mut transcript).await;
         assert!(result.is_ok(), "the retried request answers");
@@ -688,7 +872,15 @@ mod mock_tests {
         ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
-        spawn_turn(agent, Prompt::text("hi"), None, cancelled, steered, tx);
+        spawn_turn(
+            agent,
+            Prompt::text("hi"),
+            None,
+            None,
+            cancelled,
+            steered,
+            tx,
+        );
 
         let mut transcript = Transcript::new();
         let (agent, result) = drive_turn_for_test(&mut rx, &mut transcript).await;
@@ -719,6 +911,7 @@ mod mock_tests {
             agent,
             Prompt::text("hi"),
             Some(save.clone()),
+            None,
             cancelled,
             steered,
             tx,
@@ -743,7 +936,15 @@ mod mock_tests {
         ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
-        spawn_turn(agent, Prompt::text("hi"), None, cancelled, steered, tx);
+        spawn_turn(
+            agent,
+            Prompt::text("hi"),
+            None,
+            None,
+            cancelled,
+            steered,
+            tx,
+        );
 
         cancel.send(true).unwrap();
         loop {
@@ -792,6 +993,7 @@ mod mock_tests {
             agent,
             Prompt::text("hi"),
             Some(save.clone()),
+            None,
             cancelled,
             steered,
             tx,
@@ -816,16 +1018,28 @@ mod mock_tests {
         loop {
             match rx.recv().await.expect("turn task still alive") {
                 UiEvent::TurnCancelled { .. } => {
-                    // The file holds the committed intent: the user input
-                    // and the assistant call, no result, exactly what a
-                    // resumed session's revive closes.
+                    // The file holds the committed intent (the user input
+                    // and the assistant call, no result) or, when the
+                    // cancel lost its race with the tool boundary, the
+                    // closed round (the result is the cancellation).
                     let raw = std::fs::read_to_string(&save).unwrap();
                     let doc: serde_json::Value = serde_json::from_str(&raw).unwrap();
                     let history = doc["history"].as_array().unwrap();
-                    assert_eq!(history.len(), 2);
-                    let last = serde_json::to_string(&history[1]).unwrap();
+                    assert!(
+                        matches!(history.len(), 2 | 3),
+                        "the file ended at a tool boundary: {raw}"
+                    );
+                    let last = serde_json::to_string(history.last().expect("the file has history"))
+                        .unwrap();
                     assert!(last.contains("call_1"), "intent committed: {last}");
-                    assert!(!last.contains("\"is_error\""), "no result yet: {last}");
+                    if history.len() == 2 {
+                        assert!(!last.contains("\"is_error\""), "no result yet: {last}");
+                    } else {
+                        assert!(
+                            last.contains("cancelled"),
+                            "the closed round is the cancellation: {last}"
+                        );
+                    }
                     return;
                 }
                 UiEvent::TurnFinished { agent, result, .. } => {

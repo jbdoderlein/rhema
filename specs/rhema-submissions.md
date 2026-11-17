@@ -903,7 +903,12 @@ the process exits. That is stated, not silently broken.
 
 ### 10.3 The TUI (`/resume`)
 
-Phase 3. After `SessionResumed` applies the loaded session, the app:
+Phase 3. The TUI records each prompt as one `turn` record before the
+chain runs, and settles it (`Done`, `Failed`, or `Cancelled`) when the
+chain ends. A steered nudge is another round of the same chain, not a
+second record; the record's id is the chain's, not the round's.
+
+After `SessionResumed` applies the loaded session, the app:
 
 1. builds `Kinds` for that session: the turn kind, the subagent kind
    with the store, the job kind with the tag from the checkpoint's id;
@@ -917,7 +922,10 @@ Phase 3. After `SessionResumed` applies the loaded session, the app:
    retry can find it; nothing is started;
 5. turns every recovered `Done` job or subagent into the notice the
    live finish feed would have produced, so the model learns what
-   ended while it was gone.
+   ended while it was gone;
+6. announces a recovered turn: a `Done` one with the answer
+   `turn::answer` derives from the history, an unfinished one as the
+   turn the crash cut. Loading starts neither.
 
 A new session allocates its checkpoint id at startup, as it does today,
 so its jobs carry the id from the first command rather than from the

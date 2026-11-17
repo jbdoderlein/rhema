@@ -371,6 +371,72 @@ impl App {
         }
     }
 
+    /// Records a prompt's turn before the task takes the agent: the
+    /// submit, the start that pins its history index, and the save that
+    /// makes both durable. The returned id is the record the chain
+    /// settles when it ends; `None` when the ledger refused the write,
+    /// the turn then runs without a record.
+    pub(crate) fn begin_turn_submission(
+        &mut self,
+        agent: &mut CodingAgent,
+        input: &str,
+    ) -> Option<rhema_submissions::SubmissionId> {
+        let at = rhema_submissions::now();
+        let record = match rhema_submissions::turn::submit(agent.session_mut(), input, at) {
+            Ok(record) => record,
+            Err(err) => {
+                self.transcript
+                    .push_notice(&format!("the turn was not recorded: {err}"));
+                return None;
+            }
+        };
+        if let Err(err) = rhema_submissions::turn::start(agent.session_mut(), &record.id, input, at)
+        {
+            let _ = rhema_submissions::cancel(agent.session_mut(), &record.id, at);
+            self.transcript
+                .push_notice(&format!("the turn was not recorded: {err}"));
+            return None;
+        }
+        self.ensure_checkpoint_target();
+        if let Some(path) = self.checkpoint_target()
+            && let Err(err) = crate::sessions::write_session(&path, agent.session())
+        {
+            self.transcript
+                .push_notice(&format!("the turn was not saved: {err}"));
+        }
+        Some(record.id)
+    }
+
+    /// Re-arms the last turn's record for `/retry`: the failed record
+    /// becomes `Running` again without a second prompt record, because
+    /// the retry re-issues the same request. `None` when there is no
+    /// retryable record, the retry then runs without one.
+    pub(crate) fn retry_turn_submission(
+        &mut self,
+        agent: &mut CodingAgent,
+    ) -> Option<rhema_submissions::SubmissionId> {
+        let snapshot = rhema_submissions::snapshot(agent.session()).ok()?;
+        let record = snapshot.iter().rev().find(|record| {
+            record.kind.as_str() == rhema_submissions::turn::NAME
+                && record.status == rhema_submissions::Status::Failed
+        })?;
+        let id = record.id.clone();
+        let at = rhema_submissions::now();
+        if let Err(err) = rhema_submissions::retry(agent.session_mut(), &id, at) {
+            self.transcript
+                .push_notice(&format!("the retry was not recorded: {err}"));
+            return None;
+        }
+        self.ensure_checkpoint_target();
+        if let Some(path) = self.checkpoint_target()
+            && let Err(err) = crate::sessions::write_session(&path, agent.session())
+        {
+            self.transcript
+                .push_notice(&format!("the retry was not saved: {err}"));
+        }
+        Some(id)
+    }
+
     /// Writes the starts the ledger has not recorded, and settles the
     /// jobs the poller saw end. A tool cannot write the session it runs
     /// inside, so the subagent registry and the jobs poller hand over
@@ -523,6 +589,11 @@ impl App {
                     self.announce_recovered_job(&record.payload);
                 }
                 "subagent" => self.announce_recovered_subagent(&record.payload, to),
+                "turn" => {
+                    if let Some(snapshot) = snapshot.as_ref() {
+                        self.announce_recovered_turn(id, to, snapshot);
+                    }
+                }
                 _ => {}
             }
         }
@@ -597,6 +668,40 @@ impl App {
                 "subagent {name} ({child}) is interrupted; it is not started, \
                  and a later request can resume it"
             )),
+        }
+    }
+
+    /// A turn the crash left unsettled: a committed answer settles
+    /// `Done`, and the notice says so with the answer `turn::answer`
+    /// derives from the history, so a finished-after-crash turn never
+    /// reads as a half one. An unfinished turn is named interrupted and
+    /// left alone, the same courtesy a subagent gets.
+    fn announce_recovered_turn(
+        &mut self,
+        id: &rhema_submissions::SubmissionId,
+        to: rhema_submissions::Status,
+        snapshot: &rhema_submissions::Snapshot,
+    ) {
+        match to {
+            rhema_submissions::Status::Done => {
+                match rhema_submissions::turn::answer(&self.session, snapshot, id) {
+                    Some(answer) => self.transcript.push_notice(&format!(
+                        "the last turn finished while rhema was gone:\n{answer}"
+                    )),
+                    None => self
+                        .transcript
+                        .push_notice("the last turn finished while rhema was gone"),
+                }
+            }
+            rhema_submissions::Status::Queued => self.transcript.push_notice(
+                "the last turn never started; it stays queued, and loading does not run it",
+            ),
+            rhema_submissions::Status::Interrupted => self
+                .transcript
+                .push_notice("the last turn was interrupted; it is not re-run on load"),
+            _ => self
+                .transcript
+                .push_notice("the last turn did not finish cleanly; it is not re-run on load"),
         }
     }
 

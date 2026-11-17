@@ -970,7 +970,7 @@ fn dispatch(
             spawn_usage_fetch(backend, tx.clone());
         }
         Effect::StartTurn { text, images } => {
-            let Some(agent) = app.agent.take() else {
+            let Some(mut agent) = app.agent.take() else {
                 return;
             };
             let (cancel, cancelled) = tokio::sync::watch::channel(false);
@@ -979,17 +979,19 @@ fn dispatch(
             status.note_prompt(&text);
             app.begin_turn(cancel, steer, None);
             let checkpoint = app.ensure_checkpoint_target();
+            let submission = app.begin_turn_submission(&mut agent, &text);
             spawn_turn(
                 agent,
                 crate::turn::Prompt::User { text, images },
                 checkpoint,
+                submission,
                 cancelled,
                 steered,
                 tx.clone(),
             );
         }
         Effect::RetryTurn => {
-            let Some(agent) = app.agent.take() else {
+            let Some(mut agent) = app.agent.take() else {
                 return;
             };
             let (cancel, cancelled) = tokio::sync::watch::channel(false);
@@ -998,10 +1000,12 @@ fn dispatch(
             status.note_prompt("retrying");
             app.begin_turn(cancel, steer, None);
             let checkpoint = app.ensure_checkpoint_target();
+            let submission = app.retry_turn_submission(&mut agent);
             spawn_turn(
                 agent,
                 crate::turn::Prompt::Retry,
                 checkpoint,
+                submission,
                 cancelled,
                 steered,
                 tx.clone(),

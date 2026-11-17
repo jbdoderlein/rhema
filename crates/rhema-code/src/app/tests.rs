@@ -7525,6 +7525,194 @@ fn resume_retags_the_jobs_and_announces_an_interrupted_subagent() {
 }
 
 #[test]
+fn a_prompt_records_its_turn_before_the_task_takes_the_agent() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    let mut agent = h.app.agent.take().expect("the harness builds an agent");
+    let id = h
+        .app
+        .begin_turn_submission(&mut agent, "fix the test")
+        .expect("the turn is recorded");
+
+    let snapshot = rhema_submissions::snapshot(agent.session()).unwrap();
+    let record = snapshot.get(&id).expect("the record is in the ledger");
+    assert_eq!(record.kind.as_str(), "turn");
+    assert_eq!(record.status, rhema_submissions::Status::Running);
+    let payload: rhema_submissions::turn::Payload =
+        serde_json::from_value(record.payload.clone()).unwrap();
+    assert_eq!(payload.input, "fix the test");
+    assert_eq!(payload.base, Some(0));
+
+    // The UI thread wrote the record before the task took the agent:
+    // a crash between the two has a durable "this turn started".
+    let path = h.app.checkpoint_target().expect("a checkpoint target");
+    let saved = CodingAgent::load_session_from(&path).unwrap();
+    let saved_snapshot = rhema_submissions::snapshot(&saved).unwrap();
+    assert_eq!(
+        saved_snapshot.get(&id).unwrap().status,
+        rhema_submissions::Status::Running
+    );
+}
+
+#[test]
+fn a_retry_rearms_the_failed_turns_record() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    let mut agent = h.app.agent.take().expect("the harness builds an agent");
+    let id = h
+        .app
+        .begin_turn_submission(&mut agent, "go")
+        .expect("the turn is recorded");
+    rhema_submissions::settle(
+        agent.session_mut(),
+        &id,
+        rhema_submissions::Outcome::Failed {
+            error: "network error: connection reset".into(),
+            retryable: true,
+        },
+        2,
+    )
+    .unwrap();
+
+    let retried = h
+        .app
+        .retry_turn_submission(&mut agent)
+        .expect("the failed turn re-arms");
+    assert_eq!(retried, id);
+    let snapshot = rhema_submissions::snapshot(agent.session()).unwrap();
+    let record = snapshot.get(&id).unwrap();
+    assert_eq!(record.status, rhema_submissions::Status::Running);
+    assert!(record.outcome.is_none(), "the failure is cleared");
+    assert_eq!(record.attempts, 1, "a retried failure keeps its count");
+}
+
+#[test]
+fn a_recovered_finished_turn_is_announced_with_its_answer() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    let mut session = Session::default();
+    let record = rhema_submissions::turn::submit(&mut session, "go", 1).unwrap();
+    rhema_submissions::turn::start(&mut session, &record.id, "go", 2).unwrap();
+    session.history.push(Message::text(Role::User, "go"));
+    session
+        .history
+        .push(Message::text(Role::Assistant, "the answer"));
+    rhema_submissions::settle(
+        &mut session,
+        &record.id,
+        rhema_submissions::Outcome::Done,
+        3,
+    )
+    .unwrap();
+    h.app.session = session;
+
+    h.app
+        .announce_changes(&[rhema_submissions::Change::Recovered {
+            id: record.id,
+            kind: rhema_submissions::turn::kind(),
+            to: rhema_submissions::Status::Done,
+        }]);
+
+    let notice = h
+        .app
+        .transcript
+        .lines()
+        .iter()
+        .find_map(|line| match line {
+            Line::Notice(text) if text.contains("last turn finished") => Some(text.clone()),
+            _ => None,
+        })
+        .expect("the recovered turn is announced");
+    assert!(notice.contains("the answer"), "{notice}");
+}
+
+#[test]
+fn resuming_a_cut_turn_marks_it_interrupted_and_says_so() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    let workspace = crate::args::canonical(&h.app.options.workspace);
+    let mut session = Session::default();
+    let record = rhema_submissions::turn::submit(&mut session, "go", 1).unwrap();
+    rhema_submissions::turn::start(&mut session, &record.id, "go", 2).unwrap();
+    session.history.push(Message::text(Role::User, "go"));
+    let path = crate::sessions::save_session(h.sessions.path(), &workspace, &session)
+        .unwrap()
+        .expect("a spoken session saves");
+
+    h.app.resume_session(&path);
+
+    let snapshot = rhema_submissions::snapshot(&h.app.session).unwrap();
+    assert_eq!(
+        snapshot.get(&record.id).unwrap().status,
+        rhema_submissions::Status::Interrupted
+    );
+    assert!(
+        h.app.transcript.lines().iter().any(
+            |line| matches!(line, Line::Notice(text) if text.contains("last turn was interrupted"))
+        ),
+        "the interrupted turn is announced"
+    );
+}
+
+#[test]
+fn resuming_a_turn_that_finished_after_the_crash_shows_its_answer() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    let workspace = crate::args::canonical(&h.app.options.workspace);
+    let mut session = Session::default();
+    let record = rhema_submissions::turn::submit(&mut session, "go", 1).unwrap();
+    rhema_submissions::turn::start(&mut session, &record.id, "go", 2).unwrap();
+    session.history.push(Message::text(Role::User, "go"));
+    session
+        .history
+        .push(Message::text(Role::Assistant, "the committed answer"));
+    let path = crate::sessions::save_session(h.sessions.path(), &workspace, &session)
+        .unwrap()
+        .expect("a spoken session saves");
+
+    h.app.resume_session(&path);
+
+    let snapshot = rhema_submissions::snapshot(&h.app.session).unwrap();
+    assert_eq!(
+        snapshot.get(&record.id).unwrap().status,
+        rhema_submissions::Status::Done
+    );
+    assert!(
+        h.app.transcript.lines().iter().any(|line| matches!(
+            line,
+            Line::Notice(text)
+                if text.contains("finished while rhema was gone")
+                    && text.contains("the committed answer")
+        )),
+        "the recovered answer is shown"
+    );
+}
+
+#[test]
+fn a_recovered_unfinished_turn_is_announced_as_interrupted() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    let mut session = Session::default();
+    let record = rhema_submissions::turn::submit(&mut session, "go", 1).unwrap();
+    rhema_submissions::turn::start(&mut session, &record.id, "go", 2).unwrap();
+    session.history.push(Message::text(Role::User, "go"));
+    h.app.session = session;
+
+    h.app
+        .announce_changes(&[rhema_submissions::Change::Recovered {
+            id: record.id,
+            kind: rhema_submissions::turn::kind(),
+            to: rhema_submissions::Status::Interrupted,
+        }]);
+
+    let notice = h
+        .app
+        .transcript
+        .lines()
+        .iter()
+        .find_map(|line| match line {
+            Line::Notice(text) if text.contains("interrupted") => Some(text.clone()),
+            _ => None,
+        })
+        .expect("the interrupted turn is announced");
+    assert!(notice.contains("last turn"), "{notice}");
+}
+
+#[test]
 fn a_job_that_ended_while_the_process_was_down_becomes_a_notice() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     h.app.jobs = Some(crate::jobs::JobsHandle::stub(Vec::new()));
