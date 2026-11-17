@@ -12,8 +12,9 @@ authors.workspace = true
 # The shared reqwest client settings (connect budget, stream stall
 # guard, bounded name lookup) the native adapters build their HTTP
 # clients from. Off for hosts without sockets, which bring their own
-# transport.
-http-client = ["dep:reqwest"]
+# transport. It also carries tokio's `net` for the bounded name lookup,
+# because mio does not compile for wasm.
+http-client = ["dep:reqwest", "tokio/net"]
 
 [dependencies]
 # The ModelProvider seam the retry decorator implements and the
@@ -30,9 +31,9 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 # dyn InteractiveLogin: the frontends hold boxed flows
 async-trait = { workspace = true }
-# The retry decorator's backoff sleeps; the shared resolver's name
-# lookup
-tokio = { workspace = true, features = ["time", "net"] }
+# The retry decorator's backoff sleeps. The name lookup's `net` rides
+# on `http-client`: a wasm host has no sockets to look names up in.
+tokio = { workspace = true, features = ["time"] }
 # The client builder behind the `http-client` feature
 reqwest = { version = "0.12", optional = true }
 
