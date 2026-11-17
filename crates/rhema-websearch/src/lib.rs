@@ -20,7 +20,7 @@
 //! of a killed command's. Spec: `specs/rhema-websearch.md` §5.
 //!
 //! The macro that reaches the model (the `search` bash function) is
-//! the frontend's wiring (`rhema-agent-tools::websearch` plus the
+//! the frontend's wiring (`rhema-bash::websearch` plus the
 //! `__search` mode of the reference frontend); the claw and the cloud
 //! harness assemble their own agents and hold a `Chain` behind a
 //! trait object, which is the whole point of the seam.

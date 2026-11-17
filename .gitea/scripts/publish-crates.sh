@@ -32,7 +32,6 @@ CRATES=(
   rhema-provider
   rhema-prompt
   rhema-bash
-  rhema-agent-tools
   rhema-sandbox
   rhema-sandbox-local
   rhema-sandbox-http

@@ -3282,14 +3282,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rhema-agent-tools"
-version = "0.3.0"
-dependencies = [
- "rhema-bash",
- "rhema-prompt",
-]
-
-[[package]]
 name = "rhema-autonomous-agent"
 version = "0.3.0"
 dependencies = [

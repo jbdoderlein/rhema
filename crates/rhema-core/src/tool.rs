@@ -51,7 +51,7 @@ pub struct ToolResult {
     pub code: Option<i32>,
     /// Images the result carries beside its text, base64-encoded file
     /// bytes. Empty for most tools; the shell tool fills it from the
-    /// images a command staged for viewing (rhema-agent-tools' `vision`
+    /// images a command staged for viewing (rhema-bash's `vision`
     /// module). Every provider maps the field onto its wire, APIs whose
     /// tool results carry text only state the withholding in the text.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

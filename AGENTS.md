@@ -129,8 +129,6 @@ Rules:
     `search` functions (`crates/rhema-bash/`)
   - `prompt`: the system-prompt renderer and the skill discovery that
     feeds its skills list (`crates/rhema-prompt/`)
-  - `agent-tools`: the pre-split import path, re-exporting both
-    (`crates/rhema-agent-tools/`)
   - `sandbox`: the sandbox seam: the `Sandbox` contract, the
     `ShellSandbox` adapter, the wire protocol, the HTTP client and
     `rhema-sandboxd`, and the local sandbox (`crates/rhema-sandbox/`)
