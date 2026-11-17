@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use rhema_agent_tools::{AllowAll, Approval, ShellTools};
+use rhema_bash::{AllowAll, Approval, ShellTools};
 use rhema_core::request::ThinkingEffort;
 use rhema_core::{
     Content, EventSink, Message, ModelOutput, ModelProvider, ModelRequest, ProviderError, Role,

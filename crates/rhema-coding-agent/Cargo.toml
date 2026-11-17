@@ -12,16 +12,17 @@ authors.workspace = true
 default = ["local-shell"]
 # The local shell: commands run as child processes on this host. Off in
 # wasm builds whose shell lives in a remote sandbox.
-local-shell = ["rhema-agent-tools/local-shell"]
+local-shell = ["rhema-bash/local-shell"]
 # Scripted MockProvider for offline tests; mirrors rhema-core's feature.
 mock = ["rhema-core/mock"]
 
 [dependencies]
-# The shared toolkit the driver runs on: the approval-gated shell,
-# skills, paste expansion, revive-on-resume, the prompt renderer.
+# The tools the driver runs on: the approval-gated shell and the
+# macros that ride it, and the system prompt with its skills list.
 # Default features off; the `local-shell` feature (default on) brings
 # the process shell back, and a wasm build turns it off.
-rhema-agent-tools = { path = "../rhema-agent-tools", version = "0.3.0", default-features = false }
+rhema-bash = { path = "../rhema-bash", version = "0.3.0", default-features = false }
+rhema-prompt = { path = "../rhema-prompt", version = "0.3.0" }
 rhema-config = { path = "../rhema-config", version = "0.3.0" }
 rhema-core = { path = "../rhema-core", version = "0.3.0" }
 # The bounded view over an unbounded session, when the config enables it

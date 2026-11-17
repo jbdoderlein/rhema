@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rhema_agent_tools::ShellTools;
+use rhema_bash::ShellTools;
 use rhema_core::{
     Content, EventSink, Message, ModelOutput, ModelProvider, ModelRequest, ProviderError, Role,
     Session, StopReason, ToolCall, ToolContext, ToolResolver, Usage,

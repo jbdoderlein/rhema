@@ -37,7 +37,7 @@ impl Entry {
     }
 
     /// The prompt's `mcp` lines, post-filter.
-    pub(crate) fn lines(&self) -> &[rhema_agent_tools::prompt::McpServerLine] {
+    pub(crate) fn lines(&self) -> &[rhema_prompt::prompt::McpServerLine] {
         &self.wiring.lines
     }
 }

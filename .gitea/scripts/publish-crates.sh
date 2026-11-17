@@ -30,6 +30,8 @@ CRATES=(
   rhema-session-store-sqlite
   rhema-submissions
   rhema-provider
+  rhema-prompt
+  rhema-bash
   rhema-agent-tools
   rhema-sandbox
   rhema-sandbox-local

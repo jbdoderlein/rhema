@@ -12,7 +12,7 @@
 
 use std::num::NonZeroU32;
 
-use rhema_agent_tools::Skill;
+use rhema_prompt::Skill;
 
 /// The default model, when the session carries no config yet.
 pub const DEFAULT_MODEL: &str = "claude-sonnet-4-5";

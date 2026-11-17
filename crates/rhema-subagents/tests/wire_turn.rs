@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use rhema_agent_tools::ShellTools;
+use rhema_bash::ShellTools;
 use rhema_coding_agent::{CodingAgent, CodingAgentConfig};
 use rhema_core::{
     Content, Event, EventSink, Message, ModelOutput, ModelProvider, ModelRequest, ProviderError,

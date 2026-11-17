@@ -263,7 +263,7 @@ fn command_of(args: &str) -> Option<String> {
 }
 
 /// The files a tool call touches, read from its assembled arguments:
-/// every path-shaped key the toolkit's tools use maps to a location the
+/// every path-shaped key the shell's tools use maps to a location the
 /// editor can offer navigation to. No path-shaped key, no locations.
 fn locations_of(args: &str) -> Option<Vec<ToolCallLocation>> {
     let parsed: serde_json::Value = serde_json::from_str(args).ok()?;

@@ -199,7 +199,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     // Jobs and vision: the TUI's chain, in the TUI's order (jobs ->
     // vision -> MCP), so a one-shot run wires the same shell a session
     // does and its `job` calls land in the same backend.
-    if let Some(problem) = rhema_agent_tools::jobs::backend_problem() {
+    if let Some(problem) = rhema_bash::jobs::backend_problem() {
         eprintln!("warning: background jobs disabled: {problem}");
     }
     // Headless has no `/resume`: `--save` names a file, and its stem is
@@ -212,7 +212,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
         .and_then(crate::jobs::tag_from_path)
         .unwrap_or_else(crate::jobs::fallback_tag);
     let jobs_wiring = (sandboxed.is_none())
-        .then(|| rhema_agent_tools::jobs::wire(std::env::var_os("BASH_ENV"), &jobs_tag))
+        .then(|| rhema_bash::jobs::wire(std::env::var_os("BASH_ENV"), &jobs_tag))
         .flatten();
     if let Some(wiring) = &jobs_wiring {
         agent_config.shell_env.extend(wiring.shell_env.clone());
@@ -230,7 +230,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
         .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
         .or_else(|| std::env::var_os("BASH_ENV"));
     let vision_wiring = (sandboxed.is_none())
-        .then(|| rhema_agent_tools::vision::wire(bash_env.clone()))
+        .then(|| rhema_bash::vision::wire(bash_env.clone()))
         .flatten();
     if let Some(wiring) = &vision_wiring {
         agent_config.shell_env.extend(wiring.shell_env.clone());

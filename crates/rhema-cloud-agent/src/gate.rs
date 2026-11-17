@@ -16,7 +16,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rhema_agent_tools::{AllowAll, ShellTools};
+use rhema_bash::{AllowAll, ShellTools};
 use rhema_core::{ToolCall, ToolContext, ToolResolver, ToolResult, ToolSpec};
 
 use crate::assembly::ApprovalPolicy;

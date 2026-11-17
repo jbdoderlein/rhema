@@ -9,7 +9,6 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rhema_agent_tools::Skill;
 use rhema_cloud_agent::mock::ScriptedSandbox;
 use rhema_cloud_agent::{
     AgentAssembly, ApprovalChannel, ApprovalPolicy, ExecOutcome, Sandbox, ShellSandbox,
@@ -18,6 +17,7 @@ use rhema_core::{
     ChatParams, CommitHook, Content, Event, EventSink, Message, ModelOutput, ModelProvider,
     ModelRequest, ProviderError, Role, Session, StopReason, ToolCall, Usage, mock::MockProvider,
 };
+use rhema_prompt::Skill;
 use tokio::sync::{Notify, mpsc, oneshot};
 
 /// The model asks for one `bash` call, then ends the turn.

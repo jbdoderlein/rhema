@@ -32,7 +32,10 @@ base64 = "0.22"
 clap = "4.6.7"
 # The mapping crate: its own repository and release line
 mcp-to-cli = "0.1.0"
-rhema-agent-tools = { version = "0.3.0", path = "../rhema-agent-tools" }
+# The system prompt lines the MCP servers render into; the init-file
+# provisioner both sides share
+rhema-prompt = { version = "0.3.0", path = "../rhema-prompt" }
+rhema-bash = { version = "0.3.0", path = "../rhema-bash", default-features = false }
 
 [dev-dependencies]
 tempfile = "3"

@@ -4,9 +4,10 @@ use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use rhema_agent_tools::{Approval, ShellTools, Skill};
+use rhema_bash::{Approval, ShellTools};
 use rhema_core::ToolResolver;
 use rhema_core::request::ThinkingEffort;
+use rhema_prompt::Skill;
 
 /// Finished-work notifications a turn loop injects into the history.
 ///
@@ -155,7 +156,7 @@ pub struct CodingAgentConfig {
     /// them, the lines a frontend's wire step produced (spec:
     /// `specs/rhema-mcp.md` §10). Empty renders no section: a
     /// frontend that wires nothing advertises nothing.
-    pub mcp_servers: Vec<rhema_agent_tools::prompt::McpServerLine>,
+    pub mcp_servers: Vec<rhema_prompt::prompt::McpServerLine>,
     /// MCP server names to drop from the prompt's section, the
     /// persisted off switch a frontend reads out of its stored
     /// settings, the [`disabled_skills`](Self::disabled_skills)
@@ -193,14 +194,14 @@ pub struct CodingAgentConfig {
     /// renders nothing.
     pub user_preferences: Option<String>,
     /// The prompt section documenting the wired
-    /// [`vision`](rhema_agent_tools::vision) macro, the `see` bash
+    /// [`vision`](rhema_bash::vision) macro, the `see` bash
     /// function's documentation, produced by the frontend's
     /// provisioning and passed verbatim. `None` renders no section: a
     /// frontend that wired nothing advertises nothing, the same rule
     /// the `mcp_servers` section follows.
     pub vision: Option<String>,
     /// The prompt section documenting the wired
-    /// [`jobs`](rhema_agent_tools::jobs) macro, the `job` bash
+    /// [`jobs`](rhema_bash::jobs) macro, the `job` bash
     /// function's documentation, produced by the frontend's provisioning
     /// and passed verbatim. `None` renders no section: a frontend that
     /// wired nothing (a sandbox session, a machine without the backend)
@@ -208,7 +209,7 @@ pub struct CodingAgentConfig {
     /// follows.
     pub jobs: Option<String>,
     /// The prompt section documenting the wired
-    /// [`websearch`](rhema_agent_tools::websearch) macro, the `search`
+    /// [`websearch`](rhema_bash::websearch) macro, the `search`
     /// bash function's documentation, produced by the frontend's
     /// provisioning and passed verbatim. `None` renders no section: a
     /// frontend that wired nothing (a sandbox session, a remote
@@ -264,7 +265,7 @@ impl CodingAgentConfig {
     ///
     /// Both handles arrive as `impl Trait` and are wrapped here, so a
     /// caller holding an `Arc` passes it unchanged (the blanket impls
-    /// in `rhema-core` and `rhema-agent-tools` make `Arc<T>` a `T`).
+    /// in `rhema-core` and `rhema-bash` make `Arc<T>` a `T`).
     /// For an `Arc` argument the config keeps one more handle, not a
     /// copy of the provider.
     pub fn new(

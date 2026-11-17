@@ -3267,7 +3267,7 @@ version = "0.3.0"
 dependencies = [
  "agent-client-protocol",
  "anyhow",
- "rhema-agent-tools",
+ "rhema-bash",
  "rhema-coding-agent",
  "rhema-config",
  "rhema-core",
@@ -3285,17 +3285,8 @@ dependencies = [
 name = "rhema-agent-tools"
 version = "0.3.0"
 dependencies = [
- "async-trait",
- "base64 0.22.1",
- "minijinja",
- "rhema-core",
- "rhema-submissions",
- "serde",
- "serde_json",
- "serde_yaml",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
+ "rhema-bash",
+ "rhema-prompt",
 ]
 
 [[package]]
@@ -3313,13 +3304,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "rhema-bash"
+version = "0.3.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "rhema-core",
+ "rhema-submissions",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
 name = "rhema-cloud-agent"
 version = "0.3.0"
 dependencies = [
  "async-trait",
- "rhema-agent-tools",
+ "rhema-bash",
  "rhema-coding-agent",
  "rhema-core",
+ "rhema-prompt",
  "rhema-sandbox",
  "rhema-transcript",
  "serde",
@@ -3343,11 +3350,12 @@ dependencies = [
  "pulldown-cmark",
  "ratatui",
  "rhema-acp",
- "rhema-agent-tools",
+ "rhema-bash",
  "rhema-coding-agent",
  "rhema-config",
  "rhema-core",
  "rhema-mcp",
+ "rhema-prompt",
  "rhema-provider",
  "rhema-provider-anthropic",
  "rhema-provider-chatgpt",
@@ -3384,9 +3392,10 @@ name = "rhema-coding-agent"
 version = "0.3.0"
 dependencies = [
  "minijinja",
- "rhema-agent-tools",
+ "rhema-bash",
  "rhema-config",
  "rhema-core",
+ "rhema-prompt",
  "rhema-session-store",
  "rhema-session-store-file",
  "rhema-transcript",
@@ -3448,10 +3457,11 @@ dependencies = [
  "hyper-rustls",
  "hyper-util",
  "mcp-to-cli",
- "rhema-agent-tools",
+ "rhema-bash",
  "rhema-coding-agent",
  "rhema-config",
  "rhema-core",
+ "rhema-prompt",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3473,6 +3483,18 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
+]
+
+[[package]]
+name = "rhema-prompt"
+version = "0.3.0"
+dependencies = [
+ "minijinja",
+ "rhema-core",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
 ]
 
 [[package]]
@@ -3658,7 +3680,7 @@ name = "rhema-sandbox"
 version = "0.3.0"
 dependencies = [
  "async-trait",
- "rhema-agent-tools",
+ "rhema-bash",
  "rhema-core",
  "rhema-sandbox",
  "serde",
@@ -3774,10 +3796,11 @@ name = "rhema-subagents"
 version = "0.3.0"
 dependencies = [
  "async-trait",
- "rhema-agent-tools",
+ "rhema-bash",
  "rhema-coding-agent",
  "rhema-config",
  "rhema-core",
+ "rhema-prompt",
  "rhema-provider",
  "rhema-session-store",
  "rhema-session-store-file",

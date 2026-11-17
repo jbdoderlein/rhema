@@ -16,10 +16,11 @@ default = []
 mock = ["rhema-sandbox/mock"]
 
 [dependencies]
-# The toolkit and driver run on the seams, not on a filesystem: both
-# come in without the local shell, which this crate's sandbox executor
-# replaces.
-rhema-agent-tools = { path = "../rhema-agent-tools", version = "0.3.0", default-features = false }
+# The tools and the driver run on the seams, not on a filesystem: the
+# shell comes in without its local executor, which this crate's sandbox
+# executor replaces.
+rhema-bash = { path = "../rhema-bash", version = "0.3.0", default-features = false }
+rhema-prompt = { path = "../rhema-prompt", version = "0.3.0" }
 rhema-coding-agent = { path = "../rhema-coding-agent", version = "0.3.0", default-features = false }
 rhema-core = { path = "../rhema-core", version = "0.3.0" }
 # The sandbox seam, extracted so any frontend can reach it; the mock

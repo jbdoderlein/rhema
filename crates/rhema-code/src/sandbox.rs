@@ -24,10 +24,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
-use rhema_agent_tools::{ShellTools, Skill};
+use rhema_bash::ShellTools;
 use rhema_coding_agent::CodingAgentConfig;
 use rhema_config::Profile;
 use rhema_config::secrets::SecretStore;
+use rhema_prompt::Skill;
 use rhema_sandbox::{FsRoot, InstanceLock, Sandbox, ShellSandbox, seed_workspace};
 use rhema_sandbox_docker::DockerSandbox;
 use rhema_sandbox_ecrou::{DEFAULT_IMAGE, EcrouSandbox};

@@ -20,7 +20,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use rhema_agent_tools::ShellTools;
+use rhema_bash::ShellTools;
 use rhema_coding_agent::CodingAgentConfig;
 use rhema_core::ToolSpec;
 
@@ -227,7 +227,7 @@ fn subagent_base_system(config: &CodingAgentConfig, workspace: &Path) -> String 
                 .or_else(|| rhema_config::Home::discover().ok());
             let agents = home.as_ref().map(|h| h.agents_skills());
             let global = home.as_ref().map(|h| h.skills());
-            rhema_agent_tools::skills::discover(agents.as_deref(), global.as_deref(), workspace)
+            rhema_prompt::skills::discover(agents.as_deref(), global.as_deref(), workspace)
         }
     };
     skills.retain(|skill| !config.disabled_skills.contains(&skill.name));
@@ -414,7 +414,7 @@ mod tests {
             .insert("RHEMA_WIRE_TEST".to_owned(), "seen".to_owned());
         let handle = wire_at(Some(empty.path()), &mut config);
         let shell = config.tools.clone().expect("the shared shell");
-        shell.install_approval(std::sync::Arc::new(rhema_agent_tools::AllowAll));
+        shell.install_approval(std::sync::Arc::new(rhema_bash::AllowAll));
         let result = ToolResolver::resolve(
             shell.as_ref(),
             ToolCall {
@@ -614,7 +614,7 @@ mod tests {
             CodingAgentConfig::new(Arc::new(Never), "m", &root, rhema_coding_agent::AllowAll);
         config.environment = Some("ENVSAYSHI".into());
         config.user_preferences = Some("USERSAYSHI".into());
-        config.skills = Some(vec![rhema_agent_tools::Skill {
+        config.skills = Some(vec![rhema_prompt::Skill {
             name: "skill".into(),
             description: "does a thing".into(),
             license: None,

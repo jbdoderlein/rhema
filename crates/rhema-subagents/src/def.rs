@@ -28,7 +28,7 @@ pub const FILE: &str = "SUBAGENT.md";
 pub const DEFAULT_MAX_STEPS: u32 = 256;
 
 /// The largest `SUBAGENT.md` discovery will read, for the same reason
-/// [`rhema_agent_tools::skills::MAX_SKILL_BYTES`] caps skills.
+/// [`rhema_prompt::skills::MAX_SKILL_BYTES`] caps skills.
 pub const MAX_DEFINITION_BYTES: u64 = 1024 * 1024;
 
 /// One discovered subagent definition.

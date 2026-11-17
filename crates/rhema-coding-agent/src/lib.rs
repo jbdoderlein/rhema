@@ -3,9 +3,9 @@
 //!
 //! Wires a [`ModelProvider`](rhema_core::ModelProvider) into a
 //! [`CodingAgent`] whose turns drive `rhema_core::run_turn` over the
-//! shared toolkit (`rhema-agent-tools`): the approval-gated shell, its
-//! spec and discovered skills presented in the system prompt, the model
-//! loading skill bodies via the shell. Tool errors surface in-band to
+//! tools (`rhema-bash` and `rhema-prompt`): the approval-gated shell,
+//! its spec and discovered skills presented in the system prompt, the
+//! model loading skill bodies via the shell. Tool errors surface in-band to
 //! the model (SPEC.md §4); approval is config state, installed into the
 //! tools before each turn, and a driver whose channel belongs to one
 //! turn swaps it with [`CodingAgent::set_approval`]; the session is
@@ -56,11 +56,10 @@
 //! - [`environment`]: the startup environment report and the sandbox
 //!   notice, the prompt's environment section
 //!
-//! The toolkit itself, the `Approval` seam, `ShellTools`, skills, paste
-//! expansion, dangling-call repair, the renderer, lives in
-//! `rhema-agent-tools` and re-exports here: the TUI and ACP drivers
-//! import these names from this crate, and the claw's forge handler
-//! takes the approval policy the same way.
+//! The tools themselves, the `Approval` seam, `ShellTools`, skills, the
+//! renderer, live in `rhema-bash` and `rhema-prompt` and are re-exported
+//! here: the TUI and ACP drivers import these names from this crate, and
+//! the claw's forge handler takes the approval policy the same way.
 //!
 //! # Skills
 //!
@@ -87,8 +86,7 @@ pub use agent::{
 pub use config::{CodingAgentConfig, Steering, SteeringChain, SubagentProviders};
 pub use environment::{host_environment, host_report, remote_notice};
 pub use prompt::{DEFAULT_SYSTEM_MD, default_system};
-// The toolkit the driver is built on, under this crate's name: every
-// downstream driver (TUI, ACP, the claw) keeps its import paths.
-pub use rhema_agent_tools::{
-    AllowAll, Approval, DenyAll, ShellTools, render_system, render_template,
-};
+// The two tool crates the driver is built on, under this crate's name:
+// every downstream driver (TUI, ACP, the claw) keeps its import paths.
+pub use rhema_bash::{AllowAll, Approval, DenyAll, ShellTools};
+pub use rhema_prompt::{render_system, render_template};

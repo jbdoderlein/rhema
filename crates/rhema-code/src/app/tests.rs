@@ -7860,7 +7860,7 @@ fn a_job_the_poller_saw_start_becomes_one_running_record() {
     let record = snapshot.newest().unwrap();
     assert_eq!(record.kind.as_str(), "job");
     assert_eq!(record.status, rhema_submissions::Status::Running);
-    let payload: rhema_agent_tools::jobs::kind::Payload =
+    let payload: rhema_bash::jobs::kind::Payload =
         serde_json::from_value(record.payload.clone()).unwrap();
     assert_eq!(payload.id, "abc");
     assert_eq!(payload.tag, h.app.jobs.as_ref().unwrap().tag());

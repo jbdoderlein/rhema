@@ -76,7 +76,7 @@ jobs:
 
   # The published crates the cloud frontend consumes must stay
   # wasm-clean: rhema-cloudflare-code (its own repository) builds its
-  # neutral half from rhema-agent-tools, rhema-subagents, and
+  # neutral half from rhema-bash, rhema-prompt, rhema-subagents, and
   # rhema-cloud-agent with no default features and no local shell.
   wasm:
     runs-on: ubuntu-latest
@@ -88,7 +88,7 @@ jobs:
           target: wasm32-unknown-unknown
 
       - name: Check the platform-neutral closure
-        run: cargo check -p rhema-agent-tools -p rhema-subagents -p rhema-cloud-agent -p rhema-sandbox-http --target wasm32-unknown-unknown --no-default-features
+        run: cargo check -p rhema-bash -p rhema-prompt -p rhema-agent-tools -p rhema-subagents -p rhema-cloud-agent -p rhema-sandbox-http --target wasm32-unknown-unknown --no-default-features
 
       # The DO also builds rhema-sandbox-http featureless on a native
       # host (its neutral half compiles there): the reqwest code must

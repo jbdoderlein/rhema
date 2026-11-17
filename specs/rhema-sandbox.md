@@ -73,7 +73,7 @@ frontend shipped as item 8 and later left the tree entirely.
   table and a Postgres marker around the same logic: check the marker,
   git-clone the seed, write the skills.
 - **The pieces below the seam are right.** `ShellExecutor`
-  (`rhema-agent-tools/src/exec.rs`) is the exec-only seam; `ShellSandbox`
+  (`rhema-bash/src/exec.rs`) is the exec-only seam; `ShellSandbox`
   adapts `Sandbox` onto it, so the `bash` tool, spec, caps, error
   shaping, approval, is unchanged wherever commands run; subagents
   inherit the executor (`ShellTools::executor()`, used by
@@ -103,7 +103,7 @@ crates/rhema-sandbox/
 ```
 
 Dependency order stays clean:
-`rhema-core ← rhema-agent-tools ← rhema-sandbox ← {rhema-cloud-agent,
+`rhema-core ← rhema-bash ← rhema-sandbox ← {rhema-cloud-agent,
 rhema-cloudflare-code, rhema-code}`. The default
 build needs only serde and async-trait, wasm-clean, the same dep stance
 `rhema-core` keeps; `client`, `server`, and `local` are feature-gated so
@@ -382,8 +382,8 @@ infrastructure); phase 9 is the one users see.
 
 ## 9. Decisions
 
-- **An own crate, not `rhema-core` or `rhema-agent-tools`**, SPEC.md §0
-  commits the engine to "does not sandbox"; and `agent-tools` rides into
+- **An own crate, not `rhema-core` or `rhema-bash`**, SPEC.md §0
+  commits the engine to "does not sandbox"; and `rhema-bash` rides into
   every consumer (memory, acp, subagents), where axum/reqwest would
   follow or drown the crate in feature gates. The provider family is
   the shape to copy: a contract crate, per-backend adapters beside it.

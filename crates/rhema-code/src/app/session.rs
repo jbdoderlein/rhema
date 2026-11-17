@@ -139,11 +139,11 @@ impl App {
         // A crash leaves the self-stop record behind; its entries are
         // backend ids, which the daemon reuses, so a stale one must not
         // silence a new job that happens to get the same id.
-        rhema_agent_tools::jobs::forget_stopped(&tag);
+        rhema_bash::jobs::forget_stopped(&tag);
         // The shells wired so far keep the env map they were handed,
         // so the tag file is what moves them: without this, `job run`
         // would keep tagging the conversation just left.
-        if let Some(Err(err)) = rhema_agent_tools::jobs::retag(&tag) {
+        if let Some(Err(err)) = rhema_bash::jobs::retag(&tag) {
             self.transcript
                 .push_notice(&format!("the job tag was not updated: {err}"));
         }
@@ -348,9 +348,7 @@ impl App {
             kinds = kinds.with(Arc::new(rhema_subagents::SubagentKind::new(store, parent)));
         }
         if with_jobs {
-            kinds = kinds.with(Arc::new(rhema_agent_tools::jobs::kind::JobKind::new(
-                jobs_tag,
-            )));
+            kinds = kinds.with(Arc::new(rhema_bash::jobs::kind::JobKind::new(jobs_tag)));
         }
         kinds
     }
@@ -517,7 +515,7 @@ impl App {
                         .iter()
                         .filter(|record| record.kind.as_str() == "job")
                         .filter_map(|record| {
-                            serde_json::from_value::<rhema_agent_tools::jobs::kind::Payload>(
+                            serde_json::from_value::<rhema_bash::jobs::kind::Payload>(
                                 record.payload.clone(),
                             )
                             .ok()
@@ -538,7 +536,7 @@ impl App {
                 let at = rhema_submissions::now();
                 if let Ok(record) = rhema_submissions::submit(
                     agent.session_mut(),
-                    rhema_submissions::KindName::new(rhema_agent_tools::jobs::kind::NAME)
+                    rhema_submissions::KindName::new(rhema_bash::jobs::kind::NAME)
                         .expect("the job kind name is valid"),
                     payload,
                     at,
@@ -562,9 +560,9 @@ impl App {
                                         && record.status == rhema_submissions::Status::Running
                                 })
                                 .filter_map(|record| {
-                                    serde_json::from_value::<
-                                        rhema_agent_tools::jobs::kind::Payload,
-                                    >(record.payload.clone())
+                                    serde_json::from_value::<rhema_bash::jobs::kind::Payload>(
+                                        record.payload.clone(),
+                                    )
                                     .ok()
                                     .map(|payload| (record.id.clone(), payload.id))
                                 })
@@ -640,13 +638,13 @@ impl App {
     /// steering line read exactly as the live feed's would.
     fn announce_recovered_job(&mut self, payload: &serde_json::Value) {
         let Ok(payload) =
-            serde_json::from_value::<rhema_agent_tools::jobs::kind::Payload>(payload.clone())
+            serde_json::from_value::<rhema_bash::jobs::kind::Payload>(payload.clone())
         else {
             return;
         };
         let cwd = crate::args::canonical(&self.options.workspace);
-        let rows = rhema_agent_tools::jobs::rows_for(
-            std::path::Path::new(rhema_agent_tools::jobs::BACKEND),
+        let rows = rhema_bash::jobs::rows_for(
+            std::path::Path::new(rhema_bash::jobs::BACKEND),
             &cwd,
             &self.jobs_tag,
         )

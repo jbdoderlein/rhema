@@ -238,7 +238,7 @@ pub enum Command {
     },
     /// The pass-through that makes the agent shell's `job` macro work:
     /// `rhema __jobs …` owns the background-job verbs, which delegate to
-    /// the backend CLI behind one shim (see [`rhema_agent_tools::jobs`]).
+    /// the backend CLI behind one shim (see [`rhema_bash::jobs`]).
     /// Outside a wired shell the verbs that need a session exit 4.
     #[command(name = "__jobs")]
     Jobs {

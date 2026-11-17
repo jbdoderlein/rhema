@@ -12,9 +12,10 @@
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use rhema_agent_tools::{Approval, ShellExecutor, ShellTools, Skill};
+use rhema_bash::{Approval, ShellExecutor, ShellTools};
 use rhema_coding_agent::{CodingAgent, CodingAgentConfig, CodingAgentError};
 use rhema_core::ModelProvider;
+use rhema_prompt::Skill;
 
 /// The static, per-session approval policy. It answers alone when no
 /// client is connected to consult; the WebSocket layer layers its
@@ -160,7 +161,7 @@ impl AgentAssembly {
             // The turn-level hook is the fail-safe below the gate: a
             // call that bypasses `ClientGate` is denied, and the gate
             // installs its own per-call allow once it has decided.
-            approval: Arc::new(rhema_agent_tools::DenyAll),
+            approval: Arc::new(rhema_bash::DenyAll),
             model: self.model.clone(),
             system: None,
             base_system: self.base_system.clone(),

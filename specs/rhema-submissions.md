@@ -847,7 +847,7 @@ changes.
 
 ### 10.2 The job kind
 
-Lives in the `job` wiring (`rhema-agent-tools` plus the frontend that
+Lives in the `job` wiring (`rhema-bash` plus the frontend that
 provisions it), phase 2. The payload is:
 
 ```rust
@@ -998,7 +998,7 @@ thiserror = { workspace = true }
 
 The seam is a type dependency (`SessionId`), not a backend: this crate
 compiles with no `rusqlite`, no `rhema-config`, and no frontend. It
-depends on neither `rhema-coding-agent` nor `rhema-agent-tools`; the
+depends on neither `rhema-coding-agent` nor `rhema-bash`; the
 turn kind needs only core, and the dangling-call repair stays in the
 driver that has tools.
 
@@ -1182,7 +1182,7 @@ Phase 1:
   `Done`.
 - A session written before this crate, with `driver_state: null`, loads,
   lists, and resumes unchanged; no empty ledger is stamped on it.
-- `cargo tree -p rhema-submissions | rg "rhema-(coding-agent|agent-tools)"`
+- `cargo tree -p rhema-submissions | rg "rhema-(coding-agent|bash|prompt)"`
   finds no match: the turn kind needs core only.
 
 Phase 2:

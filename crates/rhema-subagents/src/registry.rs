@@ -174,7 +174,7 @@ pub struct JobRerun {
     pub(crate) parent_run: String,
     /// The approval hook captured off the parent shell at spawn, held
     /// for the job's lifetime.
-    pub(crate) hook: Option<std::sync::Arc<dyn rhema_agent_tools::Approval>>,
+    pub(crate) hook: Option<std::sync::Arc<dyn rhema_bash::Approval>>,
     /// The call's raw `model` argument, the same spelling the call
     /// carried; a restart re-resolves it against the factory, so a
     /// re-run lands where the original was aimed, not where a

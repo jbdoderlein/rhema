@@ -240,7 +240,7 @@ fn the_skills_share_excludes_the_mcp_section() {
     // not move the measured share.
     let root = tempfile::tempdir().unwrap();
     let workspace = std::fs::canonicalize(root.path()).unwrap();
-    let skills = vec![rhema_agent_tools::Skill {
+    let skills = vec![rhema_prompt::Skill {
         name: "demo".into(),
         description: "a demo skill".into(),
         license: None,
@@ -248,15 +248,14 @@ fn the_skills_share_excludes_the_mcp_section() {
         body: String::new(),
     }];
     let mcp = |description: &str| {
-        vec![rhema_agent_tools::prompt::McpServerLine {
+        vec![rhema_prompt::prompt::McpServerLine {
             name: "atlassian".into(),
             server: "atlassian".into(),
             description: description.into(),
         }]
     };
-    let render = |skills: &[rhema_agent_tools::Skill],
-                  mcp: &[rhema_agent_tools::prompt::McpServerLine]| {
-        rhema_agent_tools::render_system_with_sections(
+    let render = |skills: &[rhema_prompt::Skill], mcp: &[rhema_prompt::prompt::McpServerLine]| {
+        rhema_prompt::render_system_with_sections(
             rhema_coding_agent::DEFAULT_SYSTEM_MD,
             &workspace,
             skills,

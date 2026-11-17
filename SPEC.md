@@ -165,7 +165,7 @@ Requested work has a durable record too. `rhema-submissions` keeps one ledger un
 - ~~**How a command's output becomes an image the model sees**~~, **decided:** a provisioned bash
   function, not a native tool, images are shell data, so the command is `curl -sL url | see` (or
   `see path.png`), piped into a `BASH_ENV`-sourced function the `vision` module of
-  `rhema-agent-tools` provisions the same way the MCP wire provisions its stubs. The function execs
+  `rhema-bash` provisions the same way the MCP wire provisions its stubs. The function execs
   the rhema binary's hidden `__vision` mode, which sniffs magic bytes, refuses anything over 5 MB
   (Anthropic's per-image ceiling, the strictest target), and stages the bytes under a 0700
   per-process dir; the shell tool drains that staging dir after every command and fills

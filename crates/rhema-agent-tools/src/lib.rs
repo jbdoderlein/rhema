@@ -1,57 +1,14 @@
-//! rhema-agent-tools, the agent toolkit on rhema-core's tool
-//! abstraction.
+//! rhema-agent-tools, the split toolkit's old import path.
 //!
-//! The pieces any agent needs, concrete and shared. The concepts stay in
-//! rhema-core (`ToolResolver`, `ToolCall`, `Session`); this crate
-//! implements them:
-//!
-//! - [`approval`]: the `Approval` hook and `AllowAll`/`DenyAll`
-//! - [`exec`]: the `ShellExecutor` seam: where `bash` commands run
-//! - [`shell`]: `ShellTools`, one approval-gated `bash` scoped to a
-//!   workspace; reading, listing, and editing are shell work, not
-//!   separate tools
-//! - [`skills`]: discovery of markdown skills, prompt presentation
-//! - [`prompt`]: the Jinja system-prompt renderer
-//! - [`vision`]: the `see` macro: a bash command's staged images
-//!   become [`ToolResult`] image blocks
-//! - [`jobs`]: the `job` macro: background shells the model starts now
-//!   and reads on a later turn
-//! - [`websearch`]: the `search` macro: ranked web results as shell
-//!   output, providers per profile tried in order
-//!
-//! # Skills
-//!
-//! A skill is a folder with a `SKILL.md` whose frontmatter carries a
-//! `description` (the trigger). Only name, trigger, and file enter the
-//! system prompt; the model reads a body itself through the shell when a
-//! trigger applies. Skills live globally under the config directory and
-//! per-workspace under `.rhema/skills`, project shadowing global.
-//!
-//! # Consumers
-//!
-//! The coding-agent driver (`rhema-coding-agent`) builds on the kit; the
-//! TUI and ACP adapters reach it through that driver. The claw's resident
-//! agent assembles its own agent from the same pieces, which is the
-//! point: one shell, one approval seam, one prompt renderer, not one
-//! per driver.
+//! The crate split in two: [`rhema_bash`] holds the approval-gated
+//! shell and the macros that ride it (`see`, `job`, `search`), and
+//! [`rhema_prompt`] holds the system-prompt renderer and the skill
+//! discovery that feeds its skills list. This crate re-exports both, so
+//! a consumer on the 0.3 names (`rhema_agent_tools::ShellTools`,
+//! `rhema_agent_tools::prompt::render_system`, the `jobs` and `vision`
+//! modules) keeps compiling. New code should depend on the two crates
+//! directly.
 #![forbid(unsafe_code)]
 
-pub mod approval;
-pub mod exec;
-pub mod jobs;
-pub mod prompt;
-pub mod shell;
-pub mod skills;
-pub mod vision;
-pub mod websearch;
-
-pub use approval::{AllowAll, Approval, DenyAll};
-#[cfg(feature = "local-shell")]
-pub use exec::LocalShell;
-pub use exec::{Executed, ShellError, ShellExecutor};
-pub use prompt::{render_system, render_system_with_sections, render_template};
-// Re-exported so a caller can name the error the renderer returns
-// without depending on minijinja itself.
-pub use prompt::TemplateError;
-pub use shell::ShellTools;
-pub use skills::Skill;
+pub use rhema_bash::*;
+pub use rhema_prompt::*;

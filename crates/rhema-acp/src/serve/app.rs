@@ -264,7 +264,7 @@ impl App {
         // callbacks), so commands run on this host and the vision
         // wiring works; the map carries it to the shell and the prompt
         // section documents the function.
-        if let Some(wiring) = rhema_agent_tools::vision::wire(std::env::var_os("BASH_ENV")) {
+        if let Some(wiring) = rhema_bash::vision::wire(std::env::var_os("BASH_ENV")) {
             config.shell_env.extend(wiring.shell_env.clone());
             config.vision = Some(wiring.section.to_owned());
         }

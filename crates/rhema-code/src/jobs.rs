@@ -48,7 +48,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use rhema_agent_tools::jobs::{EXIT_NO_BACKEND, JobRow};
+use rhema_bash::jobs::{EXIT_NO_BACKEND, JobRow};
 use rhema_coding_agent::Steering;
 
 /// How often the listing is re-read while a job is live.
@@ -270,7 +270,7 @@ pub struct JobsHandle {
 impl Drop for JobsHandle {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
-        rhema_agent_tools::jobs::forget_stopped(&self.session);
+        rhema_bash::jobs::forget_stopped(&self.session);
     }
 }
 
@@ -279,7 +279,7 @@ impl JobsHandle {
     /// there is nothing to poll: no backend installed, or no binary to
     /// run the shim from.
     pub fn spawn(session: String) -> Option<Self> {
-        if !rhema_agent_tools::jobs::available() {
+        if !rhema_bash::jobs::available() {
             return None;
         }
         let bin = std::env::current_exe().ok()?;
@@ -525,7 +525,7 @@ fn poll(
             slept += Duration::from_millis(100);
         }
         let output = std::process::Command::new(&bin)
-            .arg(rhema_agent_tools::jobs::MODE)
+            .arg(rhema_bash::jobs::MODE)
             .arg("ls")
             .arg("--json")
             .arg("--session")
@@ -550,7 +550,7 @@ fn poll(
         // forked, and stays outside the feed lock: a slow disk must not
         // stall a take.
         let stopped = if watch.may_mint(&rows) {
-            rhema_agent_tools::jobs::stopped_ids(&session)
+            rhema_bash::jobs::stopped_ids(&session)
         } else {
             HashSet::new()
         };

@@ -25,7 +25,7 @@
 //! seam in this tree, and carries no platform dependency, no
 //! wasm-bindgen, no fetch, no `worker`: the platform lives in the
 //! transport that wraps it, not here. [`ShellSandbox`] adapts the seam
-//! onto [`ShellExecutor`](rhema_agent_tools::ShellExecutor), so the
+//! onto [`ShellExecutor`](rhema_bash::ShellExecutor), so the
 //! `bash` tool the model sees is unchanged wherever commands run.
 //!
 //! During the transition `rhema-cloud-agent` re-exports these names so

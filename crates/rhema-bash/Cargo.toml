@@ -1,0 +1,44 @@
+[package]
+name = "rhema-bash"
+description = "The bash tool and the macros that ride it: the approval-gated shell, its executor seam, skills via cat, and the see, job, and search shell functions"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# The job kind: a background shell as a durable submission record
+rhema-submissions = { path = "../rhema-submissions", version = "0.3.0" }
+rhema-core = { path = "../rhema-core", version = "0.3.0" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+# Typed shell errors
+thiserror = { workspace = true }
+# Image bytes carry base64 into the session (the `see` staging)
+base64 = "0.22"
+# Subprocess execution for the shell (feature `local-shell`); its
+# streams read line by line (io-util) and hand their lines to the
+# resolver's progress callback across reader tasks (sync). Off in
+# builds whose shell lives elsewhere, which drops tokio from the crate.
+tokio = { workspace = true, optional = true, features = [
+    "process",
+    "time",
+    "io-util",
+    "sync",
+] }
+
+[features]
+default = ["local-shell"]
+# The local executor: commands run as `bash -c` child processes on this
+# host. Off in wasm builds whose shell lives in a remote sandbox.
+local-shell = ["dep:tokio"]
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[lints]
+workspace = true

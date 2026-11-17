@@ -84,9 +84,9 @@ crates/rhema-subagents/
 ```
 
 Dependencies point outward to the existing stack: `rhema-core`,
-`rhema-agent-tools`, `rhema-coding-agent` and `rhema-config` (both only
+`rhema-bash`, `rhema-prompt`, `rhema-coding-agent` and `rhema-config` (both only
 for `wire`), never the reverse. The two seams this feature consumes from
-`rhema-agent-tools` and `rhema-coding-agent` are default-inert additions
+`rhema-bash`, `rhema-prompt` and `rhema-coding-agent` are default-inert additions
 (§5); they exist for composition, not for subagents specifically.
 
 ## 3. Definitions

@@ -25,7 +25,7 @@ pub(crate) fn system_command(
             // A preview that silently lacks a section reads as a bug in
             // the prompt. When the backend is installed but too old to
             // serve `job`, say so on stderr and keep stdout byte-exact.
-            if let Some(problem) = rhema_agent_tools::jobs::backend_problem() {
+            if let Some(problem) = rhema_bash::jobs::backend_problem() {
                 eprintln!("warning: background jobs disabled: {problem}");
             }
             let prompt = system_show_at(
@@ -198,7 +198,7 @@ pub(crate) fn system_show_at_with_mcp(
     path: Option<&std::path::Path>,
     workspace: &std::path::Path,
     profile: Option<&str>,
-    mcp: Vec<rhema_agent_tools::prompt::McpServerLine>,
+    mcp: Vec<rhema_prompt::prompt::McpServerLine>,
 ) -> anyhow::Result<String> {
     let workspace = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
     let home = rhema_config::Home::discover().ok();
@@ -222,7 +222,7 @@ pub(crate) fn system_show_at_with_mcp(
         .map(|c| c.settings.skills_disabled.clone())
         .unwrap_or_default();
     let mut skills =
-        rhema_agent_tools::skills::discover(agents.as_deref(), global.as_deref(), &workspace);
+        rhema_prompt::skills::discover(agents.as_deref(), global.as_deref(), &workspace);
     // The preview shows what turns send: a disabled skill is not in the
     // prompt, so it is not in the preview either.
     skills.retain(|skill| !disabled.contains(&skill.name));
@@ -259,12 +259,12 @@ pub(crate) fn system_show_at_with_mcp(
         // The vision section is static text a local session always
         // carries; the preview never provisions, it just shows the
         // block the template would render.
-        Some(rhema_agent_tools::vision::PROMPT_SECTION),
+        Some(rhema_bash::vision::PROMPT_SECTION),
         // Jobs is the one section a machine may lack outright: its
         // backend is a separate install, so the preview asks the same
         // probe the wire uses rather than promising a command that
         // would not exist.
-        rhema_agent_tools::jobs::available().then_some(rhema_agent_tools::jobs::PROMPT_SECTION),
+        rhema_bash::jobs::available().then_some(rhema_bash::jobs::PROMPT_SECTION),
     )?)
 }
 
@@ -272,7 +272,7 @@ pub(crate) fn system_show_at_with_mcp(
 /// plus the profile's own entries, profile winning by name, the
 /// muted set filtered out, invalid entries skipped as the wire step
 /// skips them. No bridge, no spawns, a preview, not a wiring.
-fn mcp_preview_lines(profile: Option<&str>) -> Vec<rhema_agent_tools::prompt::McpServerLine> {
+fn mcp_preview_lines(profile: Option<&str>) -> Vec<rhema_prompt::prompt::McpServerLine> {
     let config = match Config::load() {
         Ok(config) => config,
         Err(_) => return Vec::new(),
@@ -286,7 +286,7 @@ fn mcp_preview_lines(profile: Option<&str>) -> Vec<rhema_agent_tools::prompt::Mc
         .servers
         .iter()
         .filter(|server| !config.disabled_mcp_servers.contains(&server.name))
-        .map(|server| rhema_agent_tools::prompt::McpServerLine {
+        .map(|server| rhema_prompt::prompt::McpServerLine {
             name: server.command_name.clone(),
             server: server.name.clone(),
             description: server.description.clone(),

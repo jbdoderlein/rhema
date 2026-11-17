@@ -153,7 +153,7 @@ mod system_tests {
         )
         .unwrap();
         let workspace = tempfile::tempdir().unwrap();
-        let mcp = vec![rhema_agent_tools::prompt::McpServerLine {
+        let mcp = vec![rhema_prompt::prompt::McpServerLine {
             name: "blender".to_owned(),
             server: "blender".to_owned(),
             description: "Blender scene operations".to_owned(),

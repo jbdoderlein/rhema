@@ -1677,7 +1677,7 @@ mod scroll_tests {
     fn a_running_job_pins_a_line_with_its_command_and_age() {
         let mut app = chat_app();
         app.jobs = Some(crate::jobs::JobsHandle::stub(vec![crate::jobs::JobEntry {
-            row: rhema_agent_tools::jobs::JobRow {
+            row: rhema_bash::jobs::JobRow {
                 id: "abc".to_owned(),
                 status: "running".to_owned(),
                 exit_code: None,

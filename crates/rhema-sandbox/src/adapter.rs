@@ -1,7 +1,7 @@
 //! The `bash` tool over a sandbox.
 //!
 //! [`ShellSandbox`] adapts the [`Sandbox`] seam onto
-//! [`ShellExecutor`](rhema_agent_tools::ShellExecutor), so the tool the
+//! [`ShellExecutor`](rhema_bash::ShellExecutor), so the tool the
 //! model sees is exactly the built-in one,
 //! [`ShellTools::builtin_specs`] is the single source of truth for the
 //! spec, and the approval gate, the output caps, and the error shaping
@@ -14,7 +14,7 @@ use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rhema_agent_tools::exec::{Executed, ShellError, ShellExecutor};
+use rhema_bash::exec::{Executed, ShellError, ShellExecutor};
 
 use crate::{ExecRequest, Sandbox, SandboxError};
 

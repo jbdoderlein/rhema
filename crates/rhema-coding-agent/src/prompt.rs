@@ -1,6 +1,6 @@
 //! The coding agent's system-prompt template: one markdown file,
-//! rendered by the toolkit's Jinja renderer
-//! ([`rhema_agent_tools::render_system`]).
+//! rendered by the prompt crate's Jinja renderer
+//! ([`rhema_prompt::render_system`]).
 //!
 //! The template language is Jinja, which prompt templates across the
 //! LLM ecosystem already speak: `{{ workspace }}` names the session's
@@ -13,7 +13,8 @@
 
 use std::path::Path;
 
-use rhema_agent_tools::{ShellTools, render_system};
+use rhema_bash::ShellTools;
+use rhema_prompt::render_system;
 
 /// The built-in system prompt, kept as data next to the code and read
 /// in whole, the full prompt, visible and editable in one place,
@@ -40,8 +41,8 @@ mod tests {
     use rhema_core::ToolSpec;
     use serde_json::json;
 
-    fn skill(name: &str, description: &str) -> rhema_agent_tools::Skill {
-        rhema_agent_tools::Skill {
+    fn skill(name: &str, description: &str) -> rhema_prompt::Skill {
+        rhema_prompt::Skill {
             name: name.into(),
             description: description.into(),
             license: None,

@@ -147,7 +147,8 @@ init in a chain (rhema under rhema, CI under an agent), and an outer
 init would re-source itself until the shell died by signal. A literal
 path is sourced exactly once; the temp-dir path carries no user input,
 and the one quote that could break single quoting is escaped. The same
-rule governs the `vision` module's init file in `rhema-agent-tools`.
+rule governs the `vision` module's init file in `rhema-bash`, and the
+`init` module writes both.
 
 The env map, handed to `CodingAgentConfig::shell_env`
 (`ShellTools::with_env` already layers it over every command):

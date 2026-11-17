@@ -110,24 +110,24 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         // stderr is the model's error text.
         Some(crate::args::Command::Vision { args: rest }) => {
             let mut argv = Vec::with_capacity(rest.len() + 1);
-            argv.push(std::ffi::OsString::from(rhema_agent_tools::vision::MODE));
+            argv.push(std::ffi::OsString::from(rhema_bash::vision::MODE));
             argv.extend(rest);
-            std::process::exit(rhema_agent_tools::vision::cli_run(&argv));
+            std::process::exit(rhema_bash::vision::cli_run(&argv));
         }
         // The jobs macro's road: `job …` in the agent shell execs
         // `rhema __jobs …`, whose exit code owns the process.
         Some(crate::args::Command::Jobs { args: rest }) => {
             let mut argv = Vec::with_capacity(rest.len() + 1);
-            argv.push(std::ffi::OsString::from(rhema_agent_tools::jobs::MODE));
+            argv.push(std::ffi::OsString::from(rhema_bash::jobs::MODE));
             argv.extend(rest);
-            std::process::exit(rhema_agent_tools::jobs::cli_run(&argv));
+            std::process::exit(rhema_bash::jobs::cli_run(&argv));
         }
         // The search macro's road: `search "query"` in the agent
         // shell execs `rhema __search …`, whose exit code owns the
         // process and whose stderr is the model's error text.
         Some(crate::args::Command::Search { args: rest }) => {
             let mut argv = Vec::with_capacity(rest.len() + 1);
-            argv.push(std::ffi::OsString::from(rhema_agent_tools::websearch::MODE));
+            argv.push(std::ffi::OsString::from(rhema_bash::websearch::MODE));
             argv.extend(rest);
             std::process::exit(crate::search_wire::cli_run(&argv));
         }
@@ -271,7 +271,7 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
     // A backend that is installed but too old would advertise `job` and
     // fail on the first call: say so once, here, while stderr is still a
     // plain terminal. An absent backend is silent by design.
-    if let Some(problem) = rhema_agent_tools::jobs::backend_problem() {
+    if let Some(problem) = rhema_bash::jobs::backend_problem() {
         eprintln!("warning: background jobs disabled: {problem}");
     }
     // The session's keychain: startup resolution reads it, and the app

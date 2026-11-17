@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use rhema_agent_tools::{AllowAll, Approval, ShellTools};
+use rhema_bash::{AllowAll, Approval, ShellTools};
 use rhema_core::{ToolCall, ToolContext, ToolResolver};
 use serde_json::json;
 

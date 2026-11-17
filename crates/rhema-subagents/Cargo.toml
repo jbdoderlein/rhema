@@ -19,11 +19,13 @@ rhema-submissions = { path = "../rhema-submissions", version = "0.3.0" }
 # provider wrapped once more, so an outage waits out under the job
 # instead of killing it
 rhema-provider = { path = "../rhema-provider", version = "0.3.0" }
-# The toolkit: the inner shell, the overlay, the approval hook, the
-# renderer. Default features off so a wasm build (remote-shell sandbox,
-# no tokio processes) excludes them; the inner shell shares the parent
-# turn's executor, so nothing here needs the local shell.
-rhema-agent-tools = { path = "../rhema-agent-tools", version = "0.3.0", default-features = false }
+# The tools: the inner shell and the approval hook, and the system
+# prompt with its skills list. Default features off so a wasm build
+# (remote-shell sandbox, no tokio processes) excludes the local shell;
+# the inner shell shares the parent turn's executor, so nothing here
+# needs it.
+rhema-bash = { path = "../rhema-bash", version = "0.3.0", default-features = false }
+rhema-prompt = { path = "../rhema-prompt", version = "0.3.0" }
 # `wire` attaches the tool to a coding-agent config
 rhema-coding-agent = { path = "../rhema-coding-agent", version = "0.3.0", default-features = false }
 # The global definitions directory resolves off the config dir
@@ -47,7 +49,7 @@ tokio = { workspace = true, features = ["rt", "sync", "time"] }
 rhema-core = { path = "../rhema-core", features = ["mock"] }
 # The reference store, so a child session is a real file
 rhema-session-store-file = { path = "../rhema-session-store-file", version = "0.3.0" }
-rhema-agent-tools = { path = "../rhema-agent-tools", features = ["local-shell"] }
+rhema-bash = { path = "../rhema-bash", features = ["local-shell"] }
 rhema-coding-agent = { path = "../rhema-coding-agent", features = ["local-shell"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tempfile = "3"

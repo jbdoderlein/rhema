@@ -6,7 +6,7 @@
 //! The agent owns one [`ShellTools`] resolver for its lifetime. The
 //! config carries the approval hook; every turn installs it into the
 //! resolver before stepping and clears it after (see
-//! [`rhema_agent_tools::approval`] for why the hook travels as an
+//! [`rhema_bash::approval`] for why the hook travels as an
 //! `Arc`). A driver whose hook belongs to one turn, the TUI's
 //! per-round bridge, swaps it with [`CodingAgent::set_approval`].
 //! The session is plain data, the driver may mutate it between turns,
@@ -21,11 +21,12 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
-use rhema_agent_tools::{Approval, ShellTools, Skill};
+use rhema_bash::{Approval, ShellTools};
 use rhema_core::{
     Agent, AgentError, ChatParams, CommitHook, EventSink, Message, ModelOutput, Overlay, Role,
     Session, StopReason, ToolContext, ToolResolver, ToolSpec, revive_dangling_calls, run_turn,
 };
+use rhema_prompt::Skill;
 
 use rhema_session_store::StoreError;
 use rhema_session_store_file::PathStore;
@@ -103,8 +104,7 @@ pub fn stamped_system(
     let home = rhema_config::Home::discover().ok();
     let agents = home.as_ref().map(|h| h.agents_skills());
     let global = home.as_ref().map(|h| h.skills());
-    let skills =
-        rhema_agent_tools::skills::discover(agents.as_deref(), global.as_deref(), workspace);
+    let skills = rhema_prompt::skills::discover(agents.as_deref(), global.as_deref(), workspace);
     stamped_system_with_sections(base, workspace, extra, &skills, None, None, &[], None, None)
 }
 
@@ -140,13 +140,13 @@ pub fn stamped_system_with_sections(
     skills: &[Skill],
     environment: Option<&str>,
     user: Option<&str>,
-    mcp: &[rhema_agent_tools::prompt::McpServerLine],
+    mcp: &[rhema_prompt::prompt::McpServerLine],
     vision: Option<&str>,
     jobs: Option<&str>,
 ) -> Result<String, CodingAgentError> {
     let mut tools = ShellTools::builtin_specs();
     tools.extend_from_slice(extra);
-    rhema_agent_tools::render_system_with_sections(
+    rhema_prompt::render_system_with_sections(
         base.unwrap_or(crate::prompt::DEFAULT_SYSTEM_MD),
         workspace,
         skills,
@@ -234,7 +234,7 @@ impl CodingAgent {
                     .or_else(|| rhema_config::Home::discover().ok());
                 let agents = home.as_ref().map(|h| h.agents_skills());
                 let global = home.as_ref().map(|h| h.skills());
-                rhema_agent_tools::skills::discover(
+                rhema_prompt::skills::discover(
                     agents.as_deref(),
                     global.as_deref(),
                     tools.workspace(),
@@ -246,7 +246,7 @@ impl CodingAgent {
         // wire step already filtered before spawning; this is the
         // prompt-side echo, so a frontend feeding lines directly is
         // still governed by the switch.
-        let mcp: Vec<rhema_agent_tools::prompt::McpServerLine> = config
+        let mcp: Vec<rhema_prompt::prompt::McpServerLine> = config
             .mcp_servers
             .iter()
             .filter(|line| !config.disabled_mcp_servers.contains(&line.server))
@@ -283,7 +283,7 @@ impl CodingAgent {
                 // identically, they carry no skills, and cancel out.
                 let mut bare = ShellTools::builtin_specs();
                 bare.extend_from_slice(&extra);
-                rhema_agent_tools::render_system_with_sections(
+                rhema_prompt::render_system_with_sections(
                     config
                         .base_system
                         .as_deref()
@@ -719,7 +719,7 @@ fn store_to_io(err: StoreError) -> io::Error {
 #[cfg(test)]
 mod paste_tests {
     use super::*;
-    use rhema_agent_tools::AllowAll;
+    use rhema_bash::AllowAll;
     use rhema_core::{
         Content, Event, ModelProvider, ModelRequest, ProviderError, StopReason, Usage, async_trait,
     };
@@ -913,7 +913,7 @@ mod paste_tests {
 #[cfg(test)]
 mod extra_tools_tests {
     use super::*;
-    use rhema_agent_tools::AllowAll;
+    use rhema_bash::AllowAll;
     use rhema_core::{
         Content, Event, ModelProvider, ModelRequest, ProviderError, StopReason, ToolCall,
         ToolResult, Usage, async_trait,
@@ -1144,7 +1144,7 @@ mod extra_tools_tests {
 #[cfg(test)]
 mod environment_stamp_tests {
     use super::*;
-    use rhema_agent_tools::AllowAll;
+    use rhema_bash::AllowAll;
     use rhema_core::{
         Event, ModelProvider, ModelRequest, ProviderError, StopReason, Usage, async_trait,
     };
@@ -1293,7 +1293,7 @@ mod environment_stamp_tests {
 #[cfg(test)]
 mod transcript_tests {
     use super::*;
-    use rhema_agent_tools::AllowAll;
+    use rhema_bash::AllowAll;
     use rhema_core::{
         Content, Event, ModelProvider, ModelRequest, ProviderError, StopReason, ToolCall,
         ToolResult, Usage, async_trait,

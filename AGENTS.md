@@ -124,9 +124,12 @@ Rules:
     credentials rule, the persisted off switches), the directory
     conventions (`Home`), and the `Store` seam a frontend implements
     (`crates/rhema-config/`)
-  - `agent-tools`: the shared toolkit: the approval-gated shell, the
-    `Approval` seam, skills, the `see` vision macro, the `search` web
-    search macro, the prompt renderer
+  - `bash`: the bash tool and the macros that ride it: the
+    approval-gated shell, its executor seam, the `see`, `job`, and
+    `search` functions (`crates/rhema-bash/`)
+  - `prompt`: the system-prompt renderer and the skill discovery that
+    feeds its skills list (`crates/rhema-prompt/`)
+  - `agent-tools`: the pre-split import path, re-exporting both
     (`crates/rhema-agent-tools/`)
   - `sandbox`: the sandbox seam: the `Sandbox` contract, the
     `ShellSandbox` adapter, the wire protocol, the HTTP client and

@@ -22,7 +22,7 @@ rhema-submissions = { path = "../rhema-submissions", version = "0.3.0" }
 rhema-session-store = { path = "../rhema-session-store", version = "0.3.0" }
 rhema-session-store-file = { path = "../rhema-session-store-file", version = "0.3.0" }
 # The vision wiring's env map, for the agent config's shell_env
-rhema-agent-tools = { path = "../rhema-agent-tools", version = "0.3.0" }
+rhema-bash = { path = "../rhema-bash", version = "0.3.0" }
 # The adapter family, resolved from config the same way the other
 # frontends resolve it
 rhema-provider = { path = "../rhema-provider", version = "0.3.0" }

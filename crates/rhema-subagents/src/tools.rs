@@ -46,7 +46,7 @@ use serde_json::json;
 
 use std::time::Duration;
 
-use rhema_agent_tools::{Approval, ShellTools};
+use rhema_bash::{Approval, ShellTools};
 use rhema_coding_agent::SubagentProviders;
 use rhema_core::request::ThinkingEffort;
 use rhema_core::{

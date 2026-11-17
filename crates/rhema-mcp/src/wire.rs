@@ -29,8 +29,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use rhema_agent_tools::prompt::McpServerLine;
 use rhema_config::mcp::McpConfig;
+use rhema_prompt::prompt::McpServerLine;
 
 use crate::manager::McpManager;
 use crate::provision::{self, Provision};

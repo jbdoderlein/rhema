@@ -38,7 +38,7 @@ use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use rhema_agent_tools::render_template;
+use rhema_prompt::render_template;
 use serde_json::json;
 
 /// One inventoried tool.
@@ -545,7 +545,7 @@ fn os_label(manifest: &Manifest, raw: &str) -> String {
 /// reads it sees EOF; anything still running at the deadline is killed
 /// and reaped.
 fn run_probe(manifest: &Manifest, workspace: &Path) -> Result<String, String> {
-    let mut child = Command::new(rhema_agent_tools::exec::bash_executable())
+    let mut child = Command::new(rhema_bash::exec::bash_executable())
         .arg("-c")
         .arg(probe_script(manifest))
         .current_dir(workspace)
@@ -554,7 +554,7 @@ fn run_probe(manifest: &Manifest, workspace: &Path) -> Result<String, String> {
         .stderr(Stdio::null())
         .spawn()
         .map_err(|err| match err.kind() {
-            std::io::ErrorKind::NotFound => rhema_agent_tools::exec::bash_missing_message(),
+            std::io::ErrorKind::NotFound => rhema_bash::exec::bash_missing_message(),
             _ => format!("cannot spawn the probe: {err}"),
         })?;
     let deadline = Instant::now() + PROBE_BUDGET;

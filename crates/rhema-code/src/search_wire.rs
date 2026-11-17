@@ -39,10 +39,10 @@ const USAGE: &str = "search: web search through this session's providers
 
 /// One session's wiring, the mcp_wire shape: the provisioned init
 /// file held for the process's life, one per session key.
-static WIRED: OnceLock<Mutex<BTreeMap<String, Arc<rhema_agent_tools::websearch::Wiring>>>> =
+static WIRED: OnceLock<Mutex<BTreeMap<String, Arc<rhema_bash::websearch::Wiring>>>> =
     OnceLock::new();
 
-fn registry() -> &'static Mutex<BTreeMap<String, Arc<rhema_agent_tools::websearch::Wiring>>> {
+fn registry() -> &'static Mutex<BTreeMap<String, Arc<rhema_bash::websearch::Wiring>>> {
     WIRED.get_or_init(|| Mutex::new(BTreeMap::new()))
 }
 
@@ -56,7 +56,7 @@ pub(crate) fn wire_for_session(
     secrets: Option<&dyn SecretStore>,
     sandboxed: Option<&crate::sandbox::Sandboxed>,
     bash_env: Option<std::ffi::OsString>,
-) -> Option<Arc<rhema_agent_tools::websearch::Wiring>> {
+) -> Option<Arc<rhema_bash::websearch::Wiring>> {
     if sandboxed.is_some() {
         return None;
     }
@@ -70,9 +70,8 @@ pub(crate) fn wire_for_session(
         return Some(wiring.clone());
     }
     let bin = std::env::current_exe().ok()?;
-    let wiring = Arc::new(
-        rhema_agent_tools::websearch::provision_with_bin(bash_env, &bin, session_key).ok()?,
-    );
+    let wiring =
+        Arc::new(rhema_bash::websearch::provision_with_bin(bash_env, &bin, session_key).ok()?);
     reg.insert(session_key.to_owned(), wiring.clone());
     Some(wiring)
 }
@@ -87,7 +86,7 @@ pub(crate) struct Invocation {
 }
 
 /// Parses the mode's argv (mode token already skipped). A usage error
-/// is [`rhema_agent_tools::websearch::EXIT_USAGE`]; the caller prints
+/// is [`rhema_bash::websearch::EXIT_USAGE`]; the caller prints
 /// [`USAGE`].
 pub(crate) fn parse(args: &[OsString]) -> Result<Invocation, ()> {
     let mut news = false;
@@ -173,18 +172,18 @@ pub fn cli_run(argv: &[OsString]) -> i32 {
         Ok(invocation) => invocation,
         Err(()) => {
             eprintln!("{USAGE}");
-            return rhema_agent_tools::websearch::EXIT_USAGE;
+            return rhema_bash::websearch::EXIT_USAGE;
         }
     };
-    let Some(profile_name) = std::env::var(rhema_agent_tools::websearch::VAR_PROFILE)
+    let Some(profile_name) = std::env::var(rhema_bash::websearch::VAR_PROFILE)
         .ok()
         .filter(|name| !name.trim().is_empty())
     else {
         eprintln!(
             "search: not wired in this shell (no {})",
-            rhema_agent_tools::websearch::VAR_PROFILE
+            rhema_bash::websearch::VAR_PROFILE
         );
-        return rhema_agent_tools::websearch::EXIT_NOT_WIRED;
+        return rhema_bash::websearch::EXIT_NOT_WIRED;
     };
     // The stored settings, the headless run's convention: an
     // unreadable file is the default document, never an error wall.
@@ -302,11 +301,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let bin = dir.path().join("rhema-fake");
         std::fs::write(&bin, "#!/bin/sh\nexit 0\n").unwrap();
-        let first = rhema_agent_tools::websearch::provision_with_bin(None, &bin, "registry-test-a")
-            .unwrap();
+        let first =
+            rhema_bash::websearch::provision_with_bin(None, &bin, "registry-test-a").unwrap();
         let second =
-            rhema_agent_tools::websearch::provision_with_bin(None, &bin, "registry-test-b")
-                .unwrap();
+            rhema_bash::websearch::provision_with_bin(None, &bin, "registry-test-b").unwrap();
         assert_ne!(
             first.init_path, second.init_path,
             "two session keys, two init files"
@@ -314,7 +312,7 @@ mod tests {
         assert_eq!(
             first
                 .shell_env
-                .get(rhema_agent_tools::websearch::VAR_PROFILE)
+                .get(rhema_bash::websearch::VAR_PROFILE)
                 .map(String::as_str),
             Some("registry-test-a")
         );

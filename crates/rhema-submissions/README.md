@@ -65,7 +65,7 @@ assigns their ids and classifies them with `recover` in the same pass,
 so a second load adopts nothing.
 
 The subagent kind lives in `rhema-subagents` and reads child sessions.
-The job kind lives in `rhema-agent-tools` and reads the job daemon's
+The job kind lives in `rhema-bash` and reads the job daemon's
 listing.
 
 Register the kinds a frontend links in a `Kinds`. A record whose kind is

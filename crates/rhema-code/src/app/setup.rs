@@ -816,7 +816,7 @@ pub(crate) fn skill_rows(
     disabled: &std::collections::BTreeSet<String>,
 ) -> Vec<SkillRow> {
     let workspace_dir = workspace.join(".rhema").join("skills");
-    rhema_agent_tools::skills::discover(agents, global, workspace)
+    rhema_prompt::skills::discover(agents, global, workspace)
         .into_iter()
         .map(|skill| {
             let source = if skill.path.starts_with(&workspace_dir) {
@@ -969,7 +969,7 @@ pub(crate) fn session_agent_config(
     // literal path and guards the failure, and every generated function
     // ends up defined whichever file the variable names.
     let jobs_wiring = (sandboxed.is_none())
-        .then(|| rhema_agent_tools::jobs::wire(std::env::var_os("BASH_ENV"), jobs_tag))
+        .then(|| rhema_bash::jobs::wire(std::env::var_os("BASH_ENV"), jobs_tag))
         .flatten();
     if let Some(wiring) = &jobs_wiring {
         config.shell_env.extend(wiring.shell_env.clone());
@@ -979,7 +979,7 @@ pub(crate) fn session_agent_config(
         .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
         .or_else(|| std::env::var_os("BASH_ENV"));
     let vision_wiring = (sandboxed.is_none())
-        .then(|| rhema_agent_tools::vision::wire(bash_env.clone()))
+        .then(|| rhema_bash::vision::wire(bash_env.clone()))
         .flatten();
     if let Some(wiring) = &vision_wiring {
         config.shell_env.extend(wiring.shell_env.clone());
