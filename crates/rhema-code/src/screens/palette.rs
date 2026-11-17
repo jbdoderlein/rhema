@@ -3,20 +3,13 @@
 use super::chat::CompletionCache;
 use super::*;
 
-/// The commands whose names start with the slash token in `input`, in
-/// table order. `/` alone matches everything; an input that is not a
+/// The commands whose names start with the slash token in `input`, an
+/// exact name first. `/` alone matches everything; an input that is not a
 /// command at all matches nothing. Reads the command table, the single
 /// source of truth, so a row exists for the palette the moment it
 /// dispatches.
 pub fn filtered_commands(input: &str) -> Vec<&'static crate::commands::CommandSpec> {
-    if !input.starts_with('/') {
-        return Vec::new();
-    }
-    let needle = input.to_lowercase();
-    crate::commands::COMMANDS
-        .iter()
-        .filter(|spec| spec.name.starts_with(&needle))
-        .collect()
+    crate::commands::candidates(input)
 }
 
 /// The command a slash input names together with the fixed words its

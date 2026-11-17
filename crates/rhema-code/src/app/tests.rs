@@ -4855,6 +4855,34 @@ fn new_and_clear_are_one_command() {
 }
 
 #[test]
+fn resume_and_r_are_one_command() {
+    let row = |name: &str| {
+        crate::commands::COMMANDS
+            .iter()
+            .find(|spec| spec.name == name)
+            .unwrap_or_else(|| panic!("no {name} row"))
+    };
+    // Two palette entries, one behavior: the same handler, word, and
+    // argument rule.
+    assert!(std::ptr::fn_addr_eq(
+        row("/r").handler,
+        row("/resume").handler
+    ));
+    assert_eq!(row("/r").description, row("/resume").description);
+    assert_eq!(row("/r").argument, row("/resume").argument);
+    // `/r` resolves to its own row, not to `/retry`, the row it shares
+    // a first letter with.
+    assert!(
+        matches!(
+            crate::commands::parse("/r"),
+            crate::commands::Parsed::Command { spec, argument: None }
+                if spec.name == "/r"
+        ),
+        "/r must parse as the resume alias"
+    );
+}
+
+#[test]
 fn slash_clear_backs_up_a_conversation_that_had_no_file() {
     let mut h = harness(Some("k"), Some("m-a"), session_of("unfiled"));
     assert_eq!(h.app.session_file, None);

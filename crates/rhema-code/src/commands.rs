@@ -128,6 +128,12 @@ pub const COMMANDS: &[CommandSpec] = &[
         handler: resume,
     },
     CommandSpec {
+        name: "/r",
+        description: "continue a saved session",
+        argument: Argument::None,
+        handler: resume,
+    },
+    CommandSpec {
         name: "/skills",
         description: "skills on and off (the Skills page)",
         argument: Argument::None,
@@ -215,16 +221,19 @@ pub fn parse(input: &str) -> Parsed {
 }
 
 /// The palette's candidates for an input: the table rows whose name starts
-/// with the typed token.
+/// with the typed token. An exact name leads, so `/r` opens resume instead
+/// of stopping on `/retry`, the earlier row its prefix also matches.
 pub fn candidates(input: &str) -> Vec<&'static CommandSpec> {
     if !input.starts_with('/') {
         return Vec::new();
     }
     let needle = input.to_lowercase();
-    COMMANDS
+    let mut rows: Vec<&'static CommandSpec> = COMMANDS
         .iter()
         .filter(|spec| spec.name.starts_with(&needle))
-        .collect()
+        .collect();
+    rows.sort_by_key(|spec| spec.name != needle);
+    rows
 }
 
 /// Runs the parsed command through its row's handler. Unknown inputs are

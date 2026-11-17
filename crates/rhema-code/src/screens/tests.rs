@@ -1983,6 +1983,23 @@ fn slash_input_filters_the_command_palette() {
 }
 
 #[test]
+fn a_typed_command_name_comes_first() {
+    let names: Vec<&str> = crate::screens::filtered_commands("/r")
+        .iter()
+        .map(|spec| spec.name)
+        .collect();
+    // The exact name leads the rows its prefix also matches, so Enter
+    // on `/r` opens resume.
+    assert_eq!(names, ["/r", "/retry", "/resume"]);
+    // A prefix matching no exact name keeps table order.
+    let names: Vec<&str> = crate::screens::filtered_commands("/re")
+        .iter()
+        .map(|spec| spec.name)
+        .collect();
+    assert_eq!(names, ["/retry", "/resume"]);
+}
+
+#[test]
 fn arrows_navigate_the_palette_and_tab_completes() {
     let mut chat = ChatState::new();
     for c in "/".chars() {
