@@ -76,6 +76,13 @@ pub const VAR_BIN: &str = "RHEMA_JOBS_BIN";
 /// The env var carrying the session id the jobs are tagged with.
 pub const VAR_SESSION: &str = "RHEMA_SESSION";
 
+/// The env var naming the file the tag lives in. A shell keeps the env
+/// map it was wired with, so a frontend that switches conversations
+/// cannot retag it by rebuilding the config; it rewrites this file
+/// instead, and [`cli_run`] reads the tag there first. The file sits
+/// beside the init file, in the process's own directory.
+pub const VAR_SESSION_FILE: &str = "RHEMA_JOBS_SESSION";
+
 /// The backend CLI this shim drives. Swapping it means a new name, the
 /// argv translations in one module, and nothing else: the prompt, the
 /// function name, and the frontend read this shim, never the backend.
@@ -119,7 +126,8 @@ const USAGE: &str = "job: background shells for this session
 /// `CodingAgentConfig::shell_env`, the prompt section to render, and the
 /// provisioned init file held for the process's life.
 pub struct Wiring {
-    /// The env map: `BASH_ENV`, `RHEMA_JOBS_BIN`, and `RHEMA_SESSION`.
+    /// The env map: `BASH_ENV`, `RHEMA_JOBS_BIN`, `RHEMA_SESSION`, and
+    /// `RHEMA_JOBS_SESSION`.
     /// Deliberately no inherited-`BASH_ENV` entry: the chain is baked
     /// into the init file's text, and an env var here would make an outer
     /// generated init re-source itself until the shell died.
@@ -131,6 +139,20 @@ pub struct Wiring {
     /// every generated file loads in one chain.
     pub init_path: PathBuf,
     dir: PathBuf,
+}
+
+impl Wiring {
+    /// The file holding the tag this shell runs under.
+    fn session_path(&self) -> PathBuf {
+        self.dir.join("session")
+    }
+
+    /// Rewrites the tag the shells read. The init file and the env map
+    /// stay as wired: only the tag follows the frontend, which is the
+    /// one thing that changes when it attaches another conversation.
+    fn set_session(&self, session: &str) -> std::io::Result<()> {
+        std::fs::write(self.session_path(), session.as_bytes())
+    }
 }
 
 impl Drop for Wiring {
@@ -145,6 +167,12 @@ static WIRED: OnceLock<Option<Arc<Wiring>>> = OnceLock::new();
 /// life. `None` when the backend is not installed: a machine without
 /// `gob` gets no `job` function and no prompt section, rather than a
 /// command that fails at the model's first use.
+///
+/// The `session` here is the first session only: the init file and the
+/// binary are the process's, so the tag rides the tag file and moves
+/// with [`retag`] when the frontend attaches another conversation. A
+/// wiring is never rebuilt, because the shells already holding its env
+/// map would keep the old init path.
 ///
 /// The production seam: the binary exec'd is `current_exe()`. Tests drive
 /// [`provision_with_bin`] directly instead, because the process-wide
@@ -161,6 +189,24 @@ pub fn wire(bash_env: Option<OsString>, session: &str) -> Option<&'static Arc<Wi
                 .ok()
         })
         .as_ref()
+}
+
+/// Points every shell wired in this process at `session`: the tag file
+/// the shells read is rewritten, so a frontend that attaches another
+/// conversation keeps `job run` tagging its jobs under the session it
+/// now owns, without rebuilding an agent that is already out.
+///
+/// `None` when nothing is wired (no backend, or no shell yet).
+///
+/// # Errors
+///
+/// As the write: a tag file that cannot be rewritten leaves the shells
+/// on the previous session, and the caller says so.
+pub fn retag(session: &str) -> Option<std::io::Result<()>> {
+    WIRED
+        .get()
+        .and_then(|wired| wired.as_ref())
+        .map(|wiring| wiring.set_session(session))
 }
 
 /// What the one edition of the backend on `PATH` can do.
@@ -270,12 +316,22 @@ pub fn provision_with_bin(
     shell_env.insert(VAR_BIN.to_owned(), bin.display().to_string());
     shell_env.insert(VAR_SESSION.to_owned(), session.to_owned());
 
-    Ok(Wiring {
+    let mut wiring = Wiring {
         shell_env,
         section: PROMPT_SECTION,
         init_path,
         dir,
-    })
+    };
+    wiring.shell_env.insert(
+        VAR_SESSION_FILE.to_owned(),
+        wiring.session_path().display().to_string(),
+    );
+    // The env var is what a fresh shell reads; the file is what a shell
+    // already wired reads, after a frontend retagged the session under
+    // it (see [`retag`]). Both are written here, so the two agree until
+    // a retag moves them.
+    wiring.set_session(session)?;
+    Ok(wiring)
 }
 
 /// One job as the shim reports it: the backend's fields the frontend
@@ -432,8 +488,25 @@ pub fn cli_run(argv: &[OsString]) -> i32 {
             return 1;
         }
     };
-    let session = std::env::var(VAR_SESSION).ok();
+    let session = session_from_env();
     run_cli(argv, Path::new(BACKEND), &cwd, session.as_deref())
+}
+
+/// The tag this shell was wired for, read from the environment.
+fn session_from_env() -> Option<String> {
+    let file = std::env::var_os(VAR_SESSION_FILE).map(PathBuf::from);
+    session_tag(std::env::var(VAR_SESSION).ok(), file.as_deref())
+}
+
+/// The rule [`session_from_env`] applies, on explicit parts: the tag
+/// file's content when it reads, the env var otherwise. The file wins
+/// because a frontend retags by rewriting it, and the env map a shell
+/// inherited cannot change under it.
+fn session_tag(variable: Option<String>, file: Option<&Path>) -> Option<String> {
+    file.and_then(|path| std::fs::read_to_string(path).ok())
+        .map(|raw| raw.trim().to_owned())
+        .filter(|tag| !tag.is_empty())
+        .or_else(|| variable.filter(|tag| !tag.is_empty()))
 }
 
 /// [`cli_run`] with the backend, the directory the backend scopes to, and

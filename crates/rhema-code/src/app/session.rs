@@ -113,8 +113,54 @@ impl App {
     pub fn ensure_checkpoint_target(&mut self) -> Option<PathBuf> {
         if self.checkpoint_target().is_none() {
             self.session_file = self.next_session_file();
+            // A cleared conversation's file is a new one, so its jobs
+            // and its subagent children are a new set: the shells, the
+            // poller, and the children's store move with it.
+            if let Some(path) = self.session_file.clone() {
+                self.adopt_conversation(&path);
+            }
         }
         self.checkpoint_target()
+    }
+
+    /// Attaches the conversation-scoped plumbing to `path`: the tag the
+    /// shells write, the poller's listing, and the parent the subagent
+    /// children are filed under all name the same session. Stays put
+    /// when the path names no session id, because a tag the next resume
+    /// cannot reproduce would only orphan the work it started.
+    pub(crate) fn adopt_conversation(&mut self, path: &Path) {
+        let Some(tag) = crate::jobs::tag_from_path(path) else {
+            return;
+        };
+        if tag == self.jobs_tag {
+            return;
+        }
+        self.jobs_tag = tag.clone();
+        // A crash leaves the self-stop record behind; its entries are
+        // backend ids, which the daemon reuses, so a stale one must not
+        // silence a new job that happens to get the same id.
+        rhema_agent_tools::jobs::forget_stopped(&tag);
+        // The shells wired so far keep the env map they were handed,
+        // so the tag file is what moves them: without this, `job run`
+        // would keep tagging the conversation just left.
+        if let Some(Err(err)) = rhema_agent_tools::jobs::retag(&tag) {
+            self.transcript
+                .push_notice(&format!("the job tag was not updated: {err}"));
+        }
+        // The poller restarts before the agent builds, so the rebuilt
+        // steering chain reads the new feed.
+        if self.sandboxed.is_none() {
+            self.jobs = crate::jobs::JobsHandle::spawn(tag.clone());
+        }
+        // The children's store is keyed by the same session: a
+        // conversation switched under a live agent (a clear, whose
+        // children are the next conversation's) must not keep filing
+        // them under the one just left.
+        if let Some(subagents) = &self.subagents {
+            let base = self.sessions_base().ok();
+            let workspace = crate::args::canonical(&self.options.workspace);
+            Self::attach_subagents(subagents, base.as_deref(), &workspace, &tag);
+        }
     }
 
     /// The session to save for /resume, and the file it belongs to: the
@@ -228,19 +274,9 @@ impl App {
         let mut session = session;
         // The conversation's tag is its file's id: a resumed process
         // must list the jobs its previous one started, not a fresh
-        // process's empty set. The poller restarts before the agent
-        // builds, so the rebuilt steering chain reads the new feed.
+        // process's empty set.
         self.session_file = Some(path.to_path_buf());
-        if let Some(tag) = crate::jobs::tag_from_path(path) {
-            self.jobs_tag = tag;
-        }
-        // A crash leaves the self-stop record behind; its entries are
-        // backend ids, which the daemon reuses, so a stale one must not
-        // silence a new job that happens to get the same id.
-        rhema_agent_tools::jobs::forget_stopped(&self.jobs_tag);
-        if self.sandboxed.is_none() {
-            self.jobs = crate::jobs::JobsHandle::spawn(self.jobs_tag.clone());
-        }
+        self.adopt_conversation(path);
         // Loading tells the truth and starts nothing: adopt what the
         // ledger missed, settle what the crash left, and save once.
         let changes = self.reconcile_loaded(&mut session);

@@ -7525,6 +7525,67 @@ fn resume_retags_the_jobs_and_announces_an_interrupted_subagent() {
 }
 
 #[test]
+fn attaching_a_conversation_moves_the_jobs_tag_and_its_poller() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    let start = h.app.jobs_tag.clone();
+    let dir = tempfile::tempdir().unwrap();
+
+    let path = dir.path().join("0001794000000000-00.json");
+    h.app.adopt_conversation(&path);
+    assert_eq!(h.app.jobs_tag, "0001794000000000-00");
+    if let Some(jobs) = &h.app.jobs {
+        assert_eq!(
+            jobs.tag(),
+            h.app.jobs_tag,
+            "the poller lists the session the shells tag"
+        );
+    }
+
+    // A name the next resume cannot reproduce leaves the tag alone:
+    // moving it would orphan whatever it started.
+    h.app
+        .adopt_conversation(&dir.path().join("my session.json"));
+    assert_eq!(h.app.jobs_tag, "0001794000000000-00");
+    assert_ne!(h.app.jobs_tag, start);
+}
+
+#[test]
+fn a_cleared_conversation_moves_the_jobs_to_its_new_file() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    h.app
+        .agent
+        .as_mut()
+        .unwrap()
+        .session_mut()
+        .history
+        .push(Message::text(Role::User, "the first conversation"));
+    h.app.ensure_checkpoint_target();
+    let first = h.app.jobs_tag.clone();
+    let first_file = h.app.session_file.clone().expect("a session file");
+
+    h.app.clear_session();
+    // No job can start before the next turn picks a file, so the tag
+    // waits with the conversation.
+    assert_eq!(h.app.jobs_tag, first);
+    assert!(h.app.session_file.is_none());
+
+    let target = h.app.ensure_checkpoint_target().expect("a fresh file");
+    assert_ne!(target, first_file);
+    assert_ne!(
+        h.app.jobs_tag, first,
+        "the new conversation's jobs are its own"
+    );
+    assert_eq!(
+        h.app.jobs_tag,
+        crate::jobs::tag_from_path(&target).unwrap(),
+        "the tag is the file the turns checkpoint to"
+    );
+    if let Some(jobs) = &h.app.jobs {
+        assert_eq!(jobs.tag(), h.app.jobs_tag);
+    }
+}
+
+#[test]
 fn a_prompt_records_its_turn_before_the_task_takes_the_agent() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     let mut agent = h.app.agent.take().expect("the harness builds an agent");

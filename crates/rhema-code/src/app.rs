@@ -458,8 +458,16 @@ impl App {
         // in `session_agent_config` is gated the same way). Spawned
         // before the screen builds, so the first session's config
         // chains the poller's steering with the subagent registry's.
-        let jobs_tag = setup
-            .checkpoint
+        //
+        // The tag is the conversation's: the file its turns checkpoint
+        // to, which is `--save` when given and the allocated session
+        // otherwise (the same preference `checkpoint_target` makes).
+        let checkpoint = setup
+            .options
+            .save
+            .clone()
+            .or_else(|| setup.checkpoint.clone());
+        let jobs_tag = checkpoint
             .as_deref()
             .and_then(crate::jobs::tag_from_path)
             .unwrap_or_else(crate::jobs::fallback_tag);
@@ -483,7 +491,7 @@ impl App {
             match rhema_submissions::reconcile(&mut session, &kinds, rhema_submissions::now()) {
                 Ok(changes) => {
                     if !changes.is_empty()
-                        && let Some(path) = &setup.checkpoint
+                        && let Some(path) = &checkpoint
                         && let Err(err) = crate::sessions::write_session(path, &session)
                     {
                         eprintln!(

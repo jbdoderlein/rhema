@@ -704,3 +704,43 @@ fn adopt_rebuilds_the_records_that_are_missing() {
     assert!(reconcile(&mut session, &kinds, 11).unwrap().is_empty());
     assert_eq!(snapshot(&session).unwrap().len(), 1);
 }
+
+#[test]
+fn a_retag_moves_the_tag_the_wired_shell_reads() {
+    let wiring =
+        provision_with_bin(None, Path::new("/bin/true"), "0001794000000000-00").expect("wiring");
+    let file = wiring.session_path();
+    // The first shell reads the tag the process provisioned.
+    assert_eq!(
+        session_tag(None, Some(&file)).as_deref(),
+        Some("0001794000000000-00")
+    );
+    // A frontend that attaches another conversation rewrites the file,
+    // and the shell's env map, frozen at provisioning time, follows.
+    wiring.set_session("0001794000000001-00").expect("retag");
+    assert_eq!(
+        wiring.shell_env[VAR_SESSION], "0001794000000000-00",
+        "the env map is the shell's, not the frontend's"
+    );
+    assert_eq!(
+        session_tag(Some(wiring.shell_env[VAR_SESSION].clone()), Some(&file)).as_deref(),
+        Some("0001794000000001-00")
+    );
+}
+
+#[test]
+fn a_wiring_without_a_tag_file_falls_back_to_the_env_var() {
+    assert_eq!(
+        session_tag(Some("s1".to_owned()), None).as_deref(),
+        Some("s1")
+    );
+    let dir = tempfile::tempdir().expect("tempdir");
+    let empty = dir.path().join("session");
+    std::fs::write(&empty, "").expect("empty");
+    assert_eq!(
+        session_tag(Some("s1".to_owned()), Some(&empty)).as_deref(),
+        Some("s1"),
+        "an empty tag file is no tag"
+    );
+    assert_eq!(session_tag(Some(String::new()), None), None);
+}

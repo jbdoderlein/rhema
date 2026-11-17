@@ -864,6 +864,17 @@ tag becomes the session's store id: allocated at startup, reloaded by
 shim grows from 16 to 32, because a `SessionId` is 19 characters and
 `owner_of` rejects anything longer.
 
+**The tag has to move with the conversation.** The shells a turn runs
+inherit the env map of the agent that was built when the turn started,
+so a frontend that attaches another session under a live agent (`/resume`,
+a clear whose next turn allocates a new file, `--save` naming the file)
+cannot retag them by rebuilding a config. The wiring writes the tag to a
+file beside its init file and the shim reads that file before the env
+var; `jobs::retag` rewrites it, so the shells, the poller, the ledger's
+records, and the subagent children all follow the file the turns
+checkpoint to. `wire` stays provisioned once per process: rebuilding it
+would leave the shells already holding the old init path.
+
 **Where the record comes from.** `job run` is a shell function; there
 is no Rust point at which the session can be written. The poller
 submits a record the first time it sees a running row for the tag, and
