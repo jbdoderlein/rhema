@@ -1,8 +1,8 @@
 //! rhema-prompt, the system prompt: the Jinja template renderer and the
 //! skills list it renders.
 //!
-//! - [`prompt`]: the template renderer: [`render_system`] for the
-//!   standard shape, [`render_template`] for a caller's own variables
+//! - [`prompt`]: the template renderer: [`render_system`] for a system
+//!   prompt, [`render_template`] for a caller's own variables
 //! - [`skills`]: discovery of markdown skills, prompt presentation
 //!
 //! # Skills
@@ -18,7 +18,7 @@
 pub mod prompt;
 pub mod skills;
 
-pub use prompt::{McpServerLine, render_system, render_system_with_sections, render_template};
+pub use prompt::{McpServerLine, Prompt, render_system, render_template};
 // Re-exported so a caller can name the error the renderer returns
 // without depending on minijinja itself.
 pub use prompt::TemplateError;

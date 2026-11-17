@@ -105,7 +105,7 @@ pub fn stamped_system(
     let agents = home.as_ref().map(|h| h.agents_skills());
     let global = home.as_ref().map(|h| h.skills());
     let skills = rhema_prompt::skills::discover(agents.as_deref(), global.as_deref(), workspace);
-    stamped_system_with_sections(base, workspace, extra, &skills, None, None, &[], None, None)
+    stamped_system_with_sections(base, workspace, extra, &skills, &[])
 }
 
 /// [`stamped_system`] over skills collected elsewhere, the input path
@@ -120,44 +120,68 @@ pub fn stamped_system_with_skills(
     extra: &[ToolSpec],
     skills: &[Skill],
 ) -> Result<String, CodingAgentError> {
-    stamped_system_with_sections(base, workspace, extra, skills, None, None, &[], None, None)
+    stamped_system_with_sections(base, workspace, extra, skills, &[])
 }
 
 /// The full assembly: the template over `workspace`, the skills, the
-/// tool specs, and the two optional sections, `environment` (machine
-/// facts probed where commands run, see [`crate::environment`]) and
-/// `user` (the user's preferences file, verbatim). The template decides
-/// whether and where the sections appear; `None` is the section-less
-/// render the older constructors name.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "one parameter per prompt section keeps the render's inputs flat"
-)]
+/// tool specs, and the named sections the template references.
+///
+/// Sections travel as pairs (`("environment", json!("- OS: linux"))`),
+/// not as parameters, so the set is the caller's: the standard ones a
+/// frontend renders (`environment`, `user`, `vision`, `jobs`,
+/// `websearch`, `mcp`) and any a frontend of its own adds (`hear`, say)
+/// take the same path. The template decides whether and where each
+/// appears, and a section that is absent renders as an undefined
+/// variable, which is to say nothing.
 pub fn stamped_system_with_sections(
     base: Option<&str>,
     workspace: &Path,
     extra: &[ToolSpec],
     skills: &[Skill],
-    environment: Option<&str>,
-    user: Option<&str>,
-    mcp: &[rhema_prompt::prompt::McpServerLine],
-    vision: Option<&str>,
-    jobs: Option<&str>,
+    sections: &[(&str, serde_json::Value)],
 ) -> Result<String, CodingAgentError> {
     let mut tools = ShellTools::builtin_specs();
     tools.extend_from_slice(extra);
-    rhema_prompt::render_system_with_sections(
-        base.unwrap_or(crate::prompt::DEFAULT_SYSTEM_MD),
-        workspace,
-        skills,
-        &tools,
-        environment,
-        user,
-        mcp,
-        vision,
-        jobs,
-    )
-    .map_err(CodingAgentError::from)
+    let prompt = rhema_prompt::Prompt::new(workspace, skills, &tools)
+        .with_sections(sections.iter().map(|(name, value)| (*name, value.clone())));
+    rhema_prompt::render_system(base.unwrap_or(crate::prompt::DEFAULT_SYSTEM_MD), &prompt)
+        .map_err(CodingAgentError::from)
+}
+
+/// The prompt sections a config carries, in one list: the five the
+/// config names, then the MCP rows the wire step produced, then
+/// [`CodingAgentConfig::sections`], the caller's own.
+///
+/// One list on purpose. When each section was an argument to the render,
+/// a field could ship without its argument, and `websearch` did: the
+/// config set it and the prompt never carried it. Here a section the
+/// config holds is a section the prompt has.
+fn config_sections<'a>(
+    config: &'a CodingAgentConfig,
+    mcp: &'a [rhema_prompt::prompt::McpServerLine],
+) -> Vec<(&'a str, serde_json::Value)> {
+    let mut sections: Vec<(&str, serde_json::Value)> = Vec::new();
+    for (name, text) in [
+        ("environment", config.environment.as_deref()),
+        ("user", config.user_preferences.as_deref()),
+        ("vision", config.vision.as_deref()),
+        ("jobs", config.jobs.as_deref()),
+        ("websearch", config.websearch.as_deref()),
+    ] {
+        if let Some(text) = text {
+            sections.push((name, serde_json::json!(text)));
+        }
+    }
+    if !mcp.is_empty() {
+        sections.push(("mcp", serde_json::json!(mcp)));
+    }
+    sections.extend(
+        config
+            .sections
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.clone())),
+    );
+    sections
 }
 
 /// A coding agent: drives [`run_turn`] over the built-in tools, one turn at
@@ -252,6 +276,7 @@ impl CodingAgent {
             .filter(|line| !config.disabled_mcp_servers.contains(&line.server))
             .cloned()
             .collect();
+        let sections = config_sections(&config, &mcp);
         let system = match config.system.clone() {
             // An explicit total replacement is the escape hatch:
             // verbatim, not templated.
@@ -261,11 +286,7 @@ impl CodingAgent {
                 tools.workspace(),
                 &extra,
                 &skills,
-                config.environment.as_deref(),
-                config.user_preferences.as_deref(),
-                &mcp,
-                config.vision.as_deref(),
-                config.jobs.as_deref(),
+                &sections,
             )?,
         };
         // The skills section's byte share of the system prompt: the
@@ -281,21 +302,12 @@ impl CodingAgent {
                 // re-render differs from `system` by that section alone.
                 // The environment and user sections ride both renders
                 // identically, they carry no skills, and cancel out.
-                let mut bare = ShellTools::builtin_specs();
-                bare.extend_from_slice(&extra);
-                rhema_prompt::render_system_with_sections(
-                    config
-                        .base_system
-                        .as_deref()
-                        .unwrap_or(crate::prompt::DEFAULT_SYSTEM_MD),
+                stamped_system_with_sections(
+                    config.base_system.as_deref(),
                     tools.workspace(),
+                    &extra,
                     &[],
-                    &bare,
-                    config.environment.as_deref(),
-                    config.user_preferences.as_deref(),
-                    &mcp,
-                    config.vision.as_deref(),
-                    config.jobs.as_deref(),
+                    &sections,
                 )
                 .map(|without| system.len().saturating_sub(without.len()))
                 .unwrap_or(0)
@@ -1115,18 +1127,20 @@ mod extra_tools_tests {
     #[test]
     fn the_optional_sections_reach_the_prompt_where_the_template_places_them() {
         let workspace = std::env::temp_dir();
-        let prompt = stamped_system_with_sections(
-            None,
-            &workspace,
-            &[],
-            &[],
-            Some("## Environment\n\n- OS: test os"),
-            Some("prefer concise answers"),
-            &[],
-            Some("pipe bytes into `see`"),
-            Some("`job run` starts it"),
-        )
-        .unwrap();
+        let sections = vec![
+            (
+                "environment",
+                serde_json::json!("## Environment\n\n- OS: test os"),
+            ),
+            ("user", serde_json::json!("prefer concise answers")),
+            ("vision", serde_json::json!("pipe bytes into `see`")),
+            ("jobs", serde_json::json!("`job run` starts it")),
+            (
+                "hear",
+                serde_json::json!("`hear clip.mp3` attaches the clip"),
+            ),
+        ];
+        let prompt = stamped_system_with_sections(None, &workspace, &[], &[], &sections).unwrap();
         assert!(prompt.contains("- OS: test os"), "{prompt}");
         assert!(prompt.contains("prefer concise answers"), "{prompt}");
         assert!(prompt.contains("pipe bytes into `see`"), "{prompt}");
@@ -1138,6 +1152,80 @@ mod extra_tools_tests {
         assert!(!bare.contains("`job run` starts it"), "{bare}");
         assert!(!bare.contains("prefer concise answers"), "{bare}");
         assert!(!bare.contains("pipe bytes into `see`"), "{bare}");
+    }
+
+    /// The reason sections are a list: a frontend's own macro needs no
+    /// new parameter and no new config field order, only its name.
+    #[test]
+    fn a_section_the_crate_never_names_reaches_the_prompt() {
+        let sections = vec![(
+            "hear",
+            serde_json::json!("`hear clip.mp3` attaches the clip as audio"),
+        )];
+        let prompt = stamped_system_with_sections(
+            Some("base\n{% if hear %}Audio:\n{{ hear }}\n{% endif %}"),
+            &std::env::temp_dir(),
+            &[],
+            &[],
+            &sections,
+        )
+        .unwrap();
+        assert!(
+            prompt.contains("Audio:\n`hear clip.mp3` attaches the clip as audio"),
+            "{prompt}"
+        );
+    }
+
+    /// Every section the config carries is a section the prompt renders.
+    /// `websearch` used to be the counter-example: the config set it and
+    /// the render call had no argument for it, so the `search` macro was
+    /// never advertised. One list fixed the class, not the instance.
+    #[test]
+    fn the_config_folds_every_section_it_carries_into_one_list() {
+        let config = CodingAgentConfig {
+            environment: Some("env".to_owned()),
+            user_preferences: Some("prefs".to_owned()),
+            vision: Some("see".to_owned()),
+            jobs: Some("job".to_owned()),
+            websearch: Some("search".to_owned()),
+            sections: std::collections::BTreeMap::from([(
+                "hear".to_owned(),
+                serde_json::json!("hear"),
+            )]),
+            ..CodingAgentConfig::new(
+                Scripted(Mutex::new(Vec::new())),
+                "m",
+                std::env::temp_dir(),
+                AllowAll,
+            )
+        };
+        let lines = vec![rhema_prompt::McpServerLine {
+            name: "atlassian".into(),
+            server: "atlassian".into(),
+            description: "Jira".into(),
+        }];
+        let names: Vec<&str> = config_sections(&config, &lines)
+            .iter()
+            .map(|(name, _)| *name)
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "environment",
+                "user",
+                "vision",
+                "jobs",
+                "websearch",
+                "mcp",
+                "hear"
+            ]
+        );
+        // End to end through the built-in template: the section the
+        // config set is the section the prompt renders.
+        let sections = config_sections(&config, &lines);
+        let prompt =
+            stamped_system_with_sections(None, &std::env::temp_dir(), &[], &[], &sections).unwrap();
+        assert!(prompt.contains("## Web search"), "{prompt}");
     }
 }
 

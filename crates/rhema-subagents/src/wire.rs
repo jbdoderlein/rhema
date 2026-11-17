@@ -232,22 +232,27 @@ fn subagent_base_system(config: &CodingAgentConfig, workspace: &Path) -> String 
     };
     skills.retain(|skill| !config.disabled_skills.contains(&skill.name));
     let specs = ShellTools::builtin_specs();
+    // The subagent's own prompt carries no vision section: the function
+    // rides its env either way, and the section documents the parent
+    // shell's tool surface. Unlike vision, jobs does belong here: a
+    // subagent's whole point is long shell work, and the parent wired
+    // the function into the env this prompt's shell also runs with. No
+    // MCP section either: a subagent inherits the functions, not the
+    // disclosure.
+    let sections = [
+        ("environment", config.environment.as_deref()),
+        ("user", config.user_preferences.as_deref()),
+        ("jobs", config.jobs.as_deref()),
+    ]
+    .into_iter()
+    .filter_map(|(name, text)| text.map(|text| (name, serde_json::json!(text))))
+    .collect::<Vec<_>>();
     rhema_coding_agent::stamped_system_with_sections(
         config.base_system.as_deref(),
         workspace,
         &specs,
         &skills,
-        config.environment.as_deref(),
-        config.user_preferences.as_deref(),
-        &[],
-        // The subagent's own prompt carries no vision section: the
-        // function rides its env either way, and the section documents
-        // the parent shell's tool surface.
-        None,
-        // Unlike vision, jobs does belong here: a subagent's whole point
-        // is long shell work, and the parent wired the function into the
-        // env this prompt's shell also runs with.
-        config.jobs.as_deref(),
+        &sections,
     )
     .unwrap_or_else(|err| {
         eprintln!(

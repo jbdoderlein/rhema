@@ -248,23 +248,35 @@ pub(crate) fn system_show_at_with_mcp(
     // step runs, minus the runtime: no bridge, no spawns. A preview
     // must never have side effects, so the lines are what the
     // session WOULD disclose, not what it has.
+    let mut sections: Vec<(&str, serde_json::Value)> = Vec::new();
+    if let Some(text) = environment.as_deref() {
+        sections.push(("environment", serde_json::json!(text)));
+    }
+    if let Some(text) = user.as_deref() {
+        sections.push(("user", serde_json::json!(text)));
+    }
+    if !mcp.is_empty() {
+        sections.push(("mcp", serde_json::json!(mcp)));
+    }
+    // The vision section is static text a local session always
+    // carries; the preview never provisions, it just shows the block
+    // the template would render.
+    sections.push((
+        "vision",
+        serde_json::json!(rhema_bash::vision::PROMPT_SECTION),
+    ));
+    // Jobs is the one section a machine may lack outright: its backend
+    // is a separate install, so the preview asks the same probe the
+    // wire uses rather than promising a command that would not exist.
+    if rhema_bash::jobs::available() {
+        sections.push(("jobs", serde_json::json!(rhema_bash::jobs::PROMPT_SECTION)));
+    }
     Ok(rhema_coding_agent::stamped_system_with_sections(
         resolve_base_system(path).as_deref(),
         &workspace,
         &extra,
         &skills,
-        environment.as_deref(),
-        user.as_deref(),
-        &mcp,
-        // The vision section is static text a local session always
-        // carries; the preview never provisions, it just shows the
-        // block the template would render.
-        Some(rhema_bash::vision::PROMPT_SECTION),
-        // Jobs is the one section a machine may lack outright: its
-        // backend is a separate install, so the preview asks the same
-        // probe the wire uses rather than promising a command that
-        // would not exist.
-        rhema_bash::jobs::available().then_some(rhema_bash::jobs::PROMPT_SECTION),
+        &sections,
     )?)
 }
 

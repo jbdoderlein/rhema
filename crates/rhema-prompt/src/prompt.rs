@@ -1,11 +1,13 @@
 //! The system-prompt template renderer: one markdown template, Jinja.
 //!
 //! The template language is Jinja, which prompt templates across the
-//! LLM ecosystem already speak. [`render_system`] is the standard
-//! shape, `{{ workspace }}`, the discovered `skills`, the advertised
-//! `tools`; [`render_template`] is the same engine over a caller's own
-//! variables, so an agent with other per-dispatch values (the claw's
-//! SOUL/USER sections, say) renders with the one syntax and the one
+//! LLM ecosystem already speak. [`render_system`] takes a [`Prompt`]:
+//! the workspace, the discovered `skills`, the advertised `tools`, and
+//! whatever named sections the caller's template references. Nothing
+//! here knows a section's name, so a frontend's own macro arrives as
+//! one more entry, not a new parameter. [`render_template`] is the same
+//! engine over a plain context, for text that is nobody's system prompt
+//! (the environment report's manifest, say): one syntax, one set of
 //! whitespace rules. Rendering is fallible on purpose: a template error
 //! surfaces loudly at agent construction instead of silently rendering
 //! half the prompt, while a misspelled variable renders empty
@@ -38,71 +40,82 @@ pub struct McpServerLine {
     pub description: String,
 }
 
-/// Renders a SYSTEM.md template: `{{ workspace }}` becomes the
-/// workspace path, `skills` holds the discovered skills as `name`,
-/// `description`, and `path` fields, and `tools` holds the advertised
-/// tool specs as `name`, `description`, and `parameters` (the JSON
-/// schema, renderable with `json` for prompt text or `tojson` where the
-/// output feeds HTML), all there for `{% for %}`/`{% if %}`. Undefined
-/// variables render empty; syntax and filter errors return with
-/// template positions.
+/// One render's inputs: the three values the driver produces, and the
+/// named sections the caller's template references.
 ///
-/// The optional sections ([`render_system_with_sections`]) are absent
-/// here: a template that references them renders those parts empty,
-/// exactly as a caller that passes `None` for each.
-pub fn render_system(
-    template: &str,
-    workspace: &Path,
-    skills: &[Skill],
-    tools: &[ToolSpec],
-) -> Result<String, TemplateError> {
-    render_system_with_sections(
-        template,
-        workspace,
-        skills,
-        tools,
-        None,
-        None,
-        &[],
-        None,
-        None,
-    )
+/// The three are the driver's own: it knows the workspace, it found the
+/// skills, it advertises the tools. Sections are the caller's, and
+/// nothing here names them. A frontend wiring a macro of its own (a
+/// `hear` function beside `see`, say) contributes its section under the
+/// variable its template spells, and the renderer places it exactly as
+/// it places `environment` or `vision`. No section, no value: a template
+/// that guards on it renders nothing, the same as an undefined variable.
+#[derive(Debug)]
+pub struct Prompt<'a> {
+    workspace: &'a Path,
+    skills: &'a [Skill],
+    tools: &'a [ToolSpec],
+    sections: Vec<(&'a str, serde_json::Value)>,
 }
 
-/// [`render_system`] with the two optional prompt sections: `environment`
-///, machine facts the frontend probed where commands run, and `user`,
-/// the user's own preferences file, verbatim. Both ride the template as
-/// plain string variables (`{{ environment }}`, `{% if user %}`), so the
-/// template decides whether and where they appear; `None` renders the
-/// referencing parts empty, the same as an undefined variable. The
-/// `mcp`, `vision`, and `jobs` sections ride the same way: each is text
-/// a frontend provisioned, or `None` for a frontend that wired nothing.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "one parameter per prompt section keeps the render's inputs flat"
-)]
-pub fn render_system_with_sections(
-    template: &str,
-    workspace: &Path,
-    skills: &[Skill],
-    tools: &[ToolSpec],
-    environment: Option<&str>,
-    user: Option<&str>,
-    mcp: &[McpServerLine],
-    vision: Option<&str>,
-    jobs: Option<&str>,
-) -> Result<String, TemplateError> {
-    let context = serde_json::json!({
-        "workspace": workspace.display().to_string(),
-        "skills": skills,
-        "tools": tools,
-        "environment": environment,
-        "user": user,
-        "mcp": mcp,
-        "vision": vision,
-        "jobs": jobs,
-    });
-    render_template(template, &context)
+impl<'a> Prompt<'a> {
+    /// The three the renderer always carries: `workspace` (the path as
+    /// text), `skills` (the discovered list, `name`, `description`,
+    /// `license`, `path`), and `tools` (the advertised specs, `name`,
+    /// `description`, `parameters`, the JSON schema).
+    pub fn new(workspace: &'a Path, skills: &'a [Skill], tools: &'a [ToolSpec]) -> Self {
+        Self {
+            workspace,
+            skills,
+            tools,
+            sections: Vec::new(),
+        }
+    }
+
+    /// Adds `value` under `name`, the template variable it renders as.
+    /// Anything that is JSON can ride: a section's prose, a list of
+    /// rows, a struct behind `serde_json::json!`. A later value of the
+    /// same name replaces an earlier one.
+    #[must_use]
+    pub fn section(mut self, name: &'a str, value: impl Into<serde_json::Value>) -> Self {
+        self.sections.push((name, value.into()));
+        self
+    }
+
+    /// Adds a whole list at once, the shape a frontend folds its config
+    /// into. Same naming rule as [`section`](Self::section).
+    #[must_use]
+    pub fn with_sections(
+        mut self,
+        sections: impl IntoIterator<Item = (&'a str, serde_json::Value)>,
+    ) -> Self {
+        self.sections.extend(sections);
+        self
+    }
+}
+
+/// Renders a SYSTEM.md template over a [`Prompt`]: `{{ workspace }}`
+/// becomes the workspace path, `skills` and `tools` are loops over
+/// their lists, and every section the prompt carries is a variable of
+/// its name. Undefined variables render empty; syntax and filter errors
+/// return with template positions. `{{ tools[i].parameters | json }}`
+/// is the compact spelling of a schema; `tojson` is the HTML-safe one.
+///
+/// This is [`render_template`] over `Prompt`'s variables. A caller with
+/// none of them (a report, a document) calls [`render_template`]
+/// directly with its own context.
+pub fn render_system(template: &str, prompt: &Prompt<'_>) -> Result<String, TemplateError> {
+    let mut context = serde_json::Map::new();
+    context.insert(
+        "workspace".to_owned(),
+        serde_json::json!(prompt.workspace.display().to_string()),
+    );
+    context.insert("skills".to_owned(), serde_json::json!(prompt.skills));
+    context.insert("tools".to_owned(), serde_json::json!(prompt.tools));
+    for (name, value) in &prompt.sections {
+        context.insert((*name).to_owned(), value.clone());
+    }
+    render_template(template, &serde_json::Value::Object(context))
 }
 
 /// The `json` filter: a value as compact JSON, no HTML-safe escaping.
@@ -176,9 +189,20 @@ mod tests {
         )
     }
 
+    /// The four-argument shape most tests use: a prompt with no
+    /// sections.
+    fn render(
+        template: &str,
+        workspace: &Path,
+        skills: &[Skill],
+        tools: &[ToolSpec],
+    ) -> Result<String, TemplateError> {
+        render_system(template, &Prompt::new(workspace, skills, tools))
+    }
+
     #[test]
     fn render_fills_the_workspace_and_leaves_other_braces_alone() {
-        let out = render_system(
+        let out = render(
             "work in {{ workspace }}, keep {mystery}",
             Path::new("/ws"),
             &[],
@@ -190,7 +214,7 @@ mod tests {
 
     #[test]
     fn a_for_loop_renders_its_body_once_per_skill() {
-        let out = render_system(
+        let out = render(
             "{% for skill in skills %}- {{ skill.name }}: {{ skill.description }}, cat {{ skill.path }}\n{% endfor %}",
             Path::new("/ws"),
             &[skill("a", "da"), skill("b", "db")],
@@ -205,7 +229,7 @@ mod tests {
 
     #[test]
     fn a_for_loop_renders_its_body_once_per_tool_with_the_schema() {
-        let out = render_system(
+        let out = render(
             "{% for tool in tools %}- {{ tool.name }}: {{ tool.description }}, {{ tool.parameters | tojson }}\n{% endfor %}",
             Path::new("/ws"),
             &[],
@@ -234,7 +258,7 @@ mod tests {
                 }
             }),
         );
-        let out = render_system(
+        let out = render(
             "{{ tools[0].parameters | json }}",
             Path::new("/ws"),
             &[],
@@ -245,7 +269,7 @@ mod tests {
         assert!(!out.contains("\\u0027"), "{out}");
         assert!(!out.contains("\\u003c"), "{out}");
 
-        let escaped = render_system(
+        let escaped = render(
             "{{ tools[0].parameters | tojson }}",
             Path::new("/ws"),
             &[],
@@ -263,37 +287,16 @@ mod tests {
             server: "atlassian".into(),
             description: "Jira and Confluence".into(),
         }];
-        let out = render_system_with_sections(
-            template,
-            Path::new("/ws"),
-            &[],
-            &[],
-            None,
-            None,
-            &lines,
-            None,
-            None,
-        )
-        .unwrap();
+        let with = Prompt::new(Path::new("/ws"), &[], &[]).section("mcp", json!(lines));
+        let out = render_system(template, &with).unwrap();
         assert_eq!(
             out,
             "MCP:\n- atlassian (server: atlassian): Jira and Confluence\n"
         );
-        let out = render_system_with_sections(
-            template,
-            Path::new("/ws"),
-            &[],
-            &[],
-            None,
-            None,
-            &[],
-            None,
-            None,
-        )
-        .unwrap();
-        // A false block leaves a single newline behind (minijinja's
-        // trim_blocks keeps it); what matters is that the content
-        // vanishes, heading included.
+        // No rows, no section: the empty list is falsy in the template,
+        // the same render a prompt that never carried one produces.
+        let empty = Prompt::new(Path::new("/ws"), &[], &[]).section("mcp", json!([]));
+        let out = render_system(template, &empty).unwrap();
         assert!(!out.contains("atlassian"), "{out:?}");
         assert!(!out.contains("MCP:"), "{out:?}");
     }
@@ -301,18 +304,18 @@ mod tests {
     #[test]
     fn an_if_around_the_skills_section_holds_a_vanishing_heading() {
         let template = "{% if skills %}Skills (name / trigger / file):\n{% for skill in skills %}{{ skill.name }} / {{ skill.description }} / {{ skill.path }}\n{% endfor %}{% endif %}";
-        let with = render_system(template, Path::new("/ws"), &[skill("s", "d")], &[]).unwrap();
+        let with = render(template, Path::new("/ws"), &[skill("s", "d")], &[]).unwrap();
         assert_eq!(
             with,
             "Skills (name / trigger / file):\ns / d / /cfg/skills/s/SKILL.md\n"
         );
-        let without = render_system(template, Path::new("/ws"), &[], &[]).unwrap();
+        let without = render(template, Path::new("/ws"), &[], &[]).unwrap();
         assert_eq!(without, "\n");
     }
 
     #[test]
     fn a_misspelled_variable_renders_empty_not_an_error() {
-        let out = render_system(
+        let out = render(
             "{% for skill in skills %}{{ skill.nope }}{{ skill.name }}{% endfor %}",
             Path::new("/ws"),
             &[skill("s", "d")],
@@ -324,14 +327,14 @@ mod tests {
 
     #[test]
     fn a_template_error_surfaces_instead_of_rendering_prose() {
-        let err = render_system("{% if skills %} never closed", Path::new("/ws"), &[], &[])
+        let err = render("{% if skills %} never closed", Path::new("/ws"), &[], &[])
             .expect_err("an unclosed block is a loud error, not prose");
         assert!(err.to_string().contains("system"), "{err}");
     }
 
     #[test]
     fn a_template_without_the_block_presents_no_skills() {
-        let out = render_system(
+        let out = render(
             "base in {{ workspace }}\n",
             Path::new("/ws"),
             &[skill("s", "d")],
@@ -344,46 +347,51 @@ mod tests {
     #[test]
     fn the_sections_render_where_the_template_places_them() {
         let template = "open\n{% if user %}{{ user }}\n{% endif %}{% if environment %}{{ environment }}\n{% endif %}close";
-        let out = render_system_with_sections(
-            template,
-            Path::new("/ws"),
-            &[],
-            &[],
-            Some("- OS: linux"),
-            Some("prefer short answers"),
-            &[],
-            None,
-            None,
-        )
-        .unwrap();
+        let prompt = Prompt::new(Path::new("/ws"), &[], &[])
+            .section("environment", "- OS: linux")
+            .section("user", "prefer short answers");
+        let out = render_system(template, &prompt).unwrap();
         assert_eq!(out, "open\nprefer short answers\n- OS: linux\nclose\n");
+    }
+
+    /// The reason sections are a map and not parameters: a frontend's
+    /// own macro (an audio `hear` beside the image `see`, say) names
+    /// its own variable, and the template decides where it lands. No
+    /// list of names here has to grow for it.
+    #[test]
+    fn a_section_the_crate_never_names_renders_where_the_template_places_it() {
+        let prompt = Prompt::new(Path::new("/ws"), &[], &[])
+            .section("hear", "`hear clip.mp3` attaches the clip as audio");
+        let out = render_system("{% if hear %}Audio:\n{{ hear }}\n{% endif %}", &prompt).unwrap();
+        assert_eq!(out, "Audio:\n`hear clip.mp3` attaches the clip as audio\n");
+    }
+
+    #[test]
+    fn with_sections_takes_a_frontend_s_folded_list() {
+        let sections = vec![("vision", json!("see docs")), ("user", json!("terse"))];
+        let prompt = Prompt::new(Path::new("/ws"), &[], &[]).with_sections(sections);
+        let out = render_system("{{ vision }} / {{ user }}", &prompt).unwrap();
+        assert_eq!(out, "see docs / terse\n");
+    }
+
+    #[test]
+    fn a_later_section_of_the_same_name_replaces_the_earlier_one() {
+        let prompt = Prompt::new(Path::new("/ws"), &[], &[])
+            .section("jobs", "first")
+            .section("jobs", "second");
+        assert_eq!(render_system("{{ jobs }}", &prompt).unwrap(), "second\n");
     }
 
     #[test]
     fn absent_sections_render_nothing_like_undefined_variables() {
-        // A `None` section serializes to minijinja's undefined: the
-        // guarding `{% if %}` stays false and the template's own lines
-        // survive alone, the same render a template that never named
-        // the sections produces.
-        let template = "open\n{% if user %}{{ user }}\n{% endif %}close";
-        let without = render_system_with_sections(
-            template,
+        let bare = render(
+            "open\n{% if user %}{{ user }}\n{% endif %}close",
             Path::new("/ws"),
             &[],
             &[],
-            None,
-            None,
-            &[],
-            None,
-            None,
         )
         .unwrap();
-        assert_eq!(without, "open\nclose\n");
-        assert_eq!(
-            render_system(template, Path::new("/ws"), &[], &[]).unwrap(),
-            without,
-            "render_system is the sections-less form of the same render"
-        );
+        assert_eq!(bare, "open\nclose\n");
     }
 
     #[test]

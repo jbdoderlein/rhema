@@ -14,7 +14,7 @@
 use std::path::Path;
 
 use rhema_bash::ShellTools;
-use rhema_prompt::render_system;
+use rhema_prompt::{Prompt, render_system};
 
 /// The built-in system prompt, kept as data next to the code and read
 /// in whole, the full prompt, visible and editable in one place,
@@ -28,9 +28,7 @@ pub const DEFAULT_SYSTEM_MD: &str = include_str!("../SYSTEM.md");
 pub fn default_system(workspace: &Path) -> String {
     render_system(
         DEFAULT_SYSTEM_MD,
-        workspace,
-        &[],
-        &ShellTools::builtin_specs(),
+        &Prompt::new(workspace, &[], &ShellTools::builtin_specs()),
     )
     .expect("the built-in template is valid")
 }
@@ -49,6 +47,17 @@ mod tests {
             path: format!("/cfg/skills/{name}/SKILL.md").into(),
             body: "the rules".into(),
         }
+    }
+
+    /// The built-in template over a skills and tools list, no sections.
+    fn render(
+        skills: &[rhema_prompt::Skill],
+        tools: &[ToolSpec],
+    ) -> Result<String, rhema_prompt::TemplateError> {
+        render_system(
+            DEFAULT_SYSTEM_MD,
+            &Prompt::new(Path::new("/ws"), skills, tools),
+        )
     }
 
     fn tool(name: &str, description: &str) -> ToolSpec {
@@ -84,12 +93,7 @@ mod tests {
         // advertises nothing.
         let bare = default_system(Path::new("/ws"));
         assert!(!bare.contains("Web search"), "{bare}");
-        let wired = render_system(
-            DEFAULT_SYSTEM_MD,
-            Path::new("/ws"),
-            &[],
-            &ShellTools::builtin_specs(),
-        );
+        let wired = render(&[], &ShellTools::builtin_specs());
         // The section rides the same interpolation the vision and
         // jobs sections do; here we only pin the conditional's two
         // branches against the template's own variable.
@@ -101,13 +105,7 @@ mod tests {
 
     #[test]
     fn the_default_prompt_presents_each_skill_field_to_the_model() {
-        let out = render_system(
-            DEFAULT_SYSTEM_MD,
-            Path::new("/ws"),
-            &[skill("my-skill", "its trigger text")],
-            &[],
-        )
-        .unwrap();
+        let out = render(&[skill("my-skill", "its trigger text")], &[]).unwrap();
         assert!(out.contains("my-skill"), "{out}");
         assert!(out.contains("its trigger text"), "{out}");
         assert!(out.contains("/cfg/skills/my-skill/SKILL.md"), "{out}");
@@ -115,13 +113,7 @@ mod tests {
 
     #[test]
     fn the_default_prompt_presents_each_tool_field_to_the_model() {
-        let out = render_system(
-            DEFAULT_SYSTEM_MD,
-            Path::new("/ws"),
-            &[],
-            &[tool("my-tool", "its purpose")],
-        )
-        .unwrap();
+        let out = render(&[], &[tool("my-tool", "its purpose")]).unwrap();
         assert!(out.contains("my-tool"), "{out}");
         assert!(out.contains("its purpose"), "{out}");
         assert!(
@@ -135,9 +127,7 @@ mod tests {
     /// the schema can never end up grouped with the last catalog line.
     #[test]
     fn a_multi_line_description_stays_inside_its_bullet() {
-        let out = render_system(
-            DEFAULT_SYSTEM_MD,
-            Path::new("/ws"),
+        let out = render(
             &[],
             &[tool(
                 "my-tool",

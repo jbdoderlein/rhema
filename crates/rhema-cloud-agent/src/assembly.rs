@@ -214,6 +214,9 @@ impl AgentAssembly {
             vision: None,
             jobs: None,
             websearch: None,
+            // The client names every section its prompt carries, so the
+            // open list stays empty here.
+            sections: std::collections::BTreeMap::new(),
         };
         (config, shell)
     }

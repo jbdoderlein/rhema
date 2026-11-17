@@ -89,4 +89,4 @@ pub use prompt::{DEFAULT_SYSTEM_MD, default_system};
 // The two tool crates the driver is built on, under this crate's name:
 // every downstream driver (TUI, ACP, the claw) keeps its import paths.
 pub use rhema_bash::{AllowAll, Approval, DenyAll, ShellTools};
-pub use rhema_prompt::{render_system, render_template};
+pub use rhema_prompt::{Prompt, render_system, render_template};

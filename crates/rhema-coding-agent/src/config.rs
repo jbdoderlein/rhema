@@ -216,6 +216,14 @@ pub struct CodingAgentConfig {
     /// executor, no providers configured) advertises nothing, the
     /// same rule [`vision`](Self::vision) follows.
     pub websearch: Option<String>,
+    /// Prompt sections this crate does not name: one template variable
+    /// per entry, values as JSON. The renderer places each exactly as it
+    /// places the named sections above, and an entry that reuses one of
+    /// their names replaces it. A frontend wiring a macro of its own (a
+    /// `hear` function beside `see`, say) puts its section under the
+    /// variable its template spells, so the crate needs no new field for
+    /// it.
+    pub sections: std::collections::BTreeMap<String, serde_json::Value>,
     /// The directory conventions skill discovery reads when
     /// [`skills`](Self::skills) is `None`: the user-wide skills directory
     /// and the cross-agent `.agents/skills` convention. `None`, the
@@ -300,6 +308,7 @@ impl CodingAgentConfig {
             vision: None,
             jobs: None,
             websearch: None,
+            sections: std::collections::BTreeMap::new(),
             home: None,
         }
     }

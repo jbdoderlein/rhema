@@ -255,18 +255,9 @@ fn the_skills_share_excludes_the_mcp_section() {
         }]
     };
     let render = |skills: &[rhema_prompt::Skill], mcp: &[rhema_prompt::prompt::McpServerLine]| {
-        rhema_prompt::render_system_with_sections(
-            rhema_coding_agent::DEFAULT_SYSTEM_MD,
-            &workspace,
-            skills,
-            &[],
-            None,
-            None,
-            mcp,
-            None,
-            None,
-        )
-        .unwrap()
+        let prompt = rhema_prompt::Prompt::new(&workspace, skills, &[])
+            .section("mcp", serde_json::json!(mcp));
+        rhema_prompt::render_system(rhema_coding_agent::DEFAULT_SYSTEM_MD, &prompt).unwrap()
     };
     let short = render(&skills, &mcp("Jira"));
     let bare_short = render(&[], &mcp("Jira"));
