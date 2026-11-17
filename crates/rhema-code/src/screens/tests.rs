@@ -1485,6 +1485,87 @@ fn alt_enter_and_ctrl_j_add_lines_plain_enter_submits() {
 }
 
 #[test]
+fn alt_backspace_and_alt_delete_erase_one_word() {
+    let mut chat = ChatState::new();
+    chat.insert_str("git commit -m msg");
+    chat.handle_key(
+        KeyEvent::new(KeyCode::Backspace, KeyModifiers::ALT),
+        &[],
+        &[],
+        &[],
+        &crate::icons::UNICODE,
+    );
+    assert_eq!(chat.input, "git commit -m ");
+    assert_eq!(chat.cursor, 14);
+    // The deleted word takes its leading whitespace with it.
+    chat.handle_key(
+        KeyEvent::new(KeyCode::Backspace, KeyModifiers::ALT),
+        &[],
+        &[],
+        &[],
+        &crate::icons::UNICODE,
+    );
+    assert_eq!(chat.input, "git commit ");
+    // At the start of the input, nothing is left to delete.
+    chat.handle_key(key(KeyCode::Home), &[], &[], &[], &crate::icons::UNICODE);
+    chat.handle_key(
+        KeyEvent::new(KeyCode::Backspace, KeyModifiers::ALT),
+        &[],
+        &[],
+        &[],
+        &crate::icons::UNICODE,
+    );
+    assert_eq!(chat.input, "git commit ");
+
+    chat.handle_key(key(KeyCode::Home), &[], &[], &[], &crate::icons::UNICODE);
+    chat.handle_key(
+        KeyEvent::new(KeyCode::Delete, KeyModifiers::ALT),
+        &[],
+        &[],
+        &[],
+        &crate::icons::UNICODE,
+    );
+    assert_eq!(chat.input, " commit ");
+    assert_eq!(chat.cursor, 0);
+    // Plain backspace stays one character.
+    chat.handle_key(key(KeyCode::End), &[], &[], &[], &crate::icons::UNICODE);
+    chat.handle_key(
+        key(KeyCode::Backspace),
+        &[],
+        &[],
+        &[],
+        &crate::icons::UNICODE,
+    );
+    assert_eq!(chat.input, " commit");
+}
+
+#[test]
+fn alt_backspace_drops_the_chip_of_an_erased_paste() {
+    let mut chat = ChatState::new();
+    chat.insert_str("before ");
+    chat.paste("one\ntwo\nthree\nfour");
+    chat.insert_str(" after");
+    // The paste is an attachment: one cell, anchored by MARK.
+    assert_eq!(chat.chips.len(), 1);
+    for _ in 0..2 {
+        chat.handle_key(
+            KeyEvent::new(KeyCode::Backspace, KeyModifiers::ALT),
+            &[],
+            &[],
+            &[],
+            &crate::icons::UNICODE,
+        );
+    }
+    assert_eq!(chat.input, "before ");
+    assert!(chat.chips.is_empty(), "the anchor's payload goes with it");
+    assert_eq!(chat.cursor, 7);
+    assert_eq!(
+        chat.handle_key(key(KeyCode::Enter), &[], &[], &[], &crate::icons::UNICODE),
+        submit("before ")
+    );
+}
+
+#[test]
 fn a_paste_lands_on_the_dialogs_credential_line_without_control_characters() {
     let mut settings = settings_screen();
     settings.dialog = Some(AddInstanceDialog::new(&settings.stored));

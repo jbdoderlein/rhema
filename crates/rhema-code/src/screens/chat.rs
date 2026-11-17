@@ -270,13 +270,56 @@ impl ChatState {
         }
     }
 
-    /// Byte offset of the cursor inside `input` (a char boundary).
-    fn byte_offset(&self) -> usize {
+    /// Byte offset of a character index inside `input` (a char boundary).
+    fn byte_offset_at(&self, index: usize) -> usize {
         self.input
             .char_indices()
-            .nth(self.cursor)
+            .nth(index)
             .map(|(index, _)| index)
             .unwrap_or(self.input.len())
+    }
+
+    /// Byte offset of the cursor inside `input`.
+    fn byte_offset(&self) -> usize {
+        self.byte_offset_at(self.cursor)
+    }
+
+    /// Deletes the word left of the cursor: its trailing whitespace,
+    /// then the run of non-whitespace before it. Alt-Backspace is the
+    /// readline `backward-kill-word` shape.
+    fn delete_word_backward(&mut self) {
+        if self.cursor == 0 {
+            return;
+        }
+        let chars: Vec<char> = self.input.chars().collect();
+        let mut start = self.cursor.min(chars.len());
+        while start > 0 && chars[start - 1].is_whitespace() {
+            start -= 1;
+        }
+        while start > 0 && !chars[start - 1].is_whitespace() {
+            start -= 1;
+        }
+        let end = self.byte_offset();
+        self.delete_range(self.byte_offset_at(start), end);
+        self.cursor = start;
+    }
+
+    /// Deletes the word right of the cursor, the forward counterpart of
+    /// [`Self::delete_word_backward`]: leading whitespace, then the run
+    /// of non-whitespace after it.
+    fn delete_word_forward(&mut self) {
+        let chars: Vec<char> = self.input.chars().collect();
+        if self.cursor >= chars.len() {
+            return;
+        }
+        let mut end = self.cursor;
+        while end < chars.len() && chars[end].is_whitespace() {
+            end += 1;
+        }
+        while end < chars.len() && !chars[end].is_whitespace() {
+            end += 1;
+        }
+        self.delete_range(self.byte_offset(), self.byte_offset_at(end));
     }
 
     /// Handles one keypress. Ctrl combos are the app's (quit, model
@@ -351,6 +394,18 @@ impl ChatState {
                 };
                 self.input.insert(self.byte_offset(), c);
                 self.cursor += 1;
+                self.palette_index = 0;
+                ChatAction::None
+            }
+            // Alt-Backspace and Alt-Delete erase by word, the readline
+            // pair every shell and every editor binds.
+            KeyCode::Backspace if key.modifiers.contains(KeyModifiers::ALT) => {
+                self.delete_word_backward();
+                self.palette_index = 0;
+                ChatAction::None
+            }
+            KeyCode::Delete if key.modifiers.contains(KeyModifiers::ALT) => {
+                self.delete_word_forward();
                 self.palette_index = 0;
                 ChatAction::None
             }
