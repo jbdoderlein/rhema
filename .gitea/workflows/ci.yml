@@ -37,6 +37,12 @@ jobs:
       - name: Clippy (warnings are errors)
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      # A stale doc link is a broken path for the reader who follows
+      # it, and rustdoc finds them for free. `--all-features` so the
+      # feature-gated items resolve rather than reading as missing.
+      - name: Documentation (warnings are errors)
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
+
       - name: Build (release)
         run: cargo build --release --workspace
 

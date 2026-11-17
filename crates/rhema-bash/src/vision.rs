@@ -19,7 +19,7 @@
 //!   carries the init file's path, the binary's, and the staging
 //!   directory's; [`wire`] builds it once per process and a frontend
 //!   layers the map over `CodingAgentConfig::shell_env`.
-//! - [`attach`] runs after every `bash` command that reaches an exit:
+//! - `attach` runs after every `bash` command that reaches an exit:
 //!   [`ShellTools`](crate::ShellTools) drains the staging directory,
 //!   turns each staged image into a [`ToolResult`] image block, and
 //!   notes the rest in text. Bytes never ride stdout, so output caps
@@ -29,7 +29,7 @@
 //! belongs in the model's context, attaches even when the command
 //! failed or timed out. A session whose bash runs elsewhere (a remote
 //! sandbox, an executor behind a wire) wires nothing: its commands
-//! cannot write where [`attach`] reads, the same rule the MCP wire
+//! cannot write where `attach` reads, the same rule the MCP wire
 //! applies for its socket.
 
 use std::collections::BTreeMap;
@@ -57,7 +57,7 @@ pub use crate::init::VAR_BASH_ENV;
 /// The env var holding the binary the function execs.
 pub const VAR_BIN: &str = "RHEMA_VISION_BIN";
 /// The env var holding the staging directory the function writes and
-/// [`attach`] drains.
+/// `attach` drains.
 pub const VAR_STAGING: &str = "RHEMA_VISION_STAGING";
 
 /// The largest image one staged file may carry: 5 MB, the API-side
@@ -235,7 +235,7 @@ fn exit_code(err: &StageError) -> i32 {
 
 /// Stages one image: sniff, size check, write under a name only this
 /// process would reuse. The extension stays `.img`, the type lives in
-/// the bytes, and [`attach`] sniffs again, so a mislabeled file cannot
+/// the bytes, and `attach` sniffs again, so a mislabeled file cannot
 /// mislead anyone.
 ///
 /// # Errors

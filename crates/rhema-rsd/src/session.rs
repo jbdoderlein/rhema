@@ -1,7 +1,7 @@
 //! The persistent per-key session: RSD state wrapped around crate 1's
 //! caller-owned session.
 //!
-//! One [`Session`] per [`ResourceKey`](crate::ResourceKey), forever. It wraps
+//! One [`Session`] per [`ResourceKey`], forever. It wraps
 //! [`rhema_core::Session`], the history the step engine appends to plus the
 //! driver's opaque blob, and adds the RSD fields from spec §5. Fully
 //! serializable: checkpointing round-trips the whole struct through the

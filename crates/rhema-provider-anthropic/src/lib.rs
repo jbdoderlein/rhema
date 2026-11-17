@@ -5,7 +5,7 @@
 //! with `stream: true` per exchange, the API key in the `x-api-key` header
 //! (or `Authorization: Bearer` via `with_bearer_auth`, for the
 //! Anthropic-compatible endpoints such as Z.ai's GLM Coding Plan route,
-//! [`ZAI_BASE_URL`](provider::ZAI_BASE_URL)) and the pinned
+//! [`ZAI_BASE_URL`]) and the pinned
 //! `anthropic-version` header, the SSE event stream decoded
 //! into rhema-core [`Event`](rhema_core::Event)s and assembled into a
 //! [`ModelOutput`](rhema_core::ModelOutput). `GET {base}/v1/models` lists

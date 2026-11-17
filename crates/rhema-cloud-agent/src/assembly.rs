@@ -4,7 +4,7 @@
 //! terminal agent reads off disk: the model id, the session's SYSTEM.md
 //! from durable storage, the skills seeded into the sandbox, the
 //! approval policy. [`AgentAssembly::assemble`] builds a
-//! [`CodingAgent`](rhema_coding_agent::CodingAgent) whose shell runs in
+//! [`CodingAgent`] whose shell runs in
 //! the sandbox and whose construction touches no host path, the
 //! workspace string is meaningful only inside the sandbox.
 #![forbid(unsafe_code)]

@@ -1,6 +1,6 @@
 //! The approval gate for a runtime with one thread.
 //!
-//! [`Approval::approve`] is synchronous by contract, and the existing
+//! `Approval::approve` is synchronous by contract, and the existing
 //! frontends block inside it, the ACP adapter parks a worker thread
 //! until the editor answers. workerd has no second thread to park: a
 //! native block there would stall the isolate and deadlock the very

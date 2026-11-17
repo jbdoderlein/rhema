@@ -87,7 +87,7 @@ pub struct Manifest {
 }
 
 /// The baked-in manifest (`environment.yaml` at the crate root), parsed
-/// once. A manifest that does not parse falls to [`fallback_report`]:
+/// once. A manifest that does not parse falls to `fallback_report`:
 /// the drift test is where that break belongs, never a startup.
 pub fn manifest() -> &'static Manifest {
     static MANIFEST: OnceLock<Manifest> = OnceLock::new();

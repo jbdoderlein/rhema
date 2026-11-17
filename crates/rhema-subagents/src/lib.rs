@@ -38,7 +38,7 @@
 //!   subscription
 //! - [`kind`]: the `subagent` submission kind: child sessions, adoption,
 //!   recovery, the report read from disk
-//! - [`wire`]: the explicit `CodingAgentConfig` helper frontends call
+//! - [`wire()`]: the explicit `CodingAgentConfig` helper frontends call
 //!
 //! The crate is an extension: it depends on the existing stack and
 //! nothing depends on it. `rhema-core` is untouched.

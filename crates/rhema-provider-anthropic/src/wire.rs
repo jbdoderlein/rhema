@@ -26,7 +26,7 @@
 //!   the `tool_result` block: the API's `tool_result.content` accepts
 //!   a block array, text first, one `image` source per image after.
 //! - `tool_use.input` must be a JSON object: objects pass through, absent
-//!   args become `{}`, anything else is wrapped under [`WRAPPED_ARGS_KEY`].
+//!   args become `{}`, anything else is wrapped under `WRAPPED_ARGS_KEY`.
 //!   Call ids and names round-trip verbatim.
 //! - Reasoning replay: a streamed thinking block never joins the assembled
 //!   message, but it is the chain of thought that led to the next call, so
@@ -878,7 +878,7 @@ fn texts_of(message: &Message) -> Vec<String> {
 }
 
 /// `tool_use.input` must be a JSON object: objects pass through, absent
-/// args become `{}`, anything else is wrapped under [`WRAPPED_ARGS_KEY`].
+/// args become `{}`, anything else is wrapped under `WRAPPED_ARGS_KEY`.
 fn object_args(args: &Value) -> Value {
     if args.is_object() {
         args.clone()

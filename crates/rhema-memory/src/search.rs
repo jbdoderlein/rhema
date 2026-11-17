@@ -3,7 +3,7 @@
 //! Crate-internal on purpose, [`crate::MemoryStore::search`] promises
 //! ranked-best-first and nothing about the method, so a semantic ranker
 //! replaces the scoring without touching a signature. What must survive
-//! that swap lives outside it, in [`select`]: the default visibility
+//! that swap lives outside it, in `select`: the default visibility
 //! rules (active, inside the validity window) and the guarantee that a
 //! dead record never outranks a live one.
 

@@ -49,7 +49,7 @@
 //! ```
 //!
 //! Layout:
-//! - [`wire`]: OpenRouter's [`Dialect`], the paginated catalog with
+//! - [`wire`]: OpenRouter's [`Dialect`](rhema_provider_openai_compatible::Dialect), the paginated catalog with
 //!   per-token pricing, and the credits/auth-key allowance parsing
 //! - [`provider`]: the HTTP transport (catalog, allowance) and the
 //!   [`ModelProvider`](rhema_core::ModelProvider) implementation,

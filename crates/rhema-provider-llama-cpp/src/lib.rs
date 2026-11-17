@@ -34,7 +34,7 @@
 //! ```
 //!
 //! Layout:
-//! - [`wire`]: llama.cpp's [`Dialect`], the models-page normalization,
+//! - [`wire`]: llama.cpp's [`Dialect`](rhema_provider_openai_compatible::Dialect), the models-page normalization,
 //!   and the `/props` context lookup
 //! - [`provider`]: the HTTP transport (models, props) and the
 //!   [`ModelProvider`](rhema_core::ModelProvider) implementation,

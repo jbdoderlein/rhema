@@ -4,8 +4,8 @@
 //! Every `rhema-websearch-*` crate implements the [`WebSearchProvider`]
 //! seam against one vendor's API; this crate holds only what they all
 //! share: the [`SearchQuery`] a caller builds, the
-//! [`SearchResult`](crate::result::SearchResult) list an adapter
-//! answers, the [`SearchError`](crate::error::SearchError) classes an
+//! [`SearchResult`] list an adapter
+//! answers, the [`SearchError`] classes an
 //! adapter reports, and the [`Chain`] that tries a frontend's
 //! configured providers in order and stops at the first success. No
 //! HTTP here: the transport stays in the adapters, reqwest behind a
@@ -31,7 +31,7 @@
 //! - [`error`]: the failure classes and the chain's aggregate
 //! - [`provider`]: the adapter seam
 //! - [`chain`]: ordered fallback, first success wins
-//! - [`render`]: the markdown a `search` command prints
+//! - [`render()`]: the markdown a `search` command prints
 //! - [`mock`]: the scripted provider (feature `mock`)
 
 #![forbid(unsafe_code)]

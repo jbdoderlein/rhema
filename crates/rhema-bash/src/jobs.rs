@@ -19,10 +19,10 @@
 //!
 //! - **A shell string.** `gob add` takes an argv, so a model writing
 //!   `gob add 'echo hi > f'` gets `echo` with those as arguments and a
-//!   clean exit code. [`run_command`] wraps the model's line in
+//!   clean exit code. `run_command` wraps the model's line in
 //!   `bash -c`, so shell syntax keeps meaning what it looks like.
 //! - **Attribution.** Every job this session starts carries a
-//!   `[<session>]` prefix in its description, and [`ls_command`] filters
+//!   `[<session>]` prefix in its description, and `ls_command` filters
 //!   on it: two sessions in one workspace see their own jobs, `--dir` is
 //!   the deliberate shared view of one directory, and `--all` is the
 //!   machine's.
@@ -35,7 +35,7 @@
 //!   another session's job never silences that session's own feed.
 //! - **Refusal.** The backend's own dedupe reuses an identical running
 //!   command and rewrites its description, which would hand one session's
-//!   server to another. [`run_command`] lists first and refuses instead,
+//!   server to another. `run_command` lists first and refuses instead,
 //!   naming the owner.
 //!
 //! The prompt promises the model a notification when a job finishes or

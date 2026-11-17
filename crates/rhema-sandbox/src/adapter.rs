@@ -1,11 +1,11 @@
 //! The `bash` tool over a sandbox.
 //!
 //! [`ShellSandbox`] adapts the [`Sandbox`] seam onto
-//! [`ShellExecutor`](rhema_bash::ShellExecutor), so the tool the
+//! [`ShellExecutor`], so the tool the
 //! model sees is exactly the built-in one,
-//! [`ShellTools::builtin_specs`] is the single source of truth for the
+//! `ShellTools::builtin_specs` is the single source of truth for the
 //! spec, and the approval gate, the output caps, and the error shaping
-//! all stay in [`ShellTools`]. Nothing about the spec text says where
+//! all stay in `ShellTools`. Nothing about the spec text says where
 //! the command runs, and nothing here forks it.
 #![forbid(unsafe_code)]
 

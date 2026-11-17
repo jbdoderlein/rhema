@@ -37,7 +37,7 @@
 //! - [`conflict`]: subject-overlap detection for the write path
 //! - [`review`]: the due-for-review sweep
 //! - [`volatile`]: the in-process `VolatileStore`
-//! - [`file`]: the markdown-file `FileMemoryStore`, the durable default
+//! - [`file`](mod@file): the markdown-file `FileMemoryStore`, the durable default
 //! - [`tools`]: the memory tools and `MemoryResolver`
 //! - [`store_contract`]: the replayable behavioral suite (`store-contract` feature)
 

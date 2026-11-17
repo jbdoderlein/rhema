@@ -36,7 +36,7 @@
 //!   mapper keeps `error.message` and falls back to the raw body. The
 //!   stream can also fail mid-turn with a `data: {"error": ...}` chunk
 //!   (then closing it), which surfaces as the same
-//!   [`ProviderError::Api`](rhema_core::ProviderError::Api).
+//!   [`ProviderError::Api`].
 
 use std::collections::HashMap;
 

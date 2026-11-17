@@ -192,7 +192,7 @@ where
 
 /// The most bytes one delivered line may hold in memory. A command
 /// that never emits a newline, a spinner, `yes | tr -d '\n'`, would
-/// otherwise pin its whole output in the line buffer; [`read_until`]
+/// otherwise pin its whole output in the line buffer; `read_until`
 /// grows without bound. The overrun is consumed but not kept, and a
 /// marker line follows the truncated one, so framing survives and the
 /// elision is visible.

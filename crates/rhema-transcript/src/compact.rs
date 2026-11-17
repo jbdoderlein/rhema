@@ -155,7 +155,7 @@ Carry facts, not commentary. Omit a heading when the range gives it nothing.";
 /// The model fill over any [`ModelProvider`]: the range goes to the
 /// worker as one rendered transcript, the answer comes back capped at
 /// [`SUMMARY_MAX_BYTES`]. Retryable provider errors are retried
-/// [`ModelSummarizer::attempts`] times; anything else fails straight
+/// `with_attempts` times; anything else fails straight
 /// to the extractive stand-in.
 pub struct ModelSummarizer {
     provider: Arc<dyn ModelProvider>,

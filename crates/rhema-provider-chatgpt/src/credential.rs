@@ -1,6 +1,6 @@
 //! The credential a ChatGPT sign-in produces.
 //!
-//! The login flow returns one opaque string, the [`InteractiveLogin`]
+//! The login flow returns one opaque string, the [`InteractiveLogin`](rhema_provider::InteractiveLogin)
 //! seam's shape. Here that string is a small JSON object: the
 //! OAuth tokens, plus the account id, email, plan, and expiry the ID
 //! token's claims name. A bare string is accepted too, as an access
@@ -112,7 +112,7 @@ impl ChatGptCredential {
     }
 
     /// Whether the credential is close enough to expiry to refresh now:
-    /// `true` within [`EXPIRY_MARGIN`] seconds, `false` when it carries
+    /// `true` within `EXPIRY_MARGIN` seconds, `false` when it carries
     /// no expiry (the server stays the authority).
     pub fn needs_refresh(&self, now: u64) -> bool {
         self.expires_at

@@ -4,7 +4,7 @@
 //! "local direct" row): exec runs the shim's argv,
 //! `timeout --kill-after=5 <secs> bash -c <command>`, as a child of
 //! this process, its working directory mapped through the
-//! [`FsRoot`](rhema_sandbox::FsRoot). The kill is the prefix's, not
+//! [`FsRoot`]. The kill is the prefix's, not
 //! tokio's: the budget is the mechanism the spec's kill-semantics
 //! decision (§4/§9) fixed, so `ExecRequest::timeout` means the same
 //! thing on every backend that lacks a per-command kill, including

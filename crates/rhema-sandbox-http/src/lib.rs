@@ -3,7 +3,7 @@
 //! [`HttpSandbox`] is the same request/reply handling `SandboxDo`
 //! performs over its DO binding, minus the binding: one JSON POST per
 //! route to `{base}/{session}{route}`, the shared secret in
-//! [`protocol::TOKEN_HEADER`](rhema_sandbox::protocol::TOKEN_HEADER). `base` is
+//! [`protocol::TOKEN_HEADER`]. `base` is
 //! the daemon's location (`https://box.example:7600`, no trailing
 //! slash); the session name is the one path segment ahead of every
 //! route, the daemon multiplexes one root directory per session name

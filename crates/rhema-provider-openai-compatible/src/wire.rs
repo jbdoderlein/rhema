@@ -9,7 +9,7 @@
 //! constraints (the wire has a role for everything rhema-core has):
 //! - `model` is passed through verbatim and never validated here: the
 //!   server owns rejection, so a malformed request surfaces as a 400 mapped
-//!   to [`ProviderError::Api`](rhema_core::ProviderError::Api).
+//!   to [`ProviderError::Api`].
 //! - Roles map one-to-one after [`ModelRequest::normalized`] has folded
 //!   every `Role::System` message into `ModelRequest.system`, which becomes
 //!   the single leading `system` message (text blocks joined by a blank
@@ -66,7 +66,7 @@
 //!   turn. Empty arguments become `{}`.
 //! - `finish_reason` maps onto rhema-core's stop reason, with any tool call
 //!   in the assembled message winning as
-//!   [`StopReason::ToolUse`](rhema_core::StopReason::ToolUse), the same
+//!   [`StopReason::ToolUse`], the same
 //!   rule as the sibling adapters. The legacy `"function"` reason maps to
 //!   `ToolUse` beside `"tool_calls"`.
 //! - `delta.reasoning_content` becomes one `ThinkingDelta` per non-empty
@@ -78,7 +78,7 @@
 //!   mapper keeps `error.message` and falls back to the raw body. A server
 //!   can also fail mid-stream with a `data: {"error": ...}` chunk (then
 //!   closing the stream), which surfaces as the same
-//!   [`ProviderError::Api`](rhema_core::ProviderError::Api).
+//!   [`ProviderError::Api`].
 //! - Models: `GET {base}/models` returns `{"data": [{...}]}`. The generic
 //!   listing guarantees only `data[].id`; `name`, `description`, and
 //!   `context_length` are read when present and everything else is

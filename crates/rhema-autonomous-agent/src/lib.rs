@@ -12,8 +12,8 @@
 //! runs, acquire, live inbox, checkpoint, release, the spec §3 loop
 //! with `poll_inbox` batched at step boundaries and a checkpoint per
 //! round. The [**registry**](registry) aggregates named
-//! [`Tool`](registry::Tool)s into a `rhema_core::ToolResolver` filtered
-//! by an [`Allowlist`](allowlist::Allowlist) fixed before the handler's
+//! [`Tool`]s into a `rhema_core::ToolResolver` filtered
+//! by an [`Allowlist`] fixed before the handler's
 //! first step (spec §8).
 //!
 //! Deliberately deferred, with the reasoning recorded where the decision

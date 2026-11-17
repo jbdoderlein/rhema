@@ -11,10 +11,10 @@
 //! must not launder the start's classification.
 //!
 //! The spawned task runs the same inner path a synchronous call always
-//! ran: a fresh [`Agent`](rhema_core::Agent) over the stamped parent
+//! ran: a fresh [`Agent`] over the stamped parent
 //! prompt with the named [`SubagentDef`]'s body appended, a bounded
 //! step loop on a
-//! fresh [`Session`](rhema_core::Session) whose first message is the
+//! fresh [`Session`] whose first message is the
 //! `prompt`, reading its history through the bounded transcript view.
 //! The inner turn inherits five things and nothing else: where it
 //! rides, the call's optional `model` argument over the definition's
@@ -801,7 +801,7 @@ impl SubagentTools {
     }
 
     /// The status handle backed by this tool's registry: the UI's
-    /// subscription, and, through [`Registry`]'s [`Steering`]
+    /// subscription, and, through [`Registry`]'s [`Steering`](rhema_coding_agent::Steering)
     /// implementation, the driver's notification source. The same
     /// instance the tool resolver starts jobs into, held weakly so the
     /// handle never keeps the tool alive; a restart past the drop is

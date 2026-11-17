@@ -124,7 +124,7 @@ impl OpenAiCompatibleProvider {
         self
     }
 
-    /// Speaks another [`Dialect`], another server family's spelling of
+    /// Speaks another [`Dialect`](crate::Dialect), another server family's spelling of
     /// the same chat-completions vocabulary. This is how
     /// `rhema-provider-openrouter` and `…-llama-cpp` reuse this
     /// transport: their providers hold one of these, dialed to their

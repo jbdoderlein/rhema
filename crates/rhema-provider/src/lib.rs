@@ -3,13 +3,13 @@
 //! Every `rhema-provider-*` crate implements rhema-core's `ModelProvider`
 //! seam against one backend API; this crate holds only what they all
 //! share: the [`ModelCard`] their catalog listings normalize into, the
-//! [`Pricing`](crate::pricing::Pricing) record attached to priced rows,
-//! the [`Allowance`](crate::allowance::Allowance) their account reports,
-//! and the [`SseDecoder`](crate::stream::SseDecoder) their SSE streams
+//! [`Pricing`] record attached to priced rows,
+//! the [`Allowance`] their account reports,
+//! and the [`SseDecoder`] their SSE streams
 //! decode through. What varies per backend stays in the adapter,
 //! including which of its listed models count as text chat models, so a
 //! `list_models` call only ever hands out rows the coding agent can drive.
-//! The one exception is the [`login`](crate::login) seam: OAuth-style
+//! The one exception is the [`login`] seam: OAuth-style
 //! handshakes repeat across backends, so an adapter declares its flow
 //! there and any frontend renders it without knowing the protocol.
 //!

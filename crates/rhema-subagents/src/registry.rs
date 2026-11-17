@@ -13,7 +13,7 @@
 //! next step boundary, the jobs are bound to the agent's lifetime,
 //! and their reports are lost with it.
 //!
-//! Concurrency: at most [`Registry::max_running`] top-level jobs run
+//! Concurrency: at most `max_running` top-level jobs run
 //! at once; a start beyond the cap queues, the id is still minted and
 //! returned at once, and the job begins when a slot frees.
 //!
@@ -24,9 +24,9 @@
 //! implementation is one notification line per finished-but-unfetched
 //! job, a pure query, the driver deduplicates within a turn, and a
 //! crash between its append and its checkpoint only re-delivers. And
-//! the two consuming takes serve the frontend: [`Registry::take_finished`]
+//! the two consuming takes serve the frontend: `take_finished`
 //! delivers each finish once, the transcript notice, and
-//! [`Registry::take_notifications`] hands a session with no running
+//! `take_notifications` hands a session with no running
 //! turn the pending lines to run as the next turn's prompt, retiring
 //! them so the driver's drain does not repeat what the prompt already
 //! said.
@@ -36,7 +36,7 @@
 //! infrastructure, the model call died on the network or the server,
 //! the same class the provider's retry ladder waits out, and the job
 //! carried everything it needs to run again, so the user's retry
-//! command restarts it in place: [`Registry::restart_failed`] moves
+//! command restarts it in place: `restart_failed` moves
 //! every transient-failed job back to queued under its own id, with a
 //! fresh cancel flag and clock, and hands the spawn ingredients back
 //! to the tool. The pending failure announcements retire with the
@@ -134,7 +134,7 @@ pub enum Fetched {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JobFailure {
     /// The infrastructure failed: a dead link, a transport timeout, a
-    /// struggling server, every [`ProviderError`] a retry ladder
+    /// struggling server, every [`ProviderError`](rhema_core::ProviderError) a retry ladder
     /// would wait out. The job may run again; the user's retry
     /// command restarts it from its start.
     Transient(String),
@@ -153,7 +153,7 @@ impl JobFailure {
         }
     }
 
-    /// Whether the failure is one [`Registry::restart_failed`] picks
+    /// Whether the failure is one `restart_failed` picks
     /// up.
     pub fn is_transient(&self) -> bool {
         matches!(self, JobFailure::Transient(_))

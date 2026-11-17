@@ -6,7 +6,7 @@
 //! statement atomicity (`INSERT` for a must-not-exist create, `UPDATE ...
 //! WHERE revision = ?` for a guarded write), and the `resource_key`,
 //! `revision`, and `updated_at` columns stay queryable for ops, matching
-//! the §7 table shape. [`VolatileStore`] and this backend are interchangeable
+//! the §7 table shape. [`VolatileStore`](crate::VolatileStore) and this backend are interchangeable
 //! behind the [`Store`] seam; this one replays the exact behavioral suite
 //! via the `store-contract` feature.
 //!
