@@ -379,6 +379,25 @@ pub fn describe(name: &str, args: &str) -> String {
             (Some(name), None) => name.to_owned(),
             _ => "(no subagent)".to_owned(),
         },
+        // A zoom call opens an address in the log: the id and n it
+        // asks for, then the byte offset when it pages. Without an id
+        // the arguments are still streaming, so the name stands alone.
+        "zoom" => {
+            let number = |key: &str| parsed.get(key).and_then(|value| value.as_u64());
+            match number("id") {
+                Some(id) => {
+                    let mut out = match number("n") {
+                        Some(n) => format!("zoom({id}, {n})"),
+                        None => format!("zoom({id})"),
+                    };
+                    if let Some(at) = number("at") {
+                        out.push_str(&format!(" at {at}"));
+                    }
+                    out
+                }
+                None => "zoom".to_owned(),
+            }
+        }
         other => other.to_owned(),
     }
 }
@@ -767,6 +786,27 @@ mod tests {
     #[test]
     fn describe_falls_back_for_unknown_tools() {
         assert_eq!(describe("mystery", "{}"), "mystery");
+    }
+
+    #[test]
+    fn a_zoom_call_reads_as_its_address() {
+        assert_eq!(describe("zoom", r#"{"id": 3, "n": 2}"#), "zoom(3, 2)");
+        assert_eq!(
+            describe("zoom", r#"{"id": 3}"#),
+            "zoom(3)",
+            "an omitted n stays unshown"
+        );
+        assert_eq!(
+            describe("zoom", r#"{"id": 3, "n": 1, "at": 4096}"#),
+            "zoom(3, 1) at 4096",
+            "a paging call carries its byte offset"
+        );
+        assert_eq!(
+            describe("zoom", "{}"),
+            "zoom",
+            "no id yet: the arguments are still streaming"
+        );
+        assert_eq!(describe("zoom", "not json"), "zoom");
     }
 
     #[test]

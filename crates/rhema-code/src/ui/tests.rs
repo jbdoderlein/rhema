@@ -1993,6 +1993,29 @@ mod scroll_tests {
         assert!(screen.contains("✓"), "{screen}");
     }
 
+    /// A zoom call's row shows the range it opened.
+    #[test]
+    fn a_zoom_call_renders_its_arguments() {
+        let mut app = chat_app();
+        app.transcript.apply(&OwnedEvent::ToolCallStart {
+            id: "c1".into(),
+            name: "zoom".into(),
+        });
+        app.transcript.apply(&OwnedEvent::ToolCallArgsDelta {
+            id: "c1".into(),
+            delta: r#"{"id": 3, "n": 2}"#.into(),
+        });
+        app.transcript.apply(&OwnedEvent::ToolResult {
+            id: "c1".into(),
+            content: "3+2|the third message".into(),
+            is_error: false,
+            code: None,
+        });
+        let screen = screen_text(&mut app);
+        assert!(screen.contains("zoom(3, 2)"), "{screen}");
+        assert!(screen.contains("✓"), "{screen}");
+    }
+
     /// The providers page reports the stored key state: one row per
     /// instance with its provider, the active one marked, the add row
     /// closing the list.
