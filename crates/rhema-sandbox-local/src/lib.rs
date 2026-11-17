@@ -2,10 +2,13 @@
 //!
 //! [`LocalSandbox`] is the fs-sharing family's direct member (spec §4's
 //! "local direct" row): exec runs the shim's argv,
-//! `timeout --kill-after=5 <secs> bash -c <command>`, as a child of
-//! this process, its working directory mapped through the
-//! [`FsRoot`]. The kill is the prefix's, not
-//! tokio's: the budget is the mechanism the spec's kill-semantics
+//! `timeout --kill-after=5 <secs> bash -c <command>` (`setsid` in front
+//! where the host has one), as a child of this process, its working
+//! directory mapped through the [`FsRoot`]. Commands are captured, not
+//! interactive: `/dev/null` on stdin and the bash tool's
+//! `NONINTERACTIVE_ENV` guards, so an editor or pager fails fast
+//! instead of taking the frontend's terminal. The kill is the prefix's,
+//! not tokio's: the budget is the mechanism the spec's kill-semantics
 //! decision (§4/§9) fixed, so `ExecRequest::timeout` means the same
 //! thing on every backend that lacks a per-command kill, including
 //! this one. `timeout` kills at the budget (exit 124) and
@@ -89,13 +92,28 @@ impl Sandbox for LocalSandbox {
             return Err(SandboxError::Failed("cancelled".into()));
         }
         let cwd = self.root.map(&request.cwd)?;
-        let child = tokio::process::Command::new("timeout")
+        // `setsid` first, so the whole family (timeout, bash, whatever
+        // the command starts) is in a session with no controlling
+        // terminal; timeout's group kill still reaches it. Without
+        // `setsid` (macOS, Git Bash) the `/dev/null` stdin and the env
+        // guards are the fallback.
+        let mut process = match exec_util::setsid_executable() {
+            Some(setsid) => {
+                let mut process = tokio::process::Command::new(setsid);
+                process.arg("timeout");
+                process
+            }
+            None => tokio::process::Command::new("timeout"),
+        };
+        let child = process
             .arg("--kill-after=5")
             .arg(request.timeout.as_secs().to_string())
             .arg("bash")
             .arg("-c")
             .arg(&request.command)
             .current_dir(cwd)
+            .envs(exec_util::NONINTERACTIVE_ENV.iter().copied())
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             // The explicit kill below is the mechanism on cancel; the
@@ -233,6 +251,27 @@ mod tests {
             ],
         );
         dir
+    }
+
+    #[tokio::test]
+    async fn exec_reads_eof_and_carries_the_noninteractive_guards() {
+        if !timeout_available() {
+            println!(
+                "skipping: no GNU `timeout` on PATH; the local sandbox enforces budgets with it"
+            );
+            return;
+        }
+        let (sandbox, _dir) = sandbox();
+        let outcome = run(
+            &sandbox,
+            request(
+                "read -r line; printf '%s|%s|%s\\n' \"$?\" \"$GIT_EDITOR\" \"$GIT_TERMINAL_PROMPT\"",
+            ),
+        )
+        .await
+        .expect("the command runs");
+        assert_eq!(outcome.code, Some(0));
+        assert_eq!(outcome.stdout, b"1|false|0\n");
     }
 
     #[tokio::test]

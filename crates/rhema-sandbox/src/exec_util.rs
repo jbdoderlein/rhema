@@ -19,6 +19,12 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use crate::fsroot::FsRoot;
 use crate::{ExecOutcome, ExecRequest, SandboxError};
 
+/// The environment a captured command runs with, and the host's `setsid`
+/// probe, re-exported from the bash tool's executor: every backend that
+/// spawns a host process applies the same "no terminal" contract, and
+/// the definition lives where the `bash` tool's spec does.
+pub use rhema_bash::exec::{NONINTERACTIVE_ENV, setsid_executable};
+
 /// The stream tail a finished command keeps, the shim's
 /// `MAX_STREAM_BYTES`: a runaway command cannot flood memory, and the
 /// tool applies its display caps again on top (spec §3, caps are
