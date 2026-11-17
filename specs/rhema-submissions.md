@@ -879,8 +879,11 @@ would leave the shells already holding the old init path.
 is no Rust point at which the session can be written. The poller
 submits a record the first time it sees a running row for the tag, and
 `adopt` covers the rest from one listing at load. A job that starts
-and ends between two ticks is one poll's notice; that is the existing
-behavior and not worse.
+and ends between two ticks arrives already stopped: the poller keeps
+every id its listings have carried, and an id it has never listed is a
+finish (with the start its record needs), so a short job is announced
+and recorded like any other. The first listing is the past — `adopt`
+owns it — and a row the session stopped itself stays silent.
 
 **Recovery** asks the daemon once per tag, with the listing cached for
 the pass:
