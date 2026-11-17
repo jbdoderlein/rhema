@@ -9,7 +9,8 @@
 //!
 //! Layout:
 //! - [`message`]: `Role`, `Content`, `Message`, the `Image` block
-//! - [`paste`]: embedded pastes in message text: the chip codec
+//! - [`paste`]: paste spans in message text: the chip record, and the
+//!   legacy embedded-form migration
 //! - [`session`]: the caller-owned, serializable `Session`
 //! - [`workspace`]: the checkout's directory conventions: `.rhema`
 //!   and the tiers under it
@@ -18,7 +19,10 @@
 //! - [`provider`]: the `ModelProvider` seam
 //! - [`tool`]: the `ToolResolver` seam
 //! - [`event`]: `Event`, `EventSink`
-//! - [`engine`]: the `Agent` step engine, `AgentBuilder`, `run_turn`
+//! - [`engine`]: the `Agent` step engine, `AgentBuilder`, `run_turn`,
+//!   the dangling-call close/revive pair
+//! - [`overlay`]: `Overlay`, one resolver over built-ins plus an
+//!   extension set
 //! - [`mock`]: scripted `MockProvider` (behind the `mock` feature)
 
 #![forbid(unsafe_code)]
@@ -29,6 +33,7 @@ pub mod message;
 #[cfg(feature = "mock")]
 pub mod mock;
 pub mod output;
+pub mod overlay;
 pub mod paste;
 pub mod provider;
 pub mod request;
@@ -40,13 +45,15 @@ pub mod workspace;
 // without adding the crate themselves.
 pub use async_trait::async_trait;
 pub use engine::{
-    Agent, AgentBuilder, AgentError, CommitError, CommitHook, close_orphaned_calls, run_turn,
+    Agent, AgentBuilder, AgentError, CommitError, CommitHook, close_orphaned_calls,
+    revive_dangling_calls, run_turn,
 };
 pub use event::{Event, EventSink};
 pub use message::{Content, Image, ImageMediaType, Message, Role};
 #[cfg(feature = "mock")]
 pub use mock::MockProvider;
 pub use output::{ModelOutput, Step, StopReason, Usage};
+pub use overlay::Overlay;
 pub use provider::{ModelProvider, ProviderError};
 pub use request::{ChatParams, ModelRequest, ToolSpec};
 pub use session::Session;

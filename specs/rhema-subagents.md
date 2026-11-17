@@ -207,7 +207,7 @@ resolve(call, ctx):
 The feature is explicit at the frontends; the driver never discovers
 subagents on its own.
 
-1. **`rhema-agent-tools`: `Overlay`**, a two-resolver combiner. `specs`
+1. **`rhema-core`: `Overlay`**, a two-resolver combiner. `specs`
    lists the primary's specs first, then the extras, extras winning name
    collisions; `resolve` consults the extra first, then the primary;
    `replay_safety` likewise. Plus `ShellTools::current_approval`, the

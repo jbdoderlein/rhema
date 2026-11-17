@@ -1,6 +1,6 @@
 [package]
 name = "rhema-agent-tools"
-description = "The shared agent toolkit on rhema-core's tool abstraction: the approval-gated shell, skills, paste expansion, dangling-call repair, the system-prompt renderer"
+description = "The shared agent toolkit on rhema-core's tool abstraction: the approval-gated shell, skills, the vision and web-search macros, the system-prompt renderer"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -6,6 +6,7 @@
 //! or a model switch must render the same lines the live stream produced
 //! (within the summary/truncation rules).
 
+use rhema_core::paste::PasteSpan;
 use rhema_core::{Content, Image, Message, Role};
 // The one truncation rule, shared with the session store's picker rows.
 use rhema_session_store::truncate_chars;
@@ -22,13 +23,18 @@ pub const ARGS_MAX_CHARS: usize = 400;
 /// One renderable line of the chat transcript.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Line {
-    /// A user prompt: the text in its session form (paste payloads
-    /// embedded at their anchors) and the images that rode beside it.
+    /// A user prompt: its plain text (paste payloads in place), the
+    /// chips the frontend recorded for it, and the images that rode
+    /// beside it.
     User {
-        /// The prompt's session-form text.
+        /// The prompt's text, payloads in place.
         text: String,
         /// The images the prompt carried, in submission order.
         images: Vec<Image>,
+        /// The paste spans the message's `rhema-code` annotation
+        /// records, in prompt order; the transcript draws each as a
+        /// chip instead of the payload.
+        pastes: Vec<PasteSpan>,
     },
     /// Assistant text; streamed deltas merge into these lines.
     Assistant(String),
@@ -123,7 +129,7 @@ impl Transcript {
                             _ => None,
                         })
                         .collect();
-                    transcript.push_user(&text, images);
+                    transcript.push_user_with(&text, images, rhema_core::paste::spans(message));
                 }
                 Role::Assistant => {
                     for content in &message.content {
@@ -180,11 +186,18 @@ impl Transcript {
         self.lines.is_empty()
     }
 
-    /// Adds the line for a submitted user prompt.
+    /// Adds the line for a submitted user prompt with no chips.
     pub fn push_user(&mut self, text: &str, images: Vec<Image>) {
+        self.push_user_with(text, images, Vec::new());
+    }
+
+    /// Adds the line for a submitted user prompt: its plain text, the
+    /// images beside it, and the paste spans its chips stand for.
+    pub fn push_user_with(&mut self, text: &str, images: Vec<Image>, pastes: Vec<PasteSpan>) {
         self.lines.push(Line::User {
             text: text.to_owned(),
             images,
+            pastes,
         });
     }
 
@@ -605,6 +618,7 @@ mod tests {
         let history = vec![
             Message::text(Role::User, "fix it"),
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![
                     Content::Text("on it".into()),
@@ -612,6 +626,7 @@ mod tests {
                 ],
             },
             Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![Content::ToolResult(
                     rhema_core::ToolResult::success("c1", "file body").with_code(0),
@@ -622,16 +637,44 @@ mod tests {
         assert_eq!(rebuilt.lines(), streamed.lines());
     }
 
-    /// A submitted paste travels embedded in the session text; a resume
-    /// rebuild reads the same line the live stream pushed, so the chip
-    /// survives across sessions.
+    /// A submitted paste travels as plain text plus a span annotation; a
+    /// resume rebuild reads the same line the live stream pushed, so the
+    /// chip survives across sessions.
     #[test]
-    fn an_embedded_paste_rebuilds_identically() {
-        let text = rhema_core::paste::embed("look", &["l1\nl2\nl3\nl4".to_owned()]);
+    fn a_paste_with_spans_rebuilds_identically() {
+        let payload = "l1\nl2\nl3\nl4";
+        let text = format!("look at {payload}");
+        let spans = vec![PasteSpan {
+            start: "look at ".len(),
+            end: "look at ".len() + payload.len(),
+            lines: 4,
+        }];
         let mut streamed = Transcript::new();
-        streamed.push_user(&text, Vec::new());
-        let rebuilt = Transcript::from_history(&[Message::text(Role::User, &text)]);
+        streamed.push_user_with(&text, Vec::new(), spans.clone());
+        let mut message = Message::text(Role::User, text.clone());
+        rhema_core::paste::annotate(&mut message, &spans);
+        let rebuilt = Transcript::from_history(&[message]);
         assert_eq!(rebuilt.lines(), streamed.lines());
+    }
+
+    /// A session written before spans existed still rebuilds its chips:
+    /// the loader migrates the embedded form into a span annotation.
+    #[test]
+    fn a_legacy_embedded_paste_rebuilds_as_a_chip() {
+        let payload = "l1\nl2\nl3\nl4";
+        let embedded = rhema_core::paste::embed(
+            &format!("look at {}", rhema_core::paste::MARK),
+            &[payload.to_owned()],
+        );
+        let mut message = Message::text(Role::User, embedded);
+        rhema_core::paste::migrate(std::slice::from_mut(&mut message));
+        let text = format!("look at {payload}");
+        assert_eq!(message.content, Message::text(Role::User, text).content);
+        let rebuilt = Transcript::from_history(&[message]);
+        match &rebuilt.lines()[0] {
+            Line::User { pastes, .. } => assert_eq!(pastes.len(), 1),
+            other => panic!("expected a user line, got {other:?}"),
+        }
     }
 
     /// An image submitted beside the prompt rebuilds with its chip: a

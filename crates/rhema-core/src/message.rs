@@ -5,6 +5,8 @@
 //! `serde`-friendly: the driver must be able to checkpoint a session
 //! containing them (SPEC.md §6).
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::tool::{ToolCall, ToolResult};
@@ -48,6 +50,15 @@ pub struct Message {
     pub role: Role,
     /// Ordered content blocks; a single turn may mix text and tool blocks.
     pub content: Vec<Content>,
+    /// Consumer-owned notes about this message, keyed by consumer name
+    /// (`rhema-code` records its paste spans here). The engine, the
+    /// providers, and the tool loop never read them: they exist so a
+    /// frontend can record a display decision beside the text it made
+    /// and find it again after a checkpoint. Serde-defaulted and
+    /// skipped when empty, so files written before the field existed
+    /// load without it.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub annotations: BTreeMap<String, serde_json::Value>,
 }
 
 impl Message {
@@ -56,6 +67,7 @@ impl Message {
         Self {
             role,
             content: vec![Content::Text(text.into())],
+            annotations: BTreeMap::new(),
         }
     }
 
@@ -65,7 +77,22 @@ impl Message {
         let mut content = Vec::with_capacity(images.len() + 1);
         content.push(Content::Text(text.into()));
         content.extend(images.into_iter().map(Content::Image));
-        Self { role, content }
+        Self {
+            role,
+            content,
+            annotations: BTreeMap::new(),
+        }
+    }
+
+    /// Records `data` for `consumer` on this message, replacing any note
+    /// the same consumer left before.
+    pub fn annotate(&mut self, consumer: impl Into<String>, data: serde_json::Value) {
+        self.annotations.insert(consumer.into(), data);
+    }
+
+    /// The note `consumer` left on this message, if any.
+    pub fn annotation(&self, consumer: &str) -> Option<&serde_json::Value> {
+        self.annotations.get(consumer)
     }
 
     /// A user message carrying `text`; the shorthand for
@@ -175,6 +202,7 @@ mod tests {
     #[test]
     fn message_round_trips_through_serde() {
         let message = Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![
                 Content::Text("running the check".into()),
@@ -189,6 +217,28 @@ mod tests {
         };
         let json = serde_json::to_string(&message).unwrap();
         let back: Message = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, message);
+    }
+
+    #[test]
+    fn a_message_without_annotations_keeps_the_pre_annotation_shape() {
+        let json = serde_json::to_string(&Message::user("hi")).unwrap();
+        assert!(!json.contains("annotations"));
+        let back: Message = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, Message::user("hi"));
+    }
+
+    #[test]
+    fn an_annotation_rides_the_message_through_serde() {
+        let mut message = Message::user("hi");
+        message.annotate("rhema-code", serde_json::json!({ "pastes": [] }));
+        assert_eq!(
+            message.annotation("rhema-code"),
+            Some(&serde_json::json!({ "pastes": [] }))
+        );
+        assert!(message.annotation("someone-else").is_none());
+        let back: Message =
+            serde_json::from_str(&serde_json::to_string(&message).unwrap()).unwrap();
         assert_eq!(back, message);
     }
 

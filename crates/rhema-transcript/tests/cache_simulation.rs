@@ -292,6 +292,7 @@ fn append_step(log: &mut Vec<Message>, rng: &mut Rng, step: usize, calls: &mut u
         call_id = Some(id);
     }
     log.push(Message {
+        annotations: Default::default(),
         role: Role::Assistant,
         content,
     });
@@ -311,6 +312,7 @@ fn append_step(log: &mut Vec<Message>, rng: &mut Rng, step: usize, calls: &mut u
             ToolResult::success(id, payload)
         };
         log.push(Message {
+            annotations: Default::default(),
             role: Role::Tool,
             content: vec![Content::ToolResult(result)],
         });

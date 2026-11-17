@@ -32,6 +32,7 @@ fn end_turn(text: &str) -> ModelOutput {
 fn tool_use(id: &str, name: &str, args: serde_json::Value) -> ModelOutput {
     ModelOutput {
         message: Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![Content::ToolCall(ToolCall {
                 id: id.to_owned(),

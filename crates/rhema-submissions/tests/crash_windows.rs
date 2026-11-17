@@ -30,6 +30,7 @@ fn text_reply(text: &str) -> ModelOutput {
 fn tool_reply(id: &str) -> ModelOutput {
     ModelOutput {
         message: Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![Content::ToolCall(ToolCall {
                 id: id.to_owned(),
@@ -151,6 +152,7 @@ fn the_five_recovery_rules_hold_row_by_row() {
                 input.clone(),
                 tool_reply("call-1").message,
                 Message {
+                    annotations: Default::default(),
                     role: Role::Tool,
                     content: vec![Content::ToolResult(rhema_core::ToolResult::success(
                         "call-1", "ran",

@@ -53,6 +53,7 @@ impl ModelProvider for ByRole {
 fn tool_use(id: &str, args: serde_json::Value) -> ModelOutput {
     ModelOutput {
         message: Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![Content::ToolCall(ToolCall {
                 id: id.to_owned(),
@@ -97,6 +98,7 @@ async fn a_job_finishing_mid_turn_is_announced_at_the_next_step_boundary() {
             ),
             ModelOutput {
                 message: Message {
+                    annotations: Default::default(),
                     role: Role::Assistant,
                     content: vec![Content::ToolCall(ToolCall {
                         id: "c2".to_owned(),

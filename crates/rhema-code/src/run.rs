@@ -969,7 +969,11 @@ fn dispatch(
             };
             spawn_usage_fetch(backend, tx.clone());
         }
-        Effect::StartTurn { text, images } => {
+        Effect::StartTurn {
+            text,
+            images,
+            spans,
+        } => {
             let Some(mut agent) = app.agent.take() else {
                 return;
             };
@@ -982,7 +986,11 @@ fn dispatch(
             let submission = app.begin_turn_submission(&mut agent, &text);
             spawn_turn(
                 agent,
-                crate::turn::Prompt::User { text, images },
+                crate::turn::Prompt::User {
+                    text,
+                    images,
+                    spans,
+                },
                 checkpoint,
                 submission,
                 cancelled,

@@ -548,6 +548,7 @@ fn raced_nudges_chain_one_turn_per_finish_in_order() {
         effects,
         vec![
             Effect::StartTurn {
+                spans: Vec::new(),
                 text: "first".into(),
                 images: Vec::new()
             },
@@ -574,6 +575,7 @@ fn raced_nudges_chain_one_turn_per_finish_in_order() {
         effects,
         vec![
             Effect::StartTurn {
+                spans: Vec::new(),
                 text: "second".into(),
                 images: Vec::new()
             },
@@ -621,6 +623,7 @@ fn an_empty_turn_surfaces_its_stop_reason() {
         agent,
         result: Ok(ModelOutput {
             message: Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![],
             },
@@ -2930,6 +2933,7 @@ fn chat_submit_guards() {
     assert_eq!(
         h.app.on_key(key(KeyCode::Enter)),
         vec![Effect::StartTurn {
+            spans: Vec::new(),
             text: "hi".into(),
             images: Vec::new()
         }]
@@ -2938,6 +2942,7 @@ fn chat_submit_guards() {
     assert_eq!(
         h.app.transcript.lines().first(),
         Some(&Line::User {
+            pastes: Vec::new(),
             text: "hi".into(),
             images: Vec::new()
         })
@@ -2947,24 +2952,30 @@ fn chat_submit_guards() {
 }
 
 #[test]
-fn a_submit_travels_embedded_and_lands_in_the_transcript() {
+fn a_submit_carries_the_pastes_payload_and_its_span() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     let long = "l1\nl2\nl3\nl4\nl5";
     h.app.chat.paste(long);
-    let embedded = rhema_core::paste::embed(&ChatState::MARK.to_string(), &[long.to_owned()]);
-    // The turn starts on the session form, and the transcript line
-    // carries it, the chip survives the send.
+    let spans = vec![rhema_core::paste::PasteSpan {
+        start: 0,
+        end: long.len(),
+        lines: 5,
+    }];
+    // The turn starts on the plain text, and the transcript line
+    // carries the span its chip stands for.
     assert_eq!(
         h.app.on_key(key(KeyCode::Enter)),
         vec![Effect::StartTurn {
-            text: embedded.clone(),
-            images: Vec::new()
+            text: long.to_owned(),
+            images: Vec::new(),
+            spans: spans.clone(),
         }]
     );
     assert_eq!(
         h.app.transcript.lines().first(),
         Some(&Line::User {
-            text: embedded,
+            pastes: spans,
+            text: long.to_owned(),
             images: Vec::new()
         })
     );
@@ -2980,7 +2991,7 @@ fn a_submission_carrying_images_is_never_a_command() {
     h.app.chat.chips = vec![crate::screens::Chip::Image(image.clone())];
     h.app.chat.cursor = h.app.chat.input.chars().count();
     match h.app.on_key(key(KeyCode::Enter)).as_slice() {
-        [Effect::StartTurn { text, images }] => {
+        [Effect::StartTurn { text, images, .. }] => {
             assert_eq!(text, "/clear ");
             assert_eq!(images.first(), Some(&image));
         }
@@ -2989,6 +3000,7 @@ fn a_submission_carrying_images_is_never_a_command() {
     assert_eq!(
         h.app.transcript.lines().last(),
         Some(&Line::User {
+            pastes: Vec::new(),
             text: "/clear ".into(),
             images: vec![image],
         })
@@ -4737,6 +4749,7 @@ fn slash_resume_opens_a_picker_and_picking_resumes() {
     assert_eq!(
         h.app.transcript.lines().first(),
         Some(&Line::User {
+            pastes: Vec::new(),
             text: "the older prompt".into(),
             images: Vec::new()
         })
@@ -6205,6 +6218,7 @@ async fn an_idle_session_runs_a_finished_jobs_notification_as_the_next_prompt() 
     let Effect::StartTurn {
         text: prompt,
         images,
+        ..
     } = &effects[0]
     else {
         panic!("the idle tick starts a turn, got {:?}", effects[0]);
@@ -6336,6 +6350,7 @@ fn an_idle_session_runs_a_finished_job_line_as_the_next_prompt() {
     let Effect::StartTurn {
         text: prompt,
         images,
+        ..
     } = &effects[0]
     else {
         panic!("the idle tick starts a turn, got {:?}", effects[0]);
@@ -6421,7 +6436,7 @@ fn a_finish_missed_by_the_steering_delivers_its_prompt_without_a_second_card() {
     let effects = h.app.on_tick();
     let assert_matches = |effects: &[Effect]| {
         assert_eq!(effects.len(), 1, "the idle tick starts one turn");
-        let Effect::StartTurn { text, images } = &effects[0] else {
+        let Effect::StartTurn { text, images, .. } = &effects[0] else {
             panic!("the idle tick starts a turn, got {:?}", effects[0]);
         };
         assert_eq!(text, &line);
@@ -7480,6 +7495,7 @@ fn resume_retags_the_jobs_and_announces_an_interrupted_subagent() {
         .history
         .push(Message::text(Role::User, "do the work"));
     child_session.history.push(Message {
+        annotations: Default::default(),
         role: Role::Assistant,
         content: vec![rhema_core::Content::ToolCall(rhema_core::ToolCall {
             id: "c1".into(),

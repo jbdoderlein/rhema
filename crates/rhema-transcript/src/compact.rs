@@ -367,6 +367,7 @@ mod tests {
     fn call_round(id: &str, result_kb: usize) -> Vec<Message> {
         vec![
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![
                     Content::Text("checking".into()),
@@ -379,6 +380,7 @@ mod tests {
                 ],
             },
             Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![Content::ToolResult(ToolResult::success(
                     id,

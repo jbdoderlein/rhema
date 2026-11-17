@@ -47,7 +47,7 @@ use agent_client_protocol::{
     Agent, Client, ConnectionTo, Error, Stdio, on_receive_notification, on_receive_request,
 };
 use anyhow::Context;
-use rhema_coding_agent::{CodingAgent, CodingAgentConfig, CodingAgentError, repair_dangling_calls};
+use rhema_coding_agent::{CodingAgent, CodingAgentConfig, CodingAgentError};
 use rhema_config::Settings;
 use rhema_core::request::ThinkingEffort;
 use rhema_core::{Content, ModelProvider, Role, Session, StopReason as EngineStop};
@@ -569,7 +569,7 @@ async fn serve_connection(
                                 // the file keeps what the turn left.
                                 settle_turn(agent.session_mut(), &turn_id, failure_outcome(&err));
                                 app.persist(&session_id.0, agent.session());
-                                repair_dangling_calls(agent.session_mut());
+                                rhema_core::close_orphaned_calls(&mut agent.session_mut().history);
                                 app.put_agent(&session_id.0, agent);
                                 app.note_activity(&session_id.0, &cx);
                                 let _ = responder.respond_with_error(err_to_error(&err));
@@ -589,7 +589,7 @@ async fn serve_connection(
                                     rhema_submissions::Outcome::Cancelled,
                                 );
                                 app.persist(&session_id.0, agent.session());
-                                repair_dangling_calls(agent.session_mut());
+                                rhema_core::close_orphaned_calls(&mut agent.session_mut().history);
                                 app.put_agent(&session_id.0, agent);
                                 app.note_activity(&session_id.0, &cx);
                                 let _ = responder.respond(prompt_response(

@@ -1190,6 +1190,7 @@ impl ChunkAssembler {
         }
         ModelOutput {
             message: Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content,
             },
@@ -1323,6 +1324,7 @@ mod tests {
         let make = |thinking| ModelRequest {
             system: None,
             messages: vec![Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::ToolCall(ToolCall {
                     id: "toolu_01A".into(),
@@ -1373,6 +1375,7 @@ mod tests {
             messages: vec![
                 Message::text(Role::User, "list files"),
                 Message {
+                    annotations: Default::default(),
                     role: Role::Assistant,
                     content: vec![
                         Content::Text("checking".into()),
@@ -1385,6 +1388,7 @@ mod tests {
                     ],
                 },
                 Message {
+                    annotations: Default::default(),
                     role: Role::Tool,
                     content: vec![Content::ToolResult(ToolResult::success(
                         "call_0",
@@ -1527,6 +1531,7 @@ mod tests {
             messages: vec![
                 Message::text(Role::User, "first"),
                 Message {
+                    annotations: Default::default(),
                     role: Role::Assistant,
                     content: vec![Content::Text("sure".into())],
                 },
@@ -1568,6 +1573,7 @@ mod tests {
         let round = |id: &str| {
             vec![
                 Message {
+                    annotations: Default::default(),
                     role: Role::Assistant,
                     content: vec![Content::ToolCall(ToolCall {
                         id: id.into(),
@@ -1577,6 +1583,7 @@ mod tests {
                     })],
                 },
                 Message {
+                    annotations: Default::default(),
                     role: Role::Tool,
                     content: vec![Content::ToolResult(ToolResult::success(id, "rows"))],
                 },
@@ -1636,6 +1643,7 @@ mod tests {
             messages: vec![
                 Message::text(Role::User, "show me"),
                 Message {
+                    annotations: Default::default(),
                     role: Role::Assistant,
                     content: vec![Content::ToolCall(ToolCall {
                         id: "call_0".into(),
@@ -1645,6 +1653,7 @@ mod tests {
                     })],
                 },
                 Message {
+                    annotations: Default::default(),
                     role: Role::Tool,
                     content: vec![Content::ToolResult(
                         ToolResult::success("call_0", "out").with_images(vec![
@@ -1687,10 +1696,12 @@ mod tests {
             system: None,
             messages: vec![
                 Message {
+                    annotations: Default::default(),
                     role: Role::Tool,
                     content: vec![Content::ToolResult(ToolResult::success("call_0", "a"))],
                 },
                 Message {
+                    annotations: Default::default(),
                     role: Role::Tool,
                     content: vec![Content::ToolResult(ToolResult::failure("call_1", "b"))],
                 },
@@ -1721,6 +1732,7 @@ mod tests {
         let req = ModelRequest {
             system: None,
             messages: vec![Message {
+                annotations: Default::default(),
                 role: Role::User,
                 content: vec![
                     Content::Text("and then".into()),
@@ -1822,6 +1834,7 @@ mod tests {
             system: None,
             messages: vec![
                 Message {
+                    annotations: Default::default(),
                     role: Role::Assistant,
                     content: vec![Content::ToolCall(ToolCall {
                         id: "call_0".into(),
@@ -1831,6 +1844,7 @@ mod tests {
                     })],
                 },
                 Message {
+                    annotations: Default::default(),
                     role: Role::Assistant,
                     content: vec![Content::ToolCall(ToolCall {
                         id: "call_1".into(),
@@ -1922,6 +1936,7 @@ mod tests {
         assert_eq!(
             out.message,
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 // One text block: its deltas accumulate into one content
                 // block of the assembled message.

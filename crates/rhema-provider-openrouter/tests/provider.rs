@@ -245,6 +245,7 @@ async fn history_with_tool_calls_maps_to_the_openai_json() {
                 vec![
                     Message::text(Role::User, "list files"),
                     Message {
+                        annotations: Default::default(),
                         role: Role::Assistant,
                         content: vec![
                             Content::Text("checking".into()),
@@ -257,6 +258,7 @@ async fn history_with_tool_calls_maps_to_the_openai_json() {
                         ],
                     },
                     Message {
+                        annotations: Default::default(),
                         role: Role::Tool,
                         content: vec![Content::ToolResult(rhema_core::ToolResult::success(
                             "call_0",

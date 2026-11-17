@@ -1,13 +1,22 @@
-//! Embedded pastes in message text: the compact record a UI keeps so a
-//! multi-line paste can travel as one chip.
+//! How a prompt carries a pasted payload: plain text plus a span note.
 //!
-//! A paste is written as [`MARK`], its payload, [`MARK`], one logical
-//! unit inside an otherwise plain string. The form is the session's
-//! record of the prompt: UIs render each embed as a chip (id, size),
-//! and [`expand`] restores the plain text the model must see, so the
-//! encoding never reaches a provider. Payloads are normalized on embed
-//! (carriage returns to newlines, stray marks dropped) so the scan is
-//! unambiguous.
+//! A submitted prompt is plain text with each multi-line paste's payload
+//! in place, exactly what the model reads, and the message carries a
+//! [`PasteSpan`] list under [`CONSUMER`] saying which byte ranges a UI
+//! should draw as chips. The engine, the providers, and the summarizer
+//! never read that annotation; the UI that made the chips does, and it
+//! survives a checkpoint because it rides the message.
+//!
+//! [`PasteSpan`] replaced an embedded encoding, [`MARK`], payload,
+//! [`MARK`], written into the text; [`expand`] restored the plain form
+//! at the provider seam. Sessions written that way still load:
+//! [`migrate`] rewrites one into plain text plus spans. The encoding and
+//! [`expand`] are kept for that migration and for nothing else; a
+//! session that never carried marks is unaffected.
+
+use serde::{Deserialize, Serialize};
+
+use crate::{Content, Message, Role};
 
 /// The object-replacement character: opens and closes one embedded
 /// paste. Two marks always bracket a payload; a lone mark is literal
@@ -118,6 +127,70 @@ mod tests {
     }
 
     #[test]
+    fn spans_round_trip_through_the_annotation() {
+        let mut message = Message::text(Role::User, "look at l1\nl2 this");
+        assert!(spans(&message).is_empty());
+        let span = PasteSpan {
+            start: 8,
+            end: 13,
+            lines: 2,
+        };
+        annotate(&mut message, &[span]);
+        assert_eq!(spans(&message), vec![span]);
+        let json = serde_json::to_value(&message).unwrap();
+        assert_eq!(json["annotations"]["rhema-code"]["pastes"][0]["lines"], 2);
+        // Clearing the last span drops the whole note, so an annotation-free
+        // message keeps the pre-annotation wire shape.
+        annotate(&mut message, &[]);
+        assert!(spans(&message).is_empty());
+        assert!(
+            serde_json::to_value(&message)
+                .unwrap()
+                .get("annotations")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn migrate_rewrites_the_legacy_form_into_plain_text_and_spans() {
+        let payload = "l1\nl2\nl3\nl4";
+        let mut history = vec![
+            Message::text(
+                Role::User,
+                embed(&format!("look at {MARK} this"), &[payload.to_owned()]),
+            ),
+            Message::text(Role::Assistant, "on it"),
+        ];
+        assert_eq!(migrate(&mut history), 1);
+        assert_eq!(
+            history[0].content,
+            Message::text(Role::User, format!("look at {payload} this")).content
+        );
+        assert_eq!(
+            spans(&history[0]),
+            vec![PasteSpan {
+                start: 8,
+                end: 8 + payload.len(),
+                lines: 4,
+            }]
+        );
+        // Idempotent: the plain form has no marks left to rewrite.
+        assert_eq!(migrate(&mut history), 0);
+        assert_eq!(history[1], Message::text(Role::Assistant, "on it"));
+    }
+
+    #[test]
+    fn an_unpaired_mark_migrates_as_literal_text() {
+        let mut history = vec![Message::text(Role::User, format!("a{MARK}b"))];
+        assert_eq!(migrate(&mut history), 1);
+        assert_eq!(
+            history[0].content,
+            Message::text(Role::User, "a\u{FFFC}b").content
+        );
+        assert!(spans(&history[0]).is_empty());
+    }
+
+    #[test]
     fn parts_scans_marks_and_payloads() {
         let embedded = format!("x{MARK}p1{MARK}y{MARK}p2{MARK}");
         assert_eq!(
@@ -153,4 +226,113 @@ mod tests {
         assert_eq!(embedded, format!("x{MARK}p\nq{MARK}"));
         assert_eq!(expand(&embedded), "xp\nq");
     }
+}
+
+/// The annotation key `rhema-code` records paste spans under on a user
+/// message: consumer-owned, never read by the engine.
+pub const CONSUMER: &str = "rhema-code";
+
+/// One paste's span in a message's plain text: the byte range its chip
+/// stands for, and the payload's line count for the chip's label.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PasteSpan {
+    /// Start byte of the payload in the message text.
+    pub start: usize,
+    /// End byte of the payload in the message text, exclusive.
+    pub end: usize,
+    /// Lines in the payload, the chip's size label.
+    pub lines: usize,
+}
+
+/// The annotation's own shape, `{"pastes": [...]}`.
+#[derive(Serialize, Deserialize)]
+struct Pastes {
+    pastes: Vec<PasteSpan>,
+}
+
+/// Records `spans` on `message` under [`CONSUMER`], replacing whatever
+/// the same consumer left before; an empty list clears the note.
+pub fn annotate(message: &mut Message, spans: &[PasteSpan]) {
+    if spans.is_empty() {
+        message.annotations.remove(CONSUMER);
+        return;
+    }
+    let value = serde_json::to_value(Pastes {
+        pastes: spans.to_vec(),
+    })
+    .expect("paste spans serialize");
+    message.annotate(CONSUMER, value);
+}
+
+/// The paste spans `message` carries, empty when it has none or when
+/// the note is not this consumer's shape.
+pub fn spans(message: &Message) -> Vec<PasteSpan> {
+    message
+        .annotation(CONSUMER)
+        .and_then(|value| serde_json::from_value::<Pastes>(value.clone()).ok())
+        .map(|pastes| pastes.pastes)
+        .unwrap_or_default()
+}
+
+/// Splits legacy embedded text into the plain form and its spans.
+fn split_legacy(text: &str) -> (String, Vec<PasteSpan>) {
+    let mut plain = String::with_capacity(text.len());
+    let mut spans = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find(MARK) {
+        plain.push_str(&rest[..start]);
+        let after = &rest[start + MARK.len_utf8()..];
+        match after.find(MARK) {
+            Some(end) => {
+                let payload = &after[..end];
+                let begin = plain.len();
+                plain.push_str(payload);
+                spans.push(PasteSpan {
+                    start: begin,
+                    end: plain.len(),
+                    lines: payload.lines().count(),
+                });
+                rest = &after[end + MARK.len_utf8()..];
+            }
+            // An unpaired mark is literal text, as in [`parts`].
+            None => {
+                plain.push(MARK);
+                rest = after;
+            }
+        }
+    }
+    plain.push_str(rest);
+    (plain, spans)
+}
+
+/// Rewrites the legacy embedded form in `history` into plain text plus
+/// [`PasteSpan`] annotations, returning how many messages changed.
+/// Sessions written before the annotation existed carry
+/// `MARK payload MARK` inside the prompt; a resumed session must not
+/// send those marks to a provider. Chips only ever lived in one user
+/// text block, so only user messages are considered.
+pub fn migrate(history: &mut [Message]) -> usize {
+    let mut changed = 0;
+    for message in history.iter_mut() {
+        if message.role != Role::User {
+            continue;
+        }
+        let mut spans = Vec::new();
+        let mut touched = false;
+        for content in message.content.iter_mut() {
+            if let Content::Text(text) = content
+                && text.contains(MARK)
+            {
+                let (plain, found) = split_legacy(text);
+                *text = plain;
+                spans.extend(found);
+                touched = true;
+            }
+        }
+        if touched {
+            annotate(message, &spans);
+            changed += 1;
+        }
+    }
+    changed
 }

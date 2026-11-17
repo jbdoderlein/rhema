@@ -157,6 +157,7 @@ impl App {
         vec![Effect::StartTurn {
             text: prompt,
             images: Vec::new(),
+            spans: Vec::new(),
         }]
     }
 
@@ -365,6 +366,7 @@ impl App {
             effects.push(Effect::StartTurn {
                 text,
                 images: Vec::new(),
+                spans: Vec::new(),
             });
         }
         effects

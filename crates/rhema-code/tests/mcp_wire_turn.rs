@@ -237,6 +237,7 @@ impl ModelProvider for Scripted {
 fn bash_call(id: &str, command: &str) -> ModelOutput {
     ModelOutput {
         message: Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![Content::ToolCall(ToolCall {
                 id: id.to_owned(),

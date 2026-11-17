@@ -281,6 +281,7 @@ mod tests {
     #[test]
     fn a_results_images_count_and_describe() {
         let message = Message {
+            annotations: Default::default(),
             role: Role::Tool,
             content: vec![Content::ToolResult(
                 ToolResult::success("c1", "out").with_images(vec![rhema_core::Image::new(
@@ -299,6 +300,7 @@ mod tests {
     #[test]
     fn tokens_are_text_over_four_plus_a_flat_image_price() {
         let message = Message {
+            annotations: Default::default(),
             role: Role::Tool,
             content: vec![Content::ToolResult(
                 ToolResult::success("c1", "abcdefgh").with_images(vec![
@@ -315,6 +317,7 @@ mod tests {
     #[test]
     fn an_images_encoded_length_does_not_reach_the_budget() {
         let tiny = Message {
+            annotations: Default::default(),
             role: Role::Tool,
             content: vec![Content::ToolResult(
                 ToolResult::success("c1", "").with_images(vec![rhema_core::Image::new(
@@ -385,6 +388,7 @@ mod tests {
     #[test]
     fn bytes_count_text_arguments_and_results() {
         let call = Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![
                 Content::Text("running".into()),
@@ -403,6 +407,7 @@ mod tests {
     #[test]
     fn a_single_message_renders_whole_for_zoom() {
         let message = Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![
                 Content::Text("step one".into()),

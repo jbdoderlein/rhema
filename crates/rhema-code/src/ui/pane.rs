@@ -1,6 +1,8 @@
 //! The transcript pane: partitioning into blocks, block rendering through
 //! the wrap cache, and the per-line rendering underneath.
 
+use rhema_core::paste::PasteSpan;
+
 use super::input::{chip_label, chip_spans, image_chip_label};
 use super::*;
 use crate::transcript;
@@ -533,11 +535,15 @@ pub(crate) fn render_block(
         }
         Kind::User => {
             let mut rows: Vec<Line<'static>> = Vec::new();
-            for (text, images) in range.iter().filter_map(|line| match line {
-                transcript::Line::User { text, images } => Some((text.as_str(), images)),
+            for (text, images, pastes) in range.iter().filter_map(|line| match line {
+                transcript::Line::User {
+                    text,
+                    images,
+                    pastes,
+                } => Some((text.as_str(), images, pastes.as_slice())),
                 _ => None,
             }) {
-                let (mut bubble_rows, geometry) = render_user(text, images, theme, width);
+                let (mut bubble_rows, geometry) = render_user(text, images, pastes, theme, width);
                 if let Some(geometry) = geometry {
                     bubbles.push(BubbleGeom {
                         first_row: rows.len() + geometry.first_row,
@@ -610,33 +616,35 @@ const BUBBLE_WIDTH_DEN: usize = 4;
 const BUBBLE_CHROME: usize = 4;
 
 /// A prompt's body rows before wrapping: one span list per logical line,
-/// with an embedded paste or an image as its chip. Shared by the bubble
+/// with each recorded paste and image as its chip. Shared by the bubble
 /// and the single-row fallback.
-fn user_body(text: &str, images: &[Image], theme: &Theme) -> Vec<Vec<Span<'static>>> {
+fn user_body(
+    text: &str,
+    images: &[Image],
+    pastes: &[PasteSpan],
+    theme: &Theme,
+) -> Vec<Vec<Span<'static>>> {
     let mut rows: Vec<Vec<Span<'static>>> = vec![Vec::new()];
     let mut anchors = 0usize;
-    for part in rhema_core::paste::parts(text) {
-        match part {
-            rhema_core::paste::Part::Text(segment) => {
-                for (index, line_text) in segment.split('\n').enumerate() {
-                    if index > 0 {
-                        rows.push(Vec::new());
-                    }
-                    if !line_text.is_empty() {
-                        rows.last_mut()
-                            .unwrap()
-                            .push(Span::raw(line_text.to_owned()));
-                    }
-                }
-            }
-            rhema_core::paste::Part::Paste(payload) => {
-                rows.last_mut()
-                    .unwrap()
-                    .extend(chip_spans(chip_label(payload, anchors), theme));
-                anchors += 1;
-            }
+    let mut cursor = 0usize;
+    // A span's bytes must land on the text's boundaries; a stale note (a
+    // message edited outside the frontend) is dropped, and the payload
+    // renders as plain text.
+    for span in pastes {
+        let Some(before) = text.get(cursor..span.start) else {
+            continue;
+        };
+        if span.end > text.len() || !text.is_char_boundary(span.end) {
+            continue;
         }
+        push_text_rows(&mut rows, before);
+        rows.last_mut()
+            .unwrap()
+            .extend(chip_spans(chip_label(span.lines, anchors), theme));
+        anchors += 1;
+        cursor = span.end;
     }
+    push_text_rows(&mut rows, &text[cursor..]);
     // The images ride after the text, on its last row: they have no
     // inline form to sit inside.
     for image in images {
@@ -648,6 +656,20 @@ fn user_body(text: &str, images: &[Image], theme: &Theme) -> Vec<Vec<Span<'stati
     rows
 }
 
+/// Appends `text` to `rows`, one row per newline.
+fn push_text_rows(rows: &mut Vec<Vec<Span<'static>>>, text: &str) {
+    for (index, line_text) in text.split('\n').enumerate() {
+        if index > 0 {
+            rows.push(Vec::new());
+        }
+        if !line_text.is_empty() {
+            rows.last_mut()
+                .unwrap()
+                .push(Span::raw(line_text.to_owned()));
+        }
+    }
+}
+
 /// A submitted prompt as a chat bubble: right-aligned, at most three
 /// quarters of the column wide, the palette's drawn rounded frame. The
 /// frame carries no background, every cell stays on the page's
@@ -656,16 +678,17 @@ fn user_body(text: &str, images: &[Image], theme: &Theme) -> Vec<Vec<Span<'stati
 /// graphics protocol is available the runner lays the prompt card,
 /// the tint, rounded by the same four anti-aliased arcs, underneath
 /// the whole frame, under the text layer, so the drawn bubble gains
-/// its background back without a cell painting over the page. An
-/// embedded paste renders as its chip (id and size, the body hidden).
+/// its background back without a cell painting over the page. A paste
+/// renders as its chip (id and size, the body hidden).
 /// The geometry rides along for the runner's card.
 pub(crate) fn render_user(
     text: &str,
     images: &[Image],
+    pastes: &[PasteSpan],
     theme: &Theme,
     width: usize,
 ) -> (Vec<Line<'static>>, Option<BubbleGeom>) {
-    let body = user_body(text, images, theme);
+    let body = user_body(text, images, pastes, theme);
     bubble_card(body, width, true, theme, CardFill::Prompt)
 }
 
@@ -830,11 +853,18 @@ pub(crate) fn render_line(
     robot: &'static str,
 ) -> Line<'static> {
     match line {
-        transcript::Line::User { text, images } => {
+        transcript::Line::User {
+            text,
+            images,
+            pastes,
+        } => {
             // This arm is the fallback off the transcript's bubble path;
-            // embedded pastes still collapse to their chips here.
+            // pastes collapse to their chips here too.
             let mut spans = Vec::new();
-            for (index, row) in user_body(text, images, theme).into_iter().enumerate() {
+            for (index, row) in user_body(text, images, pastes, theme)
+                .into_iter()
+                .enumerate()
+            {
                 if index > 0 {
                     spans.push(Span::raw(" "));
                 }

@@ -44,8 +44,11 @@ Rules:
   - `workspace`: the checkout's directory conventions: `.rhema` and
     the tiers under it (`src/workspace.rs`)
   - `event`: `Event`, `EventSink` (`src/event.rs`)
-  - `engine`: the `Agent` step engine and `run_turn`
-    (`src/engine.rs`)
+  - `engine`: the `Agent` step engine, `run_turn`, and the
+    dangling-call close/revive pair (`src/engine.rs`)
+  - `overlay`: the two-resolver combiner (`src/overlay.rs`)
+  - `paste`: the paste-span record and the legacy embedded-form
+    migration (`src/paste.rs`)
   - `mock`: `MockProvider` (`src/mock.rs`, `mock` feature)
   - `tests`: integration suites under `crates/rhema-core/tests/`
   - `rhema-provider`: the adapter-family base: the `ModelCard` catalog
@@ -122,9 +125,9 @@ Rules:
     conventions (`Home`), and the `Store` seam a frontend implements
     (`crates/rhema-config/`)
   - `agent-tools`: the shared toolkit: the approval-gated shell, the
-    `Approval` and `Overlay` seams, skills, paste expansion, revive,
-    the `see` vision macro, the `search` web search macro, the prompt
-    renderer (`crates/rhema-agent-tools/`)
+    `Approval` seam, skills, the `see` vision macro, the `search` web
+    search macro, the prompt renderer
+    (`crates/rhema-agent-tools/`)
   - `sandbox`: the sandbox seam: the `Sandbox` contract, the
     `ShellSandbox` adapter, the wire protocol, the HTTP client and
     `rhema-sandboxd`, and the local sandbox (`crates/rhema-sandbox/`)

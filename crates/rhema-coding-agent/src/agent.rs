@@ -21,12 +21,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
-use rhema_agent_tools::{
-    Approval, ExpandPastes, Overlay, ShellTools, Skill, revive_dangling_calls,
-};
+use rhema_agent_tools::{Approval, ShellTools, Skill};
 use rhema_core::{
-    Agent, AgentError, ChatParams, CommitHook, EventSink, Message, ModelOutput, Role, Session,
-    StopReason, ToolContext, ToolResolver, ToolSpec, run_turn,
+    Agent, AgentError, ChatParams, CommitHook, EventSink, Message, ModelOutput, Overlay, Role,
+    Session, StopReason, ToolContext, ToolResolver, ToolSpec, revive_dangling_calls, run_turn,
 };
 
 use rhema_session_store::StoreError;
@@ -187,13 +185,7 @@ impl CodingAgent {
     /// `config.system` replaces it. A base prompt that fails to render
     /// fails the construction.
     pub fn new(config: CodingAgentConfig) -> Result<Self, CodingAgentError> {
-        // The paste expansion rides the provider seam, not the engine:
-        // the session keeps the compact form, and this one wrapper is
-        // every request path's way out. The config keeps the provider
-        // it was built with, so a clone of it builds another agent
-        // safely; the agent owns the wrapped chain.
-        let provider: Arc<dyn rhema_core::ModelProvider> =
-            Arc::new(ExpandPastes::new(config.provider.clone()));
+        let provider: Arc<dyn rhema_core::ModelProvider> = config.provider.clone();
         let tools = config.tools.clone().unwrap_or_else(|| {
             Arc::new(ShellTools::with_env(
                 config.workspace.clone(),
@@ -362,8 +354,13 @@ impl CodingAgent {
     /// carries it forward.
     pub fn from_session(
         mut config: CodingAgentConfig,
-        session: Session,
+        mut session: Session,
     ) -> Result<Self, CodingAgentError> {
+        // A session written before paste spans existed carries the
+        // embedded form in its prompts; the provider must never see a
+        // mark. One rewrite on the way in, and the chips survive as the
+        // annotation the UI reads.
+        rhema_core::paste::migrate(&mut session.history);
         if let Some(stamped) = session
             .driver_state
             .get(ENVIRONMENT_STATE_KEY)
@@ -765,11 +762,17 @@ mod paste_tests {
     }
 
     #[tokio::test]
-    async fn the_provider_sees_pastes_expanded_and_the_session_keeps_the_chips() {
+    async fn a_prompt_with_paste_spans_reaches_the_provider_plain() {
         let payload = "l1\nl2\nl3\nl4";
-        let embedded = rhema_core::paste::embed(
-            &format!("look at {} this", rhema_core::paste::MARK),
-            &[payload.to_owned()],
+        let text = format!("look at {payload} this");
+        let mut message = Message::text(Role::User, text.clone());
+        rhema_core::paste::annotate(
+            &mut message,
+            &[rhema_core::paste::PasteSpan {
+                start: "look at ".len(),
+                end: "look at ".len() + payload.len(),
+                lines: 4,
+            }],
         );
         let recording = Arc::new(Recording(Mutex::new(Vec::new())));
         let mut agent = CodingAgent::new(CodingAgentConfig::new(
@@ -779,17 +782,49 @@ mod paste_tests {
             AllowAll,
         ))
         .unwrap();
-        agent.turn(&embedded, &mut NoopSink).await.unwrap();
+        agent
+            .turn_message(message.clone(), &mut NoopSink)
+            .await
+            .unwrap();
 
-        // The session records the compact chip form.
+        // The session keeps the plain text and the UI's spans.
+        assert_eq!(agent.session().history[0], message);
         assert_eq!(
-            agent.session().history[0],
-            Message::text(Role::User, embedded.clone())
+            rhema_core::paste::spans(&agent.session().history[0]).len(),
+            1
         );
-        // The provider saw the plain expansion, never the encoding.
+        // The provider sees the same plain text, payload and all.
         let seen = recording.0.lock().unwrap();
         assert_eq!(seen.len(), 1);
-        assert_eq!(seen[0], format!("look at {payload} this"));
+        assert_eq!(seen[0], text);
+    }
+
+    #[tokio::test]
+    async fn a_legacy_session_is_migrated_on_resume() {
+        let payload = "l1\nl2\nl3\nl4";
+        let embedded = rhema_core::paste::embed(
+            &format!("look at {} this", rhema_core::paste::MARK),
+            &[payload.to_owned()],
+        );
+        let mut session = Session::default();
+        session.history.push(Message::text(Role::User, embedded));
+        let recording = Arc::new(Recording(Mutex::new(Vec::new())));
+        let config = CodingAgentConfig::new(recording.clone(), "m", std::env::temp_dir(), AllowAll);
+        let agent = CodingAgent::from_session(config, session).unwrap();
+
+        // The marks are gone and the chip is a span, not an encoding.
+        let resumed = &agent.session().history[0];
+        let text = format!("look at {payload} this");
+        assert_eq!(
+            resumed.content,
+            Message::text(Role::User, text.clone()).content
+        );
+        let spans = rhema_core::paste::spans(resumed);
+        assert_eq!(spans.len(), 1);
+        let Content::Text(plain) = &resumed.content[0] else {
+            panic!("expected a text block");
+        };
+        assert_eq!(&plain[spans[0].start..spans[0].end], payload);
     }
 
     /// Records the content blocks of every User message each request
@@ -935,6 +970,7 @@ mod extra_tools_tests {
             if round == 0 {
                 Ok(ModelOutput {
                     message: Message {
+                        annotations: Default::default(),
                         role: Role::Assistant,
                         content: vec![Content::ToolCall(ToolCall {
                             id: "c1".into(),
@@ -1294,6 +1330,7 @@ mod transcript_tests {
         let mut history = vec![Message::text(Role::User, "fix the build")];
         for i in 0..rounds {
             history.push(Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![
                     Content::Text(format!("round {i}")),
@@ -1306,6 +1343,7 @@ mod transcript_tests {
                 ],
             });
             history.push(Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![Content::ToolResult(ToolResult::success(
                     format!("c{i}"),

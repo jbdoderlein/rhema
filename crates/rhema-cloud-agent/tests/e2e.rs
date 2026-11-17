@@ -25,6 +25,7 @@ fn bash_then_done(call_id: &str, command: &str, final_text: &str) -> MockProvide
     MockProvider::new(vec![
         ModelOutput {
             message: Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::ToolCall(ToolCall {
                     id: call_id.into(),

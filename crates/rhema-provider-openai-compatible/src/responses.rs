@@ -809,6 +809,7 @@ impl ResponsesAssembler {
         }
         ModelOutput {
             message: Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content,
             },
@@ -957,6 +958,7 @@ mod tests {
                 vec![Image::new(ImageMediaType::Png, "cG5n")],
             ),
             Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![
                     Content::ToolResult(rhema_core::ToolResult::success("call_0", "screenshot")),
@@ -1008,6 +1010,7 @@ mod tests {
     #[test]
     fn assistant_calls_replay_with_their_reasoning_ahead_of_them() {
         let req = request(vec![Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![
                 Content::Text("running it".into()),
@@ -1052,6 +1055,7 @@ mod tests {
         let req = ModelRequest {
             system: None,
             messages: vec![Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::ToolCall(ToolCall {
                     id: "call_0".into(),

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use rhema_coding_agent::{CodingAgent, CodingAgentError, repair_dangling_calls};
+use rhema_coding_agent::{CodingAgent, CodingAgentError};
 use rhema_core::{Event, EventSink, Image, Message, ModelOutput, Role, Session};
 use rhema_provider::{InteractiveLogin, LoginSink, LoginUpdate};
 use std::future::Future;
@@ -67,13 +67,17 @@ async fn next_steer(steer: &mut Receiver<String>) -> Option<String> {
 /// steered nudge, is a text-only user message either way.
 #[derive(Debug)]
 pub enum Prompt {
-    /// A fresh prompt: the text and the images beside it, in submission
-    /// order, become the session's next user message.
+    /// A fresh prompt: the text, the paste spans it records, and the
+    /// images beside it, in submission order, become the session's next
+    /// user message.
     User {
-        /// The prompt's text.
+        /// The prompt's text, payloads in place.
         text: String,
         /// The images beside the text.
         images: Vec<Image>,
+        /// The paste spans the message annotates, for the transcript's
+        /// chips.
+        spans: Vec<rhema_core::paste::PasteSpan>,
     },
     /// The failed request again: no new message, the turn re-issues
     /// the step loop on the history as the failed turn left it (see
@@ -87,6 +91,7 @@ impl Prompt {
         Self::User {
             text: text.into(),
             images: Vec::new(),
+            spans: Vec::new(),
         }
     }
 }
@@ -150,9 +155,13 @@ pub fn spawn_turn(
         // sentence, and `text_with_images` with none folds to the plain
         // text message. A retry consumes no input at all; the flag
         // flips after its one round.
-        let (mut text, mut images, mut retry) = match prompt {
-            Prompt::User { text, images } => (text, images, false),
-            Prompt::Retry => (String::new(), Vec::new(), true),
+        let (mut text, mut images, mut spans, mut retry) = match prompt {
+            Prompt::User {
+                text,
+                images,
+                spans,
+            } => (text, images, spans, false),
+            Prompt::Retry => (String::new(), Vec::new(), Vec::new(), true),
         };
         // The chain's outcome: `None` once the cancel flag ended it, the
         // final turn's result otherwise. A steered interruption leaves it
@@ -170,11 +179,12 @@ pub fn spawn_turn(
                 retry = false;
                 Box::pin(agent.retry_turn_with_cancel(&mut sink, Arc::clone(&cancelled_flag)))
             } else {
-                let message = Message::text_with_images(
+                let mut message = Message::text_with_images(
                     Role::User,
                     std::mem::take(&mut text),
                     std::mem::take(&mut images),
                 );
+                rhema_core::paste::annotate(&mut message, &std::mem::take(&mut spans));
                 Box::pin(agent.turn_message_with_cancel(
                     message,
                     &mut sink,
@@ -235,7 +245,7 @@ pub fn spawn_turn(
                 // The drop can land between a committed tool call and its
                 // result; the history must stay load-bearing for the next
                 // turn.
-                repair_dangling_calls(agent.session_mut());
+                rhema_core::close_orphaned_calls(&mut agent.session_mut().history);
                 settle_submission(&mut agent, submission.as_ref(), Outcome::Cancelled);
                 if let Some(path) = &save {
                     let _ = crate::sessions::write_session(path, agent.session());
@@ -480,6 +490,7 @@ mod mock_tests {
     fn tool_use_output(call: ToolCall) -> ModelOutput {
         ModelOutput {
             message: Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::ToolCall(call)],
             },
@@ -1036,7 +1047,7 @@ mod mock_tests {
                         assert!(!last.contains("\"is_error\""), "no result yet: {last}");
                     } else {
                         assert!(
-                            last.contains("cancelled"),
+                            last.contains("interrupted"),
                             "the closed round is the cancellation: {last}"
                         );
                     }

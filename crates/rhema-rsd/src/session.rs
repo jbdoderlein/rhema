@@ -63,6 +63,7 @@ mod tests {
                 history: vec![
                     Message::text(Role::User, "fix the flaky test"),
                     Message {
+                        annotations: Default::default(),
                         role: Role::Assistant,
                         content: vec![
                             Content::Text("on it".into()),

@@ -1336,6 +1336,7 @@ mod tests {
     fn call_round(id: &str, result_kb: usize) -> Vec<Message> {
         vec![
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![
                     Content::Text("checking".into()),
@@ -1348,6 +1349,7 @@ mod tests {
                 ],
             },
             Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![Content::ToolResult(ToolResult::success(
                     id,
@@ -1618,6 +1620,7 @@ mod tests {
     /// output).
     fn cat_result(id: &str, stdout: &str) -> Message {
         Message {
+            annotations: Default::default(),
             role: Role::Tool,
             content: vec![Content::ToolResult(ToolResult::success(
                 id,
@@ -1631,6 +1634,7 @@ mod tests {
         let body = skill_body(name, rules);
         vec![
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![
                     Content::Text("loading the skill".into()),
@@ -1735,6 +1739,7 @@ mod tests {
         // One turn, two calls: the skill cat plus an unrelated command.
         // Pinning would orphan the second result behind its call.
         messages.push(Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![
                 Content::ToolCall(ToolCall {
@@ -1966,6 +1971,7 @@ mod tests {
         let messages = vec![
             Message::text(Role::User, "u".repeat(1_000)),
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![
                     Content::Text("a".repeat(400)),
@@ -1978,6 +1984,7 @@ mod tests {
                 ],
             },
             Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![Content::ToolResult(ToolResult::success(
                     "c1",
@@ -2175,6 +2182,7 @@ mod tests {
     fn an_image_costs_one_message_in_the_split_and_the_budget() {
         let mut transcript = Transcript::new(settings(128_000));
         transcript.observe(&[Message {
+            annotations: Default::default(),
             role: Role::Tool,
             content: vec![Content::ToolResult(
                 ToolResult::success("c1", "ok").with_images(vec![rhema_core::Image::new(

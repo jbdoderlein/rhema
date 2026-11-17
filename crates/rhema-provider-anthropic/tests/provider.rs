@@ -298,6 +298,7 @@ async fn history_with_tool_results_maps_to_the_messages_json() {
         messages: vec![
             Message::text(Role::User, "list files"),
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![
                     Content::Text("checking".into()),
@@ -310,6 +311,7 @@ async fn history_with_tool_results_maps_to_the_messages_json() {
                 ],
             },
             Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![Content::ToolResult(ToolResult::success(
                     "call_0",

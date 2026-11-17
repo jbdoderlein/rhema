@@ -73,6 +73,7 @@ fn child_session(_child: &SessionId, parent: &SessionId, status: Status) -> Sess
         .push(Message::text(Role::User, "do the work"));
     match status {
         Status::Running => session.history.push(Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![Content::ToolCall(ToolCall {
                 id: "c1".into(),
@@ -89,6 +90,7 @@ fn child_session(_child: &SessionId, parent: &SessionId, status: Status) -> Sess
         }
         Status::Interrupted => {
             session.history.push(Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::ToolCall(ToolCall {
                     id: "c1".into(),

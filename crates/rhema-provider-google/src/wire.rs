@@ -752,6 +752,7 @@ impl ChunkAssembler {
     /// list, not an error.
     pub fn finish(self) -> ModelOutput {
         let message = Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: self.parts.iter().map(NormalizedPart::to_content).collect(),
         };
@@ -906,10 +907,12 @@ mod tests {
             system: None,
             messages: vec![
                 rhema_core::Message {
+                    annotations: Default::default(),
                     role: rhema_core::Role::Assistant,
                     content: vec![rhema_core::Content::ToolCall(call)],
                 },
                 rhema_core::Message {
+                    annotations: Default::default(),
                     role: rhema_core::Role::Tool,
                     content: vec![rhema_core::Content::ToolResult(ToolResult::success(
                         "abc", "ok",
@@ -932,6 +935,7 @@ mod tests {
         let req = ModelRequest {
             system: None,
             messages: vec![Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::ToolCall(ToolCall {
                     id: "call_0".into(),
@@ -1000,6 +1004,7 @@ mod tests {
             messages: vec![
                 Message::text(Role::User, "list files"),
                 Message {
+                    annotations: Default::default(),
                     role: Role::Assistant,
                     content: vec![
                         Content::Text("checking".into()),
@@ -1013,6 +1018,7 @@ mod tests {
                     ],
                 },
                 Message {
+                    annotations: Default::default(),
                     role: Role::Tool,
                     content: vec![Content::ToolResult(ToolResult::success(
                         "call_0",
@@ -1097,6 +1103,7 @@ mod tests {
         let req = ModelRequest {
             system: None,
             messages: vec![Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![Content::ToolResult(ToolResult::failure("call_9", "boom"))],
             }],
@@ -1118,6 +1125,7 @@ mod tests {
             system: None,
             messages: vec![
                 Message {
+                    annotations: Default::default(),
                     role: Role::Assistant,
                     content: vec![Content::ToolCall(ToolCall {
                         id: "call_0".into(),
@@ -1128,6 +1136,7 @@ mod tests {
                     })],
                 },
                 Message {
+                    annotations: Default::default(),
                     role: Role::Assistant,
                     content: vec![Content::ToolCall(ToolCall {
                         id: "call_1".into(),
@@ -1206,6 +1215,7 @@ mod tests {
         let req = ModelRequest {
             system: None,
             messages: vec![Message {
+                annotations: Default::default(),
                 role: Role::User,
                 content: vec![
                     Content::Text("first".into()),
@@ -1236,6 +1246,7 @@ mod tests {
             messages: vec![
                 Message::text(Role::User, "list files"),
                 Message {
+                    annotations: Default::default(),
                     role: Role::Tool,
                     content: vec![Content::ToolResult(ToolResult::success("call_0", "[]"))],
                 },
@@ -1288,6 +1299,7 @@ mod tests {
         assert_eq!(
             out.message,
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::Text("Hel".into()), Content::Text("lo".into())],
             }
@@ -1318,6 +1330,7 @@ mod tests {
         let req = ModelRequest {
             system: None,
             messages: vec![Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![rhema_core::Content::ToolResult(
                     ToolResult::success("call_0", "out")

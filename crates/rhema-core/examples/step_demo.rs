@@ -45,6 +45,7 @@ async fn main() {
     let provider = Arc::new(MockProvider::new(vec![
         ModelOutput {
             message: Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::ToolCall(ToolCall {
                     id: "call_1".into(),

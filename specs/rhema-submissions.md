@@ -746,9 +746,9 @@ Dangling calls are repaired before the model is asked again.
 `turn::resume` does the core half (`close_orphaned_calls`, a synthetic
 failure for every unanswered call) because that needs no tools. A
 driver that wants the richer repair calls `revive_dangling_calls`
-(`rhema-agent-tools`) first: it re-executes the replay-safe calls and
-needs the resolver, so it stays out of this crate, and `resume` then
-finds nothing to close.
+(`rhema-core`, beside `close_orphaned_calls`) first: it re-executes the
+replay-safe calls and needs the resolver, so this crate leaves it to the
+driver, and `resume` then finds nothing to close.
 
 ---
 

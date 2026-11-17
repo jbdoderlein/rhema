@@ -266,12 +266,12 @@ of which the model has seen an id for yet.
 
 ## 5. The seam
 
-The view rides the provider seam, as paste expansion does: a decorator
-over `ModelProvider` that rewrites `req.messages` on the way through.
-The engine is untouched; the session is untouched; `driver_state` is
-untouched. The decorator sits *outside* `ExpandPastes`, so stubs, whole
-messages, and `zoom` output all show the expanded text the model would
-have seen.
+The view rides the provider seam: a decorator over `ModelProvider` that
+rewrites `req.messages` on the way through. The engine is untouched; the
+session is untouched; `driver_state` is untouched. Paste payloads need
+no seam of their own: the prompt travels with them in place, and the
+frontend's span annotation is display-only, so stubs, whole messages,
+and `zoom` output all show the text the model saw.
 
 The view travels as one synthetic `Role::User` message, `<transcript>`
 tagged, prepended to the whole band. Every adapter family already
@@ -290,7 +290,7 @@ default (`new` carries `Some(default)`); `None` is the off switch.
 `TranscriptSettings` carries `max_view_bytes` (default 256 000). With it
 set, `CodingAgent::new`:
 
-1. wraps the provider: `attach(ExpandPastes(inner), settings)`;
+1. wraps the provider: `attach(inner, settings)`;
 2. overlays the `zoom` resolver over the existing resolver chain (a
    unique name; it shadows nothing);
 3. adds the `zoom` spec to the prompt's tool list, so the prompt and the

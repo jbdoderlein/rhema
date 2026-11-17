@@ -121,7 +121,7 @@ pub struct CodingAgentConfig {
     /// approval hook off it) brings its own.
     pub tools: Option<Arc<ShellTools>>,
     /// An extension resolver merged over the shell's tools through
-    /// [`Overlay`](rhema_agent_tools::Overlay): its specs join the
+    /// [`Overlay`](rhema_core::Overlay): its specs join the
     /// prompt's tool list and its tools resolve by name, shadowing a
     /// built-in of the same name. `None` runs the built-ins alone.
     pub extra_resolver: Option<Arc<dyn ToolResolver>>,

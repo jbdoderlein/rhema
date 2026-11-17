@@ -26,6 +26,7 @@ fn a_dispatcher_session_round_trips_with_its_wrapped_core_state() {
         .history
         .push(Message::text(Role::User, "fix it"));
     session.core.history.push(Message {
+        annotations: Default::default(),
         role: Role::Assistant,
         content: vec![
             Content::Text("running the check".into()),
@@ -38,6 +39,7 @@ fn a_dispatcher_session_round_trips_with_its_wrapped_core_state() {
         ],
     });
     session.core.history.push(Message {
+        annotations: Default::default(),
         role: Role::Tool,
         content: vec![Content::ToolResult(rhema_core::ToolResult::success(
             "call_1", "ok",

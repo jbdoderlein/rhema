@@ -21,7 +21,9 @@ use crate::output::{ModelOutput, Step, StopReason};
 use crate::provider::{ModelProvider, ProviderError};
 use crate::request::{ChatParams, ModelRequest};
 use crate::session::Session;
-use crate::tool::{ToolContext, ToolProgress, ToolResolver, ToolResult, ToolStatus};
+use crate::tool::{
+    ReplaySafety, ToolCall, ToolContext, ToolProgress, ToolResolver, ToolResult, ToolStatus,
+};
 
 /// Why a step or a turn failed.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
@@ -261,6 +263,7 @@ impl Agent {
                     code: result.code,
                 });
                 session.history.push(Message {
+                    annotations: Default::default(),
                     role: Role::Tool,
                     content: vec![Content::ToolResult(result)],
                 });
@@ -473,6 +476,73 @@ impl AgentBuilder {
 /// assistant message that issued it, in call order; returns the call
 /// ids it answered.
 pub fn close_orphaned_calls(history: &mut Vec<Message>) -> Vec<String> {
+    let results = dangling_calls(history).into_iter().map(|call| {
+        ToolResult::failure(
+            &call.id,
+            "the turn was interrupted before this call ran; nothing happened",
+        )
+    });
+    insert_missing(history, results)
+}
+
+/// The unanswered tool calls in `history`, in the order a close answers
+/// them: assistant messages in history order, calls in the order the
+/// assistant issued them.
+fn dangling_calls(history: &[Message]) -> Vec<ToolCall> {
+    let mut found = Vec::new();
+    let mut index = 0;
+    while index < history.len() {
+        if history[index].role != Role::Assistant {
+            index += 1;
+            continue;
+        }
+        let mut calls = Vec::new();
+        let mut seen = HashSet::new();
+        for content in &history[index].content {
+            if let Content::ToolCall(call) = content
+                && seen.insert(call.id.clone())
+            {
+                calls.push(call.clone());
+            }
+        }
+        if calls.is_empty() {
+            index += 1;
+            continue;
+        }
+        // A call is answered by the Tool block that follows its own
+        // assistant message, not by any result anywhere in the
+        // history: providers reuse ids across turns (`call_0` is
+        // routine), so a same-id result from an earlier turn must not
+        // mask a dangling call in this one.
+        let mut block_end = index + 1;
+        while block_end < history.len() && history[block_end].role == Role::Tool {
+            block_end += 1;
+        }
+        let answered: HashSet<&str> = history[index + 1..block_end]
+            .iter()
+            .flat_map(|message| message.content.iter())
+            .filter_map(|content| match content {
+                Content::ToolResult(result) => Some(result.id.as_str()),
+                _ => None,
+            })
+            .collect();
+        found.extend(
+            calls
+                .into_iter()
+                .filter(|call| !answered.contains(call.id.as_str())),
+        );
+        index = block_end;
+    }
+    found
+}
+
+/// Inserts one result per dangling call, each directly after the
+/// assistant message that issued it and in call order, pulling the
+/// results in [`dangling_calls`]' order. Returns the call ids answered.
+fn insert_missing(
+    history: &mut Vec<Message>,
+    mut results: impl Iterator<Item = ToolResult>,
+) -> Vec<String> {
     let mut repaired = Vec::new();
     let mut index = 0;
     while index < history.len() {
@@ -493,11 +563,6 @@ pub fn close_orphaned_calls(history: &mut Vec<Message>) -> Vec<String> {
             index += 1;
             continue;
         }
-        // A call is answered by the Tool block that follows its own
-        // assistant message, not by any result anywhere in the
-        // history: providers reuse ids across turns (`call_0` is
-        // routine), so a same-id result from an earlier turn must not
-        // mask a dangling call in this one.
         let mut block_end = index + 1;
         while block_end < history.len() && history[block_end].role == Role::Tool {
             block_end += 1;
@@ -524,6 +589,9 @@ pub fn close_orphaned_calls(history: &mut Vec<Message>) -> Vec<String> {
             .map(|(position, id)| (id.as_str(), position))
             .collect();
         for id in missing {
+            let result = results
+                .next()
+                .expect("one result per dangling call, in call order");
             let call_rank = rank[id.as_str()];
             let mut insert_at = index + 1;
             for (offset, message) in history[index + 1..block_end].iter().enumerate() {
@@ -549,10 +617,8 @@ pub fn close_orphaned_calls(history: &mut Vec<Message>) -> Vec<String> {
                 insert_at,
                 Message {
                     role: Role::Tool,
-                    content: vec![Content::ToolResult(ToolResult::failure(
-                        id.clone(),
-                        "the turn was interrupted before this call ran; nothing happened",
-                    ))],
+                    content: vec![Content::ToolResult(result)],
+                    annotations: Default::default(),
                 },
             );
             block_end += 1;
@@ -561,6 +627,38 @@ pub fn close_orphaned_calls(history: &mut Vec<Message>) -> Vec<String> {
         index = block_end;
     }
     repaired
+}
+
+/// Closes calls a crash left committed-but-unanswered, with replay
+/// awareness: a call whose tool declared [`ReplaySafety::Safe`] is
+/// re-executed now against `resolver` so the round completes; an unsafe
+/// one gets an in-band failure telling the model the call was interrupted
+/// before its result landed, so it can verify state before retrying. One
+/// `Tool` result per dangling call, in call order; a clean history is
+/// untouched. A cancelled turn wants [`close_orphaned_calls`] instead: a
+/// cancelled call never re-runs, whatever its declared safety.
+pub async fn revive_dangling_calls(
+    session: &mut Session,
+    resolver: &dyn ToolResolver,
+    ctx: &ToolContext,
+) {
+    let dangling = dangling_calls(&session.history);
+    if dangling.is_empty() {
+        return;
+    }
+    let mut results = Vec::with_capacity(dangling.len());
+    for call in dangling {
+        results.push(match resolver.replay_safety(&call.name) {
+            ReplaySafety::Safe => resolver.resolve(call, ctx).await,
+            ReplaySafety::Unsafe => ToolResult::failure(
+                &call.id,
+                "interrupted: the call was committed but its result never \
+                 landed; its effect may have partially applied, verify \
+                 state before retrying",
+            ),
+        });
+    }
+    insert_missing(&mut session.history, results.into_iter());
 }
 
 /// The loop in free-function form, for a caller that already holds a
@@ -602,6 +700,7 @@ mod tests {
         let mut history = vec![
             Message::text(Role::User, "run it"),
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::ToolCall(ToolCall {
                     id: "call-1".into(),
@@ -627,6 +726,7 @@ mod tests {
         // turn's `call_0` result must not mask the second turn's
         // dangling `call_0`.
         let assistant = |id: &str| Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![Content::ToolCall(ToolCall {
                 id: id.into(),
@@ -639,6 +739,7 @@ mod tests {
             Message::text(Role::User, "first"),
             assistant("call_0"),
             Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![Content::ToolResult(ToolResult::failure(
                     "call_0",
@@ -662,6 +763,7 @@ mod tests {
     fn an_answered_history_is_left_alone() {
         let mut history = vec![
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::ToolCall(ToolCall {
                     id: "call-1".into(),
@@ -671,6 +773,7 @@ mod tests {
                 })],
             },
             Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![Content::ToolResult(ToolResult::failure(
                     "call-1",
@@ -695,10 +798,12 @@ mod tests {
         };
         let mut history = vec![
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![call("answered"), call("dangling"), call("duplicated")],
             },
             Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![Content::ToolResult(ToolResult::failure(
                     "answered",
@@ -706,6 +811,7 @@ mod tests {
                 ))],
             },
             Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![Content::ToolResult(ToolResult::failure(
                     "duplicated",
@@ -713,6 +819,7 @@ mod tests {
                 ))],
             },
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::Text("done".into())],
             },
@@ -735,6 +842,7 @@ mod tests {
         let mut history = vec![
             Message::text(Role::User, "run it"),
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![call("dangling")],
             },
@@ -767,12 +875,14 @@ mod tests {
             })
         };
         let result = |id: &str| Message {
+            annotations: Default::default(),
             role: Role::Tool,
             content: vec![Content::ToolResult(ToolResult::failure(id, "ran"))],
         };
 
         let mut missing_first = vec![
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![call("missing"), call("answered")],
             },
@@ -792,6 +902,7 @@ mod tests {
 
         let mut missing_last = vec![
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![call("answered"), call("missing")],
             },
@@ -832,5 +943,98 @@ mod tests {
         );
         assert!(!AgentError::Commit(CommitError("disk full".into())).is_retryable());
         assert!(!AgentError::MissingProvider.is_retryable());
+    }
+}
+
+#[cfg(test)]
+mod revive_tests {
+    use super::*;
+    use crate::request::ToolSpec;
+    use serde_json::json;
+
+    /// Two tools: `safe_tool` declares Safe, `unsafe_tool` keeps the
+    /// conservative default.
+    struct Mixed;
+
+    #[async_trait::async_trait]
+    impl ToolResolver for Mixed {
+        fn specs(&self) -> Vec<ToolSpec> {
+            vec![
+                ToolSpec::new("safe_tool", "safe to re-run", json!({})),
+                ToolSpec::new("unsafe_tool", "must not re-run", json!({})),
+            ]
+        }
+
+        async fn resolve(&self, call: ToolCall, _ctx: &ToolContext) -> ToolResult {
+            ToolResult::success(call.id, "re-ran")
+        }
+
+        fn replay_safety(&self, name: &str) -> ReplaySafety {
+            match name {
+                "safe_tool" => ReplaySafety::Safe,
+                _ => ReplaySafety::Unsafe,
+            }
+        }
+    }
+
+    fn call(id: &str, name: &str) -> ToolCall {
+        ToolCall {
+            id: id.into(),
+            name: name.into(),
+            args: json!({}),
+            provider_data: serde_json::Value::Null,
+        }
+    }
+
+    fn session_with_dangling() -> Session {
+        let mut session = Session::default();
+        session.history.push(Message::text(Role::User, "go"));
+        session.history.push(Message {
+            role: Role::Assistant,
+            content: vec![
+                Content::ToolCall(call("safe_1", "safe_tool")),
+                Content::ToolCall(call("unsafe_1", "unsafe_tool")),
+            ],
+            annotations: Default::default(),
+        });
+        session
+    }
+
+    #[tokio::test]
+    async fn revive_reexecutes_safe_calls_and_reports_unsafe_ones() {
+        let mut session = session_with_dangling();
+
+        revive_dangling_calls(&mut session, &Mixed, &ToolContext::default()).await;
+
+        assert_eq!(session.history.len(), 4);
+        let results: Vec<&ToolResult> = session.history[2..]
+            .iter()
+            .flat_map(|message| message.content.iter())
+            .filter_map(|content| match content {
+                Content::ToolResult(result) => Some(result),
+                _ => None,
+            })
+            .collect();
+        // Call order preserved: the safe call's fresh result first.
+        assert_eq!(results[0].id, "safe_1");
+        assert!(!results[0].is_error);
+        assert_eq!(results[0].content, "re-ran");
+        assert_eq!(results[1].id, "unsafe_1");
+        assert!(results[1].is_error);
+        assert!(results[1].content.contains("interrupted"));
+        // A revived history is closed: nothing dangles.
+        revive_dangling_calls(&mut session, &Mixed, &ToolContext::default()).await;
+        assert_eq!(session.history.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn revive_leaves_a_clean_history_alone() {
+        let mut session = Session::default();
+        session.history.push(Message::text(Role::User, "go"));
+        session.history.push(Message::text(Role::Assistant, "done"));
+
+        revive_dangling_calls(&mut session, &Mixed, &ToolContext::default()).await;
+
+        assert_eq!(session.history.len(), 2);
     }
 }

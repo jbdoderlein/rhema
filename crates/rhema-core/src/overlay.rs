@@ -1,5 +1,9 @@
 //! The two-resolver combiner: built-in tools plus an extension set.
 //!
+//! The `Agent` holds one [`ToolResolver`]; this module is how a driver
+//! adds tools on top of the primary one, or replaces a primary tool by
+//! name (the approval gate in `rhema-cloud-agent` shadows `bash`).
+//!
 //! [`Overlay`] merges a primary resolver (the built-ins) with an extra
 //! one (an extension's tools): the model sees one spec list, and a call
 //! goes to whichever side offers the name. An extra shadows a primary of
@@ -11,7 +15,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use rhema_core::{ReplaySafety, ToolCall, ToolContext, ToolResolver, ToolResult, ToolSpec};
+use crate::{ReplaySafety, ToolCall, ToolContext, ToolResolver, ToolResult, ToolSpec};
 
 /// A primary resolver plus an extension resolver, presented as one.
 pub struct Overlay {
@@ -75,7 +79,7 @@ impl ToolResolver for Overlay {
         &self,
         call: ToolCall,
         ctx: &ToolContext,
-        progress: &mut dyn rhema_core::ToolProgress,
+        progress: &mut dyn crate::ToolProgress,
     ) -> ToolResult {
         self.side(&call.name)
             .resolve_streaming(call, ctx, progress)
@@ -89,7 +93,7 @@ mod tests {
 
     use std::sync::Mutex;
 
-    use rhema_core::ToolResult;
+    use crate::ToolResult;
     use serde_json::json;
 
     /// A configurable test resolver: offers `names`, records resolved
@@ -184,7 +188,7 @@ mod tests {
         let overlay = Overlay::new(primary.clone(), extra.clone());
         let ctx = ToolContext::default();
         let result = overlay
-            .resolve_streaming(call("subagent"), &ctx, &mut rhema_core::OutputOnly(|_| {}))
+            .resolve_streaming(call("subagent"), &ctx, &mut crate::OutputOnly(|_| {}))
             .await;
         assert!(!result.is_error);
         assert!(primary.taken().is_empty());

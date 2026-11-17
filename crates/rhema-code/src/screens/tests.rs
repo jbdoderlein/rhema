@@ -263,6 +263,7 @@ fn key(code: KeyCode) -> KeyEvent {
 /// assert against.
 fn submit(text: &str) -> ChatAction {
     ChatAction::Submit {
+        spans: Vec::new(),
         text: text.to_owned(),
         images: Vec::new(),
     }
@@ -1563,7 +1564,7 @@ fn home_and_end_stay_within_the_cursor_line() {
 }
 
 #[test]
-fn a_long_paste_anchors_at_the_cursor_and_expands_there() {
+fn a_long_paste_anchors_at_the_cursor_and_submits_its_payload_in_place() {
     let mut chat = ChatState::new();
     let long = "l1\nl2\nl3\nl4";
     chat.insert_str("look at ");
@@ -1575,17 +1576,20 @@ fn a_long_paste_anchors_at_the_cursor_and_expands_there() {
         "the box shows a chip anchored at the paste, not the text"
     );
 
-    // Enter submits the session form: the payload embedded at its
-    // anchor, for the transcript to render as a chip and the
-    // provider seam to expand.
+    // Enter submits the plain text with the payload in place, plus the
+    // span the transcript draws its chip from.
     chat.insert_str(" closely");
     assert_eq!(
         chat.handle_key(key(KeyCode::Enter), &[], &[], &[], &crate::icons::UNICODE),
-        submit(&format!(
-            "look at {}{long}{} closely",
-            ChatState::MARK,
-            ChatState::MARK
-        ))
+        ChatAction::Submit {
+            text: format!("look at {long} closely"),
+            images: Vec::new(),
+            spans: vec![rhema_core::paste::PasteSpan {
+                start: "look at ".len(),
+                end: "look at ".len() + long.len(),
+                lines: 4,
+            }],
+        }
     );
     assert_eq!(
         chat.input,
@@ -1609,6 +1613,7 @@ fn a_pasted_image_mints_a_chip_and_rides_submit_beside_the_text() {
     assert_eq!(
         chat.handle_key(key(KeyCode::Enter), &[], &[], &[], &crate::icons::UNICODE),
         ChatAction::Submit {
+            spans: Vec::new(),
             text: "what is this? ".into(),
             images: vec![image],
         }
@@ -1637,13 +1642,22 @@ fn interleaved_pastes_and_images_keep_each_kind_in_order() {
     assert_eq!(
         chat.handle_key(key(KeyCode::Enter), &[], &[], &[], &crate::icons::UNICODE),
         ChatAction::Submit {
-            text: format!(
-                // The image's anchor leaves only the spaces its
-                // neighbours typed.
-                "{m}{first}{m} mid  end{m}{second}{m}",
-                m = ChatState::MARK
-            ),
+            // The image's anchor leaves only the spaces its neighbours
+            // typed; each paste's payload sits in its anchor's place.
+            text: format!("{first} mid  end{second}"),
             images: vec![image],
+            spans: vec![
+                rhema_core::paste::PasteSpan {
+                    start: 0,
+                    end: first.len(),
+                    lines: 4,
+                },
+                rhema_core::paste::PasteSpan {
+                    start: first.len() + " mid  end".len(),
+                    end: first.len() + " mid  end".len() + second.len(),
+                    lines: 5,
+                },
+            ],
         }
     );
 }

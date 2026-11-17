@@ -19,8 +19,14 @@
 //! ```no_run
 //! use std::sync::Arc;
 //!
-//! use rhema_coding_agent::{AllowAll, CodingAgent, CodingAgentConfig, Console};
-//! use rhema_core::ModelProvider;
+//! use rhema_coding_agent::{AllowAll, CodingAgent, CodingAgentConfig};
+//! use rhema_core::{Event, EventSink, ModelProvider};
+//!
+//! /// A headless sink: the events are dropped.
+//! struct Quiet;
+//! impl EventSink for Quiet {
+//!     fn emit(&mut self, _event: Event<'_>) {}
+//! }
 //!
 //! # async fn example(provider: impl ModelProvider + 'static) -> Result<(), Box<dyn std::error::Error>> {
 //! let config = CodingAgentConfig::new(
@@ -32,15 +38,14 @@
 //! let mut agent = CodingAgent::new(config)?;
 //!
 //! let _reply = agent
-//!     .turn("fix the failing test", &mut Console::stdout())
+//!     .turn("fix the failing test", &mut Quiet)
 //!     .await?;
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! `Console::stdout()` is the ready-made event sink; any
-//! [`EventSink`](rhema_core::EventSink) works, and `NoopSink` drops the
-//! stream. The provider and the approval both arrive as `impl Trait`
+//! Any [`EventSink`](rhema_core::EventSink) works: the runner's channel,
+//! a UI's redraw hook, or a headless sink that drops the stream. The provider and the approval both arrive as `impl Trait`
 //! and are wrapped internally, so a concrete provider and an `Arc` the
 //! caller already holds pass equally unchanged.
 //!
@@ -85,6 +90,5 @@ pub use prompt::{DEFAULT_SYSTEM_MD, default_system};
 // The toolkit the driver is built on, under this crate's name: every
 // downstream driver (TUI, ACP, the claw) keeps its import paths.
 pub use rhema_agent_tools::{
-    AllowAll, Approval, Console, DenyAll, ExpandPastes, NoopSink, ShellTools, render_system,
-    render_template, repair_dangling_calls, revive_dangling_calls,
+    AllowAll, Approval, DenyAll, ShellTools, render_system, render_template,
 };

@@ -492,6 +492,7 @@ impl StreamAssembler {
         };
         ModelOutput {
             message: Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content,
             },
@@ -991,6 +992,7 @@ mod tests {
                 }],
             ),
             Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![Content::ToolResult(rhema_core::tool::ToolResult {
                     id: "call_1".into(),
@@ -1019,6 +1021,7 @@ mod tests {
     fn assistant_text_and_tool_calls_replay_on_the_wire() {
         let mut req = request();
         req.messages = vec![Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![
                 Content::Text("thinking out loud".into()),

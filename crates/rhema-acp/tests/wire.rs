@@ -52,6 +52,7 @@ fn usage(input: u32, output: u32, cached: u32) -> Usage {
 fn reply_call(id: &str, command: &str) -> ModelOutput {
     ModelOutput {
         message: Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![Content::ToolCall(ToolCall {
                 id: id.to_owned(),

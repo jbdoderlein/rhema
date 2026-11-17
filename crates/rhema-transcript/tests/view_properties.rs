@@ -55,6 +55,7 @@ fn to_message(generated: GenMessage) -> Message {
         GenMessage::User(text) => Message::text(Role::User, text),
         GenMessage::Assistant(text) => Message::text(Role::Assistant, text),
         GenMessage::Call { id, name, args } => Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![Content::ToolCall(ToolCall {
                 id,
@@ -64,6 +65,7 @@ fn to_message(generated: GenMessage) -> Message {
             })],
         },
         GenMessage::Result { id, ok, content } => Message {
+            annotations: Default::default(),
             role: Role::Tool,
             content: vec![Content::ToolResult(if ok {
                 ToolResult::success(id, content)

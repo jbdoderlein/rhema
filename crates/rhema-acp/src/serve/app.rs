@@ -75,7 +75,7 @@ pub(crate) struct SlotRestore {
 impl Drop for SlotRestore {
     fn drop(&mut self) {
         if let Some(mut agent) = self.agent.take() {
-            repair_dangling_calls(agent.session_mut());
+            rhema_core::close_orphaned_calls(&mut agent.session_mut().history);
             self.app.put_agent(&self.id, agent);
         }
     }

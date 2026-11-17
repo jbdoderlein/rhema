@@ -670,7 +670,11 @@ impl App {
             return Vec::new();
         }
         match action {
-            ChatAction::Submit { text, images } => {
+            ChatAction::Submit {
+                text,
+                images,
+                spans,
+            } => {
                 // An image alone is a prompt: only a truly empty submit
                 // is dropped.
                 if text.trim().is_empty() && images.is_empty() {
@@ -694,7 +698,7 @@ impl App {
                         self.chat.input.clear();
                         self.chat.cursor = 0;
                         self.chat.chips.clear();
-                        crate::commands::dispatch(self, rhema_core::paste::expand(&text).trim())
+                        crate::commands::dispatch(self, text.trim())
                     } else if text.trim().starts_with('/') {
                         Vec::new()
                     } else {
@@ -708,7 +712,7 @@ impl App {
                     // line expands for them, as it would for the model. A
                     // submission carrying images is a prompt, never a
                     // command, a command is a sentence, not a screenshot.
-                    crate::commands::dispatch(self, rhema_core::paste::expand(&text).trim())
+                    crate::commands::dispatch(self, text.trim())
                 } else if self.provider.is_none() {
                     // The text stays: it is the prompt for once the
                     // profile has its key.
@@ -732,7 +736,8 @@ impl App {
                     self.chat.input.clear();
                     self.chat.cursor = 0;
                     self.chat.chips.clear();
-                    self.transcript.push_user(&text, images.clone());
+                    self.transcript
+                        .push_user_with(&text, images.clone(), spans.clone());
                     // Queued nudges keep their transcript order ahead of
                     // a text-only line: the new line waits its turn
                     // behind them. A line carrying images runs now,
@@ -751,7 +756,11 @@ impl App {
                     self.error = None;
                     self.retryable = false;
                     self.turn.decline_all = false;
-                    vec![Effect::StartTurn { text, images }]
+                    vec![Effect::StartTurn {
+                        text,
+                        images,
+                        spans,
+                    }]
                 }
             }
             ChatAction::None => Vec::new(),

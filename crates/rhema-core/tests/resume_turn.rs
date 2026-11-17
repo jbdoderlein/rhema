@@ -47,6 +47,7 @@ fn text_reply(text: &str) -> ModelOutput {
 fn tool_reply(id: &str) -> ModelOutput {
     ModelOutput {
         message: Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![Content::ToolCall(ToolCall {
                 id: id.to_owned(),

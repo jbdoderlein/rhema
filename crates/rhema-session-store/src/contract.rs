@@ -27,6 +27,7 @@ fn session(prompt: &str) -> Session {
         history: vec![
             Message::text(Role::User, prompt),
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::ToolCall(rhema_core::ToolCall {
                     id: "call-1".into(),
@@ -36,6 +37,7 @@ fn session(prompt: &str) -> Session {
                 })],
             },
             Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![Content::ToolResult(rhema_core::ToolResult::success(
                     "call-1", "hi",

@@ -222,8 +222,8 @@ pub(crate) fn wrap_segments(segments: Vec<Segment>, width: usize) -> Vec<RowSegs
 
 /// A paste chip's inline label: `▣1 5L`, the anchor's one-based id
 /// and the payload's line count.
-pub(crate) fn chip_label(paste: &str, index: usize) -> String {
-    format!("▣{} {}L", index + 1, paste.lines().count())
+pub(crate) fn chip_label(lines: usize, index: usize) -> String {
+    format!("▣{} {lines}L", index + 1)
 }
 
 /// An image chip's inline label: `▣1 PNG 12.3 KB`, the anchor's id,
@@ -325,13 +325,13 @@ pub(crate) fn input_layout(
                     chips
                         .get(anchor)
                         .map(|chip| match chip {
-                            Chip::Paste(paste) => chip_label(paste, anchor),
+                            Chip::Paste(paste) => chip_label(paste.lines().count(), anchor),
                             Chip::Image(image) => image_chip_label(image, anchor),
                         })
                         // An anchor without a chip cannot be minted; the
                         // label still names the slot so the cursor math
                         // and the render agree.
-                        .unwrap_or_else(|| chip_label("", anchor)),
+                        .unwrap_or_else(|| chip_label(0, anchor)),
                     theme,
                 )));
                 anchor += 1;

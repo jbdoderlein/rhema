@@ -74,6 +74,7 @@ mod tests {
     fn an_image_only_first_message_does_not_hide_later_text() {
         let session = session_with(vec![
             Message {
+                annotations: Default::default(),
                 role: Role::User,
                 content: vec![Content::Image(rhema_core::Image::new(
                     rhema_core::ImageMediaType::Png,

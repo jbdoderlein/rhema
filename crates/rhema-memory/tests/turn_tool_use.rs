@@ -23,6 +23,7 @@ impl EventSink for Quiet {
 fn scripted(id: &str, name: &str, args: serde_json::Value) -> ModelOutput {
     ModelOutput {
         message: Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![Content::ToolCall(ToolCall {
                 id: id.to_owned(),

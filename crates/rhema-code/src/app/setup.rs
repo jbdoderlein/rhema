@@ -717,13 +717,16 @@ pub enum Effect {
     /// Fetch the active backend's subscription allowance, if its
     /// provider reports one.
     FetchUsage,
-    /// Start one turn with this prompt: the text and the images beside
-    /// it, in the order they were submitted.
+    /// Start one turn with this prompt: the text, the paste spans it
+    /// records, and the images beside it, in the order they were
+    /// submitted.
     StartTurn {
-        /// The prompt's text.
+        /// The prompt's text, payloads in place.
         text: String,
         /// The images beside the text.
         images: Vec<Image>,
+        /// The paste spans the message records, in prompt order.
+        spans: Vec<rhema_core::paste::PasteSpan>,
     },
     /// Re-run the failed turn: no new prompt, the same request goes
     /// back out (`Prompt::Retry`). The app marks the turn running and

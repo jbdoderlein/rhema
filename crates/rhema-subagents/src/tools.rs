@@ -46,12 +46,12 @@ use serde_json::json;
 
 use std::time::Duration;
 
-use rhema_agent_tools::{Approval, Overlay, ShellTools};
+use rhema_agent_tools::{Approval, ShellTools};
 use rhema_coding_agent::SubagentProviders;
 use rhema_core::request::ThinkingEffort;
 use rhema_core::{
-    Agent, ChatParams, Content, Event, EventSink, Message, ModelProvider, Role, Session, ToolCall,
-    ToolContext, ToolProgress, ToolResolver, ToolResult, ToolSpec,
+    Agent, ChatParams, Content, Event, EventSink, Message, ModelProvider, Overlay, Role, Session,
+    ToolCall, ToolContext, ToolProgress, ToolResolver, ToolResult, ToolSpec,
 };
 use rhema_provider::Retrying;
 use rhema_session_store::{SessionId, SessionStore};

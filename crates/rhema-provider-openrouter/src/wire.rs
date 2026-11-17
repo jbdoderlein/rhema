@@ -302,6 +302,7 @@ mod tests {
         let req = ModelRequest {
             system: None,
             messages: vec![Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::ToolCall(ToolCall {
                     id: "call_0".into(),

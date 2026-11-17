@@ -42,6 +42,7 @@ mod tests {
     fn session_round_trips_with_driver_state() {
         let session = Session {
             history: vec![Message {
+                annotations: Default::default(),
                 role: Role::User,
                 content: vec![Content::Text("fix the test".into())],
             }],

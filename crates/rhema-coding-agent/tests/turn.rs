@@ -33,6 +33,7 @@ fn tool_call(id: &str, name: &str, args: serde_json::Value) -> ToolCall {
 fn tool_use_output(call: ToolCall) -> ModelOutput {
     ModelOutput {
         message: Message {
+            annotations: Default::default(),
             role: Role::Assistant,
             content: vec![Content::ToolCall(call)],
         },

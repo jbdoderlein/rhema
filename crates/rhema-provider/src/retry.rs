@@ -432,6 +432,7 @@ mod tests {
                 }
                 Attempt::Succeed(text) => Ok(ModelOutput {
                     message: Message {
+                        annotations: Default::default(),
                         role: Role::Assistant,
                         content: if text.is_empty() {
                             Vec::new()
@@ -444,6 +445,7 @@ mod tests {
                 }),
                 Attempt::SucceedWithCalls => Ok(ModelOutput {
                     message: Message {
+                        annotations: Default::default(),
                         role: Role::Assistant,
                         content: vec![Content::ToolCall(rhema_core::ToolCall {
                             id: "t2".into(),

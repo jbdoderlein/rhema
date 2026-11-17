@@ -8,16 +8,17 @@ pub enum ChatAction {
     /// Nothing to do.
     None,
     /// Enter on the (possibly empty) input; the app drops empty and
-    /// suppresses submits while a turn runs. The text is the session
-    /// form, paste payloads embedded at their anchors, which the app
-    /// pushes to the transcript as-is and expands only where plain
-    /// text is wanted (commands, the provider). The images ride beside
-    /// the text, in their anchors' order.
+    /// suppresses submits while a turn runs. The text is plain, paste
+    /// payloads in place, and the spans name the ranges the transcript
+    /// draws as chips. The images ride beside the text, in their
+    /// anchors' order.
     Submit {
-        /// The session-form text.
+        /// The prompt's text, payloads in place.
         text: String,
         /// Images submitted beside the text.
         images: Vec<rhema_core::Image>,
+        /// The paste spans the message records, in prompt order.
+        spans: Vec<rhema_core::paste::PasteSpan>,
     },
 }
 
@@ -153,32 +154,40 @@ impl ChatState {
         self.input.replace_range(start..end, "");
     }
 
-    /// What a submit sends: the typed input with every paste embedded at
-    /// its anchor, and the images beside it in anchor order, the
-    /// session's record of the prompt. The transcript renders each embed
-    /// as its chip, and the model sees the plain expansion
-    /// (`rhema_core::paste::expand`, applied at the provider seam), never
-    /// the encoding. Image anchors drop out of the text: an image
-    /// travels as a block beside it, and an anchor left in would desync
-    /// `embed`'s positional pairing of marks to payloads.
-    fn submission(&self) -> (String, Vec<rhema_core::Image>) {
-        let mut marked = String::with_capacity(self.input.len());
+    /// What a submit sends: the typed input with every paste's payload
+    /// in place of its anchor, the images beside it in anchor order, and
+    /// the spans the message annotates so the transcript can draw each
+    /// payload as its chip. Image anchors drop out of the text: an image
+    /// travels as a block beside it.
+    fn submission(
+        &self,
+    ) -> (
+        String,
+        Vec<rhema_core::Image>,
+        Vec<rhema_core::paste::PasteSpan>,
+    ) {
+        let mut text = String::with_capacity(self.input.len());
         let mut pastes = Vec::new();
         let mut images = Vec::new();
         for (index, piece) in self.input.split(Self::MARK).enumerate() {
             if index > 0 {
                 match self.chips.get(index - 1) {
                     Some(Chip::Paste(payload)) => {
-                        pastes.push(payload.clone());
-                        marked.push(Self::MARK);
+                        let start = text.len();
+                        text.push_str(payload);
+                        pastes.push(rhema_core::paste::PasteSpan {
+                            start,
+                            end: text.len(),
+                            lines: payload.lines().count(),
+                        });
                     }
                     Some(Chip::Image(image)) => images.push(image.clone()),
                     None => {}
                 }
             }
-            marked.push_str(piece);
+            text.push_str(piece);
         }
-        (rhema_core::paste::embed(&marked, &pastes), images)
+        (text, images, pastes)
     }
 
     /// Inserts `text` at the cursor, newlines and all, the bracketed
@@ -478,8 +487,12 @@ impl ChatState {
                 // history. The input is NOT cleared: the app clears when
                 // it accepts the submit, so a declined one keeps it.
                 self.scroll = 0;
-                let (text, images) = self.submission();
-                ChatAction::Submit { text, images }
+                let (text, images, spans) = self.submission();
+                ChatAction::Submit {
+                    text,
+                    images,
+                    spans,
+                }
             }
             _ => ChatAction::None,
         }

@@ -33,7 +33,7 @@ fn model(id: &str) -> ModelCard {
 /// for the runner's card.
 #[test]
 fn the_bubble_is_a_backgroundless_frame_with_its_geometry() {
-    let (rows, geometry) = super::pane::render_user("hi", &[], &DARK, 40);
+    let (rows, geometry) = super::pane::render_user("hi", &[], &[], &DARK, 40);
     let geometry = geometry.expect("the bubble reports its geometry");
     assert_eq!(rows.len(), 3, "cap, body, foot: {rows:?}");
     assert_eq!(geometry.rows, 3);
@@ -2464,12 +2464,14 @@ mod scroll_tests {
     fn a_submitted_paste_renders_as_a_chip_in_the_transcript() {
         let mut app = chat_app();
         let long = "l1\nl2\nl3\nl4\nl5";
-        app.transcript.push_user(
-            &rhema_core::paste::embed(
-                &format!("look at {} this", ChatState::MARK),
-                &[long.to_owned()],
-            ),
+        app.transcript.push_user_with(
+            &format!("look at {long} this"),
             Vec::new(),
+            vec![rhema_core::paste::PasteSpan {
+                start: "look at ".len(),
+                end: "look at ".len() + long.len(),
+                lines: 5,
+            }],
         );
         let backend = TestBackend::new(60, 24);
         let mut terminal = Terminal::new(backend).unwrap();

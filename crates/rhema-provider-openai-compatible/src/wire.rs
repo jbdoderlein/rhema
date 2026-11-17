@@ -1012,6 +1012,7 @@ impl ChunkAssembler {
         }
         ModelOutput {
             message: Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content,
             },
@@ -1084,6 +1085,7 @@ mod tests {
             messages: vec![
                 Message::text(Role::User, "list files"),
                 Message {
+                    annotations: Default::default(),
                     role: Role::Assistant,
                     content: vec![
                         Content::Text("checking".into()),
@@ -1096,6 +1098,7 @@ mod tests {
                     ],
                 },
                 Message {
+                    annotations: Default::default(),
                     role: Role::Tool,
                     content: vec![Content::ToolResult(ToolResult::success(
                         "call_0",
@@ -1188,6 +1191,7 @@ mod tests {
         let req = ModelRequest {
             system: None,
             messages: vec![Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::ToolCall(ToolCall {
                     id: "call_0".into(),
@@ -1214,10 +1218,12 @@ mod tests {
             system: None,
             messages: vec![
                 Message {
+                    annotations: Default::default(),
                     role: Role::Assistant,
                     content: vec![],
                 },
                 Message {
+                    annotations: Default::default(),
                     role: Role::User,
                     content: vec![
                         Content::Text("and then".into()),
@@ -1272,6 +1278,7 @@ mod tests {
         let req = ModelRequest {
             system: None,
             messages: vec![Message {
+                annotations: Default::default(),
                 role: Role::User,
                 content: vec![
                     Content::Text("first".into()),
@@ -1330,6 +1337,7 @@ mod tests {
         let req = ModelRequest {
             system: None,
             messages: vec![Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![Content::ToolResult(
                     ToolResult::success("call_0", "out").with_images(vec![
@@ -1375,6 +1383,7 @@ mod tests {
         let req = ModelRequest {
             system: None,
             messages: vec![Message {
+                annotations: Default::default(),
                 role: Role::Tool,
                 content: vec![
                     Content::ToolResult(ToolResult::success("call_0", "first")),
@@ -1417,10 +1426,12 @@ mod tests {
             messages: vec![
                 Message::text(Role::User, "list files"),
                 Message {
+                    annotations: Default::default(),
                     role: Role::Assistant,
                     content: vec![Content::Text("checking".into())],
                 },
                 Message {
+                    annotations: Default::default(),
                     role: Role::Tool,
                     content: vec![Content::ToolResult(ToolResult::success("call_0", "[]"))],
                 },
@@ -1477,6 +1488,7 @@ mod tests {
         assert_eq!(
             out.message,
             Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::Text("Hello".into())],
             }
@@ -1839,6 +1851,7 @@ mod tests {
         let req = ModelRequest {
             system: None,
             messages: vec![Message {
+                annotations: Default::default(),
                 role: Role::Assistant,
                 content: vec![Content::ToolCall(ToolCall {
                     id: "call_0".into(),

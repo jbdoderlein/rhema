@@ -66,7 +66,7 @@ let mut agent = CodingAgent::new(CodingAgentConfig::new(
 ))?;
 
 let reply = agent
-    .turn("fix the failing test", &mut Console::stdout())
+    .turn("fix the failing test", &mut Print)
     .await?;
 ```
 
