@@ -35,6 +35,7 @@ CRATES=(
   rhema-sandbox
   rhema-sandbox-local
   rhema-sandbox-http
+  rhema-sandbox-ssh
   rhema-transcript
   rhema-coding-agent
   rhema-mcp
@@ -50,6 +51,7 @@ CRATES=(
   rhema-provider-copilot
   rhema-provider-google
   rhema-provider-llama-cpp
+  rhema-provider-mistral
   rhema-provider-openrouter
   rhema-provider-registry
   rhema-acp
