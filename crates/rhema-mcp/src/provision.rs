@@ -53,7 +53,7 @@ pub const VAR_TMP: &str = "RHEMA_MCP_TMP";
 pub struct Provision {
     /// The init file's absolute path; also `BASH_ENV`'s value.
     pub init_path: PathBuf,
-    /// The env map: layer it over `CodingAgentConfig::shell_env`.
+    /// The env map: layer it over `HostAgentConfig::shell_env`.
     pub env: BTreeMap<String, String>,
     /// Servers skipped for name reasons, with the reason; the
     /// caller surfaces these as debug notices.

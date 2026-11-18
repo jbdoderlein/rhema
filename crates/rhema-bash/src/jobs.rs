@@ -123,7 +123,7 @@ const USAGE: &str = "job: background shells for this session
     job shutdown               stop every job this session started";
 
 /// One process's wiring: the env map a frontend layers over
-/// `CodingAgentConfig::shell_env`, the prompt section to render, and the
+/// `HostAgentConfig::shell_env`, the prompt section to render, and the
 /// provisioned init file held for the process's life.
 pub struct Wiring {
     /// The env map: `BASH_ENV`, `RHEMA_JOBS_BIN`, `RHEMA_SESSION`, and

@@ -1,6 +1,6 @@
 [package]
-name = "rhema-coding-agent"
-description = "The coding-agent driver on top of rhema-core: turn loop, session persistence, the SYSTEM.md template"
+name = "rhema-host-agent"
+description = "The host-agent driver on top of rhema-core: turn loop, session persistence, the SYSTEM.md template"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

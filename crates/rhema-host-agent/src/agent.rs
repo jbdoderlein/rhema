@@ -1,4 +1,4 @@
-//! The coding-agent driver: a provider, the built-in workspace tools, and
+//! The host-agent driver: a provider, the built-in workspace tools, and
 //! the per-turn loop, the provided `rhema_core::run_turn`, or, with a
 //! steering source configured, the driver's own loop with the two drain
 //! points that append finished-work notifications at step boundaries.
@@ -8,7 +8,7 @@
 //! resolver before stepping and clears it after (see
 //! [`rhema_bash::approval`] for why the hook travels as an
 //! `Arc`). A driver whose hook belongs to one turn, the TUI's
-//! per-round bridge, swaps it with [`CodingAgent::set_approval`].
+//! per-round bridge, swaps it with [`HostAgent::set_approval`].
 //! The session is plain data, the driver may mutate it between turns,
 //! checkpoint it, or resume it from disk. A turn entering with
 //! committed-but-unanswered calls (a crash resume) revives first:
@@ -31,7 +31,7 @@ use rhema_prompt::Skill;
 use rhema_session_store::StoreError;
 use rhema_session_store_file::PathStore;
 
-use crate::config::{CodingAgentConfig, Steering};
+use crate::config::{HostAgentConfig, Steering};
 
 /// The driver-state key carrying the conversation's rendered
 /// environment section: stamped at the conversation's start, reused by
@@ -55,7 +55,7 @@ pub fn clear_environment_stamp(session: &mut Session) {
 
 /// Why a turn or a session operation failed.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
-pub enum CodingAgentError {
+pub enum HostAgentError {
     /// The engine or the provider failed. A turn that reaches its step
     /// budget is not an error: it returns its last output with
     /// `StopReason::ToolUse`.
@@ -74,7 +74,7 @@ pub enum CodingAgentError {
     Template(String),
 }
 
-impl From<minijinja::Error> for CodingAgentError {
+impl From<minijinja::Error> for HostAgentError {
     fn from(err: minijinja::Error) -> Self {
         let line = err
             .line()
@@ -90,7 +90,7 @@ impl From<minijinja::Error> for CodingAgentError {
 /// discovered skills, and the tool specs, the built-ins plus
 /// `extra`, the extension resolver's specs, so the prompt and the
 /// request's tools array cannot drift. The one assembly point:
-/// [`CodingAgent::new`] builds every agent's prompt here, and a driver
+/// [`HostAgent::new`] builds every agent's prompt here, and a driver
 /// that previews the prompt calls the same function, so what is
 /// previewed is what turns send. No optional sections: the environment
 /// report and the user preferences render empty.
@@ -98,7 +98,7 @@ pub fn stamped_system(
     base: Option<&str>,
     workspace: &Path,
     extra: &[ToolSpec],
-) -> Result<String, CodingAgentError> {
+) -> Result<String, HostAgentError> {
     // Either global directory may be missing (no HOME), as normal as
     // an empty one.
     let home = rhema_config::Home::discover().ok();
@@ -119,7 +119,7 @@ pub fn stamped_system_with_skills(
     workspace: &Path,
     extra: &[ToolSpec],
     skills: &[Skill],
-) -> Result<String, CodingAgentError> {
+) -> Result<String, HostAgentError> {
     stamped_system_with_sections(base, workspace, extra, skills, &[])
 }
 
@@ -139,25 +139,25 @@ pub fn stamped_system_with_sections(
     extra: &[ToolSpec],
     skills: &[Skill],
     sections: &[(&str, serde_json::Value)],
-) -> Result<String, CodingAgentError> {
+) -> Result<String, HostAgentError> {
     let mut tools = ShellTools::builtin_specs();
     tools.extend_from_slice(extra);
     let prompt = rhema_prompt::Prompt::new(workspace, skills, &tools)
         .with_sections(sections.iter().map(|(name, value)| (*name, value.clone())));
     rhema_prompt::render_system(base.unwrap_or(crate::prompt::DEFAULT_SYSTEM_MD), &prompt)
-        .map_err(CodingAgentError::from)
+        .map_err(HostAgentError::from)
 }
 
 /// The prompt sections a config carries, in one list: the five the
 /// config names, then the MCP rows the wire step produced, then
-/// [`CodingAgentConfig::sections`], the caller's own.
+/// [`HostAgentConfig::sections`], the caller's own.
 ///
 /// One list on purpose. When each section was an argument to the render,
 /// a field could ship without its argument, and `websearch` did: the
 /// config set it and the prompt never carried it. Here a section the
 /// config holds is a section the prompt has.
 fn config_sections<'a>(
-    config: &'a CodingAgentConfig,
+    config: &'a HostAgentConfig,
     mcp: &'a [rhema_config::mcp::McpServerLine],
 ) -> Vec<(&'a str, serde_json::Value)> {
     let mut sections: Vec<(&str, serde_json::Value)> = Vec::new();
@@ -184,11 +184,11 @@ fn config_sections<'a>(
     sections
 }
 
-/// A coding agent: drives [`run_turn`] over the built-in tools, one turn at
+/// A host agent: drives [`run_turn`] over the built-in tools, one turn at
 /// a time, keeping the history in a caller-visible [`Session`].
-pub struct CodingAgent {
+pub struct HostAgent {
     agent: Agent,
-    config: CodingAgentConfig,
+    config: HostAgentConfig,
     session: Session,
     tools: Arc<ShellTools>,
     /// The composed resolver, shell tools plus every extension (zoom,
@@ -202,13 +202,13 @@ pub struct CodingAgent {
     turns: u64,
 }
 
-impl CodingAgent {
+impl HostAgent {
     /// A fresh agent with an empty session. The workspace is canonicalized
     /// for tool scoping; the system prompt defaults to the built-in
     /// template rendered by [`crate::render_system`] unless
     /// `config.system` replaces it. A base prompt that fails to render
     /// fails the construction.
-    pub fn new(config: CodingAgentConfig) -> Result<Self, CodingAgentError> {
+    pub fn new(config: HostAgentConfig) -> Result<Self, HostAgentError> {
         let provider: Arc<dyn rhema_core::ModelProvider> = config.provider.clone();
         let tools = config.tools.clone().unwrap_or_else(|| {
             Arc::new(ShellTools::with_env(
@@ -353,7 +353,7 @@ impl CodingAgent {
     }
 
     /// A fresh agent resuming `session` (e.g. from
-    /// [`CodingAgent::load_session_from`]); the next turn continues the
+    /// [`HostAgent::load_session_from`]); the next turn continues the
     /// prior history.
     ///
     /// The conversation's environment report is conversation state: a
@@ -365,9 +365,9 @@ impl CodingAgent {
     /// before the report existed) stamps the config's render and
     /// carries it forward.
     pub fn from_session(
-        mut config: CodingAgentConfig,
+        mut config: HostAgentConfig,
         mut session: Session,
-    ) -> Result<Self, CodingAgentError> {
+    ) -> Result<Self, HostAgentError> {
         // A session written before paste spans existed carries the
         // embedded form in its prompts; the provider must never see a
         // mark. One rewrite on the way in, and the chips survive as the
@@ -520,7 +520,7 @@ impl CodingAgent {
         &mut self,
         input: impl Into<String>,
         sink: &mut dyn EventSink,
-    ) -> Result<ModelOutput, CodingAgentError> {
+    ) -> Result<ModelOutput, HostAgentError> {
         self.turn_with_cancel(input, sink, Arc::new(AtomicBool::new(false)))
             .await
     }
@@ -536,7 +536,7 @@ impl CodingAgent {
         input: impl Into<String>,
         sink: &mut dyn EventSink,
         cancelled: Arc<AtomicBool>,
-    ) -> Result<ModelOutput, CodingAgentError> {
+    ) -> Result<ModelOutput, HostAgentError> {
         self.turn_message_with_cancel(Message::text(Role::User, input), sink, cancelled)
             .await
     }
@@ -548,7 +548,7 @@ impl CodingAgent {
         &mut self,
         message: Message,
         sink: &mut dyn EventSink,
-    ) -> Result<ModelOutput, CodingAgentError> {
+    ) -> Result<ModelOutput, HostAgentError> {
         self.turn_message_with_cancel(message, sink, Arc::new(AtomicBool::new(false)))
             .await
     }
@@ -560,7 +560,7 @@ impl CodingAgent {
         message: Message,
         sink: &mut dyn EventSink,
         cancelled: Arc<AtomicBool>,
-    ) -> Result<ModelOutput, CodingAgentError> {
+    ) -> Result<ModelOutput, HostAgentError> {
         self.turns += 1;
         let ctx = ToolContext {
             cwd: self.tools.workspace().to_path_buf(),
@@ -610,7 +610,7 @@ impl CodingAgent {
         &mut self,
         sink: &mut dyn EventSink,
         cancelled: Arc<AtomicBool>,
-    ) -> Result<ModelOutput, CodingAgentError> {
+    ) -> Result<ModelOutput, HostAgentError> {
         self.turns += 1;
         let ctx = ToolContext {
             cwd: self.tools.workspace().to_path_buf(),
@@ -701,7 +701,7 @@ impl CodingAgent {
             .map_err(store_to_io)
     }
 
-    /// Reads a session written by [`CodingAgent::save_session_to`]. A
+    /// Reads a session written by [`HostAgent::save_session_to`]. A
     /// missing path keeps the `NotFound` kind the callers' "cannot
     /// resume" wording reads.
     pub fn load_session_from(path: &impl AsRef<Path>) -> io::Result<Session> {
@@ -787,7 +787,7 @@ mod paste_tests {
             }],
         );
         let recording = Arc::new(Recording(Mutex::new(Vec::new())));
-        let mut agent = CodingAgent::new(CodingAgentConfig::new(
+        let mut agent = HostAgent::new(HostAgentConfig::new(
             recording.clone(),
             "m",
             std::env::temp_dir(),
@@ -821,8 +821,8 @@ mod paste_tests {
         let mut session = Session::default();
         session.history.push(Message::text(Role::User, embedded));
         let recording = Arc::new(Recording(Mutex::new(Vec::new())));
-        let config = CodingAgentConfig::new(recording.clone(), "m", std::env::temp_dir(), AllowAll);
-        let agent = CodingAgent::from_session(config, session).unwrap();
+        let config = HostAgentConfig::new(recording.clone(), "m", std::env::temp_dir(), AllowAll);
+        let agent = HostAgent::from_session(config, session).unwrap();
 
         // The marks are gone and the chip is a span, not an encoding.
         let resumed = &agent.session().history[0];
@@ -865,8 +865,8 @@ mod paste_tests {
         }
     }
 
-    fn blocks_agent(recording: &Arc<RecordingBlocks>) -> CodingAgent {
-        CodingAgent::new(CodingAgentConfig::new(
+    fn blocks_agent(recording: &Arc<RecordingBlocks>) -> HostAgent {
+        HostAgent::new(HostAgentConfig::new(
             recording.clone(),
             "m",
             std::env::temp_dir(),
@@ -1007,11 +1007,11 @@ mod extra_tools_tests {
     #[tokio::test]
     async fn the_extra_resolver_reaches_the_request_and_resolves() {
         let scripted = Arc::new(Scripted(Mutex::new(Vec::new())));
-        let config = CodingAgentConfig {
+        let config = HostAgentConfig {
             extra_resolver: Some(Arc::new(Echo)),
-            ..CodingAgentConfig::new(scripted.clone(), "m", std::env::temp_dir(), AllowAll)
+            ..HostAgentConfig::new(scripted.clone(), "m", std::env::temp_dir(), AllowAll)
         };
-        let mut agent = CodingAgent::new(config).unwrap();
+        let mut agent = HostAgent::new(config).unwrap();
         let output = agent.turn("use the tool", &mut NoopSink).await.unwrap();
 
         // The extension tool resolved in-band and its result reached the
@@ -1049,7 +1049,7 @@ mod extra_tools_tests {
     async fn the_default_advertises_zoom_and_none_skips_it() {
         // Default: the built-ins plus zoom, the prompt naming it too.
         let scripted = Arc::new(Scripted(Mutex::new(Vec::new())));
-        let mut agent = CodingAgent::new(CodingAgentConfig::new(
+        let mut agent = HostAgent::new(HostAgentConfig::new(
             scripted.clone(),
             "m",
             std::env::temp_dir(),
@@ -1073,11 +1073,11 @@ mod extra_tools_tests {
 
         // `transcript: None` is the off switch: the built-ins alone.
         let scripted = Arc::new(Scripted(Mutex::new(Vec::new())));
-        let config = CodingAgentConfig {
+        let config = HostAgentConfig {
             transcript: None,
-            ..CodingAgentConfig::new(scripted.clone(), "m", std::env::temp_dir(), AllowAll)
+            ..HostAgentConfig::new(scripted.clone(), "m", std::env::temp_dir(), AllowAll)
         };
-        let mut agent = CodingAgent::new(config).unwrap();
+        let mut agent = HostAgent::new(config).unwrap();
         agent.turn("hi", &mut NoopSink).await.unwrap();
         let rounds = scripted.0.lock().unwrap();
         assert_eq!(rounds[0], vec!["bash".to_owned()]);
@@ -1182,7 +1182,7 @@ mod extra_tools_tests {
     /// never advertised. One list fixed the class, not the instance.
     #[test]
     fn the_config_folds_every_section_it_carries_into_one_list() {
-        let config = CodingAgentConfig {
+        let config = HostAgentConfig {
             environment: Some("env".to_owned()),
             user_preferences: Some("prefs".to_owned()),
             vision: Some("see".to_owned()),
@@ -1192,7 +1192,7 @@ mod extra_tools_tests {
                 "hear".to_owned(),
                 serde_json::json!("hear"),
             )]),
-            ..CodingAgentConfig::new(
+            ..HostAgentConfig::new(
                 Scripted(Mutex::new(Vec::new())),
                 "m",
                 std::env::temp_dir(),
@@ -1259,10 +1259,10 @@ mod environment_stamp_tests {
         fn emit(&mut self, _event: Event<'_>) {}
     }
 
-    fn config(provider: Arc<dyn ModelProvider>, report: &str) -> CodingAgentConfig {
-        CodingAgentConfig {
+    fn config(provider: Arc<dyn ModelProvider>, report: &str) -> HostAgentConfig {
+        HostAgentConfig {
             environment: Some(report.to_owned()),
-            ..CodingAgentConfig::new(provider, "m", std::env::temp_dir(), AllowAll)
+            ..HostAgentConfig::new(provider, "m", std::env::temp_dir(), AllowAll)
         }
     }
 
@@ -1270,7 +1270,7 @@ mod environment_stamp_tests {
     /// any turn: the first checkpoint already carries it.
     #[test]
     fn a_fresh_conversation_stamps_at_construction() {
-        let agent = CodingAgent::new(config(Arc::new(Ender), "REPORT-A")).unwrap();
+        let agent = HostAgent::new(config(Arc::new(Ender), "REPORT-A")).unwrap();
         assert_eq!(
             agent
                 .session()
@@ -1287,14 +1287,13 @@ mod environment_stamp_tests {
     /// the system prompt and break the prefix cache.
     #[tokio::test]
     async fn a_resumed_conversation_keeps_its_stamped_report() {
-        let mut first = CodingAgent::new(config(Arc::new(Ender), "REPORT-A")).unwrap();
+        let mut first = HostAgent::new(config(Arc::new(Ender), "REPORT-A")).unwrap();
         first.turn("hi", &mut NoopSink).await.unwrap();
         let session = first.session().clone();
 
         // Whatever the rebuilt config carries, a model switch, a
         // profile switch, a resume, the conversation's bytes stand.
-        let second =
-            CodingAgent::from_session(config(Arc::new(Ender), "REPORT-B"), session).unwrap();
+        let second = HostAgent::from_session(config(Arc::new(Ender), "REPORT-B"), session).unwrap();
         let prompt = second.system().expect("the agent has a prompt");
         assert!(prompt.contains("REPORT-A"), "{prompt}");
         assert!(!prompt.contains("REPORT-B"), "{prompt}");
@@ -1313,7 +1312,7 @@ mod environment_stamp_tests {
     /// render and carries it forward from there.
     #[tokio::test]
     async fn a_pre_report_session_stamps_the_fresh_render_once() {
-        let mut first = CodingAgent::new(config(Arc::new(Ender), "REPORT-A")).unwrap();
+        let mut first = HostAgent::new(config(Arc::new(Ender), "REPORT-A")).unwrap();
         first.turn("hi", &mut NoopSink).await.unwrap();
         // Age the session: the stamp disappears, the history stays.
         let session = Session {
@@ -1321,8 +1320,7 @@ mod environment_stamp_tests {
             ..first.session().clone()
         };
 
-        let second =
-            CodingAgent::from_session(config(Arc::new(Ender), "REPORT-B"), session).unwrap();
+        let second = HostAgent::from_session(config(Arc::new(Ender), "REPORT-B"), session).unwrap();
         let prompt = second.system().expect("the agent has a prompt");
         assert!(prompt.contains("REPORT-B"), "{prompt}");
         assert_eq!(
@@ -1345,8 +1343,7 @@ mod environment_stamp_tests {
             driver_state: serde_json::json!({ "someone-elses": "shape" }),
             ..Session::default()
         };
-        let agent =
-            CodingAgent::from_session(config(Arc::new(Ender), "REPORT-A"), session).unwrap();
+        let agent = HostAgent::from_session(config(Arc::new(Ender), "REPORT-A"), session).unwrap();
         let state = &agent.session().driver_state;
         assert_eq!(
             state.get("someone-elses"),
@@ -1363,7 +1360,7 @@ mod environment_stamp_tests {
             driver_state: serde_json::json!("a driver's opaque shape"),
             ..Session::default()
         };
-        let agent = CodingAgent::from_session(config(Arc::new(Ender), "REPORT-A"), opaque).unwrap();
+        let agent = HostAgent::from_session(config(Arc::new(Ender), "REPORT-A"), opaque).unwrap();
         assert_eq!(
             agent.session().driver_state,
             serde_json::json!("a driver's opaque shape"),
@@ -1448,11 +1445,11 @@ mod transcript_tests {
     #[tokio::test]
     async fn off_the_history_rides_verbatim() {
         let recording = Arc::new(Recording(Mutex::new(Vec::new())));
-        let config = CodingAgentConfig {
+        let config = HostAgentConfig {
             transcript: None,
-            ..CodingAgentConfig::new(recording.clone(), "m", std::env::temp_dir(), AllowAll)
+            ..HostAgentConfig::new(recording.clone(), "m", std::env::temp_dir(), AllowAll)
         };
-        let mut agent = CodingAgent::from_session(config, big_history(5)).unwrap();
+        let mut agent = HostAgent::from_session(config, big_history(5)).unwrap();
         agent.turn("next", &mut NoopSink).await.unwrap();
         let sent = recording.0.lock().unwrap();
         assert_eq!(sent.len(), 1);
@@ -1464,14 +1461,14 @@ mod transcript_tests {
     #[tokio::test]
     async fn on_by_default_a_big_history_is_viewed_and_the_session_stays_whole() {
         let recording = Arc::new(Recording(Mutex::new(Vec::new())));
-        let config = CodingAgentConfig {
+        let config = HostAgentConfig {
             transcript: Some(rhema_transcript::TranscriptSettings {
                 max_view_bytes: 4_000,
                 ..rhema_transcript::TranscriptSettings::default()
             }),
-            ..CodingAgentConfig::new(recording.clone(), "m", std::env::temp_dir(), AllowAll)
+            ..HostAgentConfig::new(recording.clone(), "m", std::env::temp_dir(), AllowAll)
         };
-        let mut agent = CodingAgent::from_session(config, big_history(5)).unwrap();
+        let mut agent = HostAgent::from_session(config, big_history(5)).unwrap();
         // The prompt advertises zoom: the tool and the prompt cannot drift.
         let prompt = agent
             .system()

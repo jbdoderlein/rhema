@@ -139,14 +139,14 @@ Rules:
   - `transcript`: the bounded view over an unbounded session: the
     request view decorator, the slot algebra, the `zoom` tool
     (`crates/rhema-transcript/`)
-  - `agent`: the coding-agent driver and tools (`crates/rhema-coding-agent/`)
+  - `agent`: the host-agent driver and tools (`crates/rhema-host-agent/`)
   - `rhema-code`: the frontend crate: terminal UI and headless
     one-shot (`crates/rhema-code/`); its binary is `rhema`
   - `cloud-agent`: the cloud harness the frontends share: the
     filesystem-less assembly, the client approval gate, the per-session
     config, and the offline end-to-end. No platform dependency enters
     this crate (`crates/rhema-cloud-agent/`)
-  - `cloudflare-code`: the cloud frontend: the coding agent as a
+  - `cloudflare-code`: the cloud frontend: the host agent as a
     Cloudflare Durable Object, the workers-rs glue over the shared
     harness, and the sandbox daemon image
     (its own repository, `rhema-cloudflare-code`)
@@ -185,7 +185,7 @@ chore: apply cargo fmt
   `crates/rhema-core/src/lib.rs`): every public item carries a doc
   comment, and the module list there is the layout map. Keep it in
   sync when adding a module.
-- The step engine has exactly two intended consumers (coding agent,
+- The step engine has exactly two intended consumers (host agent,
   RSD agent); the second is a falsification test on the seams, never a
   feature. Anything that smells like dispatch, leases, or persistence
   belongs to a later crate. See SPEC.md §1 and §7 test 5.

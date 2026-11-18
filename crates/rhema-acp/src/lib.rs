@@ -1,4 +1,4 @@
-//! rhema-acp, the Agent Client Protocol adapter: rhema's coding agent
+//! rhema-acp, the Agent Client Protocol adapter: rhema's host agent
 //! as an ACP agent subprocess.
 //!
 //! ACP (agentclientprotocol.com) is to coding agents what LSP is to
@@ -9,9 +9,9 @@
 //! without a plugin per editor.
 //!
 //! The adapter is a *frontend*, the third consumer of
-//! [`CodingAgent`](rhema_coding_agent::CodingAgent) after the TUI and
+//! [`HostAgent`](rhema_host_agent::HostAgent) after the TUI and
 //! the headless one-shot: sessions carry the model choice and workspace
-//! (`session/new`'s `cwd`), a prompt is one [`turn`](rhema_coding_agent::CodingAgent::turn),
+//! (`session/new`'s `cwd`), a prompt is one [`turn`](rhema_host_agent::HostAgent::turn),
 //! engine events stream to the client as `session/update` notifications,
 //! the approval seam is answered by `session/request_permission`, and a
 //! turn drop repairs dangling tool calls, every seam the TUI already

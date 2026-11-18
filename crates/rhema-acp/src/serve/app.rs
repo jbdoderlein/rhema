@@ -22,7 +22,7 @@ pub(crate) struct SessionSlot {
     /// another kind replaces it.
     pub(crate) provider: Arc<dyn ModelProvider>,
     /// Gone while a turn runs; the prompt task puts it back after.
-    pub(crate) agent: Option<CodingAgent>,
+    pub(crate) agent: Option<HostAgent>,
     /// The last moment this slot served a request. Eviction reads it:
     /// the oldest idle slot goes when the map passes its cap.
     pub(crate) last_used: std::time::Instant,
@@ -69,7 +69,7 @@ pub(crate) struct SessionSlot {
 pub(crate) struct SlotRestore {
     pub(crate) app: Arc<App>,
     pub(crate) id: Arc<str>,
-    pub(crate) agent: Option<CodingAgent>,
+    pub(crate) agent: Option<HostAgent>,
 }
 
 impl Drop for SlotRestore {
@@ -248,17 +248,17 @@ impl App {
         thinking: ThinkingEffort,
         model: &str,
         workspace: &std::path::Path,
-    ) -> CodingAgentConfig {
-        let mut config = CodingAgentConfig {
+    ) -> HostAgentConfig {
+        let mut config = HostAgentConfig {
             max_turn_steps: self
                 .options
                 .max_steps
-                .unwrap_or(CodingAgentConfig::DEFAULT_MAX_TURN_STEPS),
+                .unwrap_or(HostAgentConfig::DEFAULT_MAX_TURN_STEPS),
             thinking,
             base_system: self.base_system.clone(),
             // The prompt handler installs the session's real hook with
             // `set_approval` before each turn; until one runs, deny.
-            ..CodingAgentConfig::new(provider, model, workspace, rhema_coding_agent::DenyAll)
+            ..HostAgentConfig::new(provider, model, workspace, rhema_host_agent::DenyAll)
         };
         // The `bash` tool does its own I/O here (no fs/terminal
         // callbacks), so commands run on this host and the vision
@@ -395,7 +395,7 @@ impl App {
 
     /// Takes the agent out for a turn; `None` when the session is
     /// unknown or already running one.
-    pub(crate) fn take_agent(&self, id: &str) -> Option<(CodingAgent, Arc<Mutex<AlwaysMemory>>)> {
+    pub(crate) fn take_agent(&self, id: &str) -> Option<(HostAgent, Arc<Mutex<AlwaysMemory>>)> {
         let mut sessions = self.lock();
         let slot = sessions.get_mut(id)?;
         let agent = slot.agent.take()?;
@@ -444,7 +444,7 @@ impl App {
     }
 
     /// Puts the agent back after a turn and clears the cancel sender.
-    pub(crate) fn put_agent(&self, id: &str, agent: CodingAgent) {
+    pub(crate) fn put_agent(&self, id: &str, agent: HostAgent) {
         if let Some(slot) = self.lock().get_mut(id) {
             slot.agent = Some(agent);
             slot.cancel = None;
@@ -500,7 +500,7 @@ impl App {
                 })?
                 .session()
                 .clone();
-            let agent = CodingAgent::from_session(
+            let agent = HostAgent::from_session(
                 self.agent_config(provider.clone(), slot.thinking, &model, &slot.workspace),
                 session,
             )
@@ -548,7 +548,7 @@ impl App {
                 })?
                 .session()
                 .clone();
-            let agent = CodingAgent::from_session(
+            let agent = HostAgent::from_session(
                 self.agent_config(slot.provider.clone(), effort, &slot.model, &slot.workspace),
                 session,
             )

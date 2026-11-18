@@ -37,7 +37,7 @@ CRATES=(
   rhema-sandbox-http
   rhema-sandbox-ssh
   rhema-transcript
-  rhema-coding-agent
+  rhema-host-agent
   rhema-mcp
   rhema-rsd
   rhema-memory

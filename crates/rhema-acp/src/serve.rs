@@ -8,7 +8,7 @@
 //! answers keep flowing while the turn runs.
 //!
 //! Session state lives in `App`: one slot per session holding the
-//! [`CodingAgent`], a cancel sender, and the `always` permission memory.
+//! [`HostAgent`], a cancel sender, and the `always` permission memory.
 //! The prompt task *takes* the agent out for the turn's duration, which
 //! makes a second concurrent prompt for the same session a clean error
 //! instead of a data race.
@@ -47,10 +47,10 @@ use agent_client_protocol::{
     Agent, Client, ConnectionTo, Error, Stdio, on_receive_notification, on_receive_request,
 };
 use anyhow::Context;
-use rhema_coding_agent::{CodingAgent, CodingAgentConfig, CodingAgentError};
 use rhema_config::Settings;
 use rhema_core::request::ThinkingEffort;
 use rhema_core::{Content, ModelProvider, Role, Session, StopReason as EngineStop};
+use rhema_host_agent::{HostAgent, HostAgentConfig, HostAgentError};
 use rhema_session_store::{SessionId as StoreSessionId, SessionStore};
 use rhema_session_store_file::FileStore;
 use tokio::sync::watch;
@@ -79,7 +79,7 @@ pub struct AcpOptions {
     pub model: Option<String>,
     /// llama.cpp server base URL override.
     pub llama_url: Option<String>,
-    /// Cap on steps per turn; `None` is the coding agent's default.
+    /// Cap on steps per turn; `None` is the host agent's default.
     pub max_steps: Option<NonZeroU32>,
     /// Reasoning effort override; `None` falls back to the profile,
     /// then the provider default.
@@ -197,7 +197,7 @@ async fn serve_connection(
                         ));
                     };
                     let provider = backend.provider.clone();
-                    let agent = CodingAgent::new(app.agent_config(
+                    let agent = HostAgent::new(app.agent_config(
                         backend.provider,
                         app.thinking(),
                         &backend.model,
@@ -301,7 +301,7 @@ async fn serve_connection(
                         }
                     }
                     let provider = backend.provider.clone();
-                    let agent = CodingAgent::from_session(
+                    let agent = HostAgent::from_session(
                         app.agent_config(
                             backend.provider,
                             app.thinking(),
@@ -700,10 +700,10 @@ fn settle_turn(
 
 /// The outcome a failed turn settles with. The failure class is read
 /// here, while the error is still in hand.
-fn failure_outcome(err: &CodingAgentError) -> rhema_submissions::Outcome {
+fn failure_outcome(err: &HostAgentError) -> rhema_submissions::Outcome {
     let retryable = matches!(
         err,
-        CodingAgentError::Agent(agent) if agent.is_retryable()
+        HostAgentError::Agent(agent) if agent.is_retryable()
     );
     rhema_submissions::Outcome::Failed {
         error: err.to_string(),

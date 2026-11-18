@@ -971,8 +971,8 @@ fn agent_config(
     model: Option<String>,
     disabled_skills: &std::collections::BTreeSet<String>,
     disabled_subagents: &std::collections::BTreeSet<String>,
-) -> CodingAgentConfig {
-    CodingAgentConfig {
+) -> HostAgentConfig {
+    HostAgentConfig {
         max_turn_steps: options.max_steps,
         transcript: (!options.no_transcript).then(rhema_transcript::TranscriptSettings::default),
         thinking: options.thinking,
@@ -982,16 +982,16 @@ fn agent_config(
         // Approval is intentionally `AllowAll`: the sandbox, not a
         // prompt, is the isolation boundary. The approval modal is a
         // seam for a future policy.
-        ..CodingAgentConfig::new(
+        ..HostAgentConfig::new(
             provider,
             model.unwrap_or_default(),
             &options.workspace,
-            rhema_coding_agent::AllowAll,
+            rhema_host_agent::AllowAll,
         )
     }
 }
 
-/// The coding-agent config a session runs on: the base config, the
+/// The host-agent config a session runs on: the base config, the
 /// session's assembled sandbox applied when it runs on one, and the
 /// subagent wire. The application order is the shared assembly's: the
 /// sandbox tools and seeded skills land BEFORE the wire, the
@@ -1028,10 +1028,10 @@ pub(crate) fn session_agent_config(
     session_key: &str,
     disabled_mcp: &std::collections::BTreeSet<String>,
     secrets: Option<&Arc<dyn rhema_config::secrets::SecretStore>>,
-    jobs_steering: Option<Arc<dyn rhema_coding_agent::Steering>>,
+    jobs_steering: Option<Arc<dyn rhema_host_agent::Steering>>,
     jobs_tag: &str,
 ) -> (
-    CodingAgentConfig,
+    HostAgentConfig,
     rhema_subagents::SubagentHandle,
     Vec<String>,
 ) {
@@ -1052,7 +1052,7 @@ pub(crate) fn session_agent_config(
     config.subagent_providers = secrets.map(|secrets| {
         let profile = profile.clone();
         let secrets = secrets.clone();
-        let factory: rhema_coding_agent::SubagentProviders = Arc::new(move |kind: &str| {
+        let factory: rhema_host_agent::SubagentProviders = Arc::new(move |kind: &str| {
             Backend::from_kind(kind, &profile, Some(secrets.as_ref()))
                 .map(|backend| backend.provider())
         });
@@ -1122,7 +1122,7 @@ pub(crate) fn session_agent_config(
     // as itself.
     config.steering = match (config.steering, jobs_steering) {
         (Some(subagents), Some(jobs)) => {
-            Some(Arc::new(rhema_coding_agent::SteeringChain::new(vec![
+            Some(Arc::new(rhema_host_agent::SteeringChain::new(vec![
                 subagents, jobs,
             ])))
         }
@@ -1146,7 +1146,7 @@ pub(crate) fn session_agent_config(
 /// the same run, empty for a sandbox, whose host's gaps it does not
 /// inherit.
 fn apply_prompt_sections(
-    config: &mut CodingAgentConfig,
+    config: &mut HostAgentConfig,
     options: &RunOptions,
     sandboxed: Option<&crate::sandbox::Sandboxed>,
 ) -> Vec<String> {

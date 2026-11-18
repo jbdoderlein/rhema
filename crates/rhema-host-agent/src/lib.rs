@@ -1,14 +1,14 @@
-//! rhema-coding-agent, the coding-agent driver, the first consumer of
+//! rhema-host-agent, the host-agent driver, the first consumer of
 //! rhema-core's step engine.
 //!
 //! Wires a [`ModelProvider`](rhema_core::ModelProvider) into a
-//! [`CodingAgent`] whose turns drive `rhema_core::run_turn` over the
+//! [`HostAgent`] whose turns drive `rhema_core::run_turn` over the
 //! tools (`rhema-bash` and `rhema-prompt`): the approval-gated shell,
 //! its spec and discovered skills presented in the system prompt, the
 //! model loading skill bodies via the shell. Tool errors surface in-band to
 //! the model (SPEC.md §4); approval is config state, installed into the
 //! tools before each turn, and a driver whose channel belongs to one
-//! turn swaps it with [`CodingAgent::set_approval`]; the session is
+//! turn swaps it with [`HostAgent::set_approval`]; the session is
 //! plain data the driver can persist and resume, with a commit hook so
 //! an intent is durable before its first side effect, revive-on-resume
 //! for calls a crash left unanswered, and cancel-path repair for those
@@ -19,7 +19,7 @@
 //! ```no_run
 //! use std::sync::Arc;
 //!
-//! use rhema_coding_agent::{AllowAll, CodingAgent, CodingAgentConfig};
+//! use rhema_host_agent::{AllowAll, HostAgent, HostAgentConfig};
 //! use rhema_core::{Event, EventSink, ModelProvider};
 //!
 //! /// A headless sink: the events are dropped.
@@ -29,13 +29,13 @@
 //! }
 //!
 //! # async fn example(provider: impl ModelProvider + 'static) -> Result<(), Box<dyn std::error::Error>> {
-//! let config = CodingAgentConfig::new(
+//! let config = HostAgentConfig::new(
 //!     provider,
 //!     "claude-sonnet-5-5",
 //!     "/work/repo",
 //!     AllowAll, // any Approval; DenyAll refuses every call
 //! );
-//! let mut agent = CodingAgent::new(config)?;
+//! let mut agent = HostAgent::new(config)?;
 //!
 //! let _reply = agent
 //!     .turn("fix the failing test", &mut Quiet)
@@ -50,8 +50,8 @@
 //! caller already holds pass equally unchanged.
 //!
 //! Layout:
-//! - [`agent`]: `CodingAgent`, `CodingAgentError`, `stamped_system`
-//! - [`config`]: `CodingAgentConfig` and the `Steering` seam
+//! - [`agent`]: `HostAgent`, `HostAgentError`, `stamped_system`
+//! - [`config`]: `HostAgentConfig` and the `Steering` seam
 //! - [`prompt`]: the SYSTEM.md template and its default render
 //! - [`environment`]: the startup environment report and the sandbox
 //!   notice, the prompt's environment section
@@ -80,10 +80,10 @@ pub mod environment;
 pub mod prompt;
 
 pub use agent::{
-    CodingAgent, CodingAgentError, clear_environment_stamp, stamped_system,
+    HostAgent, HostAgentError, clear_environment_stamp, stamped_system,
     stamped_system_with_sections, stamped_system_with_skills,
 };
-pub use config::{CodingAgentConfig, Steering, SteeringChain, SubagentProviders};
+pub use config::{HostAgentConfig, Steering, SteeringChain, SubagentProviders};
 pub use environment::{host_environment, host_report, remote_notice};
 pub use prompt::{DEFAULT_SYSTEM_MD, default_system};
 // The two tool crates the driver is built on, under this crate's name:

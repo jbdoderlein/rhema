@@ -259,7 +259,7 @@ impl App {
             self.jobs.as_ref().map(crate::jobs::JobsHandle::steering),
             &self.jobs_tag,
         );
-        match CodingAgent::from_session(agent_config, session) {
+        match HostAgent::from_session(agent_config, session) {
             Ok(mut agent) => {
                 // The benchmark moves with the conversation, the way
                 // the cost does: the old agent's counters fold into
@@ -267,12 +267,12 @@ impl App {
                 let saved = self
                     .agent
                     .as_ref()
-                    .and_then(CodingAgent::transcript_stats)
+                    .and_then(HostAgent::transcript_stats)
                     .or(self.transcript_stats);
                 let sections = self
                     .agent
                     .as_ref()
-                    .map(CodingAgent::transcript_sections)
+                    .map(HostAgent::transcript_sections)
                     .unwrap_or_default();
                 if let Some(saved) = saved {
                     agent.carry_transcript_stats(&saved);
@@ -738,7 +738,7 @@ impl App {
         // The model may have changed with the profile, and the cache is
         // per-model regardless: the report re-states its facts.
         let mut session = session;
-        rhema_coding_agent::clear_environment_stamp(&mut session);
+        rhema_host_agent::clear_environment_stamp(&mut session);
         if let Err(err) = self.rebuild_agent(session, saved, sections) {
             self.error = Some(err);
             return Vec::new();

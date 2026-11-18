@@ -30,7 +30,7 @@ the feature builds without it and the rest builds without it.
   argument sets share one schema: the portable schema subset has no
   `oneOf`, so the field prose states the exclusivity.
 - `wire`: the explicit frontend helper: discover, and when anything was
-  found, attach a `SubagentTools` to a `CodingAgentConfig`.
+  found, attach a `SubagentTools` to a `HostAgentConfig`.
 
 **OUT of v1** (each deliberately out, with the reason):
 
@@ -79,14 +79,14 @@ crates/rhema-subagents/
     lib.rs          # re-exports; #![forbid(unsafe_code)]
     def.rs          # SubagentDef, discovery, frontmatter
     tools.rs        # SubagentTools: the `subagent` tool and the inner loop
-    wire.rs         # the CodingAgentConfig helper
+    wire.rs         # the HostAgentConfig helper
   tests/            # end-to-end over the mock provider
 ```
 
 Dependencies point outward to the existing stack: `rhema-core`,
-`rhema-bash`, `rhema-prompt`, `rhema-coding-agent` and `rhema-config` (both only
+`rhema-bash`, `rhema-prompt`, `rhema-host-agent` and `rhema-config` (both only
 for `wire`), never the reverse. The two seams this feature consumes from
-`rhema-bash`, `rhema-prompt` and `rhema-coding-agent` are default-inert additions
+`rhema-bash`, `rhema-prompt` and `rhema-host-agent` are default-inert additions
 (§5); they exist for composition, not for subagents specifically.
 
 ## 3. Definitions
@@ -213,7 +213,7 @@ subagents on its own.
    `replay_safety` likewise. Plus `ShellTools::current_approval`, the
    getter the inheritance in §4 reads. Both are composition material any
    driver may use.
-2. **`rhema-coding-agent`: `CodingAgentConfig`** grows
+2. **`rhema-host-agent`: `HostAgentConfig`** grows
    `tools: Option<Arc<ShellTools>>` (bring your own shell; `None` builds
    one as today) and `extra_resolver: Option<Arc<dyn ToolResolver>>`
    (`None` is today's behavior byte for byte). When set, the agent runs

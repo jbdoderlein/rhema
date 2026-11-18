@@ -32,9 +32,9 @@ use crossterm::terminal::{
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use rhema_acp::AcpOptions;
-use rhema_coding_agent::CodingAgent;
 use rhema_config::secrets::KeyringSecretStore;
 use rhema_core::{Event as ModelEvent, EventSink, Session};
+use rhema_host_agent::HostAgent;
 use rhema_session_store_file::PathStore;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
@@ -195,11 +195,11 @@ pub(crate) fn prompt_sections(
         .filter(|text| !text.trim().is_empty());
     let (environment, missing) = match sandbox_kind {
         None | Some("local") => {
-            let host = rhema_coding_agent::host_environment(workspace, model, harness);
+            let host = rhema_host_agent::host_environment(workspace, model, harness);
             (host.report, host.missing)
         }
         Some(kind) => (
-            rhema_coding_agent::remote_notice(kind, sandbox_workspace, model, harness),
+            rhema_host_agent::remote_notice(kind, sandbox_workspace, model, harness),
             Vec::new(),
         ),
     };
@@ -212,10 +212,10 @@ pub(crate) fn prompt_sections(
 /// own when to retry; 1 for everything else. Codes above 1 are shell
 /// convention for distinct failures.
 pub fn exit_code(err: &anyhow::Error) -> i32 {
-    use rhema_coding_agent::CodingAgentError;
+    use rhema_host_agent::HostAgentError;
     for cause in err.chain() {
-        if let Some(CodingAgentError::Agent(rhema_core::AgentError::Provider(_))) =
-            cause.downcast_ref::<CodingAgentError>()
+        if let Some(HostAgentError::Agent(rhema_core::AgentError::Provider(_))) =
+            cause.downcast_ref::<HostAgentError>()
         {
             return 2;
         }
@@ -377,7 +377,7 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
             },
         );
     let session = match &args.resume {
-        Some(path) => CodingAgent::load_session_from(path)
+        Some(path) => HostAgent::load_session_from(path)
             .with_context(|| format!("cannot resume session: {}", path.display()))?,
         None => Session::default(),
     };

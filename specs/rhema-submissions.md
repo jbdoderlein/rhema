@@ -526,7 +526,7 @@ unit of work: `Agent::turn`, `Agent::resume_turn`, `Session::history`,
 `StopReason`. Everything it needs is `rhema-core`, which this crate
 already depends on for `Session`.
 
-It is deliberately **not** in `rhema-coding-agent`: that crate is one
+It is deliberately **not** in `rhema-host-agent`: that crate is one
 *assembly* of agents (prompt, tools, approval, resolver), and a turn
 belongs to any assembly. `rhema-autonomous-agent`, a harness, a
 benchmark runner all drive the same `rhema_core::Agent`, so the turn
@@ -998,7 +998,7 @@ thiserror = { workspace = true }
 
 The seam is a type dependency (`SessionId`), not a backend: this crate
 compiles with no `rusqlite`, no `rhema-config`, and no frontend. It
-depends on neither `rhema-coding-agent` nor `rhema-bash`; the
+depends on neither `rhema-host-agent` nor `rhema-bash`; the
 turn kind needs only core, and the dangling-call repair stays in the
 driver that has tools.
 
@@ -1146,7 +1146,7 @@ TUI:
 - **No result copy.** The record says done; the result is the kind's to
   derive from its own store.
 - **The built-in kind is `turn`, in this crate.** A turn is core's unit
-  of work; coding-agent is an assembly, not an owner.
+  of work; the host agent is an assembly, not an owner.
 - **Load never starts work.** `reconcile` settles statuses and reports
   them; every `Interrupted` record, turn or subagent, waits for an
   explicit request. A load that starts work spends tokens and does
@@ -1182,7 +1182,7 @@ Phase 1:
   `Done`.
 - A session written before this crate, with `driver_state: null`, loads,
   lists, and resumes unchanged; no empty ledger is stamped on it.
-- `cargo tree -p rhema-submissions | rg "rhema-(coding-agent|bash|prompt)"`
+- `cargo tree -p rhema-submissions | rg "rhema-(host-agent|bash|prompt)"`
   finds no match: the turn kind needs core only.
 
 Phase 2:

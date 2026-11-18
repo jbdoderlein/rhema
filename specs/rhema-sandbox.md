@@ -51,9 +51,9 @@ frontend shipped as item 8 and later left the tree entirely.
 - **The seam is cloud-scoped.** `Sandbox`, `exec`, `seed`, `read_file`,
   `write_file`; object-safe, async, no platform dependency, lives in
   `crates/rhema-cloud-agent/src/sandbox.rs`, a crate whose lib doc opens
-  "the coding-agent harness the cloud frontends share". `rhema-code`
+  "the host-agent harness the cloud frontends share". `rhema-code`
   does not depend on it and has no path to it: `run.rs` builds
-  `CodingAgentConfig::new`, whose default tools are `ShellTools::new`,
+  `HostAgentConfig::new`, whose default tools are `ShellTools::new`,
   the local process executor. The terminal agent can only ever run
   `bash` on the machine it was started on.
 - **Frontend and sandbox are 1:1.** The Durable Object constructs
@@ -245,7 +245,7 @@ Assembly has two paths, and the split is the one the cloud already drew:
 - **`local`** is today's fast path, unchanged: `ShellTools::new` → the
   local process executor. No choice made, no new code runs.
 - **every other kind** builds an `Arc<dyn Sandbox>`, seeds it, and wraps
-  it in `ShellSandbox` for `CodingAgentConfig.tools`. The workspace
+  it in `ShellSandbox` for `HostAgentConfig.tools`. The workspace
   becomes the sandbox-side path (`/workspace` for http and copied
   containers; the named directory for ssh and mounts); skill *sources*
   are read host-side as today, skill *bodies* are written into the

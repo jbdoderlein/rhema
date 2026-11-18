@@ -5,9 +5,9 @@ use crate::events::OwnedEvent;
 use crate::screens::{LoginProvider, ProviderCategory, providers_in};
 use crate::store::MemoryStore;
 use crate::transcript::Line;
-use rhema_coding_agent::{Approval, CodingAgentConfig};
 use rhema_config::secrets::SecretStore as _;
 use rhema_core::{Message, Role, Session, StopReason, ToolCall, Usage};
+use rhema_host_agent::{Approval, HostAgentConfig};
 use rhema_provider::ModelCard;
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
@@ -2360,11 +2360,11 @@ fn the_status_tracks_thinking_versus_running() {
     assert!(h.app.turn.processing);
 
     // The turn ends: idle, no phase.
-    let agent = CodingAgent::new(CodingAgentConfig::new(
+    let agent = HostAgent::new(HostAgentConfig::new(
         Arc::new(NeverDriven),
         "m-a",
         PathBuf::from("."),
-        rhema_coding_agent::AllowAll,
+        rhema_host_agent::AllowAll,
     ))
     .unwrap();
     h.app.on_event(UiEvent::TurnCancelled {
@@ -2498,11 +2498,11 @@ fn esc_when_running_cancels_the_turn_and_flags_the_channel() {
     assert!(*cancelled.borrow(), "the turn task sees the flag");
 
     // The task's event closes the turn out.
-    let agent = CodingAgent::new(CodingAgentConfig::new(
+    let agent = HostAgent::new(HostAgentConfig::new(
         Arc::new(NeverDriven),
         "m-a",
         PathBuf::from("."),
-        rhema_coding_agent::AllowAll,
+        rhema_host_agent::AllowAll,
     ))
     .unwrap();
     h.app.on_event(UiEvent::TurnCancelled {
@@ -2549,11 +2549,11 @@ fn esc_with_a_pending_modal_cancels_and_releases_the_blocked_call() {
 fn the_cancelled_event_hands_the_agent_back_with_a_notice() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     h.app.turn.running = true;
-    let agent = CodingAgent::new(CodingAgentConfig::new(
+    let agent = HostAgent::new(HostAgentConfig::new(
         Arc::new(NeverDriven),
         "m-a",
         PathBuf::from("."),
-        rhema_coding_agent::AllowAll,
+        rhema_host_agent::AllowAll,
     ))
     .unwrap();
     h.app.on_event(UiEvent::TurnCancelled {
@@ -2594,11 +2594,11 @@ fn turn_finished_records_usage_and_errors() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     let make_agent = || {
         Box::new(
-            CodingAgent::new(CodingAgentConfig::new(
+            HostAgent::new(HostAgentConfig::new(
                 Arc::new(NeverDriven),
                 "m-a",
                 ".",
-                rhema_coding_agent::AllowAll,
+                rhema_host_agent::AllowAll,
             ))
             .unwrap(),
         )
@@ -3247,7 +3247,7 @@ fn choosing_a_sandbox_stores_the_kind_notes_the_workspace_and_rebuilds() {
     h.app.sandboxed = Some(crate::sandbox::Sandboxed {
         choice: SandboxChoice::Docker,
         target: "rhema-sandbox-proj".to_owned(),
-        tools: std::sync::Arc::new(rhema_coding_agent::ShellTools::new("/workspace")),
+        tools: std::sync::Arc::new(rhema_host_agent::ShellTools::new("/workspace")),
         workspace: "/workspace".to_owned(),
         skills: Vec::new(),
         instance_lock: None,
@@ -3296,7 +3296,7 @@ fn choosing_a_non_local_sandbox_assembles_through_an_effect() {
     let assembled = crate::sandbox::Sandboxed {
         choice: SandboxChoice::Docker,
         target: "rhema-sandbox-proj".to_owned(),
-        tools: std::sync::Arc::new(rhema_coding_agent::ShellTools::new("/host/ws")),
+        tools: std::sync::Arc::new(rhema_host_agent::ShellTools::new("/host/ws")),
         workspace: "/host/ws".to_owned(),
         skills: Vec::new(),
         instance_lock: None,
@@ -3449,7 +3449,7 @@ fn a_profile_switch_moves_bash_to_the_new_profiles_sandbox() {
     h.app.sandboxed = Some(crate::sandbox::Sandboxed {
         choice: SandboxChoice::Docker,
         target: "work-box".to_owned(),
-        tools: std::sync::Arc::new(rhema_coding_agent::ShellTools::new("/workspace")),
+        tools: std::sync::Arc::new(rhema_host_agent::ShellTools::new("/workspace")),
         workspace: "/workspace".to_owned(),
         skills: Vec::new(),
         instance_lock: None,
@@ -3516,7 +3516,7 @@ fn a_switch_keeps_a_sandbox_the_new_profile_resolves_to() {
     h.app.sandboxed = Some(crate::sandbox::Sandboxed {
         choice: SandboxChoice::Docker,
         target: "work-box".to_owned(),
-        tools: std::sync::Arc::new(rhema_coding_agent::ShellTools::new("/workspace")),
+        tools: std::sync::Arc::new(rhema_host_agent::ShellTools::new("/workspace")),
         workspace: "/workspace".to_owned(),
         skills: Vec::new(),
         instance_lock: None,
@@ -3578,7 +3578,7 @@ fn the_sandbox_badge_names_the_kind_or_the_instance() {
     h.app.sandboxed = Some(crate::sandbox::Sandboxed {
         choice: SandboxChoice::Docker,
         target: "work-box".to_owned(),
-        tools: std::sync::Arc::new(rhema_coding_agent::ShellTools::new("/workspace")),
+        tools: std::sync::Arc::new(rhema_host_agent::ShellTools::new("/workspace")),
         workspace: "/workspace".to_owned(),
         skills: Vec::new(),
         instance_lock: None,
@@ -4550,7 +4550,7 @@ fn slash_new_backs_up_the_conversation_then_starts_a_fresh_one() {
 
     // The outgoing conversation landed before the wipe, in the file its
     // turns checkpointed into, now holding the final state.
-    let saved = CodingAgent::load_session_from(&old).expect("the old conversation was written");
+    let saved = HostAgent::load_session_from(&old).expect("the old conversation was written");
     assert_eq!(saved.history.len(), 1);
 
     // A fresh session: no history to save, no resume binding, the
@@ -4621,7 +4621,7 @@ fn slash_clear_backs_up_a_conversation_that_had_no_file() {
     let workspace = crate::args::canonical(&h.app.options.workspace);
     let rows = crate::sessions::list_sessions(h.sessions.path(), &workspace).unwrap();
     assert_eq!(rows.len(), 1);
-    let saved = CodingAgent::load_session_from(&rows[0].path).expect("the talk was written");
+    let saved = HostAgent::load_session_from(&rows[0].path).expect("the talk was written");
     assert_eq!(saved.history.len(), 1);
     assert_eq!(h.app.session_file, None);
     assert_eq!(h.app.export_session(), None);
@@ -4640,7 +4640,7 @@ fn a_clear_keeps_the_backup_out_of_the_explicit_save_file() {
     // The outgoing conversation landed in its own file, so the run's
     // explicit checkpoint path stays free for the conversation that
     // follows instead of being overwritten by it.
-    let saved = CodingAgent::load_session_from(&own).expect("the talk was written");
+    let saved = HostAgent::load_session_from(&own).expect("the talk was written");
     assert_eq!(saved.history.len(), 1);
     assert!(!explicit.exists());
 }
@@ -5721,11 +5721,11 @@ fn the_status_tracker_follows_the_turn_lifecycle() {
         tracker.status_for(&h.app),
         crate::status::Status::Working { .. }
     ));
-    let agent = CodingAgent::new(CodingAgentConfig::new(
+    let agent = HostAgent::new(HostAgentConfig::new(
         Arc::new(NeverDriven),
         "m-a",
         std::env::temp_dir(),
-        rhema_coding_agent::AllowAll,
+        rhema_host_agent::AllowAll,
     ))
     .unwrap();
     h.app.turn.running = false;
@@ -5804,7 +5804,7 @@ async fn a_background_subagent_job_pins_its_live_line() {
     }
 
     fn scout_tools(provider: Arc<dyn ModelProvider>) -> Arc<SubagentTools> {
-        let shell = Arc::new(rhema_coding_agent::ShellTools::new(std::env::temp_dir()));
+        let shell = Arc::new(rhema_host_agent::ShellTools::new(std::env::temp_dir()));
         let def = SubagentDef {
             name: "scout".into(),
             description: "looks around".into(),
@@ -5932,7 +5932,7 @@ async fn an_idle_session_runs_a_finished_jobs_notification_as_the_next_prompt() 
 
     let mut h = harness(Some("key"), Some("m"), Session::default());
     let tools = {
-        let shell = Arc::new(rhema_coding_agent::ShellTools::new(std::env::temp_dir()));
+        let shell = Arc::new(rhema_host_agent::ShellTools::new(std::env::temp_dir()));
         let def = SubagentDef {
             name: "scout".into(),
             description: "looks around".into(),
@@ -6029,7 +6029,7 @@ async fn a_running_turn_shows_the_finish_card_and_leaves_steering_to_the_driver(
 
     let mut h = harness(Some("key"), Some("m"), Session::default());
     let tools = {
-        let shell = Arc::new(rhema_coding_agent::ShellTools::new(std::env::temp_dir()));
+        let shell = Arc::new(rhema_host_agent::ShellTools::new(std::env::temp_dir()));
         let def = SubagentDef {
             name: "reviewer".into(),
             description: "reviews".into(),
@@ -6238,7 +6238,7 @@ async fn both_feeds_join_into_one_idle_prompt_with_subagents_first() {
 
     let mut h = harness(Some("key"), Some("m"), Session::default());
     let tools = {
-        let shell = Arc::new(rhema_coding_agent::ShellTools::new(std::env::temp_dir()));
+        let shell = Arc::new(rhema_host_agent::ShellTools::new(std::env::temp_dir()));
         let def = SubagentDef {
             name: "reviewer".into(),
             description: "reviews".into(),
@@ -6362,7 +6362,7 @@ async fn retry_restarts_transient_failed_subagents() {
     }
 
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
-    let shell = Arc::new(rhema_coding_agent::ShellTools::new(std::env::temp_dir()));
+    let shell = Arc::new(rhema_host_agent::ShellTools::new(std::env::temp_dir()));
     let def = SubagentDef {
         name: "scout".into(),
         description: "looks around".into(),
@@ -7383,7 +7383,7 @@ fn a_prompt_records_its_turn_before_the_task_takes_the_agent() {
     // The UI thread wrote the record before the task took the agent:
     // a crash between the two has a durable "this turn started".
     let path = h.app.checkpoint_target().expect("a checkpoint target");
-    let saved = CodingAgent::load_session_from(&path).unwrap();
+    let saved = HostAgent::load_session_from(&path).unwrap();
     let saved_snapshot = rhema_submissions::snapshot(&saved).unwrap();
     assert_eq!(
         saved_snapshot.get(&id).unwrap().status,

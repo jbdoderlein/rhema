@@ -65,7 +65,7 @@ impl ApprovalChannel for TestChannel {
 /// with. `checkpoints` receives the session at every commit hook call,
 /// what the DO persists to its storage, and `committed` fires then.
 struct Rig {
-    agent: rhema_coding_agent::CodingAgent,
+    agent: rhema_host_agent::HostAgent,
     sandbox: Arc<ScriptedSandbox>,
     /// The approval requests the gate sent, with their answer lines.
     requests: mpsc::UnboundedReceiver<(ToolCall, oneshot::Sender<bool>)>,

@@ -3268,9 +3268,9 @@ dependencies = [
  "agent-client-protocol",
  "anyhow",
  "rhema-bash",
- "rhema-coding-agent",
  "rhema-config",
  "rhema-core",
+ "rhema-host-agent",
  "rhema-provider",
  "rhema-provider-registry",
  "rhema-session-store",
@@ -3316,8 +3316,8 @@ version = "0.3.0"
 dependencies = [
  "async-trait",
  "rhema-bash",
- "rhema-coding-agent",
  "rhema-core",
+ "rhema-host-agent",
  "rhema-prompt",
  "rhema-sandbox",
  "rhema-transcript",
@@ -3343,9 +3343,9 @@ dependencies = [
  "ratatui",
  "rhema-acp",
  "rhema-bash",
- "rhema-coding-agent",
  "rhema-config",
  "rhema-core",
+ "rhema-host-agent",
  "rhema-mcp",
  "rhema-prompt",
  "rhema-provider",
@@ -3381,26 +3381,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rhema-coding-agent"
-version = "0.3.0"
-dependencies = [
- "minijinja",
- "rhema-bash",
- "rhema-config",
- "rhema-core",
- "rhema-prompt",
- "rhema-session-store",
- "rhema-session-store-file",
- "rhema-transcript",
- "serde",
- "serde_json",
- "serde_yaml",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
-]
-
-[[package]]
 name = "rhema-config"
 version = "0.3.0"
 dependencies = [
@@ -3420,6 +3400,26 @@ dependencies = [
  "async-trait",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
+name = "rhema-host-agent"
+version = "0.3.0"
+dependencies = [
+ "minijinja",
+ "rhema-bash",
+ "rhema-config",
+ "rhema-core",
+ "rhema-prompt",
+ "rhema-session-store",
+ "rhema-session-store-file",
+ "rhema-transcript",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
 ]
@@ -3451,9 +3451,9 @@ dependencies = [
  "hyper-util",
  "mcp-to-cli",
  "rhema-bash",
- "rhema-coding-agent",
  "rhema-config",
  "rhema-core",
+ "rhema-host-agent",
  "rhema-prompt",
  "serde",
  "serde_json",
@@ -3809,9 +3809,9 @@ version = "0.3.0"
 dependencies = [
  "async-trait",
  "rhema-bash",
- "rhema-coding-agent",
  "rhema-config",
  "rhema-core",
+ "rhema-host-agent",
  "rhema-prompt",
  "rhema-provider",
  "rhema-session-store",

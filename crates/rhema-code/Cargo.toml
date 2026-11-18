@@ -20,7 +20,7 @@ path = "src/main.rs"
 [features]
 # Scripted MockProvider for offline turn-level tests; mirrors rhema-core's
 # feature.
-mock = ["rhema-core/mock", "rhema-coding-agent/mock"]
+mock = ["rhema-core/mock", "rhema-host-agent/mock"]
 # Cross builds link no target OpenSSL: this turns the vendored build on
 # for the whole graph through feature unification, so the arm64 and
 # riscv64 release legs need no target libssl-dev. Native builds keep
@@ -36,7 +36,7 @@ rhema-session-store-file = { path = "../rhema-session-store-file", version = "0.
 rhema-config = { path = "../rhema-config", version = "0.3.0" }
 rhema-bash = { path = "../rhema-bash", version = "0.3.0" }
 rhema-prompt = { path = "../rhema-prompt", version = "0.3.0" }
-rhema-coding-agent = { path = "../rhema-coding-agent", version = "0.3.0" }
+rhema-host-agent = { path = "../rhema-host-agent", version = "0.3.0" }
 # The subagent extension: discovered definitions wired in as one tool
 rhema-subagents = { path = "../rhema-subagents", version = "0.3.0" }
 # The submission ledger a resumed session reconciles before any turn

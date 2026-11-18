@@ -67,7 +67,7 @@ Every record belongs to a **scope**:
 | `Workspace(path)` | scoped to one checkout | "this repo deploys via `just release`" |
 
 The layering mirrors skills exactly (global + per-workspace, the same
-resolution the coding agent already performs), minus shadowing: search
+resolution the host agent already performs), minus shadowing: search
 returns both layers **labeled by scope**, because for recall the model
 should see that a workspace fact overrides a global one, not have the
 global one silently hidden.
@@ -193,7 +193,7 @@ the framework.
 ## 4. Semantics
 
 **Scoping at the call site.** The consumer constructs `MemoryResolver` with
-the store and the active scope (the coding agent: its workspace; the claw:
+the store and the active scope (the host agent: its workspace; the claw:
 the watched repo's checkout). A search spans `Global` plus that one
 workspace, never a *different* workspace's records. Global memory is small
 and travels everywhere; workspace memory stays home. Saves land in the
@@ -226,7 +226,7 @@ delimiter (the frontmatter ends at the *second* delimiter line).
 
 | Consumer | Wiring | Status |
 |---|---|---|
-| `rhema-coding-agent` | `MemoryResolver` alongside `CodingTools`. The engine takes one resolver, so the coding agent grows a composition seam (chain or merge), a small `agent`-scoped change there, not here. | next |
+| `rhema-host-agent` | `MemoryResolver` alongside `CodingTools`. The engine takes one resolver, so the host agent grows a composition seam (chain or merge), a small `agent`-scoped change there, not here. | next |
 | `rhema-autonomous-agent` / `rhema-claw` | The resident registry aggregates named `Tool`s; thin `registry::Tool` shims over `MemoryResolver`'s per-tool operations, plus the three names in `Allowlist::permissive()`. | follows |
 | `rhema-code` | Inherits whatever the coding agent wires; `/memory` curation UI is a later roadmap item, not v1. | later |
 

@@ -1860,7 +1860,7 @@ mod scroll_tests {
 
         let mut app = chat_app();
         app.turn.running = true;
-        let shell = Arc::new(rhema_coding_agent::ShellTools::new(std::env::temp_dir()));
+        let shell = Arc::new(rhema_host_agent::ShellTools::new(std::env::temp_dir()));
         let def = SubagentDef {
             name: "general-purpose".into(),
             description: "explore".into(),
@@ -1913,7 +1913,7 @@ mod scroll_tests {
         // Finished: the line leaves at once; the finish event names the
         // outcome the transcript notice will carry.
         let tools = {
-            let shell = Arc::new(rhema_coding_agent::ShellTools::new(std::env::temp_dir()));
+            let shell = Arc::new(rhema_host_agent::ShellTools::new(std::env::temp_dir()));
             let def = SubagentDef {
                 name: "general-purpose".into(),
                 description: "explore".into(),
@@ -2265,7 +2265,7 @@ mod scroll_tests {
         app.sandboxed = Some(crate::sandbox::Sandboxed {
             choice: crate::args::SandboxChoice::Docker,
             target: "rhema-dev".to_owned(),
-            tools: std::sync::Arc::new(rhema_coding_agent::ShellTools::new("/workspace")),
+            tools: std::sync::Arc::new(rhema_host_agent::ShellTools::new("/workspace")),
             workspace: "/workspace".to_owned(),
             skills: Vec::new(),
             instance_lock: None,

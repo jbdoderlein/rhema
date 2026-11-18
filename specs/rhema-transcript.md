@@ -24,8 +24,8 @@ the conversation each step sends. It depends on `rhema-core` only.
   themselves. No model calls, ever.
 - The view: the message list a request carries, built to a byte budget.
 - The `zoom` tool: the model's way back to any original message.
-- The provider decorator and the coding-agent wiring
-  (`CodingAgentConfig::transcript`, on by default; `--no-transcript`
+- The provider decorator and the host-agent wiring
+  (`HostAgentConfig::transcript`, on by default; `--no-transcript`
   sends the whole history).
 
 **OUT of v1** (each deliberately out, with the reason):
@@ -229,7 +229,7 @@ first request re-bills it at the write rate either way. Agent rebuilds
 inside a conversation (profile, model, sandbox) move the live
 sections the same way. The benchmark counters are the other survivor:
 they measure what was spent, they are not view state, and they fold
-into the fresh mirror (`CodingAgent::carry_transcript_stats`,
+into the fresh mirror (`HostAgent::carry_transcript_stats`,
 `TranscriptStats::carry`), so one conversation's stats stay one run
 across resumes; /clear zeroes them. A session saved before the blob
 existed resumes with none.
@@ -285,10 +285,10 @@ its still-present call.
 
 ## 6. Wiring
 
-`CodingAgentConfig::transcript: Option<TranscriptSettings>`, set by
+`HostAgentConfig::transcript: Option<TranscriptSettings>`, set by
 default (`new` carries `Some(default)`); `None` is the off switch.
 `TranscriptSettings` carries `max_view_bytes` (default 256 000). With it
-set, `CodingAgent::new`:
+set, `HostAgent::new`:
 
 1. wraps the provider: `attach(inner, settings)`;
 2. overlays the `zoom` resolver over the existing resolver chain (a
@@ -296,10 +296,10 @@ set, `CodingAgent::new`:
 3. adds the `zoom` spec to the prompt's tool list, so the prompt and the
    request's tools cannot drift.
 
-Because the default lives in `CodingAgentConfig::new`, every consumer
+Because the default lives in `HostAgentConfig::new`, every consumer
 inherits it: the TUI, `rhema run`, the ACP subprocess, and the claw,
 whose config turns it off with `transcript: false`, writing the
-resolved value into the coding agent's field rather than conditionally
+resolved value into the host agent's field rather than conditionally
 overriding it, so `false` still means off. `rhema-code` spells the
 opt-out `--no-transcript` on the full-screen UI and `rhema run`. The
 `system show` preview names zoom too: with the view on by default, the

@@ -38,7 +38,7 @@ The crate has exactly two intended consumers, and they impose opposite pressures
 | Session lifetime | the open connection | persisted across leases, survives restarts |
 | Needs from crate 1 | `step`, streaming, tools | **the same** |
 
-**The discipline:** crate 1 is built for the coding agent. The RSD agent is a **falsification test on the seams**, never a second feature set. If crate 1 later supports an RSD driver *without adding anything to crate 1*, the seam is correct. If supporting it requires `Lease`/`Inbox`/`Revision`/`KeyFn` to enter crate 1, the boundary is wrong.
+**The discipline:** crate 1 is built for the host agent. The RSD agent is a **falsification test on the seams**, never a second feature set. If crate 1 later supports an RSD driver *without adding anything to crate 1*, the seam is correct. If supporting it requires `Lease`/`Inbox`/`Revision`/`KeyFn` to enter crate 1, the boundary is wrong.
 
 This is testable, not aspirational; see §7 test 5.
 
@@ -133,7 +133,7 @@ The RSD driver (crate 2) is the same shape with different scaffolding: `acquire(
 
 `Session` is plain data and fully serializable: no hidden engine state, no open stream, so a driver can checkpoint it at any step boundary. That property is the whole reason crate 1 can serve the RSD consumer later without growing.
 
-The frontends' reference store is `rhema-session-store-file`: the seam (`rhema-session-store`) owns the `SessionStore` trait, the validated id, the picker row, and the error; the backend owns the layout, the atomic fsynced write, and the privacy modes. The TUI, ACP, headless, and `rhema-coding-agent`'s save/load helpers all go through it, and `rhema-session-store-sqlite` implements the same trait over one row per session. A frontend picks a backend at compile time; the seam pulls neither `rusqlite` nor `rhema-config`. See `specs/rhema-session-store.md`.
+The frontends' reference store is `rhema-session-store-file`: the seam (`rhema-session-store`) owns the `SessionStore` trait, the validated id, the picker row, and the error; the backend owns the layout, the atomic fsynced write, and the privacy modes. The TUI, ACP, headless, and `rhema-host-agent`'s save/load helpers all go through it, and `rhema-session-store-sqlite` implements the same trait over one row per session. A frontend picks a backend at compile time; the seam pulls neither `rusqlite` nor `rhema-config`. See `specs/rhema-session-store.md`.
 
 Requested work has a durable record too. `rhema-submissions` keeps one ledger under `Session.driver_state.submissions`, the state machine over it (`submit`, `start`, `settle`, `cancel`, `retry`, `reconcile`), and a seam a crate implements to teach it what its half of a crash means. The ledger rides the store's whole-session write, so the work's state and its status land in one record on every backend, and a resumed process can tell which requests finished, which are half done, and which never started. ACP records each turn there and reconciles on `session/load`; the TUI records one turn per prompt, settles it when the chain ends, and reconciles on `/resume`; `rhema-core` gains `Agent::resume_turn` so an interrupted turn continues instead of appending its input twice. See `specs/rhema-submissions.md`.
 
@@ -214,7 +214,7 @@ Requested work has a durable record too. `rhema-submissions` keeps one ledger un
   and a dead job loses every step it finished, so a job waits out an outage past the hour
   where a turn gives up after minutes.
 - ~~**What a manual `/retry` re-sends**~~, **decided:** the failed request itself, not the
-  prompt text again. `CodingAgent::retry_turn_with_cancel` runs the step loop with no input
+  prompt text again. `HostAgent::retry_turn_with_cancel` runs the step loop with no input
   message on the history exactly as the failed turn left it, a first-request failure re-issues
   the identical request, a mid-turn failure re-issues the step that failed with the committed
   steps still in view, so nothing lands twice and no committed tool call re-executes behind
@@ -408,14 +408,11 @@ one for the editor. Turn driving stays v1 (the live connection's
 request); an alarm-driven queue would let turns outlive connections and
 is the same future refinement.
 
-**On "coding" agent.** Nothing in the engine, the harness, or the
-cloud frontends knows code from anything else: `bash` is a tool, the
-seams are domain-neutral, and "coding" is the default toolset and
-prompt assembled on top. A computer-use frontend, the agent driving
-an arbitrary machine rather than a repo, is a different toolset and
-prompt over these same seams, not a fork. The crate names keep
-`coding-agent` for the assembled default; the layer below never
-assumed it.
+**On "host" agent.** Nothing in the engine or the harness knows code
+from anything else: `bash` is a tool, the seams are domain-neutral.
+The driver crate is `rhema-host-agent`: the agent whose tools operate
+a host. "Coding" is a toolset and persona assembled on top,
+`rhema-code` being that assembly; the driver crate never assumed it.
 
 **On forking.** Conversation topology (branch a session, run a child
 against the parent's prefix) waits for a product shape that wants it.
@@ -478,10 +475,10 @@ session and never a running subagent.
   flags, the concurrency cap, and the notification text. It is the
   tool resolver; nothing outside it knows a job exists. `rhema-core`
   grows nothing, no scheduling, no injection, no job types.
-- The driver tier (`rhema-coding-agent`, and any other `run_turn`
+- The driver tier (`rhema-host-agent`, and any other `run_turn`
   owner) owns the step loop and the steering: draining finished jobs
   at step boundaries and appending the notification to the history.
-  It does so behind one inert seam, `CodingAgentConfig` grows
+  It does so behind one inert seam, `HostAgentConfig` grows
   `steering: Option<Arc<dyn Steering>>`, `Steering::drain() ->
   Vec<String>`, so the driver stays subagent-agnostic, the same
   reading as `extra_resolver` (`specs/rhema-subagents.md` §5);
@@ -711,7 +708,7 @@ halfway always reopens.
 never overwriting an existing file, and skipping disabled names. The
 config's `skills_disabled` set is the only switch: the wizard's skills
 step and the settings Skills page flip it, the prompt filter
-(`CodingAgentConfig::disabled_skills`, applied after collection and
+(`HostAgentConfig::disabled_skills`, applied after collection and
 after discovery alike) reads it, and the UIs show disabled rows greyed
 rather than hidden. Re-enabling re-seeds a missing folder; a user's
 folder of the same name shadows a bundled one like any other skill.

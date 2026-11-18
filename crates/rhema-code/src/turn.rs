@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use rhema_coding_agent::{CodingAgent, CodingAgentError};
 use rhema_core::{Event, EventSink, Image, Message, ModelOutput, Role, Session};
+use rhema_host_agent::{HostAgent, HostAgentError};
 use rhema_provider::{InteractiveLogin, LoginSink, LoginUpdate};
 use std::future::Future;
 use std::pin::Pin;
@@ -81,7 +81,7 @@ pub enum Prompt {
     },
     /// The failed request again: no new message, the turn re-issues
     /// the step loop on the history as the failed turn left it (see
-    /// `CodingAgent::retry_turn_with_cancel`). `/retry` starts this.
+    /// `HostAgent::retry_turn_with_cancel`). `/retry` starts this.
     Retry,
 }
 
@@ -109,7 +109,7 @@ impl Prompt {
 /// `steer`'s receiver travels inside that event, so a message sent in
 /// the finishing race is buffered there, never lost.
 pub fn spawn_turn(
-    mut agent: CodingAgent,
+    mut agent: HostAgent,
     prompt: Prompt,
     save: Option<PathBuf>,
     submission: Option<SubmissionId>,
@@ -174,7 +174,7 @@ pub fn spawn_turn(
             // agent futures; the box gives them one type for the select
             // below (and keeps the task Send).
             let mut turn: Pin<
-                Box<dyn Future<Output = Result<ModelOutput, CodingAgentError>> + Send>,
+                Box<dyn Future<Output = Result<ModelOutput, HostAgentError>> + Send>,
             > = if retry {
                 retry = false;
                 Box::pin(agent.retry_turn_with_cancel(&mut sink, Arc::clone(&cancelled_flag)))
@@ -222,7 +222,7 @@ pub fn spawn_turn(
                         error: err.to_string(),
                         retryable: matches!(
                             err,
-                            CodingAgentError::Agent(agent) if agent.is_retryable()
+                            HostAgentError::Agent(agent) if agent.is_retryable()
                         ),
                     },
                 };
@@ -261,7 +261,7 @@ pub fn spawn_turn(
 
 /// Settles the chain's record at its end, warning on stderr when the
 /// transition is refused: the session is still the truth either way.
-fn settle_submission(agent: &mut CodingAgent, submission: Option<&SubmissionId>, outcome: Outcome) {
+fn settle_submission(agent: &mut HostAgent, submission: Option<&SubmissionId>, outcome: Outcome) {
     let Some(id) = submission else {
         return;
     };
@@ -446,7 +446,7 @@ impl LoginSink for FlowSink {
 pub async fn drive_turn_for_test(
     events: &mut tokio::sync::mpsc::UnboundedReceiver<UiEvent>,
     transcript: &mut crate::transcript::Transcript,
-) -> (Box<CodingAgent>, Result<rhema_core::ModelOutput, String>) {
+) -> (Box<HostAgent>, Result<rhema_core::ModelOutput, String>) {
     loop {
         match events.recv().await.expect("turn task still alive") {
             UiEvent::Engine(owned) => transcript.apply(&owned),
@@ -468,11 +468,11 @@ pub async fn drive_turn_for_test(
 mod mock_tests {
     use super::*;
     use crate::transcript::{Line, Transcript};
-    use rhema_coding_agent::{CodingAgent, CodingAgentConfig};
     use rhema_core::{
         Content, Message, ModelOutput, ModelProvider, ModelRequest, ProviderError, Role,
         StopReason, ToolCall, Usage,
     };
+    use rhema_host_agent::{HostAgent, HostAgentConfig};
     use serde_json::json;
 
     fn scripted_output(text: &str) -> ModelOutput {
@@ -505,7 +505,7 @@ mod mock_tests {
 
     /// Queues and starts a turn record the way the UI thread does before
     /// it spawns the chain.
-    fn start_submission(agent: &mut CodingAgent, input: &str) -> SubmissionId {
+    fn start_submission(agent: &mut HostAgent, input: &str) -> SubmissionId {
         let at = 1;
         let record = rhema_submissions::turn::submit(agent.session_mut(), input, at).unwrap();
         rhema_submissions::turn::start(agent.session_mut(), &record.id, input, at).unwrap();
@@ -563,11 +563,11 @@ mod mock_tests {
             entered: tokio::sync::Notify::new(),
             calls: std::sync::atomic::AtomicU32::new(0),
         });
-        let mut agent = CodingAgent::new(CodingAgentConfig::new(
+        let mut agent = HostAgent::new(HostAgentConfig::new(
             Arc::clone(&provider) as Arc<dyn ModelProvider>,
             "test-model",
             std::env::temp_dir(),
-            rhema_coding_agent::AllowAll,
+            rhema_host_agent::AllowAll,
         ))
         .unwrap();
         let id = start_submission(&mut agent, "hi");
@@ -650,13 +650,13 @@ mod mock_tests {
         let (_, cancelled) = watch_cancel();
         let dir = tempfile::tempdir().unwrap();
         let save = dir.path().join("session.json");
-        let mut agent = CodingAgent::new(CodingAgentConfig::new(
+        let mut agent = HostAgent::new(HostAgentConfig::new(
             Arc::new(rhema_core::MockProvider::new([scripted_output(
                 "hello agent",
             )])),
             "test-model",
             std::env::temp_dir(),
-            rhema_coding_agent::AllowAll,
+            rhema_host_agent::AllowAll,
         ))
         .unwrap();
         let id = start_submission(&mut agent, "hi");
@@ -674,7 +674,7 @@ mod mock_tests {
         let (_agent, result) = drive_turn_for_test(&mut rx, &mut transcript).await;
         assert!(result.is_ok());
 
-        let saved = CodingAgent::load_session_from(&save).unwrap();
+        let saved = HostAgent::load_session_from(&save).unwrap();
         let snapshot = rhema_submissions::snapshot(&saved).unwrap();
         let record = snapshot.get(&id).expect("the chain's record survived");
         assert_eq!(record.status, rhema_submissions::Status::Done);
@@ -690,11 +690,11 @@ mod mock_tests {
         let (_, cancelled) = watch_cancel();
         let dir = tempfile::tempdir().unwrap();
         let save = dir.path().join("session.json");
-        let mut agent = CodingAgent::new(CodingAgentConfig::new(
+        let mut agent = HostAgent::new(HostAgentConfig::new(
             Arc::new(FailsThenSucceeds::default()) as Arc<dyn ModelProvider>,
             "test-model",
             std::env::temp_dir(),
-            rhema_coding_agent::AllowAll,
+            rhema_host_agent::AllowAll,
         ))
         .unwrap();
         let id = start_submission(&mut agent, "hi");
@@ -712,7 +712,7 @@ mod mock_tests {
         let (_agent, result) = drive_turn_for_test(&mut rx, &mut transcript).await;
         assert!(result.is_err(), "the network death fails the chain");
 
-        let saved = CodingAgent::load_session_from(&save).unwrap();
+        let saved = HostAgent::load_session_from(&save).unwrap();
         let snapshot = rhema_submissions::snapshot(&saved).unwrap();
         let record = snapshot.get(&id).expect("the chain's record survived");
         assert_eq!(record.status, rhema_submissions::Status::Failed);
@@ -731,11 +731,11 @@ mod mock_tests {
         let (cancel, cancelled) = watch_cancel();
         let dir = tempfile::tempdir().unwrap();
         let save = dir.path().join("session.json");
-        let mut agent = CodingAgent::new(CodingAgentConfig::new(
+        let mut agent = HostAgent::new(HostAgentConfig::new(
             Arc::new(HangingProvider) as Arc<dyn ModelProvider>,
             "test-model",
             std::env::temp_dir(),
-            rhema_coding_agent::AllowAll,
+            rhema_host_agent::AllowAll,
         ))
         .unwrap();
         let id = start_submission(&mut agent, "hi");
@@ -758,7 +758,7 @@ mod mock_tests {
             }
         }
 
-        let saved = CodingAgent::load_session_from(&save).unwrap();
+        let saved = HostAgent::load_session_from(&save).unwrap();
         let snapshot = rhema_submissions::snapshot(&saved).unwrap();
         assert_eq!(
             snapshot.get(&id).unwrap().status,
@@ -808,11 +808,11 @@ mod mock_tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let (_, cancelled) = watch_cancel();
         let provider = Arc::new(FailsThenSucceeds::default());
-        let agent = CodingAgent::new(CodingAgentConfig::new(
+        let agent = HostAgent::new(HostAgentConfig::new(
             Arc::clone(&provider) as Arc<dyn ModelProvider>,
             "test-model",
             std::env::temp_dir(),
-            rhema_coding_agent::AllowAll,
+            rhema_host_agent::AllowAll,
         ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
@@ -873,13 +873,13 @@ mod mock_tests {
     async fn a_turn_streams_into_the_transcript_and_returns_the_agent() {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let (cancel, cancelled) = watch_cancel();
-        let agent = CodingAgent::new(CodingAgentConfig::new(
+        let agent = HostAgent::new(HostAgentConfig::new(
             Arc::new(rhema_core::MockProvider::new([scripted_output(
                 "hello agent",
             )])),
             "test-model",
             std::env::temp_dir(),
-            rhema_coding_agent::AllowAll,
+            rhema_host_agent::AllowAll,
         ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
@@ -910,11 +910,11 @@ mod mock_tests {
         let (cancel, cancelled) = watch_cancel();
         let dir = tempfile::tempdir().unwrap();
         let save = dir.path().join("session.json");
-        let agent = CodingAgent::new(CodingAgentConfig::new(
+        let agent = HostAgent::new(HostAgentConfig::new(
             Arc::new(rhema_core::MockProvider::new([scripted_output("done")])),
             "test-model",
             std::env::temp_dir(),
-            rhema_coding_agent::AllowAll,
+            rhema_host_agent::AllowAll,
         ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
@@ -939,11 +939,11 @@ mod mock_tests {
     async fn cancelling_mid_stream_returns_the_agent_with_the_prompt_only() {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let (cancel, cancelled) = watch_cancel();
-        let agent = CodingAgent::new(CodingAgentConfig::new(
+        let agent = HostAgent::new(HostAgentConfig::new(
             Arc::new(HangingProvider),
             "test-model",
             std::env::temp_dir(),
-            rhema_coding_agent::AllowAll,
+            rhema_host_agent::AllowAll,
         ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
@@ -992,11 +992,11 @@ mod mock_tests {
         let (cancel, cancelled) = watch_cancel();
         let dir = tempfile::tempdir().unwrap();
         let save = dir.path().join("session.json");
-        let agent = CodingAgent::new(CodingAgentConfig::new(
+        let agent = HostAgent::new(HostAgentConfig::new(
             Arc::new(rhema_core::MockProvider::new(vec![sleeping_tool_output()])),
             "test-model",
             std::env::temp_dir(),
-            rhema_coding_agent::AllowAll,
+            rhema_host_agent::AllowAll,
         ))
         .unwrap();
         let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);

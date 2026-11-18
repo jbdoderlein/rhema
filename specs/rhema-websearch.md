@@ -39,7 +39,7 @@ of the `see`/`job` family. If wiring this needed a new type in
   keychain, stored literal.
 - `rhema-bash::websearch`: the `search` function's init file,
   the wiring, the prompt section.
-- `rhema-coding-agent`: one prompt-section field, `websearch`.
+- `rhema-host-agent`: one prompt-section field, `websearch`.
 - `rhema-code`: the hidden `__search` mode, the session wiring, the
   settings menu.
 
@@ -125,7 +125,7 @@ source '/tmp/rhema-vision-…/init.bash' || true
 search() { "$RHEMA_SEARCH_BIN" __search "$@"; }
 ```
 
-The env map a frontend layers over `CodingAgentConfig::shell_env`:
+The env map a frontend layers over `HostAgentConfig::shell_env`:
 
 | var | value |
 |---|---|
@@ -346,7 +346,7 @@ crates/
                               the function is strings
   rhema-config/               WebSearchInstance, the two Profile fields,
                               key-tier resolution
-  rhema-coding-agent/         the `websearch` prompt-section field
+  rhema-host-agent/         the `websearch` prompt-section field
   rhema-code/                 __search mode, search_wire.rs (one wiring
                               per session key, the gate), setup wiring,
                               the settings screen
@@ -387,7 +387,7 @@ run by hand with a key in the environment.
 
 ## 10. Consumers and wiring
 
-**`rhema-coding-agent`.** One field on `CodingAgentConfig`:
+**`rhema-host-agent`.** One field on `HostAgentConfig`:
 `websearch: Option<String>`, the prompt section, verbatim, the
 `vision` and `jobs` twins. The field renders through the template's
 section; the crate gains no dependency on any websearch crate.

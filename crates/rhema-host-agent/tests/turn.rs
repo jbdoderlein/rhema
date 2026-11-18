@@ -1,4 +1,4 @@
-//! Integration tests for rhema-coding-agent.
+//! Integration tests for rhema-host-agent.
 #![cfg(feature = "mock")]
 
 //! Turn semantics through the scripted provider: history shape, session
@@ -7,11 +7,11 @@
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use rhema_coding_agent::{AllowAll, CodingAgent, CodingAgentConfig};
 use rhema_core::{
     Content, Event, EventSink, Message, MockProvider, ModelOutput, Role, Session, StopReason,
     ToolCall, Usage,
 };
+use rhema_host_agent::{AllowAll, HostAgent, HostAgentConfig};
 use serde_json::json;
 
 struct NullSink;
@@ -54,9 +54,8 @@ fn end_turn_output(text: &str) -> ModelOutput {
 /// shared handle; both satisfy `impl ModelProvider`.
 #[test]
 fn the_provider_arrives_directly_or_shared() {
-    let _direct = CodingAgentConfig::new(MockProvider::new(Vec::new()), "m", ".", AllowAll);
-    let _shared =
-        CodingAgentConfig::new(Arc::new(MockProvider::new(Vec::new())), "m", ".", AllowAll);
+    let _direct = HostAgentConfig::new(MockProvider::new(Vec::new()), "m", ".", AllowAll);
+    let _shared = HostAgentConfig::new(Arc::new(MockProvider::new(Vec::new())), "m", ".", AllowAll);
 }
 
 #[tokio::test]
@@ -70,7 +69,7 @@ async fn a_turn_writes_the_file_and_keeps_the_history_shape() {
         )),
         end_turn_output("wrote notes.txt"),
     ]));
-    let mut agent = CodingAgent::new(CodingAgentConfig::new(
+    let mut agent = HostAgent::new(HostAgentConfig::new(
         provider,
         "mock-model",
         root.path(),
@@ -109,7 +108,7 @@ async fn a_second_turn_continues_the_same_session() {
         end_turn_output("done one"),
         end_turn_output("done two"),
     ]));
-    let mut agent = CodingAgent::new(CodingAgentConfig::new(
+    let mut agent = HostAgent::new(HostAgentConfig::new(
         provider,
         "mock-model",
         root.path(),
@@ -139,11 +138,11 @@ async fn a_turn_past_the_step_budget_returns_the_last_output() {
         tool_use_output(tool_call("call_1", "list_dir", json!({}))),
         tool_use_output(tool_call("call_2", "list_dir", json!({}))),
     ]));
-    let config = CodingAgentConfig {
+    let config = HostAgentConfig {
         max_turn_steps: NonZeroU32::new(2).unwrap(),
-        ..CodingAgentConfig::new(provider, "mock-model", root.path(), AllowAll)
+        ..HostAgentConfig::new(provider, "mock-model", root.path(), AllowAll)
     };
-    let mut agent = CodingAgent::new(config).unwrap();
+    let mut agent = HostAgent::new(config).unwrap();
     let mut sink = NullSink;
 
     let out = agent.turn("loop", &mut sink).await.unwrap();
@@ -158,7 +157,7 @@ async fn session_round_trips_through_disk_and_resumes() {
         end_turn_output("first answer"),
         end_turn_output("second answer"),
     ]));
-    let mut agent = CodingAgent::new(CodingAgentConfig::new(
+    let mut agent = HostAgent::new(HostAgentConfig::new(
         provider.clone(),
         "mock-model",
         root.path(),
@@ -170,11 +169,11 @@ async fn session_round_trips_through_disk_and_resumes() {
 
     let path = root.path().join("session.json");
     agent.save_session_to(&path).unwrap();
-    let loaded = CodingAgent::load_session_from(&path).unwrap();
+    let loaded = HostAgent::load_session_from(&path).unwrap();
     assert_eq!(&loaded, agent.session());
 
-    let mut resumed = CodingAgent::from_session(
-        CodingAgentConfig::new(provider, "mock-model", root.path(), AllowAll),
+    let mut resumed = HostAgent::from_session(
+        HostAgentConfig::new(provider, "mock-model", root.path(), AllowAll),
         loaded,
     )
     .unwrap();
@@ -195,7 +194,7 @@ async fn session_round_trips_through_disk_and_resumes() {
 async fn a_saved_session_round_trips_as_pretty_json() {
     let root = tempfile::tempdir().unwrap();
     let provider = Arc::new(MockProvider::new(vec![end_turn_output("hi")]));
-    let mut agent = CodingAgent::new(CodingAgentConfig::new(
+    let mut agent = HostAgent::new(HostAgentConfig::new(
         provider,
         "mock-model",
         root.path(),
@@ -218,7 +217,7 @@ async fn a_saved_session_round_trips_as_pretty_json() {
 async fn a_saved_session_lands_private_and_leaves_no_temp() {
     let root = tempfile::tempdir().unwrap();
     let provider = Arc::new(MockProvider::new(vec![end_turn_output("hi")]));
-    let mut agent = CodingAgent::new(CodingAgentConfig::new(
+    let mut agent = HostAgent::new(HostAgentConfig::new(
         provider,
         "mock-model",
         root.path(),

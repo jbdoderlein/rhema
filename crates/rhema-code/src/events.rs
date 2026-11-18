@@ -6,8 +6,8 @@
 //! cannot await, a bounded, back-pressuring channel would deadlock the
 //! stream mid-turn.
 
-use rhema_coding_agent::CodingAgent;
 use rhema_core::{Event, ModelOutput, ToolCall, Usage};
+use rhema_host_agent::HostAgent;
 use rhema_provider::ModelCard;
 
 /// Why the runner fetched the model list.
@@ -240,7 +240,7 @@ pub enum UiEvent {
     /// The turn task finished and hands the agent back to the UI thread.
     TurnFinished {
         /// The agent, with the turn's messages already appended.
-        agent: Box<CodingAgent>,
+        agent: Box<HostAgent>,
         /// The final output, or the error text of the failed turn.
         result: Result<ModelOutput, String>,
         /// The steering channel's receiver, returned so a message sent in
@@ -254,7 +254,7 @@ pub enum UiEvent {
     /// tool calls are already repaired with failure results.
     TurnCancelled {
         /// The agent, with the partial turn's committed messages.
-        agent: Box<CodingAgent>,
+        agent: Box<HostAgent>,
         /// The steering channel's receiver, as in
         /// [`UiEvent::TurnFinished::steer`]; the app puts what it holds
         /// back in the input box, since the user stopped the turn.

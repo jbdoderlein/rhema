@@ -168,7 +168,7 @@ pub(crate) fn format_tokens(limit: u64) -> String {
 
 /// A driver failure on the wire: an internal error carrying the
 /// driver's own text.
-pub(crate) fn err_to_error(err: &CodingAgentError) -> Error {
+pub(crate) fn err_to_error(err: &HostAgentError) -> Error {
     Error::internal_error().data(err.to_string())
 }
 

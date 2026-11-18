@@ -180,14 +180,14 @@ impl App {
             transcript: self
                 .agent
                 .as_ref()
-                .and_then(CodingAgent::transcript_stats)
+                .and_then(HostAgent::transcript_stats)
                 .or(self.transcript_stats),
             // The compaction rides with the counters: the resumed
             // session adopts the sections instead of re-summarizing.
             transcript_sections: self
                 .agent
                 .as_ref()
-                .map(CodingAgent::transcript_sections)
+                .map(HostAgent::transcript_sections)
                 .filter(|sections| !sections.is_empty()),
             last_turn: self.usage,
         }
@@ -412,7 +412,7 @@ impl App {
     /// the turn then runs without a record.
     pub(crate) fn begin_turn_submission(
         &mut self,
-        agent: &mut CodingAgent,
+        agent: &mut HostAgent,
         input: &str,
     ) -> Option<rhema_submissions::SubmissionId> {
         let at = rhema_submissions::now();
@@ -447,7 +447,7 @@ impl App {
     /// retryable record, the retry then runs without one.
     pub(crate) fn retry_turn_submission(
         &mut self,
-        agent: &mut CodingAgent,
+        agent: &mut HostAgent,
     ) -> Option<rhema_submissions::SubmissionId> {
         let snapshot = rhema_submissions::snapshot(agent.session()).ok()?;
         let record = snapshot.iter().rev().find(|record| {
@@ -744,7 +744,7 @@ impl App {
     /// not do. Runs on the blocking pool via
     /// [`crate::turn::spawn_session_resume`].
     pub(crate) fn load_resume_parts(path: &Path) -> std::io::Result<Box<ResumedLoad>> {
-        let session = CodingAgent::load_session_from(&path.to_path_buf())?;
+        let session = HostAgent::load_session_from(&path.to_path_buf())?;
         let stats = crate::sessions::UsageStats::from_session(&session);
         Ok(Box::new(ResumedLoad { session, stats }))
     }

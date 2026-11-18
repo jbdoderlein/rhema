@@ -275,7 +275,7 @@ fn locations_of(args: &str) -> Option<Vec<ToolCallLocation>> {
     (!paths.is_empty()).then_some(paths)
 }
 
-/// The kind a tool call renders as. The coding agent ships `bash` (a
+/// The kind a tool call renders as. The host agent ships `bash` (a
 /// command) and `zoom` (a read over the session's transcript view);
 /// anything a deployment adds falls back to other.
 pub(crate) fn tool_kind(name: &str) -> ToolKind {

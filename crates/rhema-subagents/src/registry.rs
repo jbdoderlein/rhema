@@ -54,8 +54,8 @@ use std::sync::PoisonError;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use rhema_coding_agent::Steering;
 use rhema_core::Usage;
+use rhema_host_agent::Steering;
 
 /// How many top-level jobs run at once when the constructor knob is
 /// not set.

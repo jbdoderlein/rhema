@@ -728,7 +728,7 @@ impl App {
         // The model may have changed, and the cache is per-model
         // regardless: the report re-states its facts.
         let mut session = session;
-        rhema_coding_agent::clear_environment_stamp(&mut session);
+        rhema_host_agent::clear_environment_stamp(&mut session);
         self.rebuild_agent(session, saved, sections)?;
         // A new backend counts a new plan: the allowance badge fetches
         // now, not at the first turn's end.
@@ -745,10 +745,10 @@ impl App {
         Vec<rhema_transcript::Section>,
     ) {
         (
-            self.agent.as_ref().and_then(CodingAgent::transcript_stats),
+            self.agent.as_ref().and_then(HostAgent::transcript_stats),
             self.agent
                 .as_ref()
-                .map(CodingAgent::transcript_sections)
+                .map(HostAgent::transcript_sections)
                 .unwrap_or_default(),
         )
     }
@@ -789,7 +789,7 @@ impl App {
         let sections = agent.transcript_sections();
         let mut session = agent.session().clone();
         if stamp {
-            rhema_coding_agent::clear_environment_stamp(&mut session);
+            rhema_host_agent::clear_environment_stamp(&mut session);
         }
         self.rebuild_agent(session, stats, sections)
     }
@@ -803,11 +803,11 @@ impl App {
     pub(crate) fn build_agent(
         &self,
         session: Session,
-    ) -> Result<(CodingAgent, rhema_subagents::SubagentHandle, Vec<String>), CodingAgentError> {
+    ) -> Result<(HostAgent, rhema_subagents::SubagentHandle, Vec<String>), HostAgentError> {
         let provider = self
             .provider
             .clone()
-            .ok_or(CodingAgentError::Agent(AgentError::MissingProvider))?;
+            .ok_or(HostAgentError::Agent(AgentError::MissingProvider))?;
         let (agent_config, subagents, missing) = session_agent_config(
             &self.options,
             self.sandboxed.as_ref(),
@@ -825,7 +825,7 @@ impl App {
             &self.jobs_tag,
         );
         Ok((
-            CodingAgent::from_session(agent_config, session)?,
+            HostAgent::from_session(agent_config, session)?,
             subagents,
             missing,
         ))

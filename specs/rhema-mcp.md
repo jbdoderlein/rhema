@@ -36,7 +36,7 @@ dependencies** (§4).
 - `cli`: the `__server` dispatcher behind the generated functions, plus
   the `mcp` meta verbs (`servers`, `tools`, `schema`, `call`) and the
   config-maintenance verbs (`add`, `list`, `remove`).
-- `wire`: the `CodingAgentConfig` helper, the rhema-subagents precedent.
+- `wire`: the `HostAgentConfig` helper, the rhema-subagents precedent.
 - Config: `<config dir>/mcp.yaml`, user-authored only (§3).
 - Prompt disclosure: an "MCP servers" section listing servers, never
   individual tools.
@@ -81,7 +81,7 @@ Three pieces, two trust boundaries, and a generated function per server:
 
 ```
  ┌── agent process ────────────────────────────────────────────────┐
- │  CodingAgent ── ShellTools ── bash -c  …  atlassian() { … }     │
+ │  HostAgent ── ShellTools ── bash -c  …  atlassian() { … }     │
  │  McpManager: owns one McpConnection per configured server       │
  │      (lazy spawn; stdio child or Streamable HTTP client)        │
  │  Bridge: axum over a Unix socket in a 0700 session dir          │
@@ -150,7 +150,7 @@ and the one quote that could break single quoting is escaped. The same
 rule governs the `vision` module's init file in `rhema-bash`, and the
 `init` module writes both.
 
-The env map, handed to `CodingAgentConfig::shell_env`
+The env map, handed to `HostAgentConfig::shell_env`
 (`ShellTools::with_env` already layers it over every command):
 
 | var | value |
@@ -213,7 +213,7 @@ servers:
   parser's message. A dead server is `status: error` with a message, and
   its calls fail in-band.
 - Disabling rides the frontends, like `disabled_skills`:
-  `CodingAgentConfig` gains `disabled_mcp_servers: BTreeSet<String>`;
+  `HostAgentConfig` gains `disabled_mcp_servers: BTreeSet<String>`;
   `wire` filters before anything spawns.
 
 **Trust.** The user wrote the file; installing is the approval. Nothing
@@ -542,7 +542,7 @@ section whole, exactly like the skills section.
 
 crates/rhema-mcp/
   Cargo.toml        # serde, serde_json, thiserror, tokio, axum, clap;
-                    # mcp-to-cli; rhema-config; rhema-coding-agent only
+                    # mcp-to-cli; rhema-config; rhema-host-agent only
                     # for `wire`
   src/
     lib.rs          # re-exports; #![forbid(unsafe_code)]; module map
@@ -556,13 +556,13 @@ crates/rhema-mcp/
     provision.rs    # init file, function generation (via mcp-to-cli's
                     # cli_safe), binary hardlink, env map, drop guard
     cli.rs          # __server dispatcher + the mcp meta verbs
-    wire.rs         # the CodingAgentConfig helper
+    wire.rs         # the HostAgentConfig helper
   tests/            # fake stdio server by re-exec (§9), end-to-end
 ```
 
 Dependencies point outward: `rhema-config` owns the yaml types and the
 one file read (the config dir is its job; no workspace scan exists in
-v1); `rhema-coding-agent` only behind `wire`; never the reverse.
+v1); `rhema-host-agent` only behind `wire`; never the reverse.
 `rhema-core` is not a dependency of either crate. The socket file is
 `chmod 0600` after bind (std `PermissionsExt`, no unsafe); the token is
 cheap insurance beside the kernel's check.
@@ -625,7 +625,7 @@ own.
 
 1. Build the `McpManager` from the config file.
 2. Start the bridge it serves (socket path, token).
-3. `provision()` → hand the env map to `CodingAgentConfig::shell_env`.
+3. `provision()` → hand the env map to `HostAgentConfig::shell_env`.
 4. Route the subcommand: `rhema mcp …` and `claw mcp …` each delegate to
    `rhema_mcp::cli::run`, which reads the env vars. Outside a wired
    agent shell it exits 4 with an explanation.

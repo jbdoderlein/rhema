@@ -47,12 +47,12 @@ use serde_json::json;
 use std::time::Duration;
 
 use rhema_bash::{Approval, ShellTools};
-use rhema_coding_agent::SubagentProviders;
 use rhema_core::request::ThinkingEffort;
 use rhema_core::{
     Agent, ChatParams, Content, Event, EventSink, Message, ModelProvider, Overlay, Role, Session,
     ToolCall, ToolContext, ToolProgress, ToolResolver, ToolResult, ToolSpec,
 };
+use rhema_host_agent::SubagentProviders;
 use rhema_provider::Retrying;
 use rhema_session_store::{SessionId, SessionStore};
 
@@ -801,7 +801,7 @@ impl SubagentTools {
     }
 
     /// The status handle backed by this tool's registry: the UI's
-    /// subscription, and, through [`Registry`]'s [`Steering`](rhema_coding_agent::Steering)
+    /// subscription, and, through [`Registry`]'s [`Steering`](rhema_host_agent::Steering)
     /// implementation, the driver's notification source. The same
     /// instance the tool resolver starts jobs into, held weakly so the
     /// handle never keeps the tool alive; a restart past the drop is

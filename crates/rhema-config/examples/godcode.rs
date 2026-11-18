@@ -107,7 +107,7 @@ fn main() -> Result<(), ConfigError> {
         store: std::sync::Arc::new(store),
         secrets: std::sync::Arc::new(secrets),
     };
-    let _ = platform; // the assembly point for the coding agent
+    let _ = platform; // the assembly point for the host agent
     Ok(())
 }
 

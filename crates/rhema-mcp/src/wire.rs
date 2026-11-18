@@ -3,9 +3,9 @@
 //! off switch before anything spawns.
 //!
 //! This module is the spec's §10 consumer seam. It exists behind the
-//! `rhema-coding-agent` dependency (the only place that dep is
+//! `rhema-host-agent` dependency (the only place that dep is
 //! allowed): the shell_env map it produces merges into
-//! `CodingAgentConfig::shell_env` and the lines into the prompt's
+//! `HostAgentConfig::shell_env` and the lines into the prompt's
 //! `mcp` section. A sandboxed frontend wires nothing, it calls
 //! nothing here, so nothing advertises what cannot run.
 //!
@@ -36,7 +36,7 @@ use crate::provision::{self, Provision};
 
 /// What wiring produced, held together so teardown is one drop.
 pub struct Wiring {
-    /// The env map: merge into `CodingAgentConfig::shell_env`.
+    /// The env map: merge into `HostAgentConfig::shell_env`.
     pub shell_env: BTreeMap<String, String>,
     /// The prompt's `mcp` lines, post-filter, config order.
     pub lines: Vec<McpServerLine>,

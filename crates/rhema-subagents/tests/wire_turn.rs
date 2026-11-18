@@ -1,4 +1,4 @@
-//! The wired whole: a `CodingAgent` over a steered config runs a turn
+//! The wired whole: a `HostAgent` over a steered config runs a turn
 //! that starts a subagent, the notification lands at the next turn's
 //! start, and the fetch returns the cached report, the exact loop
 //! SPEC.md §13 describes, offline.
@@ -9,11 +9,11 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use rhema_bash::ShellTools;
-use rhema_coding_agent::{CodingAgent, CodingAgentConfig};
 use rhema_core::{
     Content, Event, EventSink, Message, ModelOutput, ModelProvider, ModelRequest, ProviderError,
     Role, StopReason, ToolCall, Usage,
 };
+use rhema_host_agent::{HostAgent, HostAgentConfig};
 use rhema_subagents::{SubagentDef, SubagentTools};
 
 /// Serves the parent agent and the background job off one provider,
@@ -129,17 +129,17 @@ async fn a_job_finishing_mid_turn_is_announced_at_the_next_step_boundary() {
         shell.clone(),
         "parent-model",
     ));
-    let mut config = CodingAgentConfig::new(
+    let mut config = HostAgentConfig::new(
         provider.clone(),
         "m",
         std::env::temp_dir(),
-        rhema_coding_agent::AllowAll,
+        rhema_host_agent::AllowAll,
     );
     config.base_system = Some("the parent's system prompt".into());
     config.tools = Some(shell);
     config.extra_resolver = Some(tools.clone());
     config.steering = Some(tools.handle().steering());
-    let mut agent = CodingAgent::new(config).unwrap();
+    let mut agent = HostAgent::new(config).unwrap();
 
     agent
         .turn("delegate the look", &mut NullSink)
@@ -213,11 +213,11 @@ async fn a_wired_agent_starts_notifies_and_fetches_by_job_id() {
     );
     // The wire's shape: the tool resolver and the steering read the one
     // registry.
-    let mut config = CodingAgentConfig::new(
+    let mut config = HostAgentConfig::new(
         provider.clone(),
         "m",
         std::env::temp_dir(),
-        rhema_coding_agent::AllowAll,
+        rhema_host_agent::AllowAll,
     );
     // The marker the provider tells the parent's requests by: the base
     // prompt rides into the rendered system.
@@ -225,7 +225,7 @@ async fn a_wired_agent_starts_notifies_and_fetches_by_job_id() {
     config.tools = Some(shell);
     config.extra_resolver = Some(tools.clone());
     config.steering = Some(tools.handle().steering());
-    let mut agent = CodingAgent::new(config).unwrap();
+    let mut agent = HostAgent::new(config).unwrap();
 
     // Turn 1: the start call answers in-band with a job id; the job
     // runs in the background, across the turn's end.

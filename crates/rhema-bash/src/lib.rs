@@ -21,7 +21,7 @@
 //!
 //! # Consumers
 //!
-//! The coding-agent driver (`rhema-coding-agent`) builds on the crate;
+//! The host-agent driver (`rhema-host-agent`) builds on the crate;
 //! the TUI and ACP adapters reach it through that driver. The claw's
 //! resident agent assembles its own agent from the same pieces, which is
 //! the point: one shell, one approval seam, one macro wiring, not one

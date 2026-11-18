@@ -273,7 +273,7 @@ impl App {
     /// back, drop the turn's state, and mark the cutoff in the transcript.
     pub(crate) fn cancel_finished(
         &mut self,
-        agent: Box<CodingAgent>,
+        agent: Box<HostAgent>,
         mut steer: tokio::sync::mpsc::Receiver<String>,
     ) {
         self.transcript_stats = agent.transcript_stats();
@@ -310,7 +310,7 @@ impl App {
     /// channel is gone).
     pub(crate) fn end_turn(
         &mut self,
-        agent: Box<CodingAgent>,
+        agent: Box<HostAgent>,
         result: Result<ModelOutput, String>,
         mut steer: tokio::sync::mpsc::Receiver<String>,
     ) -> Vec<Effect> {

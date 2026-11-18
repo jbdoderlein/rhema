@@ -18,7 +18,7 @@
 //!   bytes, stages them, and says so on stdout. The wiring's env map
 //!   carries the init file's path, the binary's, and the staging
 //!   directory's; [`wire`] builds it once per process and a frontend
-//!   layers the map over `CodingAgentConfig::shell_env`.
+//!   layers the map over `HostAgentConfig::shell_env`.
 //! - `attach` runs after every `bash` command that reaches an exit:
 //!   [`ShellTools`](crate::ShellTools) drains the staging directory,
 //!   turns each staged image into a [`ToolResult`] image block, and
@@ -98,7 +98,7 @@ pub enum StageError {
 }
 
 /// One process's wiring: the env map a frontend layers over
-/// `CodingAgentConfig::shell_env`, the prompt section to render, and
+/// `HostAgentConfig::shell_env`, the prompt section to render, and
 /// the provisioned directory held for the process's life, dropping it
 /// deletes the init file and any staged files under it, so the wiring
 /// must outlive every session it feeds.

@@ -92,7 +92,7 @@ impl From<&str> for MemoryToolError {
 }
 
 /// The memory tools over one store, acting in one scope. The scope
-/// is fixed at construction, the coding agent's workspace, the claw's
+/// is fixed at construction, the host agent's workspace, the claw's
 /// watched checkout, and is the only scope saves land in; searches span
 /// it plus global.
 pub struct MemoryResolver {
@@ -103,7 +103,7 @@ pub struct MemoryResolver {
 impl MemoryResolver {
     /// Tools over `store` acting in `scope`; a `Workspace` path is
     /// canonicalized, falling back to the input when it does not exist
-    /// yet, the same handling as the coding agent's workspace.
+    /// yet, the same handling as the host agent's workspace.
     pub fn new(store: Arc<dyn MemoryStore>, scope: Scope) -> Self {
         Self {
             store,

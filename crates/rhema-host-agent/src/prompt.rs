@@ -1,4 +1,4 @@
-//! The coding agent's system-prompt template: one markdown file,
+//! The host agent's system-prompt template: one markdown file,
 //! rendered by the prompt crate's Jinja renderer
 //! ([`rhema_prompt::render_system`]).
 //!

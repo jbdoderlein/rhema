@@ -1,4 +1,4 @@
-//! The wired whole, offline: a `CodingAgent` over a scripted model
+//! The wired whole, offline: a `HostAgent` over a scripted model
 //! runs one turn against a fake stdio MCP server with one tool,
 //! `validate-test`. The turn's steps are the discovery story the
 //! prompt teaches, `mcp servers`, the generated command's `--help`,
@@ -18,12 +18,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rhema_coding_agent::{CodingAgent, CodingAgentConfig};
 use rhema_config::mcp::{McpConfig, McpServer, McpTransport};
 use rhema_core::{
     Content, Event, EventSink, Message, ModelOutput, ModelProvider, ModelRequest, ProviderError,
     Role, StopReason, ToolCall, ToolResult, Usage,
 };
+use rhema_host_agent::{HostAgent, HostAgentConfig};
 use serde_json::{Value, json};
 
 /// The env var switching this binary into fake-server mode.
@@ -338,17 +338,17 @@ async fn the_wire_turn_walks_servers_help_and_call() -> Result<(), String> {
 
     // The agent builds its own ShellTools over the wiring's env map,
     // the production shape, `BASH_ENV` and the bridge token included.
-    let mut config = CodingAgentConfig::new(
+    let mut config = HostAgentConfig::new(
         provider.clone(),
         "mock-model",
         workspace.path(),
-        rhema_coding_agent::AllowAll,
+        rhema_host_agent::AllowAll,
     );
     config.skills = Some(Vec::new());
     config.transcript = None;
     config.shell_env = wiring.shell_env.clone();
     config.mcp_servers = wiring.lines.clone();
-    let mut agent = CodingAgent::new(config).map_err(|e| e.to_string())?;
+    let mut agent = HostAgent::new(config).map_err(|e| e.to_string())?;
 
     let output = agent
         .turn("validate the fake file", &mut NullSink)

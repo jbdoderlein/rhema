@@ -299,7 +299,7 @@ pub(crate) fn system_show_at_with_mcp(
             ));
         }
     }
-    Ok(rhema_coding_agent::stamped_system_with_sections(
+    Ok(rhema_host_agent::stamped_system_with_sections(
         resolve_base_system(path).as_deref(),
         &workspace,
         &extra,
@@ -349,7 +349,7 @@ pub(crate) fn seed_system_file(path: &std::path::Path) -> anyhow::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::write(path, rhema_coding_agent::DEFAULT_SYSTEM_MD)?;
+    std::fs::write(path, rhema_host_agent::DEFAULT_SYSTEM_MD)?;
     Ok(())
 }
 

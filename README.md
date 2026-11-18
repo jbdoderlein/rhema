@@ -52,13 +52,13 @@ and serves chat over HTTP, with a web UI and an Android
 client talking to it. It lives in its own repository:
 <https://git.vhaudiquet.fr/vhaudiquet/rhema-claw>.
 
-## rhema-coding-agent
+## rhema-host-agent
 
-The coding agent is one assembly of the core: `ShellTools` as the
+The host agent is the driver assembly of the core: `ShellTools` as the
 resolver, plus approval, skills, transcript, MCP, and subagents.
 
 ```rust
-let mut agent = CodingAgent::new(CodingAgentConfig::new(
+let mut agent = HostAgent::new(HostAgentConfig::new(
     AnthropicProvider::new(key),   // any ModelProvider
     "claude-sonnet-5-5",
     workspace,

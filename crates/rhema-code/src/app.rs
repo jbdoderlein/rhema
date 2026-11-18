@@ -8,11 +8,11 @@ use std::sync::Arc;
 
 use crate::store::Config;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use rhema_coding_agent::{CodingAgent, CodingAgentConfig, CodingAgentError};
 use rhema_core::{
     AgentError, Content, Image, Message, ModelOutput, ModelProvider, Session, StopReason, ToolCall,
     Usage,
 };
+use rhema_host_agent::{HostAgent, HostAgentConfig, HostAgentError};
 use rhema_provider::{Allowance, ModelCard};
 
 use crate::approval::ApprovalAnswerer;
@@ -100,7 +100,7 @@ pub struct App {
     /// by provider name.
     pub catalog_failed: Vec<&'static str>,
     /// The agent; `None` while a turn runs (the turn task owns it).
-    pub agent: Option<CodingAgent>,
+    pub agent: Option<HostAgent>,
     /// The session's background shells, as the strip draws them: a
     /// snapshot the poll thread replaces, read fresh on every redraw.
     /// `None` on a machine without the backend, and in a sandbox session,
@@ -436,7 +436,7 @@ impl App {
     /// stored model: the footer names what is missing in red, the
     /// commands to fix it are one keystroke away, and nothing gates the
     /// session behind a login screen.
-    pub fn new(setup: AppSetup) -> Result<Self, CodingAgentError> {
+    pub fn new(setup: AppSetup) -> Result<Self, HostAgentError> {
         let mut session = setup.session;
         let sessions_base = setup
             .sessions_base
@@ -560,7 +560,7 @@ impl App {
                         jobs.as_ref().map(crate::jobs::JobsHandle::steering),
                         &jobs_tag,
                     );
-                    agent = Some(CodingAgent::from_session(agent_config, session.clone())?);
+                    agent = Some(HostAgent::from_session(agent_config, session.clone())?);
                     Self::attach_subagents(
                         &subagents,
                         sessions_base.as_deref(),

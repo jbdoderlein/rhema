@@ -118,7 +118,7 @@ pub trait Summarizer: Send + Sync {
 
 /// The worker's system prompt: the structural contract the block's
 /// readers depend on.
-const WORKER_SYSTEM: &str = "You are the session-memory compactor of a coding agent. You receive \
+const WORKER_SYSTEM: &str = "You are the session-memory compactor of a host agent. You receive \
 one contiguous range of an agent's past interactions, user instructions, assistant turns, tool \
 calls, and their outputs, and you write the single dense markdown block that the agent's future \
 prompts will carry as the record of that range. The agent can zoom back to any original message, \

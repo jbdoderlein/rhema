@@ -25,9 +25,9 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use rhema_bash::ShellTools;
-use rhema_coding_agent::CodingAgentConfig;
 use rhema_config::Profile;
 use rhema_config::secrets::SecretStore;
+use rhema_host_agent::HostAgentConfig;
 use rhema_prompt::Skill;
 use rhema_sandbox::{FsRoot, InstanceLock, Sandbox, ShellSandbox, seed_workspace};
 use rhema_sandbox_docker::DockerSandbox;
@@ -342,19 +342,19 @@ pub async fn assemble(
 
 impl Sandboxed {
     /// Puts the assembled tool set and the seeded skill list on a
-    /// coding-agent config. Runs BEFORE the subagent wire: their inner
+    /// host-agent config. Runs BEFORE the subagent wire: their inner
     /// shell inherits the executor installed here
     /// (`ShellTools::executor()`), while their definition discovery
     /// stays host-side.
-    pub fn apply_tools(&self, config: &mut CodingAgentConfig) {
+    pub fn apply_tools(&self, config: &mut HostAgentConfig) {
         config.tools = Some(self.tools.clone());
         config.skills = Some(self.skills.clone());
     }
 
-    /// Puts the sandbox-side workspace path on a coding-agent config.
+    /// Puts the sandbox-side workspace path on a host-agent config.
     /// Runs AFTER the subagent wire, so the path lands on the config
     /// the agent is finally built from.
-    pub fn apply_workspace(&self, config: &mut CodingAgentConfig) {
+    pub fn apply_workspace(&self, config: &mut HostAgentConfig) {
         config.workspace = PathBuf::from(&self.workspace);
     }
 

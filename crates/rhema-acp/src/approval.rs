@@ -25,8 +25,8 @@ use agent_client_protocol::schema::v1::{
     ToolCallUpdate, ToolCallUpdateFields, ToolKind,
 };
 use agent_client_protocol::{Client, ConnectionTo};
-use rhema_coding_agent::Approval;
 use rhema_core::ToolCall;
+use rhema_host_agent::Approval;
 
 /// How long one permission request may sit unanswered before the call
 /// declines and the turn moves on. A modal nobody answers otherwise

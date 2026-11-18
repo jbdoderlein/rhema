@@ -11,12 +11,12 @@ use super::*;
 #[cfg(test)]
 mod exit_tests {
     use super::*;
-    use rhema_coding_agent::CodingAgentError;
     use rhema_core::ProviderError;
+    use rhema_host_agent::HostAgentError;
 
     #[test]
     fn a_provider_failure_is_exit_code_2() {
-        let err = anyhow::Error::new(CodingAgentError::Agent(rhema_core::AgentError::Provider(
+        let err = anyhow::Error::new(HostAgentError::Agent(rhema_core::AgentError::Provider(
             ProviderError::Api {
                 message: "anthropic api error (HTTP 429): rate_limit_error".into(),
                 status: Some(429),
@@ -29,7 +29,7 @@ mod exit_tests {
     fn a_wrapped_provider_failure_still_reads_as_2() {
         // The chain, not the top error, decides: the failure surfaces
         // through whatever context wrapped it on the way up.
-        let err = anyhow::Error::new(CodingAgentError::Agent(rhema_core::AgentError::Provider(
+        let err = anyhow::Error::new(HostAgentError::Agent(rhema_core::AgentError::Provider(
             ProviderError::Timeout,
         )))
         .context("the turn failed");
@@ -39,7 +39,7 @@ mod exit_tests {
     #[test]
     fn any_other_failure_is_exit_code_1() {
         assert_eq!(exit_code(&anyhow::anyhow!("no prompt")), 1);
-        let missing = anyhow::Error::new(CodingAgentError::Agent(
+        let missing = anyhow::Error::new(HostAgentError::Agent(
             rhema_core::AgentError::MissingProvider,
         ));
         assert_eq!(
@@ -71,7 +71,7 @@ mod system_tests {
 
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
-            rhema_coding_agent::DEFAULT_SYSTEM_MD
+            rhema_host_agent::DEFAULT_SYSTEM_MD
         );
     }
 
@@ -104,7 +104,7 @@ mod system_tests {
 
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
-            rhema_coding_agent::DEFAULT_SYSTEM_MD
+            rhema_host_agent::DEFAULT_SYSTEM_MD
         );
     }
 

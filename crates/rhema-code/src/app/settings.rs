@@ -25,7 +25,7 @@ impl App {
         settings.transcript = self
             .agent
             .as_ref()
-            .and_then(CodingAgent::transcript_stats)
+            .and_then(HostAgent::transcript_stats)
             .or(self.transcript_stats);
         settings.session_cost = self.session_cost;
         settings.sandbox_offered = self.sandbox_offered;

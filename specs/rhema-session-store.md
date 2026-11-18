@@ -32,7 +32,7 @@ Three crates, one seam and one crate per backend, the same shape as
 **In v1:**
 
 - The seam, its contract suite, and id validation.
-- The file backend, migrated under ACP, `rhema-coding-agent`'s
+- The file backend, migrated under ACP, `rhema-host-agent`'s
   save/load helpers, headless, and the TUI, plus the missing ACP commit
   hook.
 - The SQLite backend, tested against the same suite, adopted by no
@@ -124,7 +124,7 @@ There are three session writers in the tree, and they disagree:
 - `rhema-acp/src/store.rs`: `<cache>/rhema/acp-sessions/<id>.json`,
   `private_write` (truncate in place, **not** atomic), id validation,
   load by id.
-- `rhema-coding-agent`: `save_session_to` / `load_session_from`, the
+- `rhema-host-agent`: `save_session_to` / `load_session_from`, the
   same pretty JSON over an arbitrary path, atomic.
 
 The duplication is only the symptom. The failures it causes:
@@ -508,7 +508,7 @@ seam's helper only if it still needs a snippet elsewhere.
   result is missing; a reopened agent's `revive_dangling_calls` closes
   it.
 
-### 8.2 `rhema-coding-agent`
+### 8.2 `rhema-host-agent`
 
 `save_session_to` and `load_session_from` delegate to
 `PathStore::save`/`load` (`rhema-session-store-file`). This removes
@@ -631,7 +631,7 @@ One commit per step, each independently reviewable:
    (create-new, `0600`, the mode applied at creation) so the mode rules
    stay in one module; the writer calls it for every temp file. No
    consumer changes yet.
-3. **`rhema-coding-agent`.** Delegate `save_session_to` /
+3. **`rhema-host-agent`.** Delegate `save_session_to` /
    `load_session_from` to `PathStore`; add the file crate; keep
    the public API and tests green.
 4. **Headless.** Move `--save` and the failure checkpoint to
@@ -652,7 +652,7 @@ One commit per step, each independently reviewable:
    Publish order: seam, file, sqlite.
 
 After step 5, `rg 'private_write\(' crates/rhema-acp crates/rhema-code
-crates/rhema-coding-agent` must return no session writer. After step 6,
+crates/rhema-host-agent` must return no session writer. After step 6,
 `rhema-code/src/sessions.rs` is an adapter, not an implementation.
 
 ---
@@ -741,7 +741,7 @@ crates/rhema-coding-agent` must return no session writer. After step 6,
 - `cargo tree -p rhema-code | rg rusqlite` exits 1 (no match): the
   TUI's graph never grows the SQLite backend.
 - `cargo test -p rhema-code`, `-p rhema-acp`, and
-  `-p rhema-coding-agent` stay green.
+  `-p rhema-host-agent` stay green.
 - ACP crash test: kill the provider after a tool call; the file ends
   with the committed call, and a reopened agent closes it through
   `revive_dangling_calls`.

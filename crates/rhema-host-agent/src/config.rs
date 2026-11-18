@@ -59,23 +59,23 @@ impl Steering for SteeringChain {
 pub type SubagentProviders =
     Arc<dyn Fn(&str) -> Option<Arc<dyn rhema_core::ModelProvider>> + Send + Sync>;
 
-/// Everything a [`CodingAgent`](crate::CodingAgent) needs: the backend
+/// Everything a [`HostAgent`](crate::HostAgent) needs: the backend
 /// it runs on, the model, and the settings that shape its turns.
 #[derive(Clone)]
-pub struct CodingAgentConfig {
-    /// The model backend the agent runs on. [`CodingAgent::new`] wraps
+pub struct HostAgentConfig {
+    /// The model backend the agent runs on. [`HostAgent::new`] wraps
     /// it (paste expansion, the transcript view) before the engine
     /// calls it; the field keeps the provider the config was built
     /// with, so a clone of the config builds another agent safely.
     ///
-    /// [`CodingAgent::new`]: crate::CodingAgent::new
+    /// [`HostAgent::new`]: crate::HostAgent::new
     pub provider: Arc<dyn rhema_core::ModelProvider>,
     /// The approval hook every gated tool call goes through. The
     /// constructor takes it beside the provider because there is no
     /// neutral default: `DenyAll` leaves the agent unable to act and
     /// `AllowAll` removes the gate silently. A driver that changes
     /// policy between turns swaps it with
-    /// [`CodingAgent::set_approval`](crate::CodingAgent::set_approval).
+    /// [`HostAgent::set_approval`](crate::HostAgent::set_approval).
     pub approval: Arc<dyn Approval>,
     /// Model identifier, passed through to
     /// [`ChatParams`](rhema_core::ChatParams).
@@ -233,11 +233,11 @@ pub struct CodingAgentConfig {
     pub home: Option<rhema_config::Home>,
 }
 
-impl std::fmt::Debug for CodingAgentConfig {
+impl std::fmt::Debug for HostAgentConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // The resolvers are trait objects and stay opaque: their
         // presence is the debug-worthy fact, not their internals.
-        f.debug_struct("CodingAgentConfig")
+        f.debug_struct("HostAgentConfig")
             .field("provider", &"<dyn ModelProvider>")
             .field("approval", &"<dyn Approval>")
             .field("model", &self.model)
@@ -260,7 +260,7 @@ impl std::fmt::Debug for CodingAgentConfig {
     }
 }
 
-impl CodingAgentConfig {
+impl HostAgentConfig {
     /// Default for `max_turn_steps`. Long autonomous sessions, builds,
     /// rebases, multi-package sweeps, routinely run hundreds of steps on
     /// cheap models under a watching eye; the cap exists to end a runaway

@@ -1,7 +1,7 @@
 //! The chat transcript: UI-side lines built from the session history and
 //! the engine's streaming events.
 //!
-//! The transcript is a projection, not state: `CodingAgent::session` stays
+//! The transcript is a projection, not state: `HostAgent::session` stays
 //! the single source of truth, and rebuilding from history after a resume
 //! or a model switch must render the same lines the live stream produced
 //! (within the summary/truncation rules).

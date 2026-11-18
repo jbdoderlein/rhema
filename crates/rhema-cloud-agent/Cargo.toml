@@ -1,6 +1,6 @@
 [package]
 name = "rhema-cloud-agent"
-description = "The coding-agent harness for cloud frontends: assembly without a filesystem, a client approval gate, and a pluggable sandbox"
+description = "The host-agent harness for cloud frontends: assembly without a filesystem, a client approval gate, and a pluggable sandbox"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -21,7 +21,7 @@ mock = ["rhema-sandbox/mock"]
 # executor replaces.
 rhema-bash = { path = "../rhema-bash", version = "0.3.0", default-features = false }
 rhema-prompt = { path = "../rhema-prompt", version = "0.3.0" }
-rhema-coding-agent = { path = "../rhema-coding-agent", version = "0.3.0", default-features = false }
+rhema-host-agent = { path = "../rhema-host-agent", version = "0.3.0", default-features = false }
 rhema-core = { path = "../rhema-core", version = "0.3.0" }
 # The sandbox seam, extracted so any frontend can reach it; the mock
 # default stays off here, this crate drives no scripted sandbox, its

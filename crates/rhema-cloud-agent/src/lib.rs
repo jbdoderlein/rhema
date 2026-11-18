@@ -1,4 +1,4 @@
-//! rhema-cloud-agent, the coding-agent harness the cloud frontends
+//! rhema-cloud-agent, the host-agent harness the cloud frontends
 //! share.
 //!
 //! A cloud frontend (a Durable Object, a container on a serverless

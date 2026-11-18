@@ -19,7 +19,7 @@
 //!   frontend's, not this crate's. The wiring's env map carries the
 //!   init file's path, the binary's, and the profile's name; the
 //!   frontend builds it once at session setup and layers the map over
-//!   `CodingAgentConfig::shell_env`.
+//!   `HostAgentConfig::shell_env`.
 //!
 //! Two properties make this half empty:
 //!
@@ -80,7 +80,7 @@ pub const EXIT_NOT_WIRED: i32 = 4;
 pub const PROMPT_SECTION: &str = include_str!("../SYSTEM_SEARCH.md");
 
 /// One process's wiring: the env map a frontend layers over
-/// `CodingAgentConfig::shell_env`, the prompt section to render, and
+/// `HostAgentConfig::shell_env`, the prompt section to render, and
 /// the provisioned init file held for the process's life.
 pub struct Wiring {
     /// The env map: `BASH_ENV`, `RHEMA_SEARCH_BIN`, and

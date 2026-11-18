@@ -1,14 +1,14 @@
 //! The system prompt stamped into requests: the default names the
-//! workspace; `CodingAgentConfig::system` replaces it wholesale.
+//! workspace; `HostAgentConfig::system` replaces it wholesale.
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rhema_coding_agent::{
-    AllowAll, CodingAgent, CodingAgentConfig, CodingAgentError, default_system, stamped_system,
-};
 use rhema_core::{
     Event, EventSink, Message, ModelOutput, ModelProvider, ProviderError, Role, StopReason, Usage,
     async_trait,
+};
+use rhema_host_agent::{
+    AllowAll, HostAgent, HostAgentConfig, HostAgentError, default_system, stamped_system,
 };
 
 struct NullSink;
@@ -64,7 +64,7 @@ async fn the_default_system_prompt_names_the_canonical_workspace() {
     let root = tempfile::tempdir().unwrap();
     let workspace = std::fs::canonicalize(root.path()).unwrap();
     let provider = recorder();
-    let mut agent = CodingAgent::new(CodingAgentConfig::new(
+    let mut agent = HostAgent::new(HostAgentConfig::new(
         provider.clone(),
         "mock-model",
         root.path(),
@@ -91,11 +91,11 @@ async fn a_base_system_prompt_replaces_the_default_and_fills_the_workspace() {
     let root = tempfile::tempdir().unwrap();
     let workspace = std::fs::canonicalize(root.path()).unwrap();
     let provider = recorder();
-    let config = CodingAgentConfig {
+    let config = HostAgentConfig {
         base_system: Some("BASE in {{ workspace }}.".into()),
-        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
+        ..HostAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
     };
-    let mut agent = CodingAgent::new(config).unwrap();
+    let mut agent = HostAgent::new(config).unwrap();
     let mut sink = NullSink;
 
     agent.turn("hi", &mut sink).await.unwrap();
@@ -125,14 +125,14 @@ async fn a_base_system_with_a_for_loop_renders_each_skill_through_it() {
     )
     .unwrap();
     let provider = recorder();
-    let config = CodingAgentConfig {
+    let config = HostAgentConfig {
         base_system: Some(
             "{% for skill in skills %}load {{ skill.name }} from {{ skill.path }} when {{ skill.description }} applies\n{% endfor %}TAIL {{ workspace }}"
                 .into(),
         ),
-        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
+        ..HostAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
     };
-    let mut agent = CodingAgent::new(config).unwrap();
+    let mut agent = HostAgent::new(config).unwrap();
     let mut sink = NullSink;
 
     agent.turn("hi", &mut sink).await.unwrap();
@@ -161,14 +161,14 @@ async fn a_base_system_with_a_for_loop_renders_each_skill_through_it() {
 async fn a_base_system_with_a_for_loop_renders_each_tool_through_it() {
     let root = tempfile::tempdir().unwrap();
     let provider = recorder();
-    let config = CodingAgentConfig {
+    let config = HostAgentConfig {
         base_system: Some(
             "{% for tool in tools %}call {{ tool.name }}: {{ tool.description }} with {{ tool.parameters | tojson }}\n{% endfor %}TAIL {{ workspace }}"
                 .into(),
         ),
-        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
+        ..HostAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
     };
-    let mut agent = CodingAgent::new(config).unwrap();
+    let mut agent = HostAgent::new(config).unwrap();
     let mut sink = NullSink;
 
     agent.turn("hi", &mut sink).await.unwrap();
@@ -189,16 +189,16 @@ async fn a_base_system_with_a_for_loop_renders_each_tool_through_it() {
 async fn a_base_system_that_fails_to_render_fails_the_construction() {
     let root = tempfile::tempdir().unwrap();
     let provider = recorder();
-    let config = CodingAgentConfig {
+    let config = HostAgentConfig {
         base_system: Some("{% if skills %} never closed".into()),
-        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
+        ..HostAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
     };
-    let err = match CodingAgent::new(config) {
+    let err = match HostAgent::new(config) {
         Err(err) => err,
         Ok(_) => panic!("an unclosed block is a loud error, not a start"),
     };
     assert!(
-        matches!(err, CodingAgentError::Template(_)),
+        matches!(err, HostAgentError::Template(_)),
         "the template error surfaces: {err}"
     );
 }
@@ -207,11 +207,11 @@ async fn a_base_system_that_fails_to_render_fails_the_construction() {
 async fn config_system_replaces_the_default() {
     let root = tempfile::tempdir().unwrap();
     let provider = recorder();
-    let config = CodingAgentConfig {
+    let config = HostAgentConfig {
         system: Some("custom prompt".into()),
-        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
+        ..HostAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
     };
-    let mut agent = CodingAgent::new(config).unwrap();
+    let mut agent = HostAgent::new(config).unwrap();
     let mut sink = NullSink;
 
     agent.turn("hi", &mut sink).await.unwrap();
@@ -223,11 +223,11 @@ async fn config_system_replaces_the_default() {
 fn the_agent_exposes_its_rendered_system_prompt() {
     let root = tempfile::tempdir().unwrap();
     let provider = recorder();
-    let config = CodingAgentConfig {
+    let config = HostAgentConfig {
         system: Some("custom prompt".into()),
-        ..CodingAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
+        ..HostAgentConfig::new(provider.clone(), "mock-model", root.path(), AllowAll)
     };
-    let agent = CodingAgent::new(config).unwrap();
+    let agent = HostAgent::new(config).unwrap();
     assert_eq!(agent.system(), Some("custom prompt"));
 }
 
@@ -257,7 +257,7 @@ fn the_skills_share_excludes_the_mcp_section() {
     let render = |skills: &[rhema_prompt::Skill], mcp: &[rhema_config::mcp::McpServerLine]| {
         let prompt = rhema_prompt::Prompt::new(&workspace, skills, &[])
             .section("mcp", serde_json::json!(mcp));
-        rhema_prompt::render_system(rhema_coding_agent::DEFAULT_SYSTEM_MD, &prompt).unwrap()
+        rhema_prompt::render_system(rhema_host_agent::DEFAULT_SYSTEM_MD, &prompt).unwrap()
     };
     let short = render(&skills, &mcp("Jira"));
     let bare_short = render(&[], &mcp("Jira"));
@@ -278,12 +278,12 @@ fn the_skills_share_excludes_the_mcp_section() {
 #[tokio::test]
 async fn the_stamped_prompt_is_what_the_agent_sends() {
     // The anti-drift contract: a preview through stamped_system is
-    // byte-identical to what CodingAgent::new renders for the same
+    // byte-identical to what HostAgent::new renders for the same
     // base and workspace.
     let root = tempfile::tempdir().unwrap();
     let workspace = std::fs::canonicalize(root.path()).unwrap();
     let provider = recorder();
-    let mut agent = CodingAgent::new(CodingAgentConfig::new(
+    let mut agent = HostAgent::new(HostAgentConfig::new(
         provider.clone(),
         "mock-model",
         root.path(),

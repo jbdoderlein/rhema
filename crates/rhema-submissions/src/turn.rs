@@ -3,7 +3,7 @@
 //! A turn is the one kind this crate ships, because it is the engine's
 //! unit: `Agent::turn`, `Agent::resume_turn`, `Session::history`,
 //! `StopReason`. It is not in `rhema-core`, because core must not know
-//! what a submission is, and it is not in `rhema-coding-agent`, because
+//! what a submission is, and it is not in `rhema-host-agent`, because
 //! that crate is one assembly of agents and a turn belongs to any of
 //! them.
 
@@ -121,7 +121,7 @@ pub fn submit(
 /// at. The caller saves before the work begins.
 ///
 /// [`drive`] and [`resume`] call this themselves. A driver that owns its
-/// own engine loop, `rhema-coding-agent`'s `CodingAgent`, for instance,
+/// own engine loop, `rhema-host-agent`'s `HostAgent`, for instance,
 /// starts the record here and then runs its turn.
 pub fn start(
     session: &mut Session,

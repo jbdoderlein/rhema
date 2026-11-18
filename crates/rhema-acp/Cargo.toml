@@ -1,6 +1,6 @@
 [package]
 name = "rhema-acp"
-description = "The Agent Client Protocol adapter: rhema's coding agent as an ACP agent subprocess"
+description = "The Agent Client Protocol adapter: rhema's host agent as an ACP agent subprocess"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,12 +10,12 @@ authors.workspace = true
 
 [features]
 # Scripted MockProvider for offline tests; mirrors rhema-core's feature.
-mock = ["rhema-core/mock", "rhema-coding-agent/mock"]
+mock = ["rhema-core/mock", "rhema-host-agent/mock"]
 
 [dependencies]
 rhema-config = { path = "../rhema-config", version = "0.3.0" }
 rhema-core = { path = "../rhema-core", version = "0.3.0" }
-rhema-coding-agent = { path = "../rhema-coding-agent", version = "0.3.0" }
+rhema-host-agent = { path = "../rhema-host-agent", version = "0.3.0" }
 # The turn submission a prompt records, and the reconcile a load runs
 rhema-submissions = { path = "../rhema-submissions", version = "0.3.0" }
 # Session persistence: the seam's types and the shared file backend

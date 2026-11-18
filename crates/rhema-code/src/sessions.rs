@@ -327,7 +327,7 @@ mod tests {
 
         // What the file holds, a load reads back: the same shape
         // --resume takes.
-        let loaded = rhema_coding_agent::CodingAgent::load_session_from(&path).unwrap();
+        let loaded = rhema_host_agent::HostAgent::load_session_from(&path).unwrap();
         assert_eq!(UsageStats::from_session(&loaded), Some(stats));
     }
 

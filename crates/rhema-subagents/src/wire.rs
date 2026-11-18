@@ -2,7 +2,7 @@
 //! discovers subagents on its own.
 //!
 //! [`wire`] discovers definitions and attaches a [`SubagentTools`] to
-//! a `CodingAgentConfig`, the shared shell, the extra resolver the
+//! a `HostAgentConfig`, the shared shell, the extra resolver the
 //! driver merges through its `Overlay`, and the steering: the tool's
 //! registry is the driver's notification source, so a finished job is
 //! announced to the model by the very instance that started it. The
@@ -21,8 +21,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use rhema_bash::ShellTools;
-use rhema_coding_agent::CodingAgentConfig;
 use rhema_core::ToolSpec;
+use rhema_host_agent::HostAgentConfig;
 
 use crate::def::discover;
 use crate::registry::Registry;
@@ -119,10 +119,10 @@ impl SubagentHandle {
 
     /// The registry as the driver's steering source: one notification
     /// line per finished-but-untaken job, per drain. Set this on
-    /// `CodingAgentConfig::steering`, it is already set by [`wire`];
+    /// `HostAgentConfig::steering`, it is already set by [`wire`];
     /// a frontend rebuilding configs by hand carries it over.
-    pub fn steering(&self) -> Arc<dyn rhema_coding_agent::Steering> {
-        Arc::clone(&self.registry) as Arc<dyn rhema_coding_agent::Steering>
+    pub fn steering(&self) -> Arc<dyn rhema_host_agent::Steering> {
+        Arc::clone(&self.registry) as Arc<dyn rhema_host_agent::Steering>
     }
 
     /// Restarts every transient-failed job in place, the retry
@@ -144,7 +144,7 @@ impl SubagentHandle {
 
 /// Wires discovered subagents into `config`, reading the global
 /// definitions directory off the config dir. See [`wire_at`].
-pub fn wire(mut config: CodingAgentConfig) -> (CodingAgentConfig, SubagentHandle) {
+pub fn wire(mut config: HostAgentConfig) -> (HostAgentConfig, SubagentHandle) {
     let global = rhema_config::Home::discover().ok().map(|h| h.subagents());
     let handle = wire_at(global.as_deref(), &mut config);
     (config, handle)
@@ -154,7 +154,7 @@ pub fn wire(mut config: CodingAgentConfig) -> (CodingAgentConfig, SubagentHandle
 /// Attaches the tool, the steering, and returns the status handle,
 /// all backed by the one registry. The tool rides the config's own
 /// provider, one instance for the session and its subagents.
-pub fn wire_at(global: Option<&Path>, config: &mut CodingAgentConfig) -> SubagentHandle {
+pub fn wire_at(global: Option<&Path>, config: &mut HostAgentConfig) -> SubagentHandle {
     let mut defs = discover(global, &config.workspace);
     // The persisted off switch runs here, before the catalog builds:
     // a disabled name is in neither the prompt's tool list nor the
@@ -214,7 +214,7 @@ pub fn wire_at(global: Option<&Path>, config: &mut CodingAgentConfig) -> Subagen
 /// parent's. A stamp that cannot render (a broken base template)
 /// warns and leaves the bodies bare: the parent's own construction
 /// fails on the same template, so the session is already leaving.
-fn subagent_base_system(config: &CodingAgentConfig, workspace: &Path) -> String {
+fn subagent_base_system(config: &HostAgentConfig, workspace: &Path) -> String {
     if let Some(system) = &config.system {
         return system.clone();
     }
@@ -247,7 +247,7 @@ fn subagent_base_system(config: &CodingAgentConfig, workspace: &Path) -> String 
     .into_iter()
     .filter_map(|(name, text)| text.map(|text| (name, serde_json::json!(text))))
     .collect::<Vec<_>>();
-    rhema_coding_agent::stamped_system_with_sections(
+    rhema_host_agent::stamped_system_with_sections(
         config.base_system.as_deref(),
         workspace,
         &specs,
@@ -302,10 +302,10 @@ mod tests {
     use std::collections::BTreeSet;
     use std::path::PathBuf;
 
-    use rhema_coding_agent::stamped_system;
     use rhema_core::{
         EventSink, Message, ModelOutput, ModelProvider, ProviderError, Role, StopReason,
     };
+    use rhema_host_agent::stamped_system;
 
     struct Never;
 
@@ -334,18 +334,18 @@ mod tests {
             "scout",
             "scouts ahead",
         );
-        let mut config = CodingAgentConfig::new(
+        let mut config = HostAgentConfig::new(
             Arc::new(Never),
             "m",
             workspace.path(),
-            rhema_coding_agent::AllowAll,
+            rhema_host_agent::AllowAll,
         );
         // The factory answers only anthropic; the model the wire's
         // config carries is never the parent here.
         let other = Arc::new(Never);
         config.subagent_providers = Some(Arc::new(move |kind: &str| {
             (kind == "anthropic").then(|| other.clone() as Arc<dyn ModelProvider>)
-        }) as rhema_coding_agent::SubagentProviders);
+        }) as rhema_host_agent::SubagentProviders);
         let _handle = wire_at(Some(empty.path()), &mut config);
         let resolver = config.extra_resolver.as_ref().expect("the tool is wired");
         let spec = &ToolResolver::specs(resolver.as_ref())[0];
@@ -408,11 +408,11 @@ mod tests {
         // had never heard of.
         let empty = tempfile::tempdir().unwrap();
         let workspace = tempfile::tempdir().unwrap();
-        let mut config = CodingAgentConfig::new(
+        let mut config = HostAgentConfig::new(
             Arc::new(Never),
             "m",
             workspace.path(),
-            rhema_coding_agent::AllowAll,
+            rhema_host_agent::AllowAll,
         );
         config
             .shell_env
@@ -446,7 +446,7 @@ mod tests {
         // canonical form of the same directory.
         let root = std::fs::canonicalize(workspace.path()).unwrap();
         let mut config =
-            CodingAgentConfig::new(Arc::new(Never), "m", &root, rhema_coding_agent::AllowAll);
+            HostAgentConfig::new(Arc::new(Never), "m", &root, rhema_host_agent::AllowAll);
         let handle = wire_at(Some(empty.path()), &mut config);
 
         // The catalog is never empty: the built-in general-purpose
@@ -491,11 +491,11 @@ mod tests {
     #[test]
     fn definitions_attach_the_tool_and_reach_the_prompt() {
         let (global, workspace) = workspace_with_defs();
-        let mut config = CodingAgentConfig::new(
+        let mut config = HostAgentConfig::new(
             Arc::new(Never),
             "parent-model",
             &workspace,
-            rhema_coding_agent::AllowAll,
+            rhema_host_agent::AllowAll,
         );
         let handle = wire_at(Some(global.path()), &mut config);
 
@@ -573,12 +573,8 @@ mod tests {
         // The wire: the config's own set runs the same filter, the
         // built-in answering to its name like any other.
         def_in(global.path(), "general-purpose", "my generalist");
-        let mut config = CodingAgentConfig::new(
-            Arc::new(Never),
-            "m",
-            &workspace,
-            rhema_coding_agent::AllowAll,
-        );
+        let mut config =
+            HostAgentConfig::new(Arc::new(Never), "m", &workspace, rhema_host_agent::AllowAll);
         config.disabled_subagents = BTreeSet::from([
             "reviewer".to_owned(),
             "scout".to_owned(),
@@ -593,12 +589,8 @@ mod tests {
         let _ = handle.steering().drain();
 
         // Disabling one of two leaves the other: the tool stays.
-        let mut config = CodingAgentConfig::new(
-            Arc::new(Never),
-            "m",
-            &workspace,
-            rhema_coding_agent::AllowAll,
-        );
+        let mut config =
+            HostAgentConfig::new(Arc::new(Never), "m", &workspace, rhema_host_agent::AllowAll);
         config.disabled_subagents = BTreeSet::from(["reviewer".to_owned()]);
         let _handle = wire_at(Some(global.path()), &mut config);
         let extra = config.extra_resolver.clone().expect("the tool");
@@ -616,7 +608,7 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(workspace.path()).unwrap();
         let mut config =
-            CodingAgentConfig::new(Arc::new(Never), "m", &root, rhema_coding_agent::AllowAll);
+            HostAgentConfig::new(Arc::new(Never), "m", &root, rhema_host_agent::AllowAll);
         config.environment = Some("ENVSAYSHI".into());
         config.user_preferences = Some("USERSAYSHI".into());
         config.skills = Some(vec![rhema_prompt::Skill {
@@ -642,11 +634,11 @@ mod tests {
     #[test]
     fn a_total_replacement_replaces_the_subagent_stamp_too() {
         let workspace = tempfile::tempdir().unwrap();
-        let mut config = CodingAgentConfig::new(
+        let mut config = HostAgentConfig::new(
             Arc::new(Never),
             "m",
             workspace.path(),
-            rhema_coding_agent::AllowAll,
+            rhema_host_agent::AllowAll,
         );
         config.system = Some("the replacement".into());
         assert_eq!(

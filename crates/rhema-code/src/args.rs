@@ -11,7 +11,7 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand, ValueEnum};
-use rhema_coding_agent::CodingAgentConfig;
+use rhema_host_agent::HostAgentConfig;
 
 /// Which model backend serves turns, by the stored config's provider
 /// names.
@@ -180,7 +180,7 @@ pub struct Args {
     pub save: Option<PathBuf>,
 
     /// Max steps per turn.
-    #[arg(long, default_value_t = CodingAgentConfig::DEFAULT_MAX_TURN_STEPS)]
+    #[arg(long, default_value_t = HostAgentConfig::DEFAULT_MAX_TURN_STEPS)]
     pub max_steps: NonZeroU32,
 
     /// Send the whole history every step: skip the bounded request
@@ -326,7 +326,7 @@ pub struct RunArgs {
     pub save: Option<PathBuf>,
 
     /// Max steps per turn.
-    #[arg(long, default_value_t = CodingAgentConfig::DEFAULT_MAX_TURN_STEPS)]
+    #[arg(long, default_value_t = HostAgentConfig::DEFAULT_MAX_TURN_STEPS)]
     pub max_steps: NonZeroU32,
 
     /// Send the whole history every step: skip the bounded request
@@ -358,7 +358,7 @@ pub struct AcpArgs {
     pub model: Option<String>,
 
     /// Max steps per turn.
-    #[arg(long, default_value_t = CodingAgentConfig::DEFAULT_MAX_TURN_STEPS)]
+    #[arg(long, default_value_t = HostAgentConfig::DEFAULT_MAX_TURN_STEPS)]
     pub max_steps: NonZeroU32,
 
     /// How much reasoning the model should do. Absent, the profile's
@@ -437,7 +437,7 @@ mod tests {
         assert_eq!(args.workspace, PathBuf::from("."));
         assert_eq!(args.resume, None);
         assert_eq!(args.save, None);
-        assert_eq!(args.max_steps, CodingAgentConfig::DEFAULT_MAX_TURN_STEPS);
+        assert_eq!(args.max_steps, HostAgentConfig::DEFAULT_MAX_TURN_STEPS);
         assert_eq!(args.thinking, None);
     }
 
@@ -645,7 +645,7 @@ mod tests {
             Some(Command::Acp(AcpArgs {
                 profile: None,
                 model: None,
-                max_steps: CodingAgentConfig::DEFAULT_MAX_TURN_STEPS,
+                max_steps: HostAgentConfig::DEFAULT_MAX_TURN_STEPS,
                 thinking: None,
             }))
         );

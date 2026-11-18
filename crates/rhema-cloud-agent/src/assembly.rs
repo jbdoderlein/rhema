@@ -4,7 +4,7 @@
 //! terminal agent reads off disk: the model id, the session's SYSTEM.md
 //! from durable storage, the skills seeded into the sandbox, the
 //! approval policy. [`AgentAssembly::assemble`] builds a
-//! [`CodingAgent`] whose shell runs in
+//! [`HostAgent`] whose shell runs in
 //! the sandbox and whose construction touches no host path, the
 //! workspace string is meaningful only inside the sandbox.
 #![forbid(unsafe_code)]
@@ -13,8 +13,8 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use rhema_bash::{Approval, ShellExecutor, ShellTools};
-use rhema_coding_agent::{CodingAgent, CodingAgentConfig, CodingAgentError};
 use rhema_core::ModelProvider;
+use rhema_host_agent::{HostAgent, HostAgentConfig, HostAgentError};
 use rhema_prompt::Skill;
 
 /// The static, per-session approval policy. It answers alone when no
@@ -102,7 +102,7 @@ pub struct AgentAssembly {
     pub thinking: rhema_core::request::ThinkingEffort,
     /// The workspace path inside the sandbox (`/workspace`).
     pub workspace: String,
-    /// The bounded request view; `Some(default)` is the coding agent's
+    /// The bounded request view; `Some(default)` is the host agent's
     /// own default, `None` sends whole histories.
     pub transcript: Option<rhema_transcript::TranscriptSettings>,
     /// The approval policy gating the side-effecting tools.
@@ -120,9 +120,9 @@ impl AgentAssembly {
         &self,
         provider: Arc<dyn ModelProvider>,
         sandbox_executor: Arc<dyn ShellExecutor>,
-    ) -> Result<CodingAgent, CodingAgentError> {
+    ) -> Result<HostAgent, HostAgentError> {
         let (config, _shell) = self.config(provider, sandbox_executor);
-        CodingAgent::new(config)
+        HostAgent::new(config)
     }
 
     /// Builds the agent resuming `session`, the checkpoint a previous
@@ -132,9 +132,9 @@ impl AgentAssembly {
         provider: Arc<dyn ModelProvider>,
         sandbox_executor: Arc<dyn ShellExecutor>,
         session: rhema_core::Session,
-    ) -> Result<CodingAgent, CodingAgentError> {
+    ) -> Result<HostAgent, HostAgentError> {
         let (config, _shell) = self.config(provider, sandbox_executor);
-        rhema_coding_agent::CodingAgent::from_session(config, session)
+        rhema_host_agent::HostAgent::from_session(config, session)
     }
 
     /// The config the assembly builds, with its shell, factored so a
@@ -143,7 +143,7 @@ impl AgentAssembly {
         &self,
         provider: Arc<dyn ModelProvider>,
         sandbox_executor: Arc<dyn ShellExecutor>,
-    ) -> (CodingAgentConfig, Arc<ShellTools>) {
+    ) -> (HostAgentConfig, Arc<ShellTools>) {
         let shell = Arc::new(ShellTools::with_executor(
             self.workspace.clone(),
             sandbox_executor,
@@ -156,7 +156,7 @@ impl AgentAssembly {
             self.approval.clone(),
             self.channel.clone(),
         ));
-        let config = CodingAgentConfig {
+        let config = HostAgentConfig {
             provider,
             // The turn-level hook is the fail-safe below the gate: a
             // call that bypasses `ClientGate` is denied, and the gate
@@ -197,7 +197,7 @@ impl AgentAssembly {
             // Commands run in the deployment's remote sandbox, so the
             // environment section claims no host facts, the notice
             // names where bash runs and defers to the sandbox itself.
-            environment: Some(rhema_coding_agent::remote_notice(
+            environment: Some(rhema_host_agent::remote_notice(
                 "cloud",
                 &self.workspace,
                 &self.model,

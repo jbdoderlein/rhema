@@ -49,7 +49,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use rhema_bash::jobs::{EXIT_NO_BACKEND, JobRow};
-use rhema_coding_agent::Steering;
+use rhema_host_agent::Steering;
 
 /// How often the listing is re-read while a job is live.
 const LIVE_TICK: Duration = Duration::from_millis(1200);

@@ -7,11 +7,11 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use rhema_coding_agent::{AllowAll, CodingAgent, CodingAgentConfig, Steering};
 use rhema_core::{
     Content, Event, EventSink, Message, ModelOutput, ModelProvider, ModelRequest, ProviderError,
     Role, StopReason, ToolCall, Usage, async_trait,
 };
+use rhema_host_agent::{AllowAll, HostAgent, HostAgentConfig, Steering};
 use serde_json::json;
 
 struct NullSink;
@@ -153,11 +153,11 @@ fn user_texts(messages: &[Message]) -> Vec<String> {
 async fn a_turn_start_announcement_lands_before_the_user_input() {
     let recorder = Recorder::new(0);
     let steering = Scripted::new(vec![vec!["Subagent scout (job-3) has finished.".into()]]);
-    let config = CodingAgentConfig {
+    let config = HostAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
+        ..HostAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
     };
-    let mut agent = CodingAgent::new(config).unwrap();
+    let mut agent = HostAgent::new(config).unwrap();
     agent.turn("run it", &mut NullSink).await.unwrap();
 
     let requests = recorder.requests();
@@ -177,11 +177,11 @@ async fn a_mid_turn_announcement_lands_after_the_tool_round() {
     let recorder = Recorder::new(1);
     let notification = "Subagent scout (job-3) has finished.";
     let steering = Scripted::new(vec![vec![], vec![notification.to_owned()], vec![], vec![]]);
-    let config = CodingAgentConfig {
+    let config = HostAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
+        ..HostAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
     };
-    let mut agent = CodingAgent::new(config).unwrap();
+    let mut agent = HostAgent::new(config).unwrap();
     agent.turn("run it", &mut NullSink).await.unwrap();
 
     let requests = recorder.requests();
@@ -203,11 +203,11 @@ async fn a_mid_turn_announcement_lands_after_the_tool_round() {
 async fn an_unfetched_finish_is_announced_once_per_turn() {
     let recorder = Recorder::new(2);
     let steering = Arc::new(Stubborn("Subagent scout (job-3) has finished.".into()));
-    let config = CodingAgentConfig {
+    let config = HostAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
+        ..HostAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
     };
-    let mut agent = CodingAgent::new(config).unwrap();
+    let mut agent = HostAgent::new(config).unwrap();
     agent.turn("run it", &mut NullSink).await.unwrap();
 
     let requests = recorder.requests();
@@ -231,11 +231,11 @@ async fn several_finishes_coalesce_into_one_message() {
         "Subagent scout (job-3) has finished.".into(),
         "Subagent reviewer (job-4) has finished with an error: hit its step budget of 256.".into(),
     ]]);
-    let config = CodingAgentConfig {
+    let config = HostAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
+        ..HostAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
     };
-    let mut agent = CodingAgent::new(config).unwrap();
+    let mut agent = HostAgent::new(config).unwrap();
     agent.turn("run it", &mut NullSink).await.unwrap();
 
     let requests = recorder.requests();
@@ -249,11 +249,11 @@ async fn several_finishes_coalesce_into_one_message() {
 async fn an_empty_drain_appends_nothing() {
     let recorder = Recorder::new(0);
     let steering = Scripted::new(vec![vec![], vec![]]);
-    let config = CodingAgentConfig {
+    let config = HostAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
+        ..HostAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
     };
-    let mut agent = CodingAgent::new(config).unwrap();
+    let mut agent = HostAgent::new(config).unwrap();
     agent.turn("run it", &mut NullSink).await.unwrap();
 
     let requests = recorder.requests();
@@ -268,11 +268,11 @@ async fn an_empty_drain_appends_nothing() {
 async fn a_separate_turn_reannounces_the_same_unfetched_line() {
     let recorder = Recorder::new(0);
     let steering = Arc::new(Stubborn("Subagent scout (job-3) has finished.".into()));
-    let config = CodingAgentConfig {
+    let config = HostAgentConfig {
         steering: Some(steering.clone()),
-        ..CodingAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
+        ..HostAgentConfig::new(recorder.clone(), "m", std::env::temp_dir(), AllowAll)
     };
-    let mut agent = CodingAgent::new(config).unwrap();
+    let mut agent = HostAgent::new(config).unwrap();
     agent.turn("first", &mut NullSink).await.unwrap();
     agent.turn("second", &mut NullSink).await.unwrap();
 
@@ -295,7 +295,7 @@ async fn a_separate_turn_reannounces_the_same_unfetched_line() {
 #[tokio::test]
 async fn without_steering_the_history_keeps_its_plain_shape() {
     let recorder = Recorder::new(1);
-    let mut agent = CodingAgent::new(CodingAgentConfig::new(
+    let mut agent = HostAgent::new(HostAgentConfig::new(
         recorder.clone(),
         "m",
         std::env::temp_dir(),
@@ -321,7 +321,7 @@ async fn without_steering_the_history_keeps_its_plain_shape() {
 fn a_chain_drains_its_sources_in_order() {
     let first = Scripted::new(vec![vec!["first".to_owned()]]);
     let second = Scripted::new(vec![vec!["second".to_owned(), "third".to_owned()]]);
-    let chain = Arc::new(rhema_coding_agent::SteeringChain::new(vec![
+    let chain = Arc::new(rhema_host_agent::SteeringChain::new(vec![
         first.clone() as Arc<dyn Steering>,
         second.clone() as Arc<dyn Steering>,
     ]));
@@ -334,7 +334,7 @@ fn a_chain_drains_its_sources_in_order() {
     assert_eq!(first.drained(), 0);
     assert_eq!(second.drained(), 0);
     assert!(
-        Arc::new(rhema_coding_agent::SteeringChain::new(Vec::new()))
+        Arc::new(rhema_host_agent::SteeringChain::new(Vec::new()))
             .drain()
             .is_empty(),
         "an empty chain drains empty"

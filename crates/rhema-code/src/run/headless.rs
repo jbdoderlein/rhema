@@ -158,7 +158,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
             .map(|home| home.system_prompt())
             .as_deref(),
     );
-    let mut agent_config = rhema_coding_agent::CodingAgentConfig {
+    let mut agent_config = rhema_host_agent::HostAgentConfig {
         max_turn_steps: args.max_steps,
         transcript: (!args.no_transcript).then(rhema_transcript::TranscriptSettings::default),
         thinking,
@@ -167,11 +167,11 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
         disabled_subagents: config.disabled_subagents.clone(),
         // Approval is intentionally `AllowAll`: commands run inside the
         // sandbox, and the sandbox is the isolation boundary.
-        ..rhema_coding_agent::CodingAgentConfig::new(
+        ..rhema_host_agent::HostAgentConfig::new(
             provider.clone(),
             &model,
             &workspace,
-            rhema_coding_agent::AllowAll,
+            rhema_host_agent::AllowAll,
         )
     };
     // Where bash runs: the sandbox choice engages only off `local`, and
@@ -281,7 +281,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
         let secrets = secrets.clone();
         Arc::new(move |kind: &str| {
             Backend::from_kind(kind, &profile, Some(&secrets)).map(|backend| backend.provider())
-        }) as rhema_coding_agent::SubagentProviders
+        }) as rhema_host_agent::SubagentProviders
     });
     // The prompt's optional sections, the TUI's gate read headless:
     // machine facts for a local session, the sandbox's notice for a
@@ -314,10 +314,10 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     // The steering slot takes both feeds: subagent finishes first,
     // then background jobs', one chained source.
     if let Some(jobs) = &jobs {
-        let mut sources: Vec<Arc<dyn rhema_coding_agent::Steering>> =
+        let mut sources: Vec<Arc<dyn rhema_host_agent::Steering>> =
             agent_config.steering.take().into_iter().collect();
         sources.push(jobs.steering());
-        agent_config.steering = Some(Arc::new(rhema_coding_agent::SteeringChain::new(sources)));
+        agent_config.steering = Some(Arc::new(rhema_host_agent::SteeringChain::new(sources)));
     }
     if let Some(assembled) = sandboxed.as_ref() {
         assembled.apply_workspace(&mut agent_config);
@@ -332,11 +332,11 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
         }
     }
     let session = match &args.resume {
-        Some(path) => CodingAgent::load_session_from(path)
+        Some(path) => HostAgent::load_session_from(path)
             .with_context(|| format!("cannot resume session: {}", path.display()))?,
         None => Session::default(),
     };
-    let mut agent = CodingAgent::from_session(agent_config, session)?;
+    let mut agent = HostAgent::from_session(agent_config, session)?;
 
     // The checkpoint, opt-in headless: when `--save` names a file, the
     // engine hands the session over at every stream boundary, before
