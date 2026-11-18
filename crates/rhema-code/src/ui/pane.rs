@@ -448,7 +448,7 @@ pub(crate) fn render_transcript(
     // off at the live tail, so the reading column stays clean until
     // the reader leaves it. A drag keeps it on even when the drag
     // reaches the tail: the control must not vanish under the pointer.
-    if app.chat.scroll > 0 || app.rail_drag {
+    if app.options.scrollbar && (app.chat.scroll > 0 || app.rail_drag) {
         app.transcript_view.rail = render_scroll_rail(frame, inner, total, visible, top, theme);
     }
 }

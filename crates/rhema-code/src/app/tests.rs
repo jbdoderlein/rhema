@@ -339,6 +339,7 @@ fn harness_inner(
             thinking: rhema_core::request::ThinkingEffort::Default,
             icons: crate::icons::Flavor::Unicode,
             cursor: crate::cursor::CursorStyle::Default,
+            scrollbar: true,
             profile: Some("personal".into()),
             workspace: PathBuf::from("."),
             max_steps: NonZeroU32::new(4).unwrap(),
@@ -4035,6 +4036,7 @@ fn a_logged_in_profile_opens_the_chat_without_the_login_screen() {
             thinking: rhema_core::request::ThinkingEffort::Default,
             icons: crate::icons::Flavor::Unicode,
             cursor: crate::cursor::CursorStyle::Default,
+            scrollbar: true,
             profile: Some(profile),
             workspace: PathBuf::from("."),
             max_steps: NonZeroU32::new(4).unwrap(),
@@ -5519,6 +5521,30 @@ fn settings_cycles_the_cursor_style_and_persists_it() {
     h.app.on_key(key(KeyCode::Char('s')));
     assert_eq!(h.app.options.cursor, crate::cursor::CursorStyle::Default);
     assert_eq!(h.store.load().unwrap().cursor.as_deref(), Some("default"));
+}
+
+#[test]
+fn settings_toggles_the_scrollbar_and_persists_it() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    crate::commands::dispatch(&mut h.app, "/settings");
+    // Three tabs: Profiles and Sandbox sit between Providers and
+    // Appearance.
+    h.app.on_key(key(KeyCode::Tab));
+    h.app.on_key(key(KeyCode::Tab));
+    h.app.on_key(key(KeyCode::Tab));
+    // Row 5 is the scrollbar row; enter and `r` both flip it.
+    for _ in 0..5 {
+        h.app.on_key(key(KeyCode::Down));
+    }
+    h.app.on_key(key(KeyCode::Enter));
+    assert!(!h.app.options.scrollbar, "the rail goes off");
+    assert_eq!(h.store.load().unwrap().scrollbar, Some(false));
+    if let Screen::Settings(settings) = &h.app.screen {
+        assert!(!settings.scrollbar, "the page follows the toggle");
+    }
+    h.app.on_key(key(KeyCode::Char('r')));
+    assert!(h.app.options.scrollbar, "the rail comes back");
+    assert_eq!(h.store.load().unwrap().scrollbar, Some(true));
 }
 
 #[test]

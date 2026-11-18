@@ -687,6 +687,8 @@ pub struct RunOptions {
     pub icons: crate::icons::Flavor,
     /// The input caret's shape.
     pub cursor: crate::cursor::CursorStyle,
+    /// Whether the transcript draws its scrollbar in the right margin.
+    pub scrollbar: bool,
     /// The config profile this session runs under.
     pub profile: Option<String>,
     /// Workspace root for tools.

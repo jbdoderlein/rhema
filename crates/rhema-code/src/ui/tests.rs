@@ -1601,6 +1601,7 @@ mod scroll_tests {
                 custom: None,
                 icons: crate::icons::Flavor::Unicode,
                 cursor: crate::cursor::CursorStyle::Default,
+                scrollbar: true,
                 thinking: rhema_core::request::ThinkingEffort::Default,
                 profile: Some("personal".into()),
                 workspace: PathBuf::from("."),
@@ -3130,6 +3131,24 @@ mod scroll_tests {
         assert!(
             cells.iter().all(|symbol| *symbol == "▐"),
             "the track draws: {cells:?}"
+        );
+    }
+
+    #[test]
+    fn the_scrollbar_toggle_keeps_the_rail_off() {
+        let mut app = chat_app();
+        app.transcript
+            .push_user(&format!("{} end", "word ".repeat(200)), Vec::new());
+        app.chat.scroll = 1;
+        app.options.scrollbar = false;
+        let backend = TestBackend::new(40, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| render(&mut app, frame)).unwrap();
+        assert!(app.transcript_view.rail.is_none());
+        let buffer = terminal.backend().buffer();
+        assert!(
+            (0..buffer.area.height).all(|y| buffer[(38, y)].symbol() != "▐"),
+            "the margin stays bare with the scrollbar off"
         );
     }
 

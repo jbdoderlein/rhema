@@ -398,6 +398,10 @@ impl App {
                 Vec::new()
             }
             SettingsAction::CycleCursor => vec![self.cycle_cursor_style()],
+            SettingsAction::ToggleScrollbar => {
+                self.toggle_scrollbar();
+                Vec::new()
+            }
             SettingsAction::SelectSandbox(choice) => self.choose_sandbox(choice),
             SettingsAction::OpenSandboxDialog => {
                 if let Screen::Settings(settings) = &mut self.screen {

@@ -77,6 +77,7 @@ impl App {
         settings.icons_nerd = options.icons == crate::icons::Flavor::Nerd;
         settings.background_native = options.background == crate::palette::Background::Native;
         settings.cursor = options.cursor;
+        settings.scrollbar = options.scrollbar;
         settings.profile = session_profile
             .unwrap_or(rhema_config::DEFAULT_PROFILE)
             .to_owned();
@@ -600,6 +601,20 @@ impl App {
         }
         self.save_config();
         Effect::SetCursorStyle(style)
+    }
+
+    /// Flips the transcript's scrollbar and persists the choice, live
+    /// like the theme toggle: the rail stops drawing (or comes back)
+    /// this frame, and the config records it for the next startup. The
+    /// open settings page follows.
+    pub(crate) fn toggle_scrollbar(&mut self) {
+        let scrollbar = !self.options.scrollbar;
+        self.options.scrollbar = scrollbar;
+        self.config.scrollbar = Some(scrollbar);
+        if let Screen::Settings(settings) = &mut self.screen {
+            settings.scrollbar = scrollbar;
+        }
+        self.save_config();
     }
 
     /// Flips a skill's on/off state: the disabled set in the config

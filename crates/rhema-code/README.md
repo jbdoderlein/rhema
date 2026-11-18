@@ -24,7 +24,7 @@ Drag with the left button over the transcript to select the text between the cel
 
 ### Transcript scroll
 
-The wheel and PgUp/PgDn walk the transcript's history; scrolling back down to the tail returns to the live conversation. While the conversation runs past the viewport and you are scrolled up into the history, a rail appears in the right margin: the brighter thumb marks the part of the content on screen, and dragging the rail (or clicking anywhere on it) moves the window there. At the tail the rail is off, so the reading column stays clean by default. The rail lives in the margin the wrap already leaves free, so it never re-wraps a block, and a transcript that fits its viewport draws none.
+The wheel and PgUp/PgDn walk the transcript's history; scrolling back down to the tail returns to the live conversation. While the conversation runs past the viewport and you are scrolled up into the history, a rail appears in the right margin: the brighter thumb marks the part of the content on screen, and dragging the rail (or clicking anywhere on it) moves the window there. At the tail the rail is off, so the reading column stays clean by default. The rail lives in the margin the wrap already leaves free, so it never re-wraps a block, a transcript that fits its viewport draws none, and `scrollbar: false` keeps the margin bare at any scroll position.
 
 ### Prompts
 
@@ -44,6 +44,7 @@ theme: dark            # dark | light, the palette's appearance
 background: rhema      # rhema | native, the palette's fills, or the terminal's own background
 icons: unicode         # unicode | nerd, the footer's icon flavor
 cursor: default        # default | block | line | underline, the input caret's shape
+scrollbar: true        # true | false, the transcript's scrollbar
 m3_source: "#6750A4"   # the m3-you seed color (#RRGGBB), optional
 custom:                # the custom palette's tokens (#RRGGBB), optional
   dark:
@@ -57,6 +58,8 @@ custom:                # the custom palette's tokens (#RRGGBB), optional
 `background: native` hands the page's fills back to the terminal: panes, dialogs, and the transcript well paint nothing, so your theme's own background shows through and rhema colors only the ink (text, borders, accents, code-block markers) and the prompt bubbles' frames, the protocol card still backs the bubbles there, its translucent tint compositing over whatever ground the terminal keeps, but the page's own panels stay ink-only. The default `background: rhema` paints the palette's fills, the design the palettes were drawn for. The toggle is live from the Appearance page of `/settings` (the `b` key), like the theme and icons ones.
 
 `cursor` picks the input caret's shape: `default` leaves the terminal's cursor alone, which keeps the shape your shell left in place (a line at a prompt under shell integration), `block` asks for a steady block, `line` for a steady bar (`|`), and `underline` for a steady underscore (`_`). The choice cycles live from the Appearance page (`enter` or the `s` key) and is written back to the config. A terminal without support for DECSCUSR ignores the request and keeps its own cursor.
+
+`scrollbar` turns the transcript's scroll rail on or off. It defaults to `true`, so the rail draws while you read back through history. Set it to `false` for a clean right margin; the wheel and PgUp/PgDn still scroll. Toggle it live from the Appearance page (`enter` or the `r` key), and the choice is written back to the config.
 
 Every palette ships both appearances. Rhema is the design the TUI was drawn against; Aquamarine and Black-and-white restyle the same slots; Dracula maps the official colors onto them (its light side is derived, since Dracula ships no official light variant). The Catppuccin flavors (`catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha`) use the official hexes in the roles their [style guide](https://github.com/catppuccin/catppuccin/blob/main/docs/style-guide.md) defines; `theme: light` reads Latte, the set's only light flavor, since the guide forbids blending flavors inside one theme. Nord, Gruvbox, and Solarized map the canonical hexes the same way (Gruvbox and Solarized ship official light sides; Nord's light side is derived, as it ships dark only). M3 You generates a [Material 3](https://m3.material.io/styles/color/system/overview) tonal-spot scheme from a seed color: set `m3_source` to a color picked from your wallpaper (a terminal cannot see it), and the whole UI, grounds, text, accent, status colors, derives from it. Without a seed it uses Material's baseline purple.
 

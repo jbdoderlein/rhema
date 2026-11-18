@@ -453,6 +453,7 @@ pub(crate) fn settings_page(
                     },
                 ),
                 ("Cursor", settings.cursor.label()),
+                ("Scrollbar", if settings.scrollbar { "On" } else { "Off" }),
             ];
             for (index, (label, value)) in toggles.iter().enumerate() {
                 let selected = index == settings.row;
@@ -467,7 +468,7 @@ pub(crate) fn settings_page(
             lines.push(Line::default());
             (
                 lines,
-                footer("c colors · t theme · b background · i icons · s cursor"),
+                footer("c colors · t theme · b background · i icons · s cursor · r scrollbar"),
                 row_hits,
             )
         }

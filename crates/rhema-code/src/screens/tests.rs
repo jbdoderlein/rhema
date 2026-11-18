@@ -533,6 +533,12 @@ fn settings_appearance_rows_toggle_and_carry_the_shortcuts() {
         settings.handle_key(key(KeyCode::Enter)),
         SettingsAction::CycleCursor
     );
+    settings.handle_key(key(KeyCode::Down));
+    assert_eq!(settings.row, 5);
+    assert_eq!(
+        settings.handle_key(key(KeyCode::Enter)),
+        SettingsAction::ToggleScrollbar
+    );
     assert_eq!(
         settings.handle_key(key(KeyCode::Char('t'))),
         SettingsAction::ToggleTheme
@@ -548,6 +554,10 @@ fn settings_appearance_rows_toggle_and_carry_the_shortcuts() {
     assert_eq!(
         settings.handle_key(key(KeyCode::Char('s'))),
         SettingsAction::CycleCursor
+    );
+    assert_eq!(
+        settings.handle_key(key(KeyCode::Char('r'))),
+        SettingsAction::ToggleScrollbar
     );
 }
 

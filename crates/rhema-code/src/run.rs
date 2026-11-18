@@ -465,6 +465,7 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
     let background = crate::palette::Background::parse(config.background.as_deref());
     let cursor =
         crate::cursor::CursorStyle::from_stored(config.cursor.as_deref()).unwrap_or_default();
+    let scrollbar = config.scrollbar.unwrap_or(true);
     let options = RunOptions {
         colors,
         theme,
@@ -473,6 +474,7 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
         custom,
         icons,
         cursor,
+        scrollbar,
         profile: Some(profile),
         workspace: workspace.clone(),
         max_steps: args.max_steps,

@@ -108,6 +108,11 @@ pub struct Document {
     /// not here, anything unparseable reads as the default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Whether the transcript draws its scrollbar in the right margin:
+    /// `true` (the default) draws the rail while you read history,
+    /// `false` keeps the margin bare. Unset reads as `true`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scrollbar: Option<bool>,
     /// The UI color palette: `rhema` (the default), `aquamarine`,
     /// `black-and-white`, `dracula`, `catppuccin-frappe`,
     /// `catppuccin-macchiato`, `catppuccin-mocha`, `nord`, `gruvbox`,
@@ -177,6 +182,7 @@ impl Default for Document {
             theme: None,
             background: None,
             cursor: None,
+            scrollbar: None,
             colors: None,
             m3_source: None,
             custom: None,
@@ -240,6 +246,7 @@ impl Document {
             "theme",
             "background",
             "cursor",
+            "scrollbar",
             "colors",
             "m3_source",
             "custom",
@@ -393,6 +400,19 @@ mod tests {
         std::fs::write(&path, "theme: dark\n").unwrap();
         let loaded = Document::load_from(&path).unwrap();
         assert_eq!(loaded.cursor, None);
+    }
+
+    #[test]
+    fn the_scrollbar_choice_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        std::fs::write(&path, "scrollbar: false\n").unwrap();
+        let loaded = Document::load_from(&path).unwrap();
+        assert_eq!(loaded.scrollbar, Some(false));
+        // Unset reads as None, the rail on.
+        std::fs::write(&path, "theme: dark\n").unwrap();
+        let loaded = Document::load_from(&path).unwrap();
+        assert_eq!(loaded.scrollbar, None);
     }
 
     #[test]
