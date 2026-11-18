@@ -28,13 +28,17 @@ pub enum LoginProvider {
     Copilot,
     /// A ChatGPT subscription, through the browser sign-in flow.
     ChatGpt,
+    /// Mistral's hosted API, by API key.
+    Mistral,
+    /// A Mistral Vibe subscription, through the browser sign-in flow.
+    MistralVibe,
 }
 
 impl LoginProvider {
     /// Whether the row runs an interactive flow instead of asking for a
     /// typed key.
     pub fn uses_flow(self) -> bool {
-        matches!(self, Self::Copilot | Self::ChatGpt)
+        matches!(self, Self::Copilot | Self::ChatGpt | Self::MistralVibe)
     }
 
     /// The group a row of this kind belongs to unless the row names
@@ -42,7 +46,7 @@ impl LoginProvider {
     /// the API and Local/Custom groups.
     pub fn category(self) -> ProviderCategory {
         match self {
-            Self::ChatGpt | Self::Copilot | Self::OpenCodeGo | Self::Zai => {
+            Self::ChatGpt | Self::Copilot | Self::OpenCodeGo | Self::Zai | Self::MistralVibe => {
                 ProviderCategory::Subscription
             }
             Self::Google
@@ -51,7 +55,8 @@ impl LoginProvider {
             | Self::OpenAi
             | Self::OpenAiCompatible
             | Self::DeepSeek
-            | Self::OpenCode => ProviderCategory::Api,
+            | Self::OpenCode
+            | Self::Mistral => ProviderCategory::Api,
             Self::LlamaCpp => ProviderCategory::Local,
         }
     }
@@ -71,6 +76,8 @@ impl LoginProvider {
             Self::OpenCodeGo => "OpenCode Go",
             Self::Copilot => "GitHub Copilot",
             Self::ChatGpt => "ChatGPT",
+            Self::Mistral => "Mistral API",
+            Self::MistralVibe => "Mistral Vibe",
         }
     }
 
@@ -149,6 +156,11 @@ pub const PROVIDERS: &[ProviderEntry] = &[
         category: ProviderCategory::Subscription,
     },
     ProviderEntry {
+        name: "Mistral Vibe",
+        kind: LoginProvider::MistralVibe,
+        category: ProviderCategory::Subscription,
+    },
+    ProviderEntry {
         name: "OpenCode Go",
         kind: LoginProvider::OpenCodeGo,
         category: ProviderCategory::Subscription,
@@ -187,6 +199,11 @@ pub const PROVIDERS: &[ProviderEntry] = &[
     ProviderEntry {
         name: "DeepSeek",
         kind: LoginProvider::DeepSeek,
+        category: ProviderCategory::Api,
+    },
+    ProviderEntry {
+        name: "Mistral API",
+        kind: LoginProvider::Mistral,
         category: ProviderCategory::Api,
     },
     ProviderEntry {

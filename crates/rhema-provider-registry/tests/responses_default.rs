@@ -154,3 +154,30 @@ async fn an_openai_route_override_stays_on_chat_completions() {
     );
     assert_eq!(out.stop_reason, StopReason::EndTurn);
 }
+
+#[tokio::test]
+async fn both_mistral_kinds_speak_chat_completions() {
+    // The API and the Vibe subscription share one route; only the
+    // credential's origin differs.
+    for kind in ["mistral", "mistral-vibe"] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(sse(&chat_sse()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let built = build(kind, Some("key"), None, Some(&server.uri()), None).expect("builds");
+        let mut sink = Collector::new();
+        let out = built
+            .provider
+            .complete(request(), &mut sink)
+            .await
+            .expect("the chat route answered");
+        assert_eq!(
+            out.message.content,
+            vec![Content::Text("ok".into())],
+            "{kind} stays on chat completions"
+        );
+    }
+}

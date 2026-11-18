@@ -59,4 +59,6 @@ pub mod responses;
 pub mod wire;
 
 pub use provider::{Api, DEEPSEEK_BASE_URL, DEFAULT_BASE_URL, OpenAiCompatibleProvider};
-pub use wire::{ChatCompletionChunk, ChatCompletionRequest, ChunkAssembler, Dialect};
+pub use wire::{
+    ChatCompletionChunk, ChatCompletionRequest, ChunkAssembler, Dialect, reasoning_effort_value,
+};

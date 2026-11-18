@@ -68,6 +68,8 @@ Rules:
     (`crates/rhema-provider-copilot/`)
   - `chatgpt`: the ChatGPT subscription adapter
     (`crates/rhema-provider-chatgpt/`)
+  - `mistral`: the Mistral API and Mistral Vibe adapter, including the
+    Vibe browser sign-in (`crates/rhema-provider-mistral/`)
   - `provider-registry`: the fleet's name-to-adapter wiring: `build`
     turns a rhema-config `PROVIDERS` spelling plus resolved
     credentials into the turn provider and the catalog listing, one

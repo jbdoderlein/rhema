@@ -50,9 +50,13 @@
 //! - A named thinking effort rides in `reasoning_effort`; absent, the
 //!   server's default stands.
 //! - Streaming chunks: `delta.content` becomes one `TextDelta` per
-//!   non-empty piece. `delta.tool_calls[]` fragments are keyed by `index`;
-//!   the FIRST fragment of an index emits `ToolCallStart` (the wire id, or a
-//!   synthesized `call_{index}` when absent) and every non-empty
+//!   non-empty piece. It is usually a bare string; Mistral's list arm
+//!   (typed `text` and `thinking` chunks) is read too, with thinking
+//!   emitted as `ThinkingDelta`. A `{"data": {...}}` event wrapper is
+//!   accepted by the transport. `delta.tool_calls[]` fragments are keyed
+//!   by `index`; the FIRST fragment of an index emits `ToolCallStart`
+//!   (the wire id, or a synthesized `call_{index}` when absent) and every
+//!   non-empty
 //!   `function.arguments` fragment emits `ToolCallArgsDelta`. Id and name
 //!   arrive on the first fragment of an index and argument text in pieces;
 //!   the assembler never assumes both arrived together.
@@ -69,11 +73,12 @@
 //!   [`StopReason::ToolUse`], the same
 //!   rule as the sibling adapters. The legacy `"function"` reason maps to
 //!   `ToolUse` beside `"tool_calls"`.
-//! - `delta.reasoning_content` becomes one `ThinkingDelta` per non-empty
-//!   piece; reasoning streamed before a tool call is claimed by that call
-//!   and replayed on assistant messages via `reasoning_content`. Other
-//!   provider-specific delta fields have no rhema-core counterpart and are
-//!   ignored.
+//! - `delta.reasoning_content` and Mistral's `thinking` content chunks
+//!   become `ThinkingDelta` pieces; reasoning streamed before a tool call
+//!   is claimed by that call and replayed on assistant messages as
+//!   `reasoning_content` for OpenAI-shaped dialects, or as a structured
+//!   `thinking` content chunk for Mistral. Other provider-specific delta
+//!   fields have no rhema-core counterpart and are ignored.
 //! - Errors: a non-2xx body is `{"error": {code, message, type}}`; the
 //!   mapper keeps `error.message` and falls back to the raw body. A server
 //!   can also fail mid-stream with a `data: {"error": ...}` chunk (then
@@ -93,7 +98,7 @@ use rhema_core::provider::ProviderError;
 use rhema_core::request::{ModelRequest, ThinkingEffort};
 use rhema_core::tool::{ToolCall, ToolResult};
 use rhema_provider::{Allowance, ModelCard};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 /// Marker key wrapping an unparseable streamed arguments payload so the
@@ -114,6 +119,11 @@ pub struct Dialect {
     /// when the server wants it back to continue across tool calls;
     /// `None` for servers that reject the field.
     pub assistant_reasoning_key: Option<&'static str>,
+    /// Whether assistant reasoning rides in `content` as Mistral's
+    /// structured `thinking` chunks instead of a top-level message field.
+    /// Such dialects keep `assistant_reasoning_key` at `None`: their
+    /// assistant schema forbids the extra key.
+    pub replays_reasoning_as_thinking: bool,
     /// The key a thinking level is sent under.
     pub effort_key: &'static str,
     /// Whether the dialect sends `stream_options: {include_usage: true}`.
@@ -138,6 +148,7 @@ pub fn no_effort(_thinking: ThinkingEffort) -> Option<Value> {
 pub const OPENAI_COMPATIBLE: Dialect = Dialect {
     args_key: "_openai_args_text",
     assistant_reasoning_key: Some("reasoning_content"),
+    replays_reasoning_as_thinking: false,
     effort_key: "reasoning_effort",
     sends_stream_options: true,
     reasoning_effort: reasoning_effort_value,
@@ -209,6 +220,12 @@ pub enum WirePart {
     Text {
         /// The text itself.
         text: String,
+    },
+    /// A reasoning block, replayed as Mistral's structured `thinking`
+    /// content chunk. Its inner items are [`WirePart::Text`] chunks.
+    Thinking {
+        /// The reasoning text chunks, in order.
+        thinking: Vec<WirePart>,
     },
     /// An inline image. The url is a `data:{media type};base64,{bytes}`
     /// URI, the dialect also accepts remote `http(s)` urls, but core
@@ -335,9 +352,11 @@ pub struct WireChoice {
 /// ignored.
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 pub struct WireDelta {
-    /// A piece of assistant text.
+    /// A piece of assistant text. Mistral's dialect types this as a
+    /// string or an array of content chunks (text and thinking); both
+    /// arms are read.
     #[serde(default)]
-    pub content: Option<String>,
+    pub content: Option<WireDeltaContent>,
     /// A piece of the model's reasoning trace (the DeepSeek/GLM
     /// convention, served by most thinking models on OpenAI-shaped
     /// endpoints). Emitted as [`Event::ThinkingDelta`], never assembled
@@ -350,6 +369,44 @@ pub struct WireDelta {
     /// Tool-call fragments, keyed by their `index`.
     #[serde(default)]
     pub tool_calls: Option<Vec<WireToolCallDelta>>,
+}
+
+/// A delta's `content`: the usual bare string, or the content-chunk
+/// array a reasoning model sends.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum WireDeltaContent {
+    /// The OpenAI-style bare text piece.
+    Text(String),
+    /// One or more typed chunks, in stream order.
+    Parts(Vec<WireDeltaPartValue>),
+}
+
+/// One item of a content-chunk array. Mistral's thinking inners may be
+/// bare strings, so both arms are accepted.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum WireDeltaPartValue {
+    /// A bare text piece.
+    Text(String),
+    /// A typed chunk.
+    Part(WireDeltaPart),
+}
+
+/// One content chunk. `type` discriminates: `text` carries `text`,
+/// `thinking` carries nested `thinking` items. Unknown chunk types are
+/// ignored rather than failing the stream.
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+pub struct WireDeltaPart {
+    /// The chunk's discriminator (`text`, `thinking`, ...).
+    #[serde(default, rename = "type")]
+    pub kind: Option<String>,
+    /// Visible text, on a `text` chunk.
+    #[serde(default)]
+    pub text: Option<String>,
+    /// Reasoning items, on a `thinking` chunk.
+    #[serde(default)]
+    pub thinking: Option<Vec<WireDeltaPartValue>>,
 }
 
 /// One tool-call fragment of a [`WireDelta`]. The first fragment of an
@@ -374,9 +431,25 @@ pub struct WireFunctionDelta {
     /// The tool's name, on the first fragment.
     #[serde(default)]
     pub name: Option<String>,
-    /// A piece of the arguments JSON text.
-    #[serde(default)]
+    /// A piece of the arguments JSON text. Mistral also sends a whole
+    /// object; it is re-serialized so the assembler still concatenates
+    /// text fragments.
+    #[serde(default, deserialize_with = "string_or_json_text")]
     pub arguments: Option<String>,
+}
+
+/// Reads an optional string, turning a whole JSON value (Mistral's
+/// object-typed `arguments`) into its text so fragment concatenation
+/// keeps working.
+fn string_or_json_text<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(deserializer)?;
+    Ok(value.map(|value| match value {
+        Value::String(text) => text,
+        other => serde_json::to_string(&other).unwrap_or_default(),
+    }))
 }
 
 /// The `usage` object of the final chunk.
@@ -623,17 +696,33 @@ pub fn request_body(req: &ModelRequest, dialect: &Dialect) -> ChatCompletionRequ
                         .join("\n\n");
                     (!reasoning.is_empty()).then_some(reasoning)
                 };
+                let replayed = replay();
                 let (reasoning_content, reasoning) = match dialect.assistant_reasoning_key {
-                    Some("reasoning_content") => (replay(), None),
-                    Some(_) => (None, replay()),
+                    Some("reasoning_content") => (replayed.clone(), None),
+                    Some(_) => (None, replayed.clone()),
                     None => (None, None),
+                };
+                // Mistral's assistant schema forbids `reasoning_content`;
+                // its chain of thought rides in `content` as a structured
+                // `thinking` chunk ahead of the visible text instead.
+                let content = match replayed.filter(|_| dialect.replays_reasoning_as_thinking) {
+                    Some(reasoning) => {
+                        let mut parts = vec![WirePart::Thinking {
+                            thinking: vec![WirePart::Text { text: reasoning }],
+                        }];
+                        if !text.is_empty() {
+                            parts.push(WirePart::Text { text });
+                        }
+                        Some(WireContent::Parts(parts))
+                    }
+                    None => (!text.is_empty()).then_some(WireContent::Text(text)),
                 };
                 // Servers reject an assistant message with neither content
                 // nor tool_calls.
-                if !text.is_empty() || !calls.is_empty() {
+                if content.is_some() || !calls.is_empty() {
                     messages.push(WireMessage {
                         role: "assistant".into(),
-                        content: (!text.is_empty()).then_some(WireContent::Text(text)),
+                        content,
                         tool_calls: (!calls.is_empty()).then_some(calls),
                         reasoning_content,
                         reasoning,
@@ -695,7 +784,7 @@ fn effort_field(
 /// The OpenAI-shaped wire spelling of a thinking level, under the
 /// dialect's [`Dialect::effort_key`]; `None` sends nothing and the
 /// server's default stands.
-pub(crate) fn reasoning_effort_value(thinking: ThinkingEffort) -> Option<Value> {
+pub fn reasoning_effort_value(thinking: ThinkingEffort) -> Option<Value> {
     match thinking {
         ThinkingEffort::Default => None,
         ThinkingEffort::Low => Some(Value::String("low".to_owned())),
@@ -925,15 +1014,77 @@ impl ChunkAssembler {
                 sink.emit(Event::ThinkingDelta(&text));
                 self.reasoning.push_str(&text);
             }
-            if let Some(text) = delta.content.filter(|text| !text.is_empty()) {
-                sink.emit(Event::TextDelta(&text));
-                self.text.push_str(&text);
+            if let Some(content) = delta.content {
+                self.push_content(content, sink);
             }
             for fragment in delta.tool_calls.into_iter().flatten() {
                 self.push_fragment(fragment, sink);
             }
         }
         Ok(())
+    }
+
+    /// Folds one delta's content, walking typed chunks in stream order
+    /// so text and reasoning interleave exactly as the server sent them.
+    fn push_content(&mut self, content: WireDeltaContent, sink: &mut dyn EventSink) {
+        match content {
+            WireDeltaContent::Text(text) => self.push_text(&text, sink),
+            WireDeltaContent::Parts(parts) => {
+                for part in parts {
+                    self.push_content_part(part, sink, false);
+                }
+            }
+        }
+    }
+
+    /// Folds one content chunk. `reasoning` marks the nested thinking
+    /// walk, whose text chunks are reasoning rather than visible output.
+    fn push_content_part(
+        &mut self,
+        part: WireDeltaPartValue,
+        sink: &mut dyn EventSink,
+        reasoning: bool,
+    ) {
+        match part {
+            WireDeltaPartValue::Text(text) => {
+                if reasoning {
+                    self.push_reasoning(&text, sink);
+                } else {
+                    self.push_text(&text, sink);
+                }
+            }
+            WireDeltaPartValue::Part(part) => {
+                let thinking = part.kind.as_deref() == Some("thinking");
+                if let Some(text) = part.text.as_deref() {
+                    if thinking || reasoning {
+                        self.push_reasoning(text, sink);
+                    } else {
+                        self.push_text(text, sink);
+                    }
+                }
+                for inner in part.thinking.into_iter().flatten() {
+                    self.push_content_part(inner, sink, thinking || reasoning);
+                }
+            }
+        }
+    }
+
+    /// Emits and accumulates one visible text piece.
+    fn push_text(&mut self, text: &str, sink: &mut dyn EventSink) {
+        if text.is_empty() {
+            return;
+        }
+        sink.emit(Event::TextDelta(text));
+        self.text.push_str(text);
+    }
+
+    /// Emits and accumulates one reasoning piece.
+    fn push_reasoning(&mut self, text: &str, sink: &mut dyn EventSink) {
+        if text.is_empty() {
+            return;
+        }
+        sink.emit(Event::ThinkingDelta(text));
+        self.reasoning.push_str(text);
     }
 
     /// Folds one tool-call fragment: the index's first fragment announces
@@ -949,7 +1100,7 @@ impl ChunkAssembler {
             partial.reasoning = pending_reasoning;
             let id = fragment
                 .id
-                .filter(|id| !id.is_empty())
+                .filter(|id| !id.is_empty() && id != "null")
                 .unwrap_or_else(|| format!("call_{index}"));
             let name = fragment
                 .function
@@ -1804,6 +1955,104 @@ mod tests {
         req.params.thinking = ThinkingEffort::Default;
         let body = serde_json::to_string(&request_body(&req, &OPENAI_COMPATIBLE)).unwrap();
         assert!(!body.contains("reasoning_effort"), "{body}");
+    }
+
+    #[test]
+    fn mistral_content_chunks_stream_text_and_thinking_in_order() {
+        let mut assembler = ChunkAssembler::new(&OPENAI_COMPATIBLE);
+        let mut sink = Collector::new();
+        // Mistral's list arm mixes a thinking chunk with visible text,
+        // then switches back to the bare string arm mid-stream.
+        assembler
+            .push(
+                chunk(concat!(
+                    "{\"choices\":[{\"delta\":{\"content\":[",
+                    "{\"type\":\"thinking\",\"thinking\":[",
+                    "{\"type\":\"text\",\"text\":\"plan\"}]},",
+                    "{\"type\":\"text\",\"text\":\"Hel\"}]},",
+                    "\"finish_reason\":null}]}"
+                )),
+                &mut sink,
+            )
+            .expect("chunk feeds");
+        assembler
+            .push(
+                chunk(
+                    "{\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":\"stop\"}]}",
+                ),
+                &mut sink,
+            )
+            .expect("chunk feeds");
+        let out = assembler.finish();
+
+        assert_eq!(out.message.content, vec![Content::Text("Hello".into())]);
+        assert_eq!(
+            sink.0,
+            vec![
+                "ThinkingDelta(\"plan\")".to_owned(),
+                "TextDelta(\"Hel\")".to_owned(),
+                "TextDelta(\"lo\")".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn mistral_thinking_before_a_tool_call_is_kept_for_replay() {
+        let mut assembler = ChunkAssembler::new(&OPENAI_COMPATIBLE);
+        let mut sink = Collector::new();
+        assembler
+            .push(
+                chunk(concat!(
+                    "{\"choices\":[{\"delta\":{\"content\":[",
+                    "{\"type\":\"thinking\",\"thinking\":[",
+                    "{\"type\":\"text\",\"text\":\"plan\"}]}],",
+                    "\"tool_calls\":[{\"index\":0,\"id\":\"call_0\",",
+                    "\"function\":{\"name\":\"echo\",\"arguments\":\"{}\"}}]},",
+                    "\"finish_reason\":\"tool_calls\"}]}"
+                )),
+                &mut sink,
+            )
+            .expect("chunk feeds");
+        let out = assembler.finish();
+
+        assert_eq!(
+            out.message.content,
+            vec![Content::ToolCall(ToolCall {
+                id: "call_0".into(),
+                name: "echo".into(),
+                args: json!({}),
+                provider_data: json!({ "reasoning": "plan" }),
+            })]
+        );
+    }
+
+    #[test]
+    fn mistral_object_arguments_and_null_ids_still_assemble() {
+        let mut assembler = ChunkAssembler::new(&OPENAI_COMPATIBLE);
+        let mut sink = Collector::new();
+        assembler
+            .push(
+                chunk(concat!(
+                    "{\"choices\":[{\"delta\":{\"tool_calls\":[",
+                    "{\"index\":0,\"id\":\"null\",\"function\":{",
+                    "\"name\":\"echo\",\"arguments\":{\"x\":1}}}]},",
+                    "\"finish_reason\":\"tool_calls\"}]}"
+                )),
+                &mut sink,
+            )
+            .expect("chunk feeds");
+        let out = assembler.finish();
+
+        assert_eq!(
+            out.message.content,
+            vec![Content::ToolCall(ToolCall {
+                id: "call_0".into(),
+                name: "echo".into(),
+                args: json!({ "x": 1 }),
+                provider_data: Value::Null,
+            })]
+        );
+        assert_eq!(out.stop_reason, StopReason::ToolUse);
     }
 
     #[test]

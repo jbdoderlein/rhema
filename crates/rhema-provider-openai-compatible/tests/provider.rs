@@ -103,6 +103,49 @@ async fn streams_sse_into_events_and_an_assembled_output() {
 }
 
 #[tokio::test]
+async fn mistral_stream_envelopes_and_content_arrays_are_read() {
+    let server = MockServer::start().await;
+    let body = concat!(
+        "data: {\"data\":{\"choices\":[{\"delta\":{\"content\":[",
+        "{\"type\":\"thinking\",\"thinking\":[{\"type\":\"text\",\"text\":\"hmm\"}]},",
+        "{\"type\":\"text\",\"text\":\"Hel\"}]},\"finish_reason\":null}]}}\n\n",
+        "data: {\"data\":{\"choices\":[{\"delta\":{\"content\":\"lo\"},",
+        "\"finish_reason\":\"stop\"}]}}\n\n",
+        "data: [DONE]\n\n",
+    );
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(body),
+        )
+        .mount(&server)
+        .await;
+
+    let provider = OpenAiCompatibleProvider::new("secret-key").with_base_url(base(&server));
+    let mut sink = Collector(vec![]);
+    let out = provider
+        .complete(
+            request(vec![Message::text(Role::User, "hi")], vec![]),
+            &mut sink,
+        )
+        .await
+        .expect("the Mistral-shaped stream succeeds");
+
+    assert_eq!(out.message.content, vec![Content::Text("Hello".into())]);
+    assert_eq!(out.stop_reason, StopReason::EndTurn);
+    assert_eq!(
+        sink.0,
+        vec![
+            "ThinkingDelta(\"hmm\")".to_owned(),
+            "TextDelta(\"Hel\")".to_owned(),
+            "TextDelta(\"lo\")".to_owned(),
+        ]
+    );
+}
+
+#[tokio::test]
 async fn an_oversized_sse_line_fails_the_stream() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

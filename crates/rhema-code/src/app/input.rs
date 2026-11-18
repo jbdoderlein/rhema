@@ -800,18 +800,21 @@ impl App {
     /// Ctrl-P mid-session: open the picker over the cached models,
     /// fetching first when the cache is empty.
     pub fn open_picker(&mut self) -> Vec<Effect> {
-        // No backend, no list to show: the runner would silently drop
+        // No candidate, no list to show: the runner would silently drop
         // the fetch and the picker would spin on Loading forever.
-        if self.backend.is_none() {
+        if Backend::candidates_from_profile(&self.effective(), self.secret_store()).is_empty() {
             self.transcript
                 .push_notice("no provider on this profile; /login first");
             return Vec::new();
         }
         let mut effects = Vec::new();
         let mut status = PickerStatus::Ready;
-        if self.models.is_empty() {
+        // A provider added since the last fetch must show up even when
+        // the cache still holds the other providers' rows.
+        if self.models.is_empty() || self.catalog_stale {
             status = PickerStatus::Loading;
             effects.push(Effect::FetchModels(FetchWhy::Refresh));
+            self.catalog_stale = false;
         }
         self.screen = Screen::Picker(PickerScreen {
             unavailable: self.catalog_unavailable.clone(),

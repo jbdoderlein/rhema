@@ -106,6 +106,12 @@ The stored credential is the token JSON the flow returns (access, refresh, accou
 
 Turns run on the Codex Responses backend (`chatgpt.com/backend-api/codex`), and the model picker lists the subscription's live catalog. The adapter sends `originator: rhema`, not another client's name.
 
+### Mistral API and Vibe subscriptions
+
+The add dialog offers **Mistral API** for a pay-as-you-go or plan API key from `console.mistral.ai`, and **Mistral Vibe** for a Vibe subscription. Vibe's row runs the console's browser sign-in with PKCE: it opens `codestral/cli/authenticate`, polls until the browser finishes, and exchanges the completion token for an API key scoped to the signed-in workspace. Either way the stored credential is an ordinary `MISTRAL_API_KEY`-shaped key, and turns run on `api.mistral.ai/v1`, the same OpenAI-compatible chat-completions route the Mistral SDK uses.
+
+`MISTRAL_API_KEY` serves the API row for scripted setups and outranks the stored key. `MISTRAL_VIBE_API_KEY` is the Vibe row's environment tier. A stored instance may name a base URL for a dedicated Mistral deployment; the picker lists the account's chat models with their context windows, vision capability, and published per-MTok prices.
+
 ### Saved sessions
 
 Every conversation checkpoints to disk as turns stream, through the same store ACP and `--save` use (`rhema-session-store-file`): one bare-JSON `Session` per file, written to a private temp file, fsynced, and renamed over the previous checkpoint. A crash mid-turn leaves the last committed boundary, never a half file. `/resume` lists the workspace's saved sessions from `<cache>/rhema/sessions/<encoded-workspace>/`, newest first, and shows each one's opening prompt.

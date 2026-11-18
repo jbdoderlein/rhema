@@ -3352,6 +3352,7 @@ dependencies = [
  "rhema-provider-anthropic",
  "rhema-provider-chatgpt",
  "rhema-provider-copilot",
+ "rhema-provider-mistral",
  "rhema-provider-openai-compatible",
  "rhema-provider-opencode",
  "rhema-provider-openrouter",
@@ -3590,6 +3591,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "rhema-provider-mistral"
+version = "0.3.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "rand 0.8.8",
+ "reqwest",
+ "rhema-core",
+ "rhema-provider",
+ "rhema-provider-openai-compatible",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "wiremock",
+]
+
+[[package]]
 name = "rhema-provider-openai-compatible"
 version = "0.3.0"
 dependencies = [
@@ -3647,6 +3666,7 @@ dependencies = [
  "rhema-provider-copilot",
  "rhema-provider-google",
  "rhema-provider-llama-cpp",
+ "rhema-provider-mistral",
  "rhema-provider-openai-compatible",
  "rhema-provider-opencode",
  "rhema-provider-openrouter",

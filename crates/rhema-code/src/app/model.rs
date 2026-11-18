@@ -42,11 +42,11 @@ impl App {
             .push_notice(&format!("thinking effort set to {}", effort.as_str()));
     }
 
-    /// The add-instance dialog validated a new instance's input: fetch
-    /// the models; the fetch is the validation (a wrong key or a dead
-    /// server both surface as the fetch's error). The dialog lives on
-    /// the settings screen or the onboarding wizard, both run the same
-    /// login flow.
+    /// The add-instance dialog submitted its credential. On the
+    /// settings screen this only persists the provider: no model is
+    /// fetched or chosen, and `/model` does that when the user asks. The
+    /// onboarding wizard still fetches the catalog to fill its own model
+    /// step, which is the next page of that flow.
     pub(crate) fn validate_login(&mut self) -> Vec<Effect> {
         let pending_input = match &self.screen {
             Screen::Settings(settings) => settings
@@ -95,13 +95,34 @@ impl App {
                 input,
                 base_url.or_else(|| Some(rhema_provider_opencode::GO_BASE_URL.to_owned())),
             ),
+            // A stored instance may name a dedicated deployment; a typed
+            // login leaves the public route.
+            crate::screens::LoginProvider::Mistral => Backend::Mistral {
+                api_key: input,
+                base_url,
+            },
             // The flow path never validates a typed key: its credential
             // arrives from the flow task, already wrapped in the backend.
-            crate::screens::LoginProvider::Copilot | crate::screens::LoginProvider::ChatGpt => {
+            crate::screens::LoginProvider::Copilot
+            | crate::screens::LoginProvider::ChatGpt
+            | crate::screens::LoginProvider::MistralVibe => {
                 return Vec::new();
             }
             crate::screens::LoginProvider::Google => Backend::Google { api_key: input },
         };
+        if !matches!(self.screen, Screen::Onboarding(_)) {
+            let Screen::Settings(settings) = &self.screen else {
+                return Vec::new();
+            };
+            let tab = settings.profile.clone();
+            let instance = pending.name;
+            if let Err(err) = self.install_login(&tab, &instance, &backend, &[], false) {
+                self.fail_login(err);
+                return Vec::new();
+            }
+            self.land_after_add(&instance);
+            return Vec::new();
+        }
         vec![Effect::FetchModels(FetchWhy::Login {
             backend,
             instance: Some(pending.name),
@@ -109,9 +130,9 @@ impl App {
     }
 
     /// A step of the running login flow: render it on the add-instance
-    /// dialog, the settings' modal or the wizard's inline copy, and
-    /// on completion validate the credential it produced through the
-    /// same fetch path a typed key takes.
+    /// dialog, the settings' modal or the wizard's inline copy. On
+    /// completion the settings path only stores the credential, like a
+    /// typed key; the wizard fetches the catalog for its model step.
     pub(crate) fn on_login_update(&mut self, update: rhema_provider::LoginUpdate) -> Vec<Effect> {
         let dialog = match &mut self.screen {
             Screen::Settings(settings) => settings.dialog.as_mut(),
@@ -162,26 +183,49 @@ impl App {
                     Some(crate::screens::LoginProvider::ChatGpt) => {
                         Backend::ChatGpt { credential: token }
                     }
+                    Some(crate::screens::LoginProvider::MistralVibe) => Backend::MistralVibe {
+                        api_key: token,
+                        base_url: None,
+                    },
                     _ => return Vec::new(),
                 };
+                if !matches!(self.screen, Screen::Onboarding(_)) {
+                    let Screen::Settings(settings) = &self.screen else {
+                        return Vec::new();
+                    };
+                    let tab = settings.profile.clone();
+                    let Some(instance) = instance else {
+                        return Vec::new();
+                    };
+                    if let Err(err) = self.install_login(&tab, &instance, &backend, &[], false) {
+                        self.fail_login(err);
+                        return Vec::new();
+                    }
+                    self.land_after_add(&instance);
+                    return Vec::new();
+                }
                 vec![Effect::FetchModels(FetchWhy::Login { backend, instance })]
             }
         }
     }
 
-    /// Persists a validated login: the instance lands in `tab`'s profile
-    /// (its key in the keychain when the store takes it, the file when
-    /// it does not; a re-login's old keychain entry goes first), the
-    /// session rides the validated backend, and the catalog's slice for
-    /// the instance replaces itself. The error, if any, is for the
-    /// dialog to render inline.
+    /// Persists a login: the instance lands in `tab`'s profile (its key
+    /// in the keychain when the store takes it, the file when it does
+    /// not; a re-login's old keychain entry goes first), and the
+    /// catalog's slice for the instance replaces itself. `activate`
+    /// makes the session ride this backend; when false, an existing
+    /// active provider is left untouched, and only a profile with no
+    /// provider at all adopts the new instance so `/model` can reach
+    /// it. Returns whether the profile now points at `backend`. The
+    /// error, if any, is for the dialog to render inline.
     pub(crate) fn install_login(
         &mut self,
         tab: &str,
         instance: &str,
         backend: &Backend,
         models: &[ModelCard],
-    ) -> Result<(), String> {
+        activate: bool,
+    ) -> Result<bool, String> {
         let provider = backend.config_name();
         let (api_key, base_url, api) = match backend {
             Backend::LlamaCpp { url, api_key } => (api_key.clone(), Some(url.clone()), None),
@@ -195,7 +239,11 @@ impl App {
             }
             | Backend::OpenCode {
                 api_key, base_url, ..
-            } => (Some(api_key.clone()), base_url.clone(), None),
+            }
+            | Backend::Mistral { api_key, base_url }
+            | Backend::MistralVibe { api_key, base_url } => {
+                (Some(api_key.clone()), base_url.clone(), None)
+            }
             Backend::Google { api_key }
             | Backend::OpenRouter { api_key }
             | Backend::Anthropic { api_key }
@@ -207,6 +255,14 @@ impl App {
         };
         let secrets = self.secrets.as_deref();
         let mut keychain_delete_failure: Option<String> = None;
+        // Onboarding always makes the new provider the session's. The
+        // add-only path adopts it only when the session has no backend
+        // and the profile names no provider, so a second provider never
+        // replaces the model the user runs. A provider already serving
+        // from the environment is not displaced either.
+        let adopt_unset =
+            !activate && self.backend.is_none() && self.effective().provider.is_none();
+        let mut adopted = activate;
         self.config.set_for_profile(Some(tab), |settings| {
             // A re-login replaces the instance wholesale; its old
             // keychain entry must not linger, but a store that refuses
@@ -219,8 +275,11 @@ impl App {
             {
                 keychain_delete_failure = Some(err.to_string());
             }
-            settings.provider = Some(provider.to_owned());
-            settings.instance = Some(instance.to_owned());
+            if activate || adopt_unset {
+                settings.provider = Some(provider.to_owned());
+                settings.instance = Some(instance.to_owned());
+                adopted = true;
+            }
             settings.upsert_instance(
                 instance,
                 rhema_config::ProviderInstance {
@@ -243,9 +302,11 @@ impl App {
         self.store
             .save(&self.config)
             .map_err(|err| format!("cannot save config: {err}"))?;
-        self.session_profile = Some(tab.to_owned());
-        self.backend = Some(backend.clone());
-        self.provider = Some(backend.provider());
+        if adopted {
+            self.session_profile = Some(tab.to_owned());
+            self.backend = Some(backend.clone());
+            self.provider = Some(backend.provider());
+        }
         // The other logins' catalogs stay: a fresh login must not blank
         // the picker down to one provider. The instance's own slice
         // replaces itself, so a stale copy cannot linger, a provider
@@ -265,7 +326,37 @@ impl App {
                 .then(a.instance.cmp(&b.instance))
                 .then(a.model.id.cmp(&b.model.id))
         });
-        Ok(())
+        Ok(adopted)
+    }
+
+    /// Shows a login error inline on whichever host runs the dialog.
+    fn fail_login(&mut self, message: String) {
+        match &mut self.screen {
+            Screen::Settings(settings) => {
+                if let Some(dialog) = &mut settings.dialog {
+                    dialog.status = crate::screens::DialogStatus::Error(message);
+                }
+            }
+            Screen::Onboarding(wizard) => {
+                if let Some(dialog) = &mut wizard.dialog {
+                    dialog.status = crate::screens::DialogStatus::Error(message);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Leaves the add dialog after a provider-only add: no model pick is
+    /// forced, the picker's cache is marked stale, and the chat says how
+    /// to choose one.
+    fn land_after_add(&mut self, instance: &str) {
+        if let Screen::Settings(settings) = &mut self.screen {
+            settings.dialog = None;
+        }
+        self.catalog_stale = true;
+        self.screen = Screen::Chat;
+        self.transcript
+            .push_notice(&format!("added {instance}; /model picks the model to run"));
     }
 
     /// Routes a model-list result to the login screen, the open picker,
@@ -300,7 +391,9 @@ impl App {
                             // to land.
                             _ => return Vec::new(),
                         };
-                        if let Err(err) = self.install_login(&tab, &instance, &backend, &models) {
+                        if let Err(err) =
+                            self.install_login(&tab, &instance, &backend, &models, true)
+                        {
                             match &mut self.screen {
                                 Screen::Settings(settings) => {
                                     if let Some(dialog) = &mut settings.dialog {

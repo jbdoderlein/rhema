@@ -31,6 +31,7 @@ use serde_json::{Value, json};
 pub const OPENROUTER: Dialect = Dialect {
     args_key: "_openrouter_args_text",
     assistant_reasoning_key: Some("reasoning"),
+    replays_reasoning_as_thinking: false,
     effort_key: "reasoning",
     // Usage rides every stream unconditionally; the opt-in flag is
     // deprecated on OpenRouter.

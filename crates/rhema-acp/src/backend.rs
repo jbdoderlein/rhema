@@ -31,6 +31,8 @@ pub const PROVIDERS: &[&str] = &[
     "opencode",
     "copilot",
     "chatgpt",
+    "mistral",
+    "mistral-vibe",
     "google",
 ];
 
@@ -144,12 +146,13 @@ fn catalog_fetch(
     ))
 }
 
-/// The stored route override of the kinds that carry one: zai's proxy
-/// and OpenCode's pay-as-you-go/Go choice. Handing it to the registry
+/// The stored route override of the kinds that carry one: zai's proxy,
+/// OpenCode's pay-as-you-go/Go choice, and a dedicated Mistral
+/// deployment. Handing it to the registry
 /// for any other kind would read it as an openai or deepseek override
 /// too.
 fn stored_route(profile: &Profile, kind: &str) -> Option<String> {
-    matches!(kind, "zai" | "opencode")
+    matches!(kind, "zai" | "opencode" | "mistral" | "mistral-vibe")
         .then(|| {
             profile
                 .instance_for_provider(kind)

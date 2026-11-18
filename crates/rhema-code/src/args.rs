@@ -45,6 +45,12 @@ pub enum ProviderChoice {
     /// A ChatGPT subscription, by the browser sign-in's credential.
     #[value(name = "chatgpt")]
     ChatGpt,
+    /// Mistral's hosted API, by API key.
+    #[value(name = "mistral")]
+    Mistral,
+    /// A Mistral Vibe subscription, by the browser sign-in's API key.
+    #[value(name = "mistral-vibe")]
+    MistralVibe,
 }
 
 impl ProviderChoice {
@@ -63,6 +69,8 @@ impl ProviderChoice {
             Some("opencode") => Some(Self::OpenCode),
             Some("copilot") => Some(Self::Copilot),
             Some("chatgpt") => Some(Self::ChatGpt),
+            Some("mistral") => Some(Self::Mistral),
+            Some("mistral-vibe") => Some(Self::MistralVibe),
             _ => None,
         }
     }
@@ -81,6 +89,8 @@ impl ProviderChoice {
             Self::OpenCode => "opencode",
             Self::Copilot => "copilot",
             Self::ChatGpt => "chatgpt",
+            Self::Mistral => "mistral",
+            Self::MistralVibe => "mistral-vibe",
         }
     }
 }
@@ -510,6 +520,16 @@ mod tests {
             Some(ProviderChoice::ChatGpt)
         );
         assert_eq!(ProviderChoice::ChatGpt.stored_name(), "chatgpt");
+        assert_eq!(
+            ProviderChoice::from_stored(Some("mistral")),
+            Some(ProviderChoice::Mistral)
+        );
+        assert_eq!(ProviderChoice::Mistral.stored_name(), "mistral");
+        assert_eq!(
+            ProviderChoice::from_stored(Some("mistral-vibe")),
+            Some(ProviderChoice::MistralVibe)
+        );
+        assert_eq!(ProviderChoice::MistralVibe.stored_name(), "mistral-vibe");
         assert_eq!(ProviderChoice::Zai.stored_name(), "zai");
     }
 

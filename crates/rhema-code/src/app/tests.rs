@@ -672,46 +672,40 @@ fn a_model_switch_refreshes_the_allowance() {
 }
 
 #[test]
-fn login_success_persists_the_key_and_opens_the_picker() {
+fn login_persists_the_key_without_opening_a_picker() {
     let mut h = harness(None, None, Session::default());
     descend_to_credential(&mut h, LoginProvider::Google);
     for c in "secret".chars() {
         h.app.on_key(key(KeyCode::Char(c)));
     }
     let effects = h.app.on_key(key(KeyCode::Enter));
-    assert_eq!(
-        effects,
-        vec![Effect::FetchModels(FetchWhy::Login {
-            backend: Backend::Google {
-                api_key: "secret".into()
-            },
-            instance: Some("Google Gemini".into()),
-        })]
+    assert_eq!(effects, vec![]);
+    assert!(matches!(h.app.screen, Screen::Chat));
+    assert!(
+        matches!(h.app.transcript.lines().last(), Some(Line::Notice(text)) if text.contains("added Google Gemini") && text.contains("/model"))
     );
-    h.app.on_event(UiEvent::ModelsLoaded {
-        why: FetchWhy::Login {
-            backend: Backend::Google {
-                api_key: "secret".into(),
-            },
-            instance: Some("Google Gemini".into()),
-        },
-        result: loaded("google", models()),
-    });
-    match &h.app.screen {
-        Screen::Picker(picker) => assert_eq!(picker.models.len(), 2),
-        _ => panic!("expected the picker after a successful login"),
-    }
+    assert!(
+        h.app.catalog_stale,
+        "the picker must refresh before it lists the new provider"
+    );
     let effective = h.store.load().unwrap().effective(None);
-    assert_eq!(effective.instance.as_deref(), Some("Google Gemini"));
     assert_eq!(
         effective.instances["Google Gemini"].api_key.as_deref(),
         Some("secret")
     );
-    assert_eq!(effective.api_key("google", None).as_deref(), Some("secret"));
-    assert!(matches!(
-        h.app.backend,
-        Some(Backend::Google { ref api_key }) if api_key == "secret"
-    ));
+    assert!(effective.model.is_none(), "no model is chosen at add time");
+    // The profile already ran on google: adding a second instance of
+    // the same provider does not silently switch the active one.
+    assert_eq!(effective.instance, None);
+    assert!(h.app.backend.is_none());
+    assert!(h.app.agent.is_none());
+
+    // /model is where selection happens; it fetches because the cache
+    // is empty and the add marked it stale.
+    let effects = crate::commands::dispatch(&mut h.app, "/model");
+    assert_eq!(effects, vec![Effect::FetchModels(FetchWhy::Refresh)]);
+    assert!(matches!(h.app.screen, Screen::Picker(_)));
+    assert!(!h.app.catalog_stale);
 }
 
 #[test]
@@ -722,16 +716,8 @@ fn a_login_places_its_key_in_the_keychain_and_the_file_stays_clean() {
     for c in "secret".chars() {
         h.app.on_key(key(KeyCode::Char(c)));
     }
-    let _ = h.app.on_key(key(KeyCode::Enter));
-    h.app.on_event(UiEvent::ModelsLoaded {
-        why: FetchWhy::Login {
-            backend: Backend::Google {
-                api_key: "secret".into(),
-            },
-            instance: Some("Google Gemini".into()),
-        },
-        result: loaded("google", models()),
-    });
+    let effects = h.app.on_key(key(KeyCode::Enter));
+    assert_eq!(effects, vec![]);
     let effective = h.store.load().unwrap().effective(None);
     let instance = &effective.instances["Google Gemini"];
     assert_eq!(instance.api_key, None, "the file holds no key");
@@ -775,7 +761,7 @@ fn removing_an_instance_deletes_its_keychain_entry() {
 }
 
 #[test]
-fn a_login_merges_its_catalog_instead_of_replacing_the_cache() {
+fn an_add_keeps_the_catalog_and_the_next_picker_refresh_merges_it() {
     let mut h = harness(Some("g"), Some("m-a"), Session::default());
     h.app.on_event(UiEvent::ModelsLoaded {
         why: FetchWhy::Bootstrap,
@@ -791,24 +777,25 @@ fn a_login_merges_its_catalog_instead_of_replacing_the_cache() {
         h.app.on_key(key(KeyCode::Char(c)));
     }
     let effects = h.app.on_key(key(KeyCode::Enter));
-    assert!(matches!(
-        effects.as_slice(),
-        [Effect::FetchModels(FetchWhy::Login {
-            backend: Backend::OpenRouter { .. },
-            ..
-        })]
-    ));
+    assert_eq!(effects, vec![], "adding a provider fetches no catalog");
+    assert!(matches!(h.app.screen, Screen::Chat));
+    assert_eq!(h.app.models.len(), 2, "the google cache is untouched");
+    assert!(h.app.catalog_stale);
+
+    // /model asks for every provider's catalog: the fresh slices merge
+    // instead of replacing the cache.
+    let effects = crate::commands::dispatch(&mut h.app, "/model");
+    assert_eq!(effects, vec![Effect::FetchModels(FetchWhy::Refresh)]);
     h.app.on_event(UiEvent::ModelsLoaded {
-        why: FetchWhy::Login {
-            backend: Backend::OpenRouter {
-                api_key: "o".into(),
-            },
-            instance: Some("OpenRouter".into()),
-        },
-        result: loaded(
-            "openrouter",
-            vec![llama_model("openrouter/auto"), llama_model("z-ai/glm-5.3")],
-        ),
+        why: FetchWhy::Refresh,
+        result: [
+            loaded("google", models()),
+            loaded(
+                "openrouter",
+                vec![llama_model("openrouter/auto"), llama_model("z-ai/glm-5.3")],
+            ),
+        ]
+        .concat(),
     });
     match &h.app.screen {
         Screen::Picker(picker) => {
@@ -821,10 +808,10 @@ fn a_login_merges_its_catalog_instead_of_replacing_the_cache() {
 }
 
 #[test]
-fn a_late_bootstrap_keeps_the_login_models() {
-    // The startup fetch races a login: it was spawned first, but a
-    // slow catalog can land it after the login's answer. Its slices
-    // replace themselves; the login's slice is not its business.
+fn an_add_before_a_late_bootstrap_keeps_both_catalogs() {
+    // The startup fetch races an add: it was spawned first, but a slow
+    // catalog can land it afterwards. Its slices replace themselves;
+    // the add leaves the cache alone and marks the next picker stale.
     let mut h = harness(Some("g"), Some("m-a"), Session::default());
     h.app.on_event(UiEvent::ModelsLoaded {
         why: FetchWhy::Bootstrap,
@@ -839,39 +826,29 @@ fn a_late_bootstrap_keeps_the_login_models() {
         h.app.on_key(key(KeyCode::Char(c)));
     }
     let effects = h.app.on_key(key(KeyCode::Enter));
-    assert!(matches!(
-        effects.as_slice(),
-        [Effect::FetchModels(FetchWhy::Login { .. })]
-    ));
-    h.app.on_event(UiEvent::ModelsLoaded {
-        why: FetchWhy::Login {
-            backend: Backend::OpenRouter {
-                api_key: "o".into(),
-            },
-            instance: Some("OpenRouter".into()),
-        },
-        result: loaded(
-            "openrouter",
-            vec![llama_model("openrouter/auto"), llama_model("z-ai/glm-5.3")],
-        ),
-    });
-    assert_eq!(h.app.models.len(), 4);
+    assert_eq!(effects, vec![]);
+    assert_eq!(h.app.models.len(), 2);
 
-    // The late startup answer covers google only.
+    // The late startup answer covers google only; it cannot blank the
+    // cache or the openrouter instance's place in the profile.
     h.app.on_event(UiEvent::ModelsLoaded {
         why: FetchWhy::Bootstrap,
         result: loaded("google", models()),
     });
     let providers: Vec<&str> = h.app.models.iter().map(|m| m.provider).collect();
-    assert_eq!(
-        providers,
-        ["google", "google", "openrouter", "openrouter"],
-        "the login's slice survives the late bootstrap"
+    assert_eq!(providers, ["google", "google"]);
+    assert!(
+        h.store
+            .load()
+            .unwrap()
+            .effective(None)
+            .instances
+            .contains_key("OpenRouter")
     );
 }
 
 #[test]
-fn llama_login_validates_by_server_url_and_persists_the_provider() {
+fn llama_login_persists_the_provider_without_a_model_probe() {
     let mut h = harness(None, None, Session::default());
     // The llama.cpp row, the suggested name, the URL, and a key.
     let name = descend_to_credential(&mut h, LoginProvider::LlamaCpp);
@@ -901,53 +878,23 @@ fn llama_login_validates_by_server_url_and_persists_the_provider() {
         _ => panic!("expected the bearer-key prompt"),
     }
     let effects = h.app.on_key(key(KeyCode::Enter));
-    assert_eq!(
-        effects,
-        vec![Effect::FetchModels(FetchWhy::Login {
-            backend: Backend::LlamaCpp {
-                url: "http://box:8080".into(),
-                api_key: None,
-            },
-            instance: Some("llama.cpp".into()),
-        })]
-    );
-    h.app.on_event(UiEvent::ModelsLoaded {
-        why: FetchWhy::Login {
-            backend: Backend::LlamaCpp {
-                url: "http://box:8080".into(),
-                api_key: None,
-            },
-            instance: Some("llama.cpp".into()),
-        },
-        result: loaded(
-            "llama-cpp",
-            vec![llama_model("qwen3-8b"), llama_model("qwen3-32b")],
-        ),
-    });
-    // Router mode: several models land in the picker with no
-    // metadata, and the rows carry the llama.cpp prefix, not google's.
-    match &h.app.screen {
-        Screen::Picker(picker) => {
-            assert!(picker.models.iter().all(|m| m.provider == "llama-cpp"));
-            assert_eq!(picker.models.len(), 2);
-            let ids: Vec<&str> = picker.models.iter().map(|m| m.model.id.as_str()).collect();
-            assert_eq!(ids, ["qwen3-32b", "qwen3-8b"]);
-            assert!(picker.models[0].model.input_token_limit.is_none());
-        }
-        _ => panic!("expected the picker after a successful llama login"),
-    }
+    assert_eq!(effects, vec![], "adding a provider does not fetch models");
+    assert!(matches!(h.app.screen, Screen::Chat));
     let config = h.store.load().unwrap();
     let effective = config.effective(None);
-    assert_eq!(effective.provider.as_deref(), Some("llama-cpp"));
     assert_eq!(
         effective.instances["llama.cpp"].base_url.as_deref(),
         Some("http://box:8080")
     );
-    assert_eq!(effective.llama_cpp_url(), "http://box:8080");
+    assert!(effective.model.is_none());
+    assert!(
+        h.app.backend.is_none(),
+        "the active google profile stays put"
+    );
 }
 
 #[test]
-fn anthropic_login_validates_by_key_and_persists_the_provider() {
+fn anthropic_login_persists_the_key_without_a_model_probe() {
     let mut h = harness(None, None, Session::default());
     // Anthropic's row, the suggested name, and the key.
     let name = descend_to_credential(&mut h, LoginProvider::Anthropic);
@@ -963,62 +910,19 @@ fn anthropic_login_validates_by_key_and_persists_the_provider() {
         h.app.on_key(key(KeyCode::Char(c)));
     }
     let effects = h.app.on_key(key(KeyCode::Enter));
-    assert_eq!(
-        effects,
-        vec![Effect::FetchModels(FetchWhy::Login {
-            backend: Backend::Anthropic {
-                api_key: "sk-ant-01".into(),
-            },
-            instance: Some("Anthropic".into()),
-        })]
-    );
-    // The model-list fetch is the validation; success lands in the
-    // picker prefixed `anthropic/`, and the key lands in the profile.
-    h.app.on_event(UiEvent::ModelsLoaded {
-        why: FetchWhy::Login {
-            backend: Backend::Anthropic {
-                api_key: "sk-ant-01".into(),
-            },
-            instance: Some("Anthropic".into()),
-        },
-        result: loaded(
-            "anthropic",
-            vec![
-                llama_model("claude-sonnet-4-5"),
-                llama_model("claude-opus-4-1"),
-            ],
-        ),
-    });
-    match &h.app.screen {
-        Screen::Picker(picker) => {
-            assert!(picker.models.iter().all(|m| m.provider == "anthropic"));
-            assert_eq!(picker.models.len(), 2);
-            // The Anthropic listing carries identity only: no
-            // context, no pricing.
-            assert!(picker.models[0].model.input_token_limit.is_none());
-            assert!(picker.models[0].model.pricing.is_none());
-        }
-        _ => panic!("expected the picker after a successful anthropic login"),
-    }
+    assert_eq!(effects, vec![]);
+    assert!(matches!(h.app.screen, Screen::Chat));
     let config = h.store.load().unwrap();
     let effective = config.effective(None);
-    assert_eq!(effective.provider.as_deref(), Some("anthropic"));
     assert_eq!(
         effective.instances["Anthropic"].api_key.as_deref(),
         Some("sk-ant-01")
     );
-    assert_eq!(
-        effective.api_key("anthropic", None).as_deref(),
-        Some("sk-ant-01")
-    );
-    assert!(matches!(
-        h.app.backend,
-        Some(Backend::Anthropic { ref api_key }) if api_key == "sk-ant-01"
-    ));
+    assert!(effective.model.is_none());
 }
 
 #[test]
-fn openai_login_validates_by_key_with_the_default_base() {
+fn openai_login_persists_the_key_with_the_default_base() {
     let mut h = harness(None, None, Session::default());
     // OpenAI's row, the suggested name, and the key. Hosted providers
     // go straight to the key; only a custom endpoint asks for a URL.
@@ -1027,43 +931,19 @@ fn openai_login_validates_by_key_with_the_default_base() {
         h.app.on_key(key(KeyCode::Char(c)));
     }
     let effects = h.app.on_key(key(KeyCode::Enter));
+    assert_eq!(effects, vec![]);
+    assert!(matches!(h.app.screen, Screen::Chat));
+    let stored = h.store.load().unwrap();
+    let effective = stored.effective(None);
     assert_eq!(
-        effects,
-        vec![Effect::FetchModels(FetchWhy::Login {
-            backend: Backend::OpenAi {
-                api_key: "sk-proj-01".into(),
-                base_url: None,
-                api: None,
-            },
-            instance: Some("OpenAI".into()),
-        })]
+        effective.instances["OpenAI"].api_key.as_deref(),
+        Some("sk-proj-01")
     );
-    // A failed validation stays on the login screen and persists
-    // nothing, same contract as the other keyed providers.
-    h.app.on_event(UiEvent::ModelsLoaded {
-        why: FetchWhy::Login {
-            backend: Backend::OpenAi {
-                api_key: "sk-proj-01".into(),
-                base_url: None,
-                api: None,
-            },
-            instance: Some("OpenAI".into()),
-        },
-        result: failed("openai", "openai-compatible api error (HTTP 401): denied"),
-    });
-    match &h.app.screen {
-        Screen::Settings(s) => assert!(matches!(
-            s.dialog.as_ref().unwrap().status,
-            crate::screens::DialogStatus::Error(_)
-        )),
-        _ => panic!("a failed login must stay on the login screen"),
-    }
-    assert!(h.app.backend.is_none());
-    assert!(h.store.load().unwrap().effective(None).instances.is_empty());
+    assert!(effective.model.is_none());
 }
 
 #[test]
-fn zai_login_validates_by_key_with_the_default_route() {
+fn zai_login_persists_the_key_with_the_default_route() {
     let mut h = harness(None, None, Session::default());
     // GLM Coding Plan's row, the suggested name, and the key. The
     // plan's own route is fixed, so no URL prompt.
@@ -1072,37 +952,15 @@ fn zai_login_validates_by_key_with_the_default_route() {
         h.app.on_key(key(KeyCode::Char(c)));
     }
     let effects = h.app.on_key(key(KeyCode::Enter));
+    assert_eq!(effects, vec![]);
+    assert!(matches!(h.app.screen, Screen::Chat));
+    let stored = h.store.load().unwrap();
+    let effective = stored.effective(None);
     assert_eq!(
-        effects,
-        vec![Effect::FetchModels(FetchWhy::Login {
-            backend: Backend::Zai {
-                api_key: "zkey-01".into(),
-                base_url: None,
-            },
-            instance: Some("GLM Coding Plan".into()),
-        })]
+        effective.instances["GLM Coding Plan"].api_key.as_deref(),
+        Some("zkey-01")
     );
-    // A failed validation stays on the login screen and persists
-    // nothing, same contract as the other keyed providers.
-    h.app.on_event(UiEvent::ModelsLoaded {
-        why: FetchWhy::Login {
-            backend: Backend::Zai {
-                api_key: "zkey-01".into(),
-                base_url: None,
-            },
-            instance: Some("GLM Coding Plan".into()),
-        },
-        result: failed("zai", "anthropic api error (HTTP 401): denied"),
-    });
-    match &h.app.screen {
-        Screen::Settings(s) => assert!(matches!(
-            s.dialog.as_ref().unwrap().status,
-            crate::screens::DialogStatus::Error(_)
-        )),
-        _ => panic!("a failed login must stay on the login screen"),
-    }
-    assert!(h.app.backend.is_none());
-    assert!(h.store.load().unwrap().effective(None).instances.is_empty());
+    assert!(effective.model.is_none());
 }
 
 #[test]
@@ -1971,7 +1829,7 @@ fn turn_costs_accumulate_from_the_model_pricing() {
 }
 
 #[test]
-fn a_single_model_server_auto_selects_and_skips_the_picker() {
+fn adding_a_single_model_server_still_waits_for_model_choice() {
     let mut h = harness(None, None, Session::default());
     // The llama.cpp row, the suggested name, the URL, and a blank
     // bearer key.
@@ -1980,24 +1838,13 @@ fn a_single_model_server_auto_selects_and_skips_the_picker() {
         h.app.on_key(key(KeyCode::Char(c)));
     }
     h.app.on_key(key(KeyCode::Enter));
-    h.app.on_key(key(KeyCode::Enter));
-    h.app.on_event(UiEvent::ModelsLoaded {
-        why: FetchWhy::Login {
-            backend: Backend::LlamaCpp {
-                url: "http://localhost:8080".into(),
-                api_key: None,
-            },
-            instance: Some("llama.cpp".into()),
-        },
-        result: loaded("llama-cpp", vec![llama_model("qwen3-8b")]),
-    });
-    // Exactly one model: no picker, straight to chat on that model.
+    let effects = h.app.on_key(key(KeyCode::Enter));
+    assert_eq!(effects, vec![]);
+    // Even a one-model server is not picked at add time; /model does
+    // that, so the choice stays the user's.
     assert!(matches!(h.app.screen, Screen::Chat));
-    assert!(h.app.agent.is_some());
-    assert_eq!(
-        h.store.load().unwrap().effective(None).model.as_deref(),
-        Some("qwen3-8b")
-    );
+    assert!(h.app.agent.is_none());
+    assert!(h.store.load().unwrap().effective(None).model.is_none());
 }
 
 #[test]
@@ -2170,38 +2017,10 @@ fn a_second_openai_compatible_instance_lands_under_its_own_name() {
         h.app.on_key(key(KeyCode::Char(c)));
     }
     let effects = h.app.on_key(key(KeyCode::Enter));
-    assert_eq!(
-        effects,
-        vec![Effect::FetchModels(FetchWhy::Login {
-            backend: Backend::OpenAi {
-                api_key: "sk-p".into(),
-                base_url: Some("http://proxy:1234/v1".into()),
-                // The stage recorded the highlighted chat completions.
-                api: Some(rhema_config::ProviderApi::Chat),
-            },
-            instance: Some("Custom OpenAI-compatible API".into()),
-        })]
-    );
-    h.app.on_event(UiEvent::ModelsLoaded {
-        why: FetchWhy::Login {
-            backend: Backend::OpenAi {
-                api_key: "sk-p".into(),
-                base_url: Some("http://proxy:1234/v1".into()),
-                // The stage recorded the highlighted chat completions.
-                api: Some(rhema_config::ProviderApi::Chat),
-            },
-            instance: Some("Custom OpenAI-compatible API".into()),
-        },
-        result: loaded("openai", vec![llama_model("gpt-5")]),
-    });
+    assert_eq!(effects, vec![]);
     assert!(matches!(h.app.screen, Screen::Chat));
-    assert!(
-        matches!(&h.app.backend, Some(Backend::OpenAi { base_url: Some(url), .. }) if url == "http://proxy:1234/v1"),
-        "the custom base URL serves: {:?}",
-        h.app.backend
-    );
-    // The choice persisted with the instance: the login's saved
-    // instance records the shape the stage chose.
+    // The choice persisted with the instance: the saved instance
+    // records the shape the stage chose.
     {
         let settings = h.store.load().unwrap().effective(None);
         let instance = settings.instances.get("Custom OpenAI-compatible API");
@@ -2209,6 +2028,10 @@ fn a_second_openai_compatible_instance_lands_under_its_own_name() {
             instance.and_then(|i| i.api),
             Some(rhema_config::ProviderApi::Chat),
             "the chosen shape lands in the saved instance"
+        );
+        assert_eq!(
+            instance.and_then(|i| i.base_url.as_deref()),
+            Some("http://proxy:1234/v1")
         );
     }
 
@@ -2218,39 +2041,6 @@ fn a_second_openai_compatible_instance_lands_under_its_own_name() {
     assert_eq!(
         name, "Custom OpenAI-compatible API 2",
         "the suggestion skips the taken name"
-    );
-}
-
-#[test]
-fn login_failure_renders_inline_and_persists_nothing() {
-    let mut h = harness(None, None, Session::default());
-    descend_to_credential(&mut h, LoginProvider::Google);
-    for c in "bad-key".chars() {
-        h.app.on_key(key(KeyCode::Char(c)));
-    }
-    h.app.on_key(key(KeyCode::Enter));
-    h.app.on_event(UiEvent::ModelsLoaded {
-        why: FetchWhy::Login {
-            backend: Backend::Google {
-                api_key: "bad-key".into(),
-            },
-            instance: Some("Google Gemini".into()),
-        },
-        result: failed("google", "gemini api error (HTTP 403): denied"),
-    });
-    match &h.app.screen {
-        Screen::Settings(s) => assert_eq!(
-            s.dialog.as_ref().unwrap().status,
-            crate::screens::DialogStatus::Error("gemini api error (HTTP 403): denied".into())
-        ),
-        _ => panic!("a failed login must stay on the login screen"),
-    }
-    let stored = h.store.load().unwrap();
-    assert!(
-        stored
-            .profiles
-            .values()
-            .all(|profile| profile.instances.is_empty())
     );
 }
 
@@ -2300,45 +2090,18 @@ fn the_copilot_login_runs_a_flow_and_persists_its_credential() {
         _ => panic!("expected the login screen mid-flow"),
     }
 
-    // Completion validates the credential through the fetch path.
+    // Completion only stores the credential; /model chooses a model.
     let effects = h.app.on_event(UiEvent::LoginUpdate(
         rhema_provider::LoginUpdate::Completed("gho_token".into()),
     ));
+    assert_eq!(effects, vec![]);
+    assert!(matches!(h.app.screen, Screen::Chat));
+    let effective = h.store.load().unwrap().effective(None);
     assert_eq!(
-        effects,
-        vec![Effect::FetchModels(FetchWhy::Login {
-            backend: Backend::Copilot {
-                api_key: "gho_token".into(),
-            },
-            instance: Some("GitHub Copilot".into()),
-        })]
-    );
-    h.app.on_event(UiEvent::ModelsLoaded {
-        why: FetchWhy::Login {
-            backend: Backend::Copilot {
-                api_key: "gho_token".into(),
-            },
-            instance: Some("GitHub Copilot".into()),
-        },
-        result: loaded("copilot", models()),
-    });
-    match &h.app.screen {
-        Screen::Picker(picker) => assert_eq!(picker.models.len(), 2),
-        _ => panic!("expected the picker after a successful flow login"),
-    }
-    assert_eq!(
-        h.store
-            .load()
-            .unwrap()
-            .effective(None)
-            .api_key("copilot", None)
-            .as_deref(),
+        effective.instances["GitHub Copilot"].api_key.as_deref(),
         Some("gho_token")
     );
-    assert!(matches!(
-        h.app.backend,
-        Some(Backend::Copilot { ref api_key }) if api_key == "gho_token"
-    ));
+    assert!(effective.model.is_none());
 }
 
 #[test]
@@ -2367,41 +2130,14 @@ fn the_chatgpt_login_runs_a_flow_and_persists_its_credential() {
     let effects = h.app.on_event(UiEvent::LoginUpdate(
         rhema_provider::LoginUpdate::Completed(r#"{"access_token":"a"}"#.into()),
     ));
+    assert_eq!(effects, vec![]);
+    assert!(matches!(h.app.screen, Screen::Chat));
+    let effective = h.store.load().unwrap().effective(None);
     assert_eq!(
-        effects,
-        vec![Effect::FetchModels(FetchWhy::Login {
-            backend: Backend::ChatGpt {
-                credential: r#"{"access_token":"a"}"#.into(),
-            },
-            instance: Some("ChatGPT".into()),
-        })]
-    );
-    h.app.on_event(UiEvent::ModelsLoaded {
-        why: FetchWhy::Login {
-            backend: Backend::ChatGpt {
-                credential: r#"{"access_token":"a"}"#.into(),
-            },
-            instance: Some("ChatGPT".into()),
-        },
-        result: loaded("chatgpt", models()),
-    });
-    match &h.app.screen {
-        Screen::Picker(picker) => assert_eq!(picker.models.len(), 2),
-        _ => panic!("expected the picker after a successful flow login"),
-    }
-    assert_eq!(
-        h.store
-            .load()
-            .unwrap()
-            .effective(None)
-            .api_key("chatgpt", None)
-            .as_deref(),
+        effective.instances["ChatGPT"].api_key.as_deref(),
         Some(r#"{"access_token":"a"}"#)
     );
-    assert!(matches!(
-        h.app.backend,
-        Some(Backend::ChatGpt { ref credential }) if credential == r#"{"access_token":"a"}"#
-    ));
+    assert!(effective.model.is_none());
 }
 
 #[test]
@@ -3155,16 +2891,8 @@ fn login_success_writes_into_the_selected_tab_profile() {
     for c in "work-key".chars() {
         h.app.on_key(key(KeyCode::Char(c)));
     }
-    h.app.on_key(key(KeyCode::Enter));
-    h.app.on_event(UiEvent::ModelsLoaded {
-        why: FetchWhy::Login {
-            backend: Backend::OpenRouter {
-                api_key: "work-key".into(),
-            },
-            instance: Some("OpenRouter".into()),
-        },
-        result: loaded("google", models()),
-    });
+    let effects = h.app.on_key(key(KeyCode::Enter));
+    assert_eq!(effects, vec![]);
     // The session now runs on work, and the key landed in its section.
     assert_eq!(h.app.session_profile.as_deref(), Some("work"));
     let stored = h.store.load().unwrap();
@@ -3174,10 +2902,7 @@ fn login_success_writes_into_the_selected_tab_profile() {
         work.instances["OpenRouter"].api_key.as_deref(),
         Some("work-key")
     );
-    assert_eq!(
-        work.api_key("openrouter", None).as_deref(),
-        Some("work-key")
-    );
+    assert!(work.model.is_none(), "the add chose no model");
 }
 
 #[test]
@@ -5839,24 +5564,6 @@ fn settings_cycles_the_palette_live_and_persists_it() {
     }
     assert_eq!(h.app.theme, crate::palette::LIGHT);
     assert_eq!(h.store.load().unwrap().colors.as_deref(), Some("rhema"));
-}
-
-#[test]
-fn slash_login_success_chains_into_a_picker_that_knows_the_way_back() {
-    let mut h = harness(Some("k"), Some("m-a"), Session::default());
-    crate::commands::dispatch(&mut h.app, "/login");
-    h.app.on_event(UiEvent::ModelsLoaded {
-        why: FetchWhy::Login {
-            backend: Backend::Google {
-                api_key: "k".into(),
-            },
-            instance: Some("google".into()),
-        },
-        result: loaded("google", models()),
-    });
-    assert!(matches!(&h.app.screen, Screen::Picker(_)));
-    h.app.on_key(key(KeyCode::Esc));
-    assert!(matches!(h.app.screen, Screen::Chat));
 }
 
 #[test]

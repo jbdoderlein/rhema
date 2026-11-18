@@ -122,7 +122,7 @@ impl ProviderApi {
 pub struct ProviderInstance {
     /// Which adapter serves this instance: `google`, `llama-cpp`,
     /// `openrouter`, `anthropic`, `openai`, `deepseek`, `zai`,
-    /// `opencode`, `copilot`, or `chatgpt`.
+    /// `opencode`, `copilot`, `chatgpt`, `mistral`, or `mistral-vibe`.
     pub provider: String,
     /// The API key (the bearer key for a llama.cpp server), when the
     /// instance needs one and the keychain does not hold it.
@@ -336,7 +336,7 @@ impl fmt::Debug for SandboxSettings {
 pub struct Profile {
     /// Which provider serves turns: `google`, `llama-cpp`, `openrouter`,
     /// `anthropic`, `openai`, `deepseek`, `zai`, `opencode`,
-    /// `copilot`, or `chatgpt`.
+    /// `copilot`, `chatgpt`, `mistral`, or `mistral-vibe`.
     pub provider: Option<String>,
     /// The name of the active instance in [`Profile::instances`], the
     /// one whose backend serves turns. Must name an instance of
@@ -426,7 +426,8 @@ impl Profile {
     /// environment tier included; env-only when the profile holds no
     /// instance of it. The provider name is the adapter spelling,
     /// `google`, `llama-cpp`, `openrouter`, `anthropic`, `openai`,
-    /// `deepseek`, `zai`, `opencode`, `copilot`, `chatgpt`.
+    /// `deepseek`, `zai`, `opencode`, `copilot`, `chatgpt`, `mistral`,
+    /// `mistral-vibe`.
     pub fn api_key(&self, provider: &str, secrets: Option<&dyn SecretStore>) -> Option<String> {
         match self.instance_for_provider(provider) {
             Some((_, instance)) => self.instance_api_key(instance, secrets),
@@ -492,6 +493,8 @@ impl Profile {
             "opencode" => self.api_key("opencode", secrets).is_some(),
             "copilot" => self.api_key("copilot", secrets).is_some(),
             "chatgpt" => self.api_key("chatgpt", secrets).is_some(),
+            "mistral" => self.api_key("mistral", secrets).is_some(),
+            "mistral-vibe" => self.api_key("mistral-vibe", secrets).is_some(),
             "google" => self.api_key("google", secrets).is_some(),
             // An unknown spelling never reads as google.
             _ => false,
@@ -936,7 +939,7 @@ pub enum KeyLocation {
 pub struct ProviderInfo {
     /// The config spelling: `google`, `llama-cpp`, `openrouter`,
     /// `anthropic`, `openai`, `deepseek`, `zai`, `opencode`, `copilot`,
-    /// `chatgpt`.
+    /// `chatgpt`, `mistral`, `mistral-vibe`.
     pub name: &'static str,
     /// The environment variables a credential resolves through, in
     /// priority order.
@@ -1001,6 +1004,20 @@ pub const PROVIDERS: &[ProviderInfo] = &[
         login: true,
         missing_key_help: "missing credential: sign in with ChatGPT (or set CHATGPT_ACCESS_TOKEN)",
         default_model: "gpt-5.1-codex",
+    },
+    ProviderInfo {
+        name: "mistral",
+        env_keys: &["MISTRAL_API_KEY"],
+        login: true,
+        missing_key_help: "missing API key: set MISTRAL_API_KEY (or log in once interactively)",
+        default_model: "mistral-large-4-0",
+    },
+    ProviderInfo {
+        name: "mistral-vibe",
+        env_keys: &["MISTRAL_VIBE_API_KEY"],
+        login: true,
+        missing_key_help: "missing credential: sign in with Mistral Vibe (or set MISTRAL_VIBE_API_KEY)",
+        default_model: "mistral-large-4-0",
     },
     ProviderInfo {
         name: "deepseek",
@@ -1602,9 +1619,11 @@ mod tests {
         assert_eq!(default_model("anthropic"), "claude-sonnet-4-5");
         assert_eq!(default_model("openrouter"), "openrouter/auto");
         assert_eq!(default_model("llama-cpp"), "local");
+        assert_eq!(default_model("mistral"), "mistral-large-4-0");
+        assert_eq!(default_model("mistral-vibe"), "mistral-large-4-0");
         // An unknown spelling is the unset-provider case: google's
         // default, the same fallback every caller used to hand-roll.
-        assert_eq!(default_model("mistral"), "gemini-3.8-flash");
+        assert_eq!(default_model("cohere"), "gemini-3.8-flash");
         // Every row carries one, so a new provider cannot join
         // without it.
         assert!(PROVIDERS.iter().all(|info| !info.default_model.is_empty()));
@@ -1754,6 +1773,8 @@ mod tests {
         assert!(keyed("deepseek").has_credentials(None));
         assert!(keyed("copilot").has_credentials(None));
         assert!(keyed("chatgpt").has_credentials(None));
+        assert!(keyed("mistral").has_credentials(None));
+        assert!(keyed("mistral-vibe").has_credentials(None));
         // ...and each provider needs exactly its own key.
         assert!(
             keyed("anthropic")
@@ -1777,6 +1798,8 @@ mod tests {
         assert!(!bare("deepseek").has_credentials(None));
         assert!(!bare("copilot").has_credentials(None));
         assert!(!bare("chatgpt").has_credentials(None));
+        assert!(!bare("mistral").has_credentials(None));
+        assert!(!bare("mistral-vibe").has_credentials(None));
         assert!(
             !bare("mystery").has_credentials(None),
             "an unknown provider never reads as google"

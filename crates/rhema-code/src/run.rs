@@ -298,65 +298,84 @@ async fn run_tui(args: Args) -> anyhow::Result<()> {
     // profile, the same env-wins convention the keys follow. Nothing
     // configured (or a spelling no provider answers to) leaves the
     // backend unresolved: the login screen opens, nothing defaults.
-    let backend = ProviderChoice::from_stored(effective.provider_name().as_deref()).and_then(
-        |provider_choice| match provider_choice {
-            ProviderChoice::Google => effective
-                .api_key("google", Some(&*secrets))
-                .map(|api_key| Backend::Google { api_key }),
-            ProviderChoice::LlamaCpp => Some(Backend::LlamaCpp {
-                url: effective.llama_cpp_url(),
-                api_key: effective.api_key("llama-cpp", Some(&*secrets)),
-            }),
-            ProviderChoice::OpenRouter => effective
-                .api_key("openrouter", Some(&*secrets))
-                .map(|api_key| Backend::OpenRouter { api_key }),
-            ProviderChoice::Anthropic => effective
-                .api_key("anthropic", Some(&*secrets))
-                .map(|api_key| Backend::Anthropic { api_key }),
-            ProviderChoice::OpenAi => {
-                effective
-                    .api_key("openai", Some(&*secrets))
-                    .map(|api_key| Backend::OpenAi {
-                        api_key,
-                        base_url: effective.openai_base_url(),
-                        api: None,
-                    })
-            }
-            ProviderChoice::DeepSeek => effective
-                .api_key("deepseek", Some(&*secrets))
-                .map(|api_key| Backend::DeepSeek { api_key }),
-            ProviderChoice::Zai => {
-                effective
-                    .api_key("zai", Some(&*secrets))
-                    .map(|api_key| Backend::Zai {
-                        api_key,
-                        // A stored instance may override the route (a proxy);
-                        // none means the Coding Plan endpoint itself.
-                        base_url: effective
-                            .instance_for_provider("zai")
-                            .and_then(|(_, instance)| effective.instance_url(instance)),
-                    })
-            }
-            ProviderChoice::OpenCode => {
-                effective
-                    .api_key("opencode", Some(&*secrets))
-                    .map(|api_key| {
-                        Backend::opencode(
+    let backend =
+        ProviderChoice::from_stored(effective.provider_name().as_deref()).and_then(
+            |provider_choice| match provider_choice {
+                ProviderChoice::Google => effective
+                    .api_key("google", Some(&*secrets))
+                    .map(|api_key| Backend::Google { api_key }),
+                ProviderChoice::LlamaCpp => Some(Backend::LlamaCpp {
+                    url: effective.llama_cpp_url(),
+                    api_key: effective.api_key("llama-cpp", Some(&*secrets)),
+                }),
+                ProviderChoice::OpenRouter => effective
+                    .api_key("openrouter", Some(&*secrets))
+                    .map(|api_key| Backend::OpenRouter { api_key }),
+                ProviderChoice::Anthropic => effective
+                    .api_key("anthropic", Some(&*secrets))
+                    .map(|api_key| Backend::Anthropic { api_key }),
+                ProviderChoice::OpenAi => {
+                    effective
+                        .api_key("openai", Some(&*secrets))
+                        .map(|api_key| Backend::OpenAi {
                             api_key,
-                            effective
-                                .instance_for_provider("opencode")
+                            base_url: effective.openai_base_url(),
+                            api: None,
+                        })
+                }
+                ProviderChoice::DeepSeek => effective
+                    .api_key("deepseek", Some(&*secrets))
+                    .map(|api_key| Backend::DeepSeek { api_key }),
+                ProviderChoice::Zai => {
+                    effective
+                        .api_key("zai", Some(&*secrets))
+                        .map(|api_key| Backend::Zai {
+                            api_key,
+                            // A stored instance may override the route (a proxy);
+                            // none means the Coding Plan endpoint itself.
+                            base_url: effective
+                                .instance_for_provider("zai")
                                 .and_then(|(_, instance)| effective.instance_url(instance)),
-                        )
-                    })
-            }
-            ProviderChoice::Copilot => effective
-                .api_key("copilot", Some(&*secrets))
-                .map(|api_key| Backend::Copilot { api_key }),
-            ProviderChoice::ChatGpt => effective
-                .api_key("chatgpt", Some(&*secrets))
-                .map(|credential| Backend::ChatGpt { credential }),
-        },
-    );
+                        })
+                }
+                ProviderChoice::OpenCode => {
+                    effective
+                        .api_key("opencode", Some(&*secrets))
+                        .map(|api_key| {
+                            Backend::opencode(
+                                api_key,
+                                effective
+                                    .instance_for_provider("opencode")
+                                    .and_then(|(_, instance)| effective.instance_url(instance)),
+                            )
+                        })
+                }
+                ProviderChoice::Copilot => effective
+                    .api_key("copilot", Some(&*secrets))
+                    .map(|api_key| Backend::Copilot { api_key }),
+                ProviderChoice::ChatGpt => effective
+                    .api_key("chatgpt", Some(&*secrets))
+                    .map(|credential| Backend::ChatGpt { credential }),
+                ProviderChoice::Mistral => {
+                    effective
+                        .api_key("mistral", Some(&*secrets))
+                        .map(|api_key| Backend::Mistral {
+                            api_key,
+                            base_url: effective
+                                .instance_for_provider("mistral")
+                                .and_then(|(_, instance)| effective.instance_url(instance)),
+                        })
+                }
+                ProviderChoice::MistralVibe => effective
+                    .api_key("mistral-vibe", Some(&*secrets))
+                    .map(|api_key| Backend::MistralVibe {
+                        api_key,
+                        base_url: effective
+                            .instance_for_provider("mistral-vibe")
+                            .and_then(|(_, instance)| effective.instance_url(instance)),
+                    }),
+            },
+        );
     let session = match &args.resume {
         Some(path) => CodingAgent::load_session_from(path)
             .with_context(|| format!("cannot resume session: {}", path.display()))?,
@@ -1047,6 +1066,9 @@ fn dispatch(
                 }
                 Some(crate::screens::LoginProvider::ChatGpt) => {
                     Box::new(rhema_provider_chatgpt::ChatGptLogin::new())
+                }
+                Some(crate::screens::LoginProvider::MistralVibe) => {
+                    Box::new(rhema_provider_mistral::MistralVibeLogin::new())
                 }
                 _ => return,
             };

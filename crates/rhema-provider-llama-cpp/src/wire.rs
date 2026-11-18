@@ -33,6 +33,7 @@ use serde::Deserialize;
 pub const LLAMA_CPP: Dialect = Dialect {
     args_key: "_llama_args_text",
     assistant_reasoning_key: None,
+    replays_reasoning_as_thinking: false,
     effort_key: "reasoning_effort",
     sends_stream_options: true,
     reasoning_effort: rhema_provider_openai_compatible::wire::no_effort,

@@ -23,6 +23,7 @@ use rhema_provider_chatgpt::ChatGptProvider;
 use rhema_provider_copilot::CopilotProvider;
 use rhema_provider_google::GoogleProvider;
 use rhema_provider_llama_cpp::LlamaCppProvider;
+use rhema_provider_mistral::MistralProvider;
 use rhema_provider_openai_compatible::{Api, DEEPSEEK_BASE_URL, OpenAiCompatibleProvider};
 use rhema_provider_opencode::OpenCodeProvider;
 use rhema_provider_openrouter::OpenRouterProvider;
@@ -127,6 +128,20 @@ pub fn build(
         }
         "zai" => {
             let mut provider = AnthropicProvider::zai(keyed()?);
+            if let Some(base_url) = non_blank(base_url) {
+                provider = provider.with_base_url(base_url);
+            }
+            assembled(provider)
+        }
+        "mistral" | "mistral-vibe" => {
+            // One wire for the API key and the Vibe subscription; the
+            // subscription asks its own catalog endpoint. A stored route
+            // reaches a dedicated Mistral deployment.
+            let mut provider = if name == "mistral-vibe" {
+                MistralProvider::vibe(keyed()?)
+            } else {
+                MistralProvider::new(keyed()?)
+            };
             if let Some(base_url) = non_blank(base_url) {
                 provider = provider.with_base_url(base_url);
             }
@@ -244,6 +259,8 @@ mod tests {
             "deepseek",
             "zai",
             "opencode",
+            "mistral",
+            "mistral-vibe",
         ] {
             let built = build(kind, Some("k"), None, None, None).expect("the kind builds");
             // One instance behind both seams: dropping either half
@@ -266,10 +283,10 @@ mod tests {
     #[test]
     fn an_unknown_spelling_is_an_error_not_a_default() {
         assert_eq!(
-            build("mistral", Some("k"), None, None, None)
+            build("cohere", Some("k"), None, None, None)
                 .err()
                 .expect("an unknown spelling fails"),
-            BuildError::Unknown("mistral".to_owned())
+            BuildError::Unknown("cohere".to_owned())
         );
     }
 

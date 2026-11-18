@@ -89,6 +89,9 @@ pub struct App {
     /// Cached model catalog, shared with the picker when it opens: every
     /// logged-in provider's models, each tagged with its provider.
     pub models: Vec<crate::screens::CatalogModel>,
+    /// A provider was added since the last catalog fetch: the picker
+    /// must refresh before it lists, even when the cache is not empty.
+    pub catalog_stale: bool,
     /// Providers whose last catalog fetch timed out, by provider name.
     /// Kept across screens: a bootstrap failure usually lands on the
     /// chat, long before the picker opens.
@@ -602,6 +605,7 @@ impl App {
             session,
             screen,
             models: Vec::new(),
+            catalog_stale: false,
             catalog_unavailable: Vec::new(),
             catalog_failed: Vec::new(),
             agent,

@@ -132,6 +132,22 @@ pub enum Backend {
         /// The resolved credential (`env` first, stored second).
         credential: String,
     },
+    /// Mistral's hosted API, by API key: an instance may name a base
+    /// URL (a dedicated deployment); `None` speaks to the public API.
+    Mistral {
+        /// The resolved key (`env` first, stored second).
+        api_key: String,
+        /// The instance's base URL, when it stored one.
+        base_url: Option<String>,
+    },
+    /// A Mistral Vibe subscription, by the API key its browser sign-in
+    /// mints. The same wire as [`Self::Mistral`], a different plan.
+    MistralVibe {
+        /// The resolved key (`env` first, stored second).
+        api_key: String,
+        /// The instance's base URL, when it stored one.
+        base_url: Option<String>,
+    },
 }
 
 /// What a backend's credentials print as: the variant and endpoint
@@ -190,6 +206,16 @@ impl std::fmt::Debug for Backend {
             Self::ChatGpt { .. } => f
                 .debug_struct("ChatGpt")
                 .field("credential", &REDACTED)
+                .finish(),
+            Self::Mistral { base_url, .. } => f
+                .debug_struct("Mistral")
+                .field("api_key", &REDACTED)
+                .field("base_url", base_url)
+                .finish(),
+            Self::MistralVibe { base_url, .. } => f
+                .debug_struct("MistralVibe")
+                .field("api_key", &REDACTED)
+                .field("base_url", base_url)
                 .finish(),
         }
     }
@@ -274,6 +300,16 @@ impl Backend {
             )),
             Backend::Copilot { api_key } => build("copilot", Some(api_key), None, None, None),
             Backend::ChatGpt { credential } => build("chatgpt", Some(credential), None, None, None),
+            Backend::Mistral { api_key, base_url } => {
+                build("mistral", Some(api_key), None, base_url.as_deref(), None)
+            }
+            Backend::MistralVibe { api_key, base_url } => build(
+                "mistral-vibe",
+                Some(api_key),
+                None,
+                base_url.as_deref(),
+                None,
+            ),
         }
         .expect("a Backend's own credentials build")
     }
@@ -291,6 +327,8 @@ impl Backend {
             Backend::OpenCode { .. } => "opencode",
             Backend::Copilot { .. } => "copilot",
             Backend::ChatGpt { .. } => "chatgpt",
+            Backend::Mistral { .. } => "mistral",
+            Backend::MistralVibe { .. } => "mistral-vibe",
         }
     }
 
@@ -464,6 +502,22 @@ impl Backend {
             "chatgpt" => profile
                 .instance_api_key(instance, secrets)
                 .map(|credential| Backend::ChatGpt { credential }),
+            "mistral" => {
+                profile
+                    .instance_api_key(instance, secrets)
+                    .map(|api_key| Backend::Mistral {
+                        api_key,
+                        base_url: profile.instance_url(instance),
+                    })
+            }
+            "mistral-vibe" => {
+                profile
+                    .instance_api_key(instance, secrets)
+                    .map(|api_key| Backend::MistralVibe {
+                        api_key,
+                        base_url: profile.instance_url(instance),
+                    })
+            }
             "google" => profile
                 .instance_api_key(instance, secrets)
                 .map(|api_key| Backend::Google { api_key }),
@@ -519,6 +573,20 @@ impl Backend {
             "chatgpt" => profile
                 .api_key("chatgpt", secrets)
                 .map(|credential| Backend::ChatGpt { credential }),
+            "mistral" => profile
+                .api_key("mistral", secrets)
+                .map(|api_key| Backend::Mistral {
+                    api_key,
+                    base_url: None,
+                }),
+            "mistral-vibe" => {
+                profile
+                    .api_key("mistral-vibe", secrets)
+                    .map(|api_key| Backend::MistralVibe {
+                        api_key,
+                        base_url: None,
+                    })
+            }
             _ => None,
         }
     }
@@ -570,7 +638,9 @@ impl Backend {
             | Backend::Anthropic { .. }
             | Backend::OpenAi { .. }
             | Backend::OpenCode { .. }
-            | Backend::ChatGpt { .. } => Ok(None),
+            | Backend::ChatGpt { .. }
+            | Backend::Mistral { .. }
+            | Backend::MistralVibe { .. } => Ok(None),
         }
     }
 

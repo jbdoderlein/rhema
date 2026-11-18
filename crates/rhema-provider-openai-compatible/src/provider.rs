@@ -324,7 +324,8 @@ pub fn network_error(err: reqwest::Error) -> ProviderError {
 }
 
 /// Parses one SSE payload as a chunk and folds it into the assembler. An
-/// empty payload (keep-alive) is skipped.
+/// empty payload (keep-alive) is skipped. Mistral's SDK-shaped
+/// `{"data": {...}}` event wrapper is unwrapped before deserialization.
 /// Drains one chat-completions SSE response to its `[DONE]` sentinel,
 /// assembling the output and emitting streaming events along the way.
 /// The whole openai-dialect family completes through this: a provider
@@ -372,11 +373,25 @@ fn feed_chunk(
     if payload.trim().is_empty() {
         return Ok(());
     }
-    let chunk: ChatCompletionChunk =
+    // Mistral's SDK-shaped stream wraps each chunk in a `{"data": ...}`
+    // event; most OpenAI-compatible servers send the chunk directly.
+    let value: serde_json::Value =
         serde_json::from_str(payload).map_err(|err| ProviderError::Api {
             message: format!("malformed SSE chunk: {err}"),
             status: None,
         })?;
+    let chunk: ChatCompletionChunk = if let Some(data) = value
+        .get("data")
+        .filter(|data| data.is_object() && value.get("choices").is_none())
+    {
+        serde_json::from_value(data.clone())
+    } else {
+        serde_json::from_value(value)
+    }
+    .map_err(|err| ProviderError::Api {
+        message: format!("malformed SSE chunk: {err}"),
+        status: None,
+    })?;
     assembler.push(chunk, sink)
 }
 

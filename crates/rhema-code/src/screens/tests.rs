@@ -750,6 +750,25 @@ fn the_copilot_row_starts_the_flow_and_esc_closes_the_dialog() {
 }
 
 #[test]
+fn the_mistral_vibe_row_starts_the_browser_flow() {
+    let mut settings = settings_screen();
+    settings.dialog = Some(AddInstanceDialog::new(&settings.stored));
+    choose_provider_row(&mut settings, LoginProvider::MistralVibe);
+    settings.handle_key(key(KeyCode::Enter));
+    assert_eq!(
+        settings.dialog.as_ref().unwrap().stage,
+        DialogStage::NameInstance
+    );
+    // The flow path asks for a name, then hands straight to the browser
+    // sign-in: there is no key to type.
+    assert_eq!(
+        settings.handle_key(key(KeyCode::Enter)),
+        SettingsAction::StartFlow
+    );
+    assert_eq!(settings.dialog.as_ref().unwrap().stage, DialogStage::Flow);
+}
+
+#[test]
 fn the_flow_buttons_map_to_open_and_copy() {
     let mut settings = settings_screen();
     settings.dialog = Some(AddInstanceDialog::new(&settings.stored));
@@ -833,6 +852,7 @@ fn the_dialog_groups_providers_under_their_categories() {
         vec![
             LoginProvider::ChatGpt,
             LoginProvider::Copilot,
+            LoginProvider::MistralVibe,
             LoginProvider::OpenCodeGo,
             LoginProvider::Zai
         ]
@@ -840,7 +860,8 @@ fn the_dialog_groups_providers_under_their_categories() {
     // The group already names the plan, so the rows do not repeat it.
     let providers = settings.dialog.as_ref().unwrap().visible_providers();
     assert_eq!(providers[0].name, "ChatGPT");
-    assert_eq!(providers[3].name, "GLM Coding Plan");
+    assert_eq!(providers[2].name, "Mistral Vibe");
+    assert_eq!(providers[4].name, "GLM Coding Plan");
     // The categories wrap at both ends.
     settings.handle_key(key(KeyCode::Up));
     assert_eq!(
@@ -867,6 +888,7 @@ fn the_dialog_groups_providers_under_their_categories() {
             LoginProvider::OpenAiCompatible,
             LoginProvider::OpenRouter,
             LoginProvider::DeepSeek,
+            LoginProvider::Mistral,
             LoginProvider::OpenCode
         ]
     );
@@ -883,7 +905,11 @@ fn the_dialog_groups_providers_under_their_categories() {
 fn hosted_providers_go_straight_to_their_key() {
     // OpenAI and GLM Coding Plan have fixed routes: the credential
     // stage opens on the key, not a base URL.
-    for provider in [LoginProvider::OpenAi, LoginProvider::Zai] {
+    for provider in [
+        LoginProvider::OpenAi,
+        LoginProvider::Zai,
+        LoginProvider::Mistral,
+    ] {
         let (settings, _) = descend_to_credential(provider);
         let dialog = settings.dialog.as_ref().unwrap();
         assert_eq!(dialog.input_label(), "API key: ", "{provider:?}");

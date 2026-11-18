@@ -1,0 +1,35 @@
+[package]
+name = "rhema-provider-mistral"
+description = "Mistral API and Mistral Vibe provider for rhema"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+rhema-core = { path = "../rhema-core", version = "0.3.0" }
+# The shared model card, pricing, catalog seam, and login seam
+rhema-provider = { path = "../rhema-provider", version = "0.3.0", features = ["http-client"] }
+# The OpenAI chat-completions dialect core Mistral speaks
+rhema-provider-openai-compatible = { path = "../rhema-provider-openai-compatible", version = "0.3.0" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+# HTTP client for the model catalog and Vibe's browser sign-in
+reqwest = { version = "0.12", features = ["json", "stream"] }
+# Vibe's sign-in starts the browser flow and polls it
+tokio = { workspace = true, features = ["time"] }
+# PKCE: a CSPRNG verifier (S256) and the URL-safe base64 both sides use
+rand = "0.8"
+sha2 = "0.10"
+base64 = "0.22"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+# In-process HTTP mock for offline catalog, completion, and sign-in tests
+wiremock = "0.6"
+
+[lints]
+workspace = true
