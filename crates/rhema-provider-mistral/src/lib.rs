@@ -24,8 +24,10 @@
 //!   an API key
 //! - [`pricing`]: the curated per-MTok price table
 //! - [`wire`]: the model page and its normalization into
-//!   [`ModelCard`](rhema_provider::ModelCard) rows
-//! - [`provider`]: the transport, the catalog fetch, and the
+//!   [`ModelCard`](rhema_provider::ModelCard) rows, plus the Vibe plan
+//!   budget's [`Allowance`](rhema_provider::Allowance)
+//! - [`provider`]: the transport, the catalog fetch, the reasoning
+//!   effort clamp, and the
 //!   [`ModelProvider`](rhema_core::provider::ModelProvider) implementation
 
 #![forbid(unsafe_code)]
@@ -38,4 +40,7 @@ pub mod wire;
 pub use login::{DEFAULT_AUTH_API_BASE_URL, MistralVibeLogin};
 pub use pricing::model_pricing;
 pub use provider::{DEFAULT_BASE_URL, MistralProvider, USER_AGENT};
-pub use wire::{WireCapabilities, WireModel, WireModelsPage, normalize_models};
+pub use wire::{
+    WireBudget, WireCapabilities, WireModel, WireModelsPage, allowance, normalize_models,
+    reasoning_levels,
+};

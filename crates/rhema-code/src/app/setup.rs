@@ -594,8 +594,9 @@ impl Backend {
     /// The backend's subscription allowance, when its provider reports
     /// one: prepaid credit on OpenRouter and DeepSeek, the seat's
     /// premium requests on Copilot, the Coding Plan's 5-hour and weekly
-    /// windows on Z.ai. `Ok(None)` for the providers with no such
-    /// endpoint, the footer just never shows their badge.
+    /// windows on Z.ai, the Vibe plan's monthly budget on Mistral.
+    /// `Ok(None)` for the providers with no such endpoint, the footer
+    /// just never shows their badge.
     pub async fn subscription_usage(&self) -> Result<Option<Allowance>, String> {
         match self {
             Backend::OpenRouter { api_key } => {
@@ -631,6 +632,12 @@ impl Backend {
                 }
                 provider.allowance().await.map_err(|err| err.to_string())
             }
+            Backend::Mistral { api_key, base_url } => {
+                mistral_allowance(api_key, base_url.as_deref(), false).await
+            }
+            Backend::MistralVibe { api_key, base_url } => {
+                mistral_allowance(api_key, base_url.as_deref(), true).await
+            }
             // No allowance endpoint to ask: Google keys, local servers,
             // Anthropic, the generic OpenAI-compatible family.
             Backend::Google { .. }
@@ -638,9 +645,7 @@ impl Backend {
             | Backend::Anthropic { .. }
             | Backend::OpenAi { .. }
             | Backend::OpenCode { .. }
-            | Backend::ChatGpt { .. }
-            | Backend::Mistral { .. }
-            | Backend::MistralVibe { .. } => Ok(None),
+            | Backend::ChatGpt { .. } => Ok(None),
         }
     }
 
@@ -650,6 +655,28 @@ impl Backend {
     pub async fn list_models(&self) -> Result<Vec<ModelCard>, rhema_core::ProviderError> {
         self.wired().listing.list_models().await
     }
+}
+
+/// The Mistral plan's monthly Vibe Code budget, read off the same
+/// provider the backend completes with, the stored instance's base URL
+/// honored the same way. A key without a Vibe subscription, or a member
+/// the routes stay hidden from, answers `Ok(None)`: no badge, never a
+/// wrong figure.
+async fn mistral_allowance(
+    api_key: &str,
+    base_url: Option<&str>,
+    vibe: bool,
+) -> Result<Option<Allowance>, String> {
+    let api_key = api_key.to_owned();
+    let mut provider = if vibe {
+        rhema_provider_mistral::MistralProvider::vibe(api_key)
+    } else {
+        rhema_provider_mistral::MistralProvider::new(api_key)
+    };
+    if let Some(base_url) = base_url.map(str::trim).filter(|url| !url.is_empty()) {
+        provider = provider.with_base_url(base_url.to_owned());
+    }
+    provider.allowance().await.map_err(|err| err.to_string())
 }
 
 /// The fix for a config that names no usable provider: the startup gate

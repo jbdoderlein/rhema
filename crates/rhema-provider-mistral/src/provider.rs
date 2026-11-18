@@ -9,18 +9,20 @@
 //! `/model-catalog` envelope; both are richer than the generic
 //! normalizer expects.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use rhema_core::event::EventSink;
 use rhema_core::output::ModelOutput;
 use rhema_core::provider::{ModelProvider, ProviderError};
-use rhema_core::request::ModelRequest;
-use rhema_provider::{ModelCard, ModelListing};
+use rhema_core::request::{ModelRequest, ThinkingEffort};
+use rhema_provider::{Allowance, ModelCard, ModelListing};
 use rhema_provider_openai_compatible::provider::{OpenAiCompatibleProvider, network_error};
 use rhema_provider_openai_compatible::{Dialect, reasoning_effort_value};
 
-use crate::wire::{WireModelsPage, normalize_models};
+use crate::wire;
+use crate::wire::{WireBudget, WireModelsPage, normalize_models, reasoning_levels};
 
 /// The production Mistral API base, version segment included.
 pub const DEFAULT_BASE_URL: &str = "https://api.mistral.ai/v1";
@@ -69,6 +71,11 @@ pub struct MistralProvider {
     http: reqwest::Client,
     transport: OpenAiCompatibleProvider,
     catalog: CatalogRoute,
+    /// The reasoning-effort levels each model accepts, fetched once on
+    /// the first request that needs clamping. A failed fetch caches an
+    /// empty map rather than retrying every turn: the catalog answers
+    /// for the session or requests fly as written.
+    reasoning: tokio::sync::OnceCell<HashMap<String, Vec<String>>>,
 }
 
 impl std::fmt::Debug for MistralProvider {
@@ -97,6 +104,7 @@ impl MistralProvider {
             api_key,
             http: http_client(),
             catalog: CatalogRoute::Models,
+            reasoning: tokio::sync::OnceCell::new(),
         }
     }
 
@@ -151,6 +159,16 @@ impl MistralProvider {
 
     /// Fetches one catalog route under the base and normalizes it.
     async fn fetch_models_from(&self, route: &str) -> Result<Vec<ModelCard>, ProviderError> {
+        let page = self.fetch_page(route).await?;
+        let mut models = normalize_models(page);
+        models.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(models)
+    }
+
+    /// Fetches one catalog route under the base and parses it, leaving
+    /// the page whole for the two readers of it: the model listing and
+    /// the per-model reasoning levels.
+    async fn fetch_page(&self, route: &str) -> Result<WireModelsPage, ProviderError> {
         let response = self
             .http
             .get(format!("{}/{route}", self.base_url))
@@ -176,9 +194,109 @@ impl MistralProvider {
                 status: None,
             }
         })?;
-        let mut models = normalize_models(page);
-        models.sort_by(|a, b| a.id.cmp(&b.id));
-        Ok(models)
+        Ok(page)
+    }
+
+    /// The reasoning-effort levels each model accepts, fetched once per
+    /// provider from the same catalog the model listing reads. A page
+    /// that fails or publishes no levels yields an empty map: requests
+    /// then fly with the effort as chosen and the API's own rejection
+    /// is the diagnosis the user sees.
+    async fn reasoning_levels(&self) -> &HashMap<String, Vec<String>> {
+        self.reasoning
+            .get_or_init(|| async {
+                let page = match self.catalog {
+                    CatalogRoute::Models => self.fetch_page("models").await,
+                    // Vibe's catalog is the one that publishes the levels;
+                    // its models fallback keeps a broken route from costing
+                    // more than the clamp.
+                    CatalogRoute::Vibe => {
+                        match self.fetch_page("model-catalog?surface=vibe-code").await {
+                            Ok(page) => Ok(page),
+                            Err(_) => self.fetch_page("models").await,
+                        }
+                    }
+                };
+                page.map(reasoning_levels).unwrap_or_default()
+            })
+            .await
+    }
+
+    /// The plan's monthly Vibe Code budget, what the footer's badge
+    /// shows (`GET {base}/billing/budget`). `Ok(None)` when the key has
+    /// no Vibe subscription or a dedicated deployment serves no
+    /// billing routes: no badge, never a wrong figure. The catalog-less
+    /// `mistral` provider key reads the same route when it carries a
+    /// Vibe plan.
+    ///
+    /// # Errors
+    ///
+    /// Fails with [`ProviderError::Network`]/[`ProviderError::Timeout`]
+    /// or [`ProviderError::Api`] on a non-2xx answer, like the other
+    /// account fetches.
+    pub async fn allowance(&self) -> Result<Option<Allowance>, ProviderError> {
+        let response = self
+            .http
+            .get(format!("{}/billing/budget", self.base_url))
+            .bearer_auth_if_present(&self.api_key)
+            .timeout(Duration::from_secs(20))
+            .send()
+            .await
+            .map_err(network_error)?;
+        let status = response.status();
+        if !status.is_success() {
+            // The routes the badge never concludes anything from: a
+            // rejected key, a member without billing sight, or a
+            // deployment without the route. Other failures stay errors.
+            if matches!(status.as_u16(), 401 | 403 | 404) {
+                return Ok(None);
+            }
+            let text = response.text().await.unwrap_or_default();
+            return Err(api_error(status, &text));
+        }
+        let budget: WireBudget = response.json().await.map_err(|err| ProviderError::Api {
+            message: format!("malformed billing budget response: {err}"),
+            status: None,
+        })?;
+        Ok(wire::allowance(&budget))
+    }
+}
+
+/// Clamps an effort to the levels the model accepts. Mistral answers a
+/// `reasoning_effort` the model does not list with a 400/401, and the
+/// catalog tells each model's exhaustive set, so an unroutable level
+/// moves to the nearest one the model speaks: `medium` becomes `high`
+/// on models that jump, a `low` a reasoning-only-when-asked model
+/// cannot honor becomes no parameter at all (its own default is no
+/// thinking), and an exact fit flies as chosen. An empty set is no
+/// catalog knowledge: the choice stands as made.
+fn clamped_effort(thinking: ThinkingEffort, allowed: &[String]) -> ThinkingEffort {
+    if allowed.is_empty() {
+        return thinking;
+    }
+    let accepts = |level: &str| allowed.iter().any(|allowed| allowed == level);
+    match thinking {
+        ThinkingEffort::Default => ThinkingEffort::Default,
+        ThinkingEffort::Low if !accepts("low") => ThinkingEffort::Default,
+        ThinkingEffort::Medium if !accepts("medium") => {
+            if accepts("high") {
+                ThinkingEffort::High
+            } else if accepts("low") {
+                ThinkingEffort::Low
+            } else {
+                ThinkingEffort::Default
+            }
+        }
+        ThinkingEffort::High if !accepts("high") => {
+            if accepts("medium") {
+                ThinkingEffort::Medium
+            } else if accepts("low") {
+                ThinkingEffort::Low
+            } else {
+                ThinkingEffort::Default
+            }
+        }
+        chosen => chosen,
     }
 }
 
@@ -258,6 +376,16 @@ impl ModelProvider for MistralProvider {
         req: ModelRequest,
         sink: &mut dyn EventSink,
     ) -> Result<ModelOutput, ProviderError> {
+        let mut req = req;
+        let chosen = req.params.thinking;
+        if !matches!(chosen, ThinkingEffort::Default) {
+            let levels = self.reasoning_levels().await;
+            let allowed = levels
+                .get(req.params.model.trim())
+                .cloned()
+                .unwrap_or_default();
+            req.params.thinking = clamped_effort(chosen, &allowed);
+        }
         self.transport.complete(req, sink).await
     }
 }
@@ -348,6 +476,35 @@ mod tests {
         assert!(body.get("stream_options").is_none(), "{body}");
         // The effort field is shared and still rides through.
         assert_eq!(body["reasoning_effort"], json!("high"), "{body}");
+    }
+
+    #[test]
+    fn effort_levels_clamp_to_the_model_s_own_set() {
+        use rhema_core::request::ThinkingEffort::*;
+
+        let glm = ["low", "high", "max"].map(String::from);
+        // The exact fits and the default fly as they are.
+        assert_eq!(clamped_effort(High, &glm), High);
+        assert_eq!(clamped_effort(Low, &glm), Low);
+        assert_eq!(clamped_effort(Default, &glm), Default);
+        // A `medium` the model skips lands on its `high`.
+        assert_eq!(clamped_effort(Medium, &glm), High);
+        // The level the model refuses moves to the next one it speaks.
+        assert_eq!(clamped_effort(High, &["max"].map(String::from)), Default);
+
+        let jump = ["none", "high"].map(String::from);
+        // A `low` the model cannot honor is its own default: none.
+        assert_eq!(clamped_effort(Low, &jump), Default);
+        assert_eq!(clamped_effort(Medium, &jump), High);
+        assert_eq!(clamped_effort(High, &jump), High);
+
+        let falls_back = ["low", "medium"].map(String::from);
+        assert_eq!(clamped_effort(High, &falls_back), Medium);
+        assert_eq!(clamped_effort(Medium, &falls_back), Medium);
+
+        // No catalog knowledge stands as chosen.
+        let unknown: Vec<String> = Vec::new();
+        assert_eq!(clamped_effort(Medium, &unknown), Medium);
     }
 
     #[test]

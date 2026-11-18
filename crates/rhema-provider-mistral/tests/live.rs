@@ -70,3 +70,49 @@ async fn live_mistral_answers_a_trivial_prompt() {
         "expected non-empty text, got {out:?}"
     );
 }
+
+/// The Vibe key's model catalog publishes each model's accepted
+/// reasoning levels. A `medium` on a model that skips it must land on
+/// one the model speaks rather than be rejected.
+///
+/// Run with:
+///
+/// ```sh
+/// MISTRAL_VIBE_API_KEY=... MISTRAL_MODEL=zai-glm-5-3 ///     cargo test -p rhema-provider-mistral -- --ignored --nocapture live_vibe
+/// ```
+#[tokio::test]
+#[ignore = "hits the live Mistral Vibe API; set MISTRAL_VIBE_API_KEY to run"]
+async fn live_vibe_clamps_the_effort_and_reads_the_budget() {
+    let key = std::env::var("MISTRAL_VIBE_API_KEY")
+        .expect("set MISTRAL_VIBE_API_KEY to run the live Vibe test");
+    let model = std::env::var("MISTRAL_MODEL").unwrap_or_else(|_| "zai-glm-5-3".to_owned());
+    let provider = MistralProvider::vibe(key);
+
+    let mut result = provider
+        .allowance()
+        .await
+        .expect("the budget route answers");
+    if result.is_none() {
+        result = Some(rhema_provider::Allowance {
+            amount: "(none published)".to_owned(),
+            kind: String::new(),
+        });
+    }
+    println!("vibe allowance: {:?}", result.expect("an allowance"));
+
+    let mut req = ModelRequest {
+        system: None,
+        messages: vec![Message::text(Role::User, "Reply with just: ok")],
+        tools: vec![],
+        params: ChatParams {
+            thinking: rhema_core::request::ThinkingEffort::Medium,
+            ..ChatParams::new(model.clone())
+        },
+    };
+    req.params.max_tokens = Some(5);
+    let out = provider
+        .complete(req, &mut NullSink)
+        .await
+        .expect("the clamped effort completes against the live API");
+    println!("{} answered with {out:?}", model);
+}

@@ -258,3 +258,95 @@ async fn a_denied_vibe_login_reports_why() {
         ))
     );
 }
+
+#[tokio::test]
+async fn a_reasoning_effort_the_model_skips_clamps_to_one_it_speaks() {
+    let server = MockServer::start().await;
+    // The catalog tells each model's accepted levels; the glm one jumps
+    // from `low` straight to `high`, then `max`.
+    Mock::given(method("GET"))
+        .and(path("/model-catalog"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "models": [
+                {
+                    "id": "zai-glm-5-3",
+                    "aliases": ["glm-5-3"],
+                    "capabilities": {"completion_chat": true},
+                    "parameters": {"reasoning": ["low", "high", "max"]}
+                }
+            ]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .and(body_partial_json(
+            serde_json::json!({ "model": "glm-5-3", "reasoning_effort": "high" }),
+        ))
+        .respond_with(sse(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}
+
+data: [DONE]
+
+",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let provider = MistralProvider::vibe("vibe-key").with_base_url(server.uri());
+    let mut req = request();
+    req.params.model = "glm-5-3".into();
+    req.params.thinking = rhema_core::request::ThinkingEffort::Medium;
+    let mut sink = Collector::new();
+    provider
+        .complete(req, &mut sink)
+        .await
+        .expect("the chat route answered");
+}
+
+#[tokio::test]
+async fn the_budget_reads_the_vibe_plan_s_allowance() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/billing/budget"))
+        .and(header("authorization", "Bearer vibe-key"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "vibe_budget": {
+                "usage_percentage": 25.0,
+                "initial_budget": 200.0,
+                "currency": "EUR",
+                "reset_at": "2026-12-01T00:00:00Z"
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let provider = MistralProvider::vibe("vibe-key").with_base_url(server.uri());
+    let allowance = provider
+        .allowance()
+        .await
+        .expect("the budget answered")
+        .expect("a vibe budget is present");
+    assert_eq!(allowance.amount, "\u{20ac}150.00");
+    assert_eq!(allowance.kind, "vibe");
+}
+
+#[tokio::test]
+async fn a_hidden_budget_route_reads_as_no_allowance() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/billing/budget"))
+        .respond_with(ResponseTemplate::new(403).set_body_string(r#"{"detail":null}"#))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let provider = MistralProvider::vibe("vibe-key").with_base_url(server.uri());
+    assert!(
+        provider
+            .allowance()
+            .await
+            .expect("403 is a shape")
+            .is_none()
+    );
+}

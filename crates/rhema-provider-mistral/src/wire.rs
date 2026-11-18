@@ -7,9 +7,11 @@
 //! flags; the adapter keeps the chat-capable models and folds everything
 //! else into [`ModelCard`].
 
+use std::collections::HashMap;
+
 use serde::Deserialize;
 
-use rhema_provider::ModelCard;
+use rhema_provider::{Allowance, ModelCard};
 
 /// One entry of the `/v1/models` array.
 #[derive(Debug, Clone, Deserialize)]
@@ -37,6 +39,23 @@ pub struct WireModel {
     /// Models Mistral does not offer to ordinary accounts.
     #[serde(default)]
     pub internal: Option<bool>,
+    /// The other names a request can use for the model.
+    #[serde(default)]
+    pub aliases: Option<Vec<String>>,
+    /// Tuning metadata the catalog carries, when present. Only the
+    /// Vibe's `model-catalog` route publishes these.
+    #[serde(default)]
+    pub parameters: Option<WireParameters>,
+}
+
+/// A catalog entry's tuning block. `reasoning` is the exhaustive list
+/// of `reasoning_effort` values the model accepts; an absent or empty
+/// one reads as unknown, never as none.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WireParameters {
+    /// The model's accepted `reasoning_effort` spellings.
+    #[serde(default)]
+    pub reasoning: Option<Vec<String>>,
 }
 
 /// The capability flags a model card carries. Absent flags are unknown,
@@ -116,9 +135,147 @@ pub fn normalize_models(page: WireModelsPage) -> Vec<ModelCard> {
         .collect()
 }
 
+/// The reasoning-effort levels each model accepts, keyed by every name
+/// a request can use, the id and each alias. Only the entries whose
+/// catalog `parameters.reasoning` is present and non-empty appear: a
+/// model the catalog does not describe stays out, and its requests fly
+/// as written rather than clamped to a guess.
+pub fn reasoning_levels(page: WireModelsPage) -> HashMap<String, Vec<String>> {
+    let mut levels: HashMap<String, Vec<String>> = HashMap::new();
+    for model in page.into_models() {
+        let Some(reasoning) = model
+            .parameters
+            .as_ref()
+            .and_then(|parameters| parameters.reasoning.as_ref())
+            .filter(|reasoning| !reasoning.is_empty())
+        else {
+            continue;
+        };
+        levels
+            .entry(model.id.clone())
+            .or_default()
+            .clone_from(reasoning);
+        for alias in model.aliases.unwrap_or_default() {
+            levels.entry(alias).or_default().clone_from(reasoning);
+        }
+    }
+    levels
+}
+
+// --- Billing: the plan's Vibe Code budget -> an account allowance ---
+
+/// The `GET /billing/budget` response: the plan's monthly Vibe Code
+/// budget and its API counterpart. Consumer fields, the ones a plain
+/// API key reads, filter down to [`WireBudgetDetail`].
+#[derive(Debug, Clone, Deserialize)]
+pub struct WireBudget {
+    /// The Vibe plan's allowance. Absent when the key has no Vibe
+    /// subscription or the platform does not publish budgets.
+    #[serde(default)]
+    pub vibe_budget: Option<WireBudgetDetail>,
+}
+
+/// One plan budget: how much of it the month has spent and what the
+/// whole of it is.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WireBudgetDetail {
+    /// The share of the budget already spent, 0-100.
+    pub usage_percentage: f64,
+    /// The whole budget, in its own currency.
+    pub initial_budget: f64,
+    /// The ISO currency code the figures are in (`"EUR"`), when known.
+    #[serde(default)]
+    pub currency: Option<String>,
+}
+
+/// The budget's remaining spend, `"$12.34"`, in the budget's currency.
+/// `None` when the response names no usable detail, a shape drift maps
+/// to no badge, never to a wrong figure.
+pub fn allowance(budget: &WireBudget) -> Option<Allowance> {
+    let vibe = budget.vibe_budget.as_ref()?;
+    // A percentage beyond 100 (pay-as-you-go can overrun the plan) still
+    // reads as nothing left.
+    let left = (vibe.initial_budget * ((100.0 - vibe.usage_percentage) / 100.0)).max(0.0);
+    let amount = match vibe.currency.as_deref() {
+        Some("EUR") => format!("\u{20ac}{left:.2}"),
+        Some("USD") => format!("${left:.2}"),
+        Some(other) => format!("{left:.2} {other}"),
+        None => format!("{left:.2}"),
+    };
+    Some(Allowance {
+        amount,
+        kind: "vibe".to_owned(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reasoning_levels_key_ids_and_aliases_and_skip_undescribed_models() {
+        let levels = reasoning_levels(
+            serde_json::from_value(serde_json::json!([
+                {
+                    "id": "zai-glm-5-3",
+                    "aliases": ["glm-5-3"],
+                    "capabilities": {"completion_chat": true},
+                    "parameters": {"reasoning": ["low", "high", "max"]}
+                },
+                {
+                    "id": "mistral-large-4-0",
+                    "capabilities": {"completion_chat": true}
+                },
+                {
+                    "id": "blank-model",
+                    "capabilities": {"completion_chat": true},
+                    "parameters": {"reasoning": []}
+                }
+            ]))
+            .expect("the listing parses"),
+        );
+        let glm = vec!["low".to_owned(), "high".to_owned(), "max".to_owned()];
+        assert_eq!(levels.get("zai-glm-5-3"), Some(&glm));
+        assert_eq!(levels.get("glm-5-3"), Some(&glm));
+        assert!(!levels.contains_key("mistral-large-4-0"));
+        assert!(!levels.contains_key("blank-model"));
+    }
+
+    #[test]
+    fn the_budget_s_remaining_spend_carries_its_currency() {
+        use rhema_provider::Allowance;
+
+        let budget: WireBudget = serde_json::from_value(serde_json::json!({
+            "vibe_budget": {
+                "usage_percentage": 0.2276,
+                "initial_budget": 255.0,
+                "currency": "EUR",
+                "reset_at": "2026-12-01T00:00:00Z"
+            }
+        }))
+        .expect("the budget parses");
+        assert_eq!(
+            allowance(&budget),
+            Some(Allowance {
+                amount: "\u{20ac}254.42".to_owned(),
+                kind: "vibe".to_owned()
+            })
+        );
+
+        let over = serde_json::from_value(serde_json::json!({
+            "vibe_budget": {
+                "usage_percentage": 190.0,
+                "initial_budget": 30.0,
+                "currency": "USD"
+            }
+        }))
+        .expect("the budget parses");
+        assert_eq!(allowance(&over).map(|a| a.amount), Some("$0.00".to_owned()));
+
+        let none: WireBudget =
+            serde_json::from_value(serde_json::json!({})).expect("an empty budget parses");
+        assert_eq!(allowance(&none), None);
+    }
 
     fn page() -> WireModelsPage {
         serde_json::from_value(serde_json::json!([
