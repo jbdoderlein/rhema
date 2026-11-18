@@ -190,7 +190,9 @@ pub struct WireBudgetDetail {
 
 /// The budget's remaining spend, `"$12.34"`, in the budget's currency.
 /// `None` when the response names no usable detail, a shape drift maps
-/// to no badge, never to a wrong figure.
+/// to no badge, never to a wrong figure. The amount is money, unit
+/// included, so the kind stays empty: the badge drawn beside it is the
+/// money glyph already.
 pub fn allowance(budget: &WireBudget) -> Option<Allowance> {
     let vibe = budget.vibe_budget.as_ref()?;
     // A percentage beyond 100 (pay-as-you-go can overrun the plan) still
@@ -204,7 +206,7 @@ pub fn allowance(budget: &WireBudget) -> Option<Allowance> {
     };
     Some(Allowance {
         amount,
-        kind: "vibe".to_owned(),
+        kind: String::new(),
     })
 }
 
@@ -258,7 +260,7 @@ mod tests {
             allowance(&budget),
             Some(Allowance {
                 amount: "\u{20ac}254.42".to_owned(),
-                kind: "vibe".to_owned()
+                kind: String::new()
             })
         );
 

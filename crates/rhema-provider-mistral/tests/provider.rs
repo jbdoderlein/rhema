@@ -329,7 +329,7 @@ async fn the_budget_reads_the_vibe_plan_s_allowance() {
         .expect("the budget answered")
         .expect("a vibe budget is present");
     assert_eq!(allowance.amount, "\u{20ac}150.00");
-    assert_eq!(allowance.kind, "vibe");
+    assert_eq!(allowance.kind, "");
 }
 
 #[tokio::test]
