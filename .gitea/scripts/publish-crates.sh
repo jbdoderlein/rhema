@@ -175,11 +175,30 @@ check() {
 # Idempotent and rate-limit aware. crates.io caps NEW crates per rolling
 # window, and a first release publishes a dozen at once, so: skip any
 # crate whose exact version is already on the registry, tolerate the
-# version landing between check and publish, and let a rate-limited crate
-# fail the run without blocking later ones. Re-running resumes where the
-# last run stopped.
+# version landing between check and publish, and wait a rate-limited
+# crate's named window out and retry it — eight refusals give up the
+# crate, failing the run without blocking later ones, and re-running
+# resumes where the last run stopped.
+# Parses a rate-limit refusal out of cargo publish's output and sleeps
+# the window it names out: the body says "Please try again after Thu,
+# 19 Nov 2026 21:12:40 GMT". Returns nonzero when the failure is a
+# different one, so the caller only waits refusals, not real errors.
+wait_rate_limit() {
+  local when secs
+  when=$(printf '%s\n' "$1" \
+    | sed -n 's/.*try again after \(.*GMT\).*/\1/Ip' | head -1)
+  [ -n "$when" ] || return 1
+  if ! secs=$(date -d "$when" +%s 2>/dev/null); then
+    secs=$(( $(date +%s) + 600 )) # unparsed clock: one window's guess
+  fi
+  secs=$(( secs - $(date +%s) + 15 ))
+  ((secs < 30)) && secs=30
+  echo "rate-limited, sleeping ${secs}s for the window $when" >&2
+  sleep "$secs"
+}
+
 publish() {
-  local version="${1#v}" crate ok=yes out
+  local version="${1#v}" crate ok=yes out refusals
   check || {
     echo "the publish list is incomplete; nothing was uploaded" >&2
     return 1
@@ -191,14 +210,26 @@ publish() {
       continue
     fi
     echo "publishing $crate v$version ..."
-    if out=$(cargo publish -p "$crate" 2>&1); then
-      echo "$out"
-    elif echo "$out" | grep -qi "already exists\|already uploaded"; then
-      echo "$crate v$version landed between check and publish, counting as done"
-    else
-      printf '%s\n' "$out" >&2
-      ok=no
-    fi
+    refusals=0
+    until out=$(cargo publish -p "$crate" 2>&1); do
+      if echo "$out" | grep -qi "already exists\|already uploaded"; then
+        echo "$crate v$version landed between check and publish, counting as done"
+        out=
+        break
+      elif wait_rate_limit "$out"; then
+        if ((++refusals > 8)); then
+          printf '%s\n' "$out" >&2
+          ok=no
+          break
+        fi
+        echo "retrying $crate v$version after the window"
+      else
+        printf '%s\n' "$out" >&2
+        ok=no
+        break
+      fi
+    done
+    [ -n "$out" ] && echo "$out"
     sleep 5
   done
   [ "$ok" = yes ] || {
