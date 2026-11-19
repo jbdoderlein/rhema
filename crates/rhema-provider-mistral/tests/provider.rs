@@ -79,7 +79,7 @@ async fn with_api_rides_the_responses_route_with_the_bearer_key() {
             "input": [{"type": "message", "role": "user", "content": "hi"}]
         })))
         .respond_with(sse(
-            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n             data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n",
         ))
         .expect(1)
         .mount(&server)

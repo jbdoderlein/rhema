@@ -790,6 +790,17 @@ impl ResponsesAssembler {
     /// always `Role::Assistant`: the streamed text as one part, then
     /// tool calls in start order, each carrying the reasoning that led
     /// to it in its `provider_data`.
+    /// Whether a terminal event (`response.completed` /
+    /// `response.incomplete`) established why the stream stopped. A
+    /// `response.failed` fails the push outright, so this is the
+    /// completed-or-incomplete proof the drain checks before standing
+    /// the assembled output up as a result.
+    pub fn was_completed(&self) -> bool {
+        self.finish.is_some()
+    }
+
+    /// The assembled output: the streamed text, the calls in their
+    /// start order, and the usage the terminal event carried.
     pub fn finish(self) -> ModelOutput {
         let Self {
             text,
@@ -1284,6 +1295,30 @@ mod tests {
         assert_eq!(out.message.role, Role::Assistant);
         assert_eq!(out.message.content, Vec::new());
         assert_eq!(out.stop_reason, StopReason::EndTurn);
+    }
+
+    #[test]
+    fn a_terminal_event_is_the_completed_proof() {
+        // Nothing terminal, nothing completed: an empty stream never
+        // stood up as a result, the drain behind it refuses.
+        assert!(!ResponsesAssembler::new().was_completed());
+    }
+
+    #[test]
+    fn a_completed_event_is_the_completed_proof() {
+        // A terminal event seen: the drain stands the output up.
+        let mut assembler = ResponsesAssembler::new();
+        let mut sink = Collector::new();
+        assembler
+            .push(
+                event(
+                    r#"{"type":"response.completed","response":{"usage":{
+                "input_tokens":1,"output_tokens":1}}}"#,
+                ),
+                &mut sink,
+            )
+            .expect("event is not an error");
+        assert!(assembler.was_completed());
     }
 
     #[test]

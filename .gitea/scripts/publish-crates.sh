@@ -36,6 +36,9 @@ CRATES=(
   rhema-sandbox-local
   rhema-sandbox-http
   rhema-sandbox-ssh
+  rhema-sandbox-docker
+  rhema-sandbox-lxd
+  rhema-sandbox-ecrou
   rhema-transcript
   rhema-host-agent
   rhema-mcp
@@ -55,6 +58,12 @@ CRATES=(
   rhema-provider-openrouter
   rhema-provider-registry
   rhema-acp
+  rhema-websearch
+  rhema-websearch-brave
+  rhema-websearch-tavily
+  rhema-websearch-exa
+  rhema-websearch-registry
+  rhema-subagents
 )
 
 index_of() {

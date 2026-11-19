@@ -399,7 +399,9 @@ fn feed_chunk(
 /// (`response.completed` / `response.incomplete` / `response.failed`),
 /// assembling the output and emitting streaming events along the way.
 /// This wire has no `[DONE]` sentinel; one arriving from a proxy ends
-/// the stream early, with whatever has assembled standing.
+/// the stream early, with whatever has assembled standing. The bytes
+/// running out without a terminal event is a truncated stream: the
+/// drain fails as a retryable network error, never a silent stop.
 pub async fn drain_responses_stream(
     response: reqwest::Response,
     sink: &mut dyn EventSink,
@@ -429,6 +431,16 @@ pub async fn drain_responses_stream(
             break;
         }
         feed_event(&payload, &mut assembler, sink)?;
+    }
+    // The terminal event is this wire's proof the exchange ended on
+    // the server's own terms: the bytes running out without one is a
+    // truncated stream, and standing it up as a clean stop would
+    // commit the half answer. The retry ladder sees a retryable
+    // network failure and re-issues instead.
+    if !assembler.was_completed() {
+        return Err(ProviderError::Network(
+            "the responses stream ended without its terminal event".to_owned(),
+        ));
     }
     Ok(assembler.finish())
 }
