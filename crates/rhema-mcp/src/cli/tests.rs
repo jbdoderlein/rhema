@@ -86,7 +86,8 @@ fn media_blocks_become_files_or_placeholders() {
         "content": [
             {"type": "text", "text": "here"},
             {"type": "image", "data": encoded, "mimeType": "image/png"},
-            {"type": "image", "data": "not-base64!!", "mimeType": "image/svg+xml"},
+            {"type": "image", "data": "not-base64!!", "mimeType": "image/png"},
+            {"type": "image", "data": encoded, "mimeType": "image/svg+xml"},
             {"type": "resource_link", "uri": "file:///x"}
         ]
     });
@@ -110,20 +111,32 @@ fn media_blocks_become_files_or_placeholders() {
         assert_eq!(file_mode, 0o600, "media bytes stay private");
         assert_eq!(dir_mode, 0o700, "the media dir stays private");
     }
-    // The undecodable payload decodes to nothing: the placeholder
-    // reports the decoded count, honestly zero.
+    // A payload that does not decode is omitted and said so, never
+    // staged as a zero-byte png.
     assert!(
         content[2]
             .get("text")
             .unwrap()
             .as_str()
             .unwrap()
-            .contains("0 bytes"),
-        "unknown mime becomes a placeholder: {}",
+            .contains("does not decode"),
+        "an undecodable payload becomes a placeholder: {}",
         content[2]
     );
+    // A decodable payload the media dir cannot name still degrades to
+    // a placeholder with the decoded count.
+    assert!(
+        content[3]
+            .get("text")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .contains(&format!("{} bytes", png_bytes.len())),
+        "an unknown mime becomes a placeholder: {}",
+        content[3]
+    );
     assert_eq!(
-        content[3],
+        content[4],
         json!({"type": "resource_link", "uri": "file:///x"})
     );
 }

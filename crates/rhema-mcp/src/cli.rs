@@ -443,9 +443,16 @@ fn substitute_media(envelope: &mut Value, env: &CliEnv) {
         }
         let mime = block.get("mimeType").and_then(Value::as_str).unwrap_or("");
         let data = block.get("data").and_then(Value::as_str).unwrap_or("");
-        let bytes = base64::engine::general_purpose::STANDARD
-            .decode(data)
-            .unwrap_or_default();
+        // A payload the decoder refuses is a server bug or a truncated
+        // envelope, never a zero-byte image staged as a successful
+        // round trip: omit the block and say so.
+        let Some(bytes) = base64::engine::general_purpose::STANDARD.decode(data).ok() else {
+            *block = json!({
+                "type": "text",
+                "text": format!("[{kind} ({mime}) omitted: the payload does not decode]"),
+            });
+            continue;
+        };
         let count = bytes.len();
         let written = env.tmp.as_ref().and_then(|tmp| {
             let ext = media_ext(mime)?;
