@@ -2775,15 +2775,31 @@ fn a_full_steer_queue_refuses_the_nudge_and_keeps_the_line() {
         let effects = h.app.steer_turn(h.app.chat.input.clone());
         assert_eq!(effects.len(), 1, "queued nudge {i} still steers");
     }
-    // The queue is full: the next nudge returns to the input.
+    // The queue is full: the next nudge returns to the input untouched,
+    // cursor where it was.
     h.app.chat.input = "one too many".into();
+    h.app.chat.cursor = "one too many".chars().count();
     let effects = h.app.steer_turn("one too many".into());
     assert!(effects.is_empty(), "a full queue refuses: {effects:?}");
     assert_eq!(h.app.chat.input, "one too many");
     assert_eq!(
         h.app.chat.cursor,
         "one too many".chars().count(),
-        "the cursor rides the restored line"
+        "the cursor stays where the line left it"
+    );
+
+    // A paste rides an anchor: the refusal keeps the marked form and
+    // its chip, not the expanded text with the payload stranded.
+    let marked = format!("look at {} here", ChatState::MARK);
+    h.app.chat.input = marked.clone();
+    h.app.chat.chips = vec![crate::screens::Chip::Paste("the hidden payload".to_owned())];
+    let effects = h.app.steer_turn("look at the hidden payload here".into());
+    assert!(effects.is_empty());
+    assert_eq!(h.app.chat.input, marked, "the anchors stay");
+    assert!(
+        matches!(h.app.chat.chips.as_slice(), [crate::screens::Chip::Paste(paste)] if paste == "the hidden payload"),
+        "the chip still holds its payload: {:?}",
+        h.app.chat.chips
     );
 }
 

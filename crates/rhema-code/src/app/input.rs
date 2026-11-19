@@ -788,13 +788,15 @@ impl App {
     /// past task exit loses the race and the text waits in the input
     /// the same way.
     pub(crate) fn steer_turn(&mut self, text: String) -> Vec<Effect> {
-        // A full queue refuses the nudge: the line goes back into the
-        // input, so nothing is lost and nothing invisible queues up.
+        // A full queue refuses the nudge: the line stays in the input
+        // exactly as it was typed, cursor and all, so nothing is lost
+        // and nothing invisible queues up. The expanded form never
+        // goes back: `text` has the paste payloads spliced over their
+        // anchors, and writing it in would strand the payloads in
+        // `chips` with no anchor left to carry them.
         if let Some(steer) = &self.turn.steer
             && steer.try_send(text.clone()).is_err()
         {
-            self.chat.input = text;
-            self.chat.cursor = self.chat.input.chars().count();
             return Vec::new();
         }
         self.chat.input.clear();
