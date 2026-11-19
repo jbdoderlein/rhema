@@ -142,6 +142,40 @@ async fn streams_sse_into_events_and_an_assembled_output() {
 }
 
 #[tokio::test]
+async fn a_stream_cut_before_its_finish_reason_fails_the_turn() {
+    // Text streams, then the connection drops: the chunk carries no
+    // `finishReason`. The old leniency stood the partial answer up as
+    // a clean EndTurn; now the truncation is a retryable failure.
+    let server = MockServer::start().await;
+    let body = "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"par\"}]}}]}\n\n\
+                data: {\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":1}}\n\n";
+    Mock::given(method("POST"))
+        .and(path("/models/gemini-2.5-flash:streamGenerateContent"))
+        .and(query_param("alt", "sse"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(body),
+        )
+        .mount(&server)
+        .await;
+
+    let provider = GoogleProvider::new("test-key").with_base_url(server.uri());
+    let mut sink = Collector(vec![]);
+    let err = provider
+        .complete(
+            request("gemini-2.5-flash", vec![Message::text(Role::User, "hi")]),
+            &mut sink,
+        )
+        .await
+        .expect_err("a stream cut before its finishReason must fail");
+    assert!(
+        matches!(err, ProviderError::Network(ref message) if message.contains("without its finishReason")),
+        "the truncation error is propagated: {err:?}"
+    );
+}
+
+#[tokio::test]
 async fn a_non_2xx_response_maps_to_an_api_error_with_the_body_message() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

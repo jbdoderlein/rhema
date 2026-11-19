@@ -647,7 +647,10 @@ impl PartNormalizer {
 /// last non-empty one); the last value seen wins. When the assembled message
 /// contains function calls, the effective stop reason is
 /// [`StopReason::ToolUse`] regardless of the wire value, Gemini reports
-/// `STOP` for tool-call turns.
+/// `STOP` for tool-call turns. A `finishReason` (or a refused prompt's
+/// `blockReason`) is the stream's terminal proof; a drain that ends
+/// without one refuses the stream instead of standing the half answer
+/// up as a result.
 #[derive(Debug, Default)]
 pub struct ChunkAssembler {
     normalizer: PartNormalizer,
@@ -745,6 +748,14 @@ impl ChunkAssembler {
             }
         }
         Ok(())
+    }
+
+    /// Whether a chunk carried this wire's terminal proof: the last
+    /// chunk's `finishReason`, or a `promptFeedback.blockReason` for a
+    /// prompt the server refused. The drain checks it before standing
+    /// the assembled output up as a result.
+    pub fn saw_terminal(&self) -> bool {
+        self.finish_reason.is_some() || self.blocked.is_some()
     }
 
     /// Consumes the assembler into the final output. The message is always
@@ -1642,6 +1653,42 @@ mod tests {
                 cached_input_tokens: 3,
             }
         );
+    }
+
+    #[test]
+    fn a_finish_reason_or_block_is_the_terminal_proof() {
+        let mut assembler = ChunkAssembler::new();
+        let mut sink = Collector::new();
+        assert!(!assembler.saw_terminal());
+        assembler
+            .push(
+                chunk("{\"promptFeedback\":{\"blockReason\":\"SAFETY\"}}"),
+                &mut sink,
+            )
+            .expect("chunk is not an error");
+        assert!(assembler.saw_terminal());
+
+        let mut assembler = ChunkAssembler::new();
+        let mut sink = Collector::new();
+        // A text chunk with no finishReason is stream-middle, not the
+        // end: the drain behind the assembler refuses here.
+        assembler
+            .push(
+                chunk(concat!(
+                    "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":",
+                    "[{\"text\":\"half\"}]}}]}"
+                )),
+                &mut sink,
+            )
+            .expect("chunk is not an error");
+        assert!(!assembler.saw_terminal());
+        assembler
+            .push(
+                chunk("{\"candidates\":[{\"finishReason\":\"STOP\"}]}"),
+                &mut sink,
+            )
+            .expect("chunk is not an error");
+        assert!(assembler.saw_terminal());
     }
 
     #[test]

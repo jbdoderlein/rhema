@@ -186,7 +186,9 @@ impl ModelProvider for GoogleProvider {
     /// cannot map onto the wire, [`ProviderError::Network`]/[`ProviderError::Timeout`]
     /// when the transport fails, [`ProviderError::Api`] with the HTTP
     /// status on a non-2xx response, and [`ProviderError::Api`] without
-    /// one on a malformed stream chunk or a mid-stream error chunk.
+    /// one on a malformed stream chunk or a mid-stream error chunk, and
+    /// [`ProviderError::Network`] when the stream closes before its
+    /// terminal chunk.
     async fn complete(
         &self,
         req: ModelRequest,
@@ -244,6 +246,17 @@ impl ModelProvider for GoogleProvider {
         }
         for payload in payloads {
             feed_chunk(&payload, &mut assembler, sink)?;
+        }
+        // The final chunk's `finishReason` (or a refused prompt's
+        // `blockReason`) is this wire's proof the exchange ended on the
+        // server's own terms: the bytes running out before one is a
+        // truncated stream, and standing it up as a clean stop would
+        // commit the half answer. The retry ladder sees a retryable
+        // network failure and re-issues instead.
+        if !assembler.saw_terminal() {
+            return Err(ProviderError::Network(
+                "the gemini stream ended without its finishReason".to_owned(),
+            ));
         }
         Ok(assembler.finish())
     }
