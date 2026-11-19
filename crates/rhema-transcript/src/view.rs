@@ -1130,11 +1130,18 @@ impl Transcript {
                     if pinned.contains(name) {
                         continue;
                     }
+                    // A claim rides only with its body: the pin map
+                    // tells a later re-read this section carries the
+                    // skill verbatim, so a skill the discovery no
+                    // longer holds is dropped from the union's claim
+                    // rather than promised here while its text stays
+                    // behind in the digest. The log keeps the read;
+                    // a restored skill re-pins on its next read.
                     if let Some(skill) = self.skills.iter().find(|skill| &skill.name == name) {
                         text.push_str("\n\n");
                         text.push_str(&compact::skill_section_text(name, &skill.body));
+                        pinned.push(name.clone());
                     }
-                    pinned.push(name.clone());
                 }
             }
             self.sections.drain(..2);
@@ -1917,6 +1924,64 @@ mod tests {
                 ));
             }
         }
+    }
+
+    #[test]
+    fn a_merge_drops_a_pin_the_discovery_no_longer_holds() {
+        // The pin map tells a re-read where a skill's body rides whole.
+        // A merge that digests the body away while the discovery no
+        // longer holds the skill must drop the claim too, or the map
+        // points at a section that carries no body.
+        let mut transcript = Transcript::new(TranscriptSettings {
+            max_view_bytes: 40_000,
+            step_bytes: 4_000,
+            max_block_bytes: 1_000,
+            ..TranscriptSettings::default()
+        });
+        transcript.set_skills(vec![SkillText {
+            name: "unslop".into(),
+            body: skill_body("unslop", 40),
+        }]);
+        let mut messages = vec![Message::text(Role::User, "fix the build")];
+        messages.extend(skill_round("s1", "unslop", 40));
+        messages.extend(long_history(6));
+        messages.push(Message::text(Role::User, "and now summarize"));
+        transcript.observe(&messages);
+        let pending = transcript.plan_flush();
+        drop(pending);
+        assert!(
+            transcript
+                .sections
+                .iter()
+                .any(|section| section.pinned.iter().any(|name| name == "unslop")),
+            "the fixture must pin the skill first"
+        );
+
+        // The skill leaves the discovery, the session grows past the
+        // block cap again, and the consolidating merge has nothing to
+        // re-append.
+        transcript.set_skills(Vec::new());
+        let mut messages2 = messages;
+        messages2.extend(long_history(6));
+        messages2.push(Message::text(Role::User, "carry on"));
+        transcript.observe(&messages2);
+        let pending = transcript.plan_flush();
+        drop(pending);
+        assert!(
+            transcript.stats.consolidations > 0,
+            "the fixture must consolidate the merge"
+        );
+        assert!(
+            transcript
+                .sections
+                .iter()
+                .all(|section| !section.pinned.iter().any(|name| name == "unslop")),
+            "a claim without its body is a lie"
+        );
+        // The map rebuilds from the committed claims, so the next
+        // flush's pointers cannot name the bodyless union.
+        transcript.observe(&messages2);
+        assert!(!transcript.pinned.contains_key("unslop"));
     }
 
     #[test]
