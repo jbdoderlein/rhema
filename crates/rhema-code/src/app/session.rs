@@ -515,6 +515,14 @@ impl App {
     /// what they saw, and the frontend writes it at the next point it
     /// owns the agent. The load-time `adopt` covers this window when the
     /// process dies before one.
+    ///
+    /// The same drain settles the subagent finishes the registry
+    /// delivered, a notification line taken or a report fetched: a
+    /// record left `Running` reconciles at every future load as one
+    /// the process died before announcing, so a resumed session
+    /// announces a finish the model already answered, unprompted, as
+    /// new. A crash before the delivery still re-announces at load,
+    /// which is the durable path.
     pub(crate) fn drain_submission_writes(&mut self) {
         // Nothing to write with while a turn owns the agent: the starts
         // stay in the queues for the next point that does.
@@ -540,6 +548,62 @@ impl App {
                 ) && rhema_submissions::start(agent.session_mut(), &record.id, at, None).is_ok()
                 {
                     changed = true;
+                }
+            }
+            // The finishes the registry delivered settle their records,
+            // oldest retirement first. A restart's second finish finds
+            // a record the first one already took to `Failed`: `retry`
+            // re-arms a retryable one the way the restart re-ran the
+            // work, then the settle lands.
+            let settled = handle.take_settled();
+            if !settled.is_empty() {
+                let running: Vec<(
+                    rhema_submissions::SubmissionId,
+                    rhema_session_store::SessionId,
+                )> = rhema_submissions::snapshot(agent.session())
+                    .map(|snapshot| {
+                        snapshot
+                            .iter()
+                            .filter(|record| {
+                                record.kind.as_str() == rhema_subagents::kind::NAME
+                                    && record.status == rhema_submissions::Status::Running
+                            })
+                            .filter_map(|record| {
+                                serde_json::from_value::<rhema_subagents::Payload>(
+                                    record.payload.clone(),
+                                )
+                                .ok()
+                                .map(|payload| (record.id.clone(), payload.child))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                for finish in settled {
+                    let Some((id, _)) = running.iter().find(|(_, child)| child == &finish.child)
+                    else {
+                        continue;
+                    };
+                    let at = rhema_submissions::now();
+                    let mut settled = rhema_submissions::settle(
+                        agent.session_mut(),
+                        id,
+                        finish.outcome.clone(),
+                        at,
+                    );
+                    if settled.is_err() {
+                        // The transient failure the restart re-ran: the
+                        // re-arm `retry` promises, then the settle.
+                        rhema_submissions::retry(agent.session_mut(), id, at).ok();
+                        settled = rhema_submissions::settle(
+                            agent.session_mut(),
+                            id,
+                            finish.outcome.clone(),
+                            at,
+                        );
+                    }
+                    if settled.is_ok() {
+                        changed = true;
+                    }
                 }
             }
         }

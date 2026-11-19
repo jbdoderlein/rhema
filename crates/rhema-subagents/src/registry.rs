@@ -56,6 +56,8 @@ use std::time::{Duration, Instant};
 
 use rhema_core::Usage;
 use rhema_host_agent::Steering;
+use rhema_session_store::SessionId;
+use rhema_submissions::Outcome;
 
 /// How many top-level jobs run at once when the constructor knob is
 /// not set.
@@ -291,6 +293,10 @@ enum State {
 #[derive(Debug)]
 struct Job {
     name: String,
+    /// The child session the job writes to, known once the start is
+    /// announced: the retirements queue the ledger settle for it.
+    /// `None` before that, and for a start the registry never saw.
+    child: Option<SessionId>,
     /// The mint order: status lines and notifications come out oldest
     /// first, not lexicographically by id.
     seq: u64,
@@ -339,6 +345,11 @@ struct RegistryInner {
     /// child that ended while the parent was down, adopted at load. They
     /// ride the steering drain or the idle take, whichever lands first.
     extra: Vec<String>,
+    /// Children whose finishes the registry retired, oldest first: the
+    /// delivery (a prompt line taken) or the consumption (a report
+    /// fetched) that lets the ledger's record settle. Drained by the
+    /// frontend beside its session writes.
+    settled: Vec<Settled>,
 }
 
 impl Registry {
@@ -353,6 +364,7 @@ impl Registry {
                 dropped: 0,
                 starts: Vec::new(),
                 extra: Vec::new(),
+                settled: Vec::new(),
             }),
             permits: Arc::new(tokio::sync::Semaphore::new(max_running.max(1))),
         }
@@ -377,6 +389,7 @@ impl Registry {
             id.clone(),
             Job {
                 name: name.to_owned(),
+                child: None,
                 seq,
                 cancel: cancel.clone(),
                 started_at: Instant::now(),
@@ -388,10 +401,15 @@ impl Registry {
     }
 
     /// Records a start the parent's ledger has not written: the child
-    /// session and the recipe a record needs. Drained by the frontend
+    /// session and the recipe a record needs, and the child against
+    /// the job for the retirements' settles. Drained by the frontend
     /// at its next commit, and redundant with `adopt` if it never is.
-    pub(crate) fn announce_start(&self, started: Started) {
-        self.lock().starts.push(started);
+    pub(crate) fn announce_start(&self, id: &str, started: Started) {
+        let mut inner = self.lock();
+        if let Some(job) = inner.jobs.get_mut(id) {
+            job.child = Some(started.child.clone());
+        }
+        inner.starts.push(started);
     }
 
     /// Takes the pending starts out, oldest first. The frontend submits
@@ -510,11 +528,21 @@ impl Registry {
             },
         };
         // The fetch retires the job: its UI line leaves, its
-        // announcements stop. A Busy fetch retires nothing.
+        // announcements stop, and the consumption queues the settle
+        // unless the delivery retired the job first, the announced
+        // flag says which came first. A Busy fetch retires nothing.
+        let mut queue = false;
         if !matches!(fetched_state, Fetched::Busy { .. })
-            && let State::Finished { fetched, .. } = &mut job.state
+            && let Some(job) = inner.jobs.get_mut(id)
+            && let State::Finished {
+                announced, fetched, ..
+            } = &mut job.state
         {
+            queue = !*announced;
             *fetched = true;
+        }
+        if queue {
+            queue_settle(&mut inner, id);
         }
         fetched_state
     }
@@ -536,11 +564,14 @@ impl Registry {
 
     /// Takes the pending notification lines out, oldest first, marking
     /// each taken job announced: its line stops announcing here and in
-    /// the [`Steering`] drain. The frontend's idle path, a session
-    /// with no running turn runs the lines as the next turn's prompt,
-    /// and this take keeps the driver's turn-start drain from
-    /// repeating what the prompt already said. While a turn runs, the
-    /// lines belong to the driver's steering: do not call this.
+    /// the [`Steering`] drain, and the retirement queues the settle
+    /// [`take_settled`] hands the frontend, a delivered finish is the
+    /// point the ledger's record may stop saying `Running`. The
+    /// frontend's idle path, a session with no running turn runs the
+    /// lines as the next turn's prompt, and this take keeps the
+    /// driver's turn-start drain from repeating what the prompt
+    /// already said. While a turn runs, the lines belong to the
+    /// driver's steering: do not call this.
     pub(crate) fn take_notifications(&self) -> Vec<String> {
         let mut inner = self.lock();
         let mut taken: Vec<(u64, String, String)> = inner
@@ -561,11 +592,23 @@ impl Registry {
                 && let State::Finished { announced, .. } = &mut job.state
             {
                 *announced = true;
+                queue_settle(&mut inner, id);
             }
         }
         let mut lines: Vec<String> = taken.into_iter().map(|(_, _, line)| line).collect();
         lines.append(&mut inner.extra);
         lines
+    }
+
+    /// Takes the children whose finishes the registry retired — each
+    /// line a prompt delivered, or a report the model fetched — with
+    /// the ledger outcome the record settles to. The frontend drains
+    /// this beside its session writes: a finish left `Running` in the
+    /// ledger reads at every future load as one the process died
+    /// before it answered, and a resumed session re-announces it as
+    /// new. Empty after a drain.
+    pub fn take_settled(&self) -> Vec<Settled> {
+        std::mem::take(&mut self.lock().settled)
     }
 
     /// Takes the finish events out, oldest first, one per job,
@@ -729,6 +772,46 @@ impl Drop for Registry {
         for job in self.lock().jobs.values() {
             job.cancel.store(true, Ordering::Relaxed);
         }
+    }
+}
+
+/// One finished child the frontend's ledger settles: the delivery of
+/// a finish — a prompt line taken, a report fetched — is the point the
+/// record may stop saying `Running`, because the model answered it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Settled {
+    /// The child session the record's payload names.
+    pub child: SessionId,
+    /// The outcome `settle` writes: a report is `Done`, a failure
+    /// carries its reason and the restart ladder's own class.
+    pub outcome: Outcome,
+}
+
+/// Queues the settle the retirement of a finished job owes its ledger
+/// record: the child the start announced, with the outcome the settle
+/// writes. Nothing for a job without a child — its work was never
+/// recorded, so nothing settles. Called after the retiring flag
+/// flipped, from exactly one retirement per finish.
+fn queue_settle(inner: &mut RegistryInner, id: &str) {
+    let settle = match inner.jobs.get(id) {
+        Some(Job {
+            child: Some(child),
+            state: State::Finished { outcome, .. },
+            ..
+        }) => Some(Settled {
+            child: child.clone(),
+            outcome: match outcome {
+                Ok(_) => Outcome::Done,
+                Err(failure) => Outcome::Failed {
+                    error: failure.reason().to_owned(),
+                    retryable: failure.is_transient(),
+                },
+            },
+        }),
+        _ => None,
+    };
+    if let Some(settle) = settle {
+        inner.settled.push(settle);
     }
 }
 
@@ -1010,6 +1093,105 @@ mod tests {
                 report: "the report".into()
             }
         );
+    }
+
+    #[test]
+    fn a_delivered_finish_queues_its_childs_settle() {
+        let registry = registry();
+        let job = registry.mint("scout");
+        arm(&registry, &job.id);
+        registry.announce_start(
+            &job.id,
+            Started {
+                child: SessionId::new("child-1").expect("the id is valid"),
+                def: "scout".into(),
+                prompt: "go".into(),
+                model: None,
+            },
+        );
+        registry.finish(&job.id, Ok("the report".to_owned()));
+        assert!(
+            registry.take_settled().is_empty(),
+            "a finish no one             delivered settles nothing: the load's re-announce is the \
+            durable path for a crash here"
+        );
+        // The idle take delivers the line, and the delivery settles.
+        assert_eq!(
+            registry.take_notifications(),
+            vec!["Subagent scout (job-1) has finished.".to_owned()]
+        );
+        assert_eq!(
+            registry.take_settled(),
+            vec![Settled {
+                child: SessionId::new("child-1").expect("the id is valid"),
+                outcome: Outcome::Done
+            }]
+        );
+        assert!(registry.take_settled().is_empty(), "the settle is once");
+        // A later fetch is the consumption of a delivered finish: no
+        // second settle.
+        assert_eq!(
+            registry.fetch(&job.id),
+            Fetched::Report {
+                name: "scout".into(),
+                report: "the report".into()
+            }
+        );
+        assert!(registry.take_settled().is_empty());
+    }
+
+    #[test]
+    fn a_fetched_report_delivers_the_settle_itself() {
+        let registry = registry();
+        let job = registry.mint("scout");
+        arm(&registry, &job.id);
+        registry.announce_start(
+            &job.id,
+            Started {
+                child: SessionId::new("child-2").expect("the id is valid"),
+                def: "scout".into(),
+                prompt: "go".into(),
+                model: None,
+            },
+        );
+        let failure = JobFailure::Transient("the link died".to_owned());
+        registry.finish(&job.id, Err(failure));
+        // No idle take ever lands; the model fetches directly.
+        assert_eq!(
+            registry.fetch(&job.id),
+            Fetched::Failed {
+                name: "scout".into(),
+                reason: "the link died".into()
+            }
+        );
+        assert_eq!(
+            registry.take_settled(),
+            vec![Settled {
+                child: SessionId::new("child-2").expect("the id is valid"),
+                outcome: Outcome::Failed {
+                    error: "the link died".to_owned(),
+                    retryable: true
+                }
+            }]
+        );
+        assert!(
+            registry.take_notifications().is_empty(),
+            "the fetch retired the line along with the settle"
+        );
+    }
+
+    #[test]
+    fn a_job_without_a_child_queues_no_settle() {
+        let registry = registry();
+        let job = registry.mint("scout");
+        registry.finish(&job.id, Ok("the report".to_owned()));
+        assert_eq!(
+            registry.take_notifications(),
+            vec!["Subagent scout (job-1) has finished.".to_owned()]
+        );
+        // A start the registry never saw recorded no record, so the
+        // delivery settles nothing.
+        assert!(registry.take_settled().is_empty());
     }
 
     #[test]

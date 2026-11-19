@@ -117,6 +117,15 @@ impl SubagentHandle {
         self.registry.take_notifications()
     }
 
+    /// Takes the children whose finishes the frontend delivered — a
+    /// prompt line taken, a report fetched — with the outcome the
+    /// ledger record settles to. Drained beside the session writes,
+    /// so a finish the model answered never reads at a load as one
+    /// the process died before it could announce. Empty after a drain.
+    pub fn take_settled(&self) -> Vec<crate::registry::Settled> {
+        self.registry.take_settled()
+    }
+
     /// The registry as the driver's steering source: one notification
     /// line per finished-but-untaken job, per drain. Set this on
     /// `HostAgentConfig::steering`, it is already set by [`wire`];

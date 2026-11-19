@@ -1076,12 +1076,15 @@ impl SubagentTools {
             child: child.clone(),
         };
         if let Some(child) = child {
-            registry.announce_start(crate::registry::Started {
-                child,
-                def: def.name.clone(),
-                prompt: prompt.to_owned(),
-                model: model.map(str::to_owned),
-            });
+            registry.announce_start(
+                &minted.id,
+                crate::registry::Started {
+                    child,
+                    def: def.name.clone(),
+                    prompt: prompt.to_owned(),
+                    model: model.map(str::to_owned),
+                },
+            );
         }
         registry.arm_restart(&minted.id, rerun.clone());
         let id = minted.id.clone();

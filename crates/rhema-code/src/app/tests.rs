@@ -7930,3 +7930,136 @@ fn a_job_the_poller_saw_start_becomes_one_running_record() {
         rhema_submissions::Status::Done
     );
 }
+
+/// A finish the session already delivered settles the subagent's
+/// record without waiting for a load: a record left running
+/// reconciles at every future load as one the process died before
+/// announcing, so a resumed session announces a finish the model
+/// already answered, unprompted. The drain that wrote the start
+/// settles the delivery, and the same session's reconcile announces
+/// nothing.
+#[tokio::test]
+async fn a_delivered_subagent_finish_settles_before_the_save() {
+    use rhema_core::{EventSink, ProviderError};
+    use rhema_session_store::SessionId;
+
+    /// Answers one report and ends.
+    struct Report;
+
+    #[async_trait::async_trait]
+    impl ModelProvider for Report {
+        async fn complete(
+            &self,
+            _req: rhema_core::ModelRequest,
+            _sink: &mut dyn EventSink,
+        ) -> Result<rhema_core::ModelOutput, ProviderError> {
+            Ok(rhema_core::ModelOutput {
+                message: Message::text(Role::Assistant, "the report"),
+                stop_reason: StopReason::EndTurn,
+                usage: Usage::default(),
+            })
+        }
+    }
+
+    let mut h = harness(Some("key"), Some("m"), Session::default());
+    let workspace = crate::args::canonical(&h.app.options.workspace);
+    let store = rhema_session_store_file::FileStore::scoped(h.sessions.path(), &workspace);
+    let parent = SessionId::new(h.app.jobs_tag.clone()).unwrap();
+    let tools = {
+        let shell = Arc::new(rhema_host_agent::ShellTools::new(std::env::temp_dir()));
+        let def = rhema_subagents::SubagentDef {
+            name: "scout".into(),
+            description: "looks around".into(),
+            model: None,
+            max_steps: None,
+            body: "Look.".into(),
+        };
+        Arc::new(rhema_subagents::SubagentTools::new(
+            Arc::new(Report),
+            vec![def],
+            shell,
+            "m",
+        ))
+    };
+    tools.attach_store(Arc::new(store.clone()), parent.clone());
+    h.app.subagents = Some(tools.handle());
+    let _ = rhema_core::ToolResolver::resolve(
+        tools.as_ref(),
+        ToolCall {
+            id: "c1".into(),
+            name: "subagent".into(),
+            args: serde_json::json!({"name": "scout", "prompt": "look"}),
+            ..ToolCall::default()
+        },
+        &rhema_core::ToolContext::default(),
+    )
+    .await;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !h.app.subagents.as_ref().unwrap().status().is_empty() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the job never finished"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    // The live finish cards once, the transcript notice the on_tick
+    // take would push.
+    let events = h.app.subagents.as_ref().unwrap().take_finished();
+    assert_eq!(
+        events.as_slice(),
+        [rhema_subagents::JobFinished {
+            id: "job-1".into(),
+            name: "scout".into(),
+            line: "Subagent scout (job-1) has finished.".into(),
+        }],
+        "the finish events carry the Scout's line"
+    );
+
+    // The drain writes the start record; the notification's delivery
+    // is the on_tick idle take.
+    h.app.drain_submission_writes();
+    let snapshot = rhema_submissions::snapshot(h.app.agent.as_ref().unwrap().session()).unwrap();
+    let record = snapshot.newest().expect("the start wrote a record");
+    assert_eq!(record.kind.as_str(), "subagent");
+    assert_eq!(record.status, rhema_submissions::Status::Running);
+    let lines = h.app.subagents.as_ref().unwrap().take_notifications();
+    assert_eq!(
+        lines,
+        vec!["Subagent scout (job-1) has finished.".to_owned()]
+    );
+
+    // The delivered finish settles on the next drain, the one the exit
+    // save follows.
+    h.app.drain_submission_writes();
+    let snapshot = rhema_submissions::snapshot(h.app.agent.as_ref().unwrap().session()).unwrap();
+    let record = snapshot.newest().expect("the record persists");
+    assert_eq!(
+        record.status,
+        rhema_submissions::Status::Done,
+        "the delivery settles the record"
+    );
+    assert!(matches!(
+        record.outcome,
+        Some(rhema_submissions::Outcome::Done)
+    ));
+
+    // The load's reconcile of the settled session finds nothing to
+    // announce: a resume does not tell the model about a finish it
+    // answered. The finish feed stays empty, the record stays Done.
+    let mut kinds = rhema_submissions::Kinds::new().with(Arc::new(rhema_submissions::turn::Turn));
+    kinds = kinds.with(Arc::new(rhema_subagents::SubagentKind::new(
+        Arc::new(store.clone()) as Arc<dyn rhema_session_store::SessionStore>,
+        parent.clone(),
+    )));
+    let agent = h.app.agent.as_mut().unwrap();
+    let changes =
+        rhema_submissions::reconcile(agent.session_mut(), &kinds, rhema_submissions::now())
+            .unwrap();
+    assert!(changes.is_empty(), "the settled record announces nothing");
+    let final_events = h.app.subagents.as_ref().unwrap().take_finished();
+    assert!(
+        final_events.is_empty(),
+        "no finish is re-announced: {final_events:?}"
+    );
+}
