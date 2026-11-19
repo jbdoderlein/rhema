@@ -86,11 +86,52 @@ manifest_edges() {
     section ~ /dependencies\]$/ && /path *=/ {
       name = $0
       sub(/[[:space:]]*=.*/, "", name)
-      kind = (/version *=/ ? "versioned" : "path-only")
+      req = ""
+      if (match($0, /version *= *"[^"]+"/)) {
+        req = substr($0, RSTART, RLENGTH)
+        sub(/^version *= *"/, "", req)
+        sub(/"$/, "", req)
+      }
+      kind = (req != "" ? "versioned@" req : "path-only")
       if (section ~ /dev-dependencies/) kind = "dev-" kind
       print name, kind
     }
   ' "$1"
+}
+
+# An in-tree dependency's version requirement is typed by hand: every
+# crate's own version inherits `version.workspace = true` from the root
+# manifest, but the `version = "0.3.0"` on the dependency lines does not.
+# A bump that misses one string is invisible to every build (the path
+# wins silently), and at `cargo publish` the requirement resolves against
+# a previous release of the dependency instead of the one that ships.
+# Exact sync with the workspace version is the repo invariant; this
+# checks it over the whole tree, not only the publish list, so the
+# miss fails the push, not the tag release.
+versioned_requirements_match() {
+  local crate dep kind req stripped tag_version bad=0
+  tag_version="$(awk -F'"' '/^version =/{print $2; exit}' Cargo.toml)"
+  while read -r crate dep kind; do
+    req="${kind#*@}"
+    stripped="${req#^}"
+    stripped="${stripped#[>=<~]}"
+    if [ "$stripped" != "$tag_version" ]; then
+      echo "$crate requires $dep at \"$req\" but the workspace version is $tag_version" >&2
+      bad=1
+    fi
+  done < <(
+    for manifest in crates/*/Cargo.toml; do
+      crate="${manifest#crates/}"
+      crate="${crate%/Cargo.toml}"
+      manifest_edges "$manifest" |
+        while read -r dep kind; do
+          case "$kind" in
+            versioned@* | dev-versioned@*) echo "$crate $dep $kind" ;;
+          esac
+        done
+    done
+  )
+  return "$bad"
 }
 
 check() {
@@ -110,7 +151,7 @@ check() {
     at=$(index_of "$crate")
     while read -r dep kind; do
       case "$kind" in
-        versioned | dev-versioned) needs_registry=yes ;;
+        versioned@* | dev-versioned@*) needs_registry=yes ;;
         *) needs_registry=no ;;
       esac
       if [ "$needs_registry" = yes ]; then
@@ -127,6 +168,7 @@ check() {
       fi
     done < <(manifest_edges "$manifest")
   done
+  versioned_requirements_match || bad=1
   return "$bad"
 }
 
