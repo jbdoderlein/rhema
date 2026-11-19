@@ -207,6 +207,7 @@ impl Sandbox for DockerSandbox {
         );
         let child = tokio::process::Command::new(&argv[0])
             .args(&argv[1..])
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             // The explicit kill below is the mechanism on cancel; the
