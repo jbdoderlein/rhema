@@ -59,7 +59,7 @@ custom:                # the custom palette's tokens (#RRGGBB), optional
     ground: "#EFF1F5"
 ```
 
-`background: native` hands the page's fills back to the terminal: panes, dialogs, and the transcript well paint nothing, so your theme's own background shows through and rhema colors only the ink (text, borders, accents, code-block markers) and the prompt bubbles' frames, the protocol card still backs the bubbles there, its translucent tint compositing over whatever ground the terminal keeps, but the page's own panels stay ink-only. The default `background: rhema` paints the palette's fills, the design the palettes were drawn for. The toggle is live from the Appearance page of `/settings` (the `b` key), like the theme and icons ones.
+`background: native` hands the page's fills back to the terminal: panes, dialogs, and the transcript well paint nothing, so your theme's own background shows through and rhema colors only the ink (text, borders, accents, code-block markers) and the prompt bubbles' frames, the protocol card still backs the bubbles there, its translucent tint compositing over whatever ground the terminal keeps, but the page's own panels stay ink-only. The default `background: native` hands the page's fills back to the terminal; `background: rhema` paints the palette's fills, the design the palettes were drawn for. The toggle is live from the Appearance page of `/settings` (the `b` key), like the theme and icons ones.
 
 `cursor` picks the input caret's shape: `default` leaves the terminal's cursor alone, which keeps the shape your shell left in place (a line at a prompt under shell integration), `block` asks for a steady block, `line` for a steady bar (`|`), and `underline` for a steady underscore (`_`). The choice cycles live from the Appearance page (`enter` or the `s` key) and is written back to the config. A terminal without support for DECSCUSR ignores the request and keeps its own cursor.
 
@@ -129,7 +129,7 @@ Skills are folders holding a `SKILL.md` whose frontmatter `description` is the t
 
 Rhema bundles two skills, `commit-message` and `unslop`, and seeds them into the global skills directory on start. A bundled skill you have edited is left alone, and a folder of the same name shadows it like any other. Toggle skills on and off from the Skills page (`enter`/`space`) or at onboarding; a switched-off skill's trigger leaves the system prompt but keeps its row, greyed, in the lists.
 
-Regular coding agent features are supported, and the tool stays simple. MCP servers wire through bash: the global `~/.config/rhema/mcp.yaml` (or the profile's `mcp_servers`) names them, the prompt's `mcp` section discloses what survived, and the generated `atlassian create_issue --project ENG`-shaped commands call the bridge (`rhema mcp servers/tools/schema/call` runs the same calls from your own shell; `specs/rhema-mcp.md` is the design).
+MCP servers wire through bash: the global `~/.config/rhema/mcp.yaml` (or the profile's `mcp_servers`) names them, the prompt's `mcp` section discloses what survived, and the generated `atlassian create_issue --project ENG`-shaped commands call the bridge (`rhema mcp servers/tools/schema/call` runs the same calls from your own shell; `specs/rhema-mcp.md` is the design).
 
 ### Subagents
 

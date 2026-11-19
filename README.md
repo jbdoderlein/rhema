@@ -66,7 +66,7 @@ let mut agent = HostAgent::new(HostAgentConfig::new(
 ))?;
 
 let reply = agent
-    .turn("fix the failing test", &mut Print)
+    .turn("fix the failing test", &mut Print /* your EventSink */)
     .await?;
 ```
 
@@ -87,7 +87,7 @@ let mut agent = Agent::builder()
     .build()?;
 
 let mut session = Session::default();
-let reply = agent
+let output = agent
     .turn("can we fulfill an order of 8 units of SKU-42?",
           &mut session, &mut Print, &ToolContext::default())
     .await?;

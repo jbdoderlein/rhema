@@ -202,8 +202,11 @@ impl From<&Event<'_>> for OwnedEvent {
                 usage: *usage,
                 stop_reason: (*stop_reason).clone(),
             },
-            // The events grow across releases; a variant this version
-            // predates is no owned line, the test names it.
+            // The events grow across releases, and this mirrors them
+            // 1:1, so a variant without its owned twin is a missed
+            // step, not a live-input case: this crate releases with
+            // rhema-core in the same commit, and the same-commit build
+            // names it. No `Other` variant as a silent bucket.
             _ => panic!("unrecorded event"),
         }
     }
