@@ -2743,6 +2743,50 @@ fn the_paste_key_spawns_off_the_handler_and_lands_as_an_event() {
     );
 }
 
+/// A mid-turn settings toggle queued its rebuild for the turn's end:
+/// the queue only drains when the agent returns, so the prompt the
+/// toggles changed reaches the very next turn instead of waiting for
+/// some unrelated rebuild.
+#[test]
+fn a_rebuild_promised_mid_turn_lands_at_the_turns_end() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    let (steer, _) = tokio::sync::mpsc::channel(STEER_QUEUE_CAP);
+    let (cancel, _cancelled) = tokio::sync::watch::channel(false);
+    h.app.begin_turn(cancel, steer, None);
+    // The spawn takes the agent out with the turn, as the run loop's
+    // StartTurn does.
+    let agent = Box::new(h.app.agent.take().unwrap());
+    // The toggle's rebuild finds the agent checked out with the
+    // running turn: the promise queues, and a stronger stamp a second
+    // mid-turn ask carries does not degrade.
+    assert!(h.app.rebuild_live_agent(false).is_ok());
+    assert_eq!(
+        h.app.deferred_rebuild,
+        Some(false),
+        "the promise queues while the agent is out"
+    );
+    assert!(h.app.rebuild_live_agent(true).is_ok());
+    assert_eq!(
+        h.app.deferred_rebuild,
+        Some(true),
+        "the stronger stamp survives the queue"
+    );
+
+    // The turn finishes and the agent returns: the drain runs the
+    // promised rebuild, and the promise is spent.
+    let (_, rx) = tokio::sync::mpsc::channel(STEER_QUEUE_CAP);
+    h.app.on_event(UiEvent::TurnFinished {
+        agent,
+        result: Ok(ModelOutput {
+            message: Message::text(Role::Assistant, "done"),
+            stop_reason: StopReason::EndTurn,
+            usage: Usage::default(),
+        }),
+        steer: rx,
+    });
+    assert_eq!(h.app.deferred_rebuild, None, "the promise is spent");
+}
+
 /// The paste key's unreachable notice lands in the transcript: the
 /// chat screen has no notice channel of its own, the app owns the
 /// transcript.

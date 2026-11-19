@@ -290,6 +290,7 @@ impl App {
         self.turn.finished();
         self.retryable = false;
         self.drain_submission_writes();
+        self.drain_deferred_rebuild();
         self.transcript.push_notice("turn cancelled");
         // A steered message that raced the cancel goes back to the input:
         // the user stopped the turn, so the words are not spent.
@@ -327,6 +328,7 @@ impl App {
         self.agent = Some(*agent);
         self.turn.finished();
         self.drain_submission_writes();
+        self.drain_deferred_rebuild();
         match result {
             Ok(output) => {
                 self.retryable = false;

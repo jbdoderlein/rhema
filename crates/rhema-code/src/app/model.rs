@@ -783,6 +783,14 @@ impl App {
     /// rebuild.
     pub(crate) fn rebuild_live_agent(&mut self, stamp: bool) -> Result<(), String> {
         let Some(agent) = self.agent.take() else {
+            if self.turn.running {
+                // The agent is out with the running turn's task, and
+                // the toggle that reached for this rebuild promised
+                // one at the turn's end: nothing else runs it. The
+                // flag drains when the agent returns; the OR keeps
+                // the stronger stamp of two mid-turn asks.
+                self.deferred_rebuild = Some(stamp | self.deferred_rebuild.unwrap_or(false));
+            }
             return Ok(());
         };
         let stats = agent.transcript_stats();
@@ -792,6 +800,18 @@ impl App {
             rhema_host_agent::clear_environment_stamp(&mut session);
         }
         self.rebuild_agent(session, stats, sections)
+    }
+
+    /// Runs the rebuild a running turn deferred, if a mid-turn toggle
+    /// queued one. Called from every point an agent returns to the
+    /// app: a skipped rebuild would stay skipped, the prompt and the
+    /// wiring would stay frozen until some unrelated rebuild.
+    pub(crate) fn drain_deferred_rebuild(&mut self) {
+        if let Some(stamp) = self.deferred_rebuild.take()
+            && let Err(error) = self.rebuild_live_agent(stamp)
+        {
+            self.push_notice(&error);
+        }
     }
 
     /// Builds an agent over `session` with the current model and flags.
