@@ -84,6 +84,29 @@ fn config(servers: Vec<McpServer>) -> McpConfig {
 }
 
 #[test]
+fn dropping_the_wiring_ends_the_bridge_thread() {
+    let session = tempfile::tempdir().unwrap();
+    let config = config(vec![fake_command_server("counter")]);
+    let mut wiring = wire(
+        &config,
+        &BTreeSet::new(),
+        session.path(),
+        "wire-thread",
+        None,
+    )
+    .unwrap();
+    let thread = wiring
+        ._bridge_thread
+        .take()
+        .expect("the wiring ran a bridge thread");
+    drop(wiring);
+    // The stop token ends the park, the park ends block_on, and the
+    // thread exits: a regression parks forever here instead, one
+    // leaked thread and runtime per rewire of a long-lived frontend.
+    thread.join().expect("the bridge thread ends at teardown");
+}
+
+#[test]
 fn wiring_produces_env_lines_and_a_live_bridge() {
     let session = tempfile::tempdir().unwrap();
     let config = config(vec![

@@ -19,9 +19,10 @@
 //! killing state a newer session might have wanted anyway.
 //!
 //! Teardown is drop-based and ordered by the ownership graph: dropping
-//! [`Wiring`] removes the init file, stops the bridge, and the bridge
-//! thread unwinds with the aborted accept task; the manager drops
-//! with the wiring and its clients kill their stdio children on drop.
+//! [`Wiring`] removes the init file, stops the bridge, and the stop
+//! token ends the thread's park, which ends the runtime and the
+//! thread; the manager drops with the wiring and its clients kill
+//! their stdio children on drop.
 //! HTTP servers hold no child to clean.
 
 #![cfg_attr(not(unix), allow(dead_code, unused_imports))]
@@ -48,6 +49,11 @@ pub struct Wiring {
     pub manager: std::sync::Arc<McpManager>,
     socket_path: PathBuf,
     bridge: Option<crate::bridge::BridgeHandle>,
+    /// The one permit that ends the bridge thread's park: the thread
+    /// holds a clone and waits on it, teardown fires it. Frontend
+    /// rewires drop a wiring each, so the token is what keeps a
+    /// long-lived process from leaking one parked thread per rewire.
+    stop: std::sync::Arc<tokio::sync::Notify>,
     _bridge_thread: Option<std::thread::JoinHandle<()>>,
     _provision: Option<Provision>,
 }
@@ -59,8 +65,10 @@ impl Wiring {
         if let Some(bridge) = self.bridge.take() {
             bridge.shutdown();
         }
-        // The thread unwinds once the aborted accept task surfaces;
-        // never join-block a session teardown on it.
+        // `notify_one` books a permit the park may consume whenever
+        // it reaches it; never join-block a session teardown waiting
+        // for it.
+        self.stop.notify_one();
     }
 
     /// The socket path the CLI's env points at.
@@ -168,6 +176,7 @@ pub fn wire_with_bin(
             ],
             manager: std::sync::Arc::new(McpManager::new(&filtered)),
             bridge: None,
+            stop: std::sync::Arc::new(tokio::sync::Notify::new()),
             _bridge_thread: None,
             _provision: None,
         })
@@ -192,9 +201,11 @@ fn wire_with_bin_unix(
     let token = session_token();
     let manager = std::sync::Arc::new(McpManager::new(filtered));
     // The bridge's runtime lives on its own thread for the wiring's
-    // lifetime: bind first, then keep the runtime parked forever. The
-    // shutdown aborts the accept task, which ends block_on, which
-    // ends the thread.
+    // lifetime: bind first, then park on the stop token. Teardown
+    // aborts the accept task and fires the token, which ends
+    // block_on, which drops the runtime and ends the thread.
+    let stop = std::sync::Arc::new(tokio::sync::Notify::new());
+    let thread_stop = stop.clone();
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();
     let thread_manager = manager.clone();
     let thread_socket = socket.clone();
@@ -218,9 +229,10 @@ fn wire_with_bin_unix(
                 let bridge =
                     crate::bridge::serve(thread_manager, thread_socket, thread_token).await?;
                 let _ = ready_tx.send(Ok(bridge));
-                // Park the runtime: the accept task and every handler
-                // the bridge spawns run here from now on.
-                std::future::pending::<()>().await;
+                // Park the runtime on the stop token: the accept task
+                // and every handler the bridge spawns run here from
+                // now on, and the teardown's permit ends the park.
+                thread_stop.notified().await;
                 #[allow(unreachable_code)]
                 Ok(())
             });
@@ -257,6 +269,7 @@ fn wire_with_bin_unix(
         notices: skipped,
         manager,
         bridge: Some(bridge),
+        stop,
         _bridge_thread: Some(thread),
         _provision: Some(provisioned),
     })
