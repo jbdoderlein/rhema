@@ -61,6 +61,65 @@ pub fn exit_status(code: Option<i32>, budget_secs: u64) -> Result<Option<i32>, S
     }
 }
 
+/// The most bytes one `capture` holds in memory. A read of an endless
+/// file (`/dev/zero`) through a remote backend must fail in band, not
+/// pin memory until the budget expires: past the cap the child is
+/// killed and the read reports the failure.
+pub const MAX_CAPTURE_BYTES: usize = 32 * 1024 * 1024;
+
+/// Runs one spawned `argv` to completion with its stdout held under
+/// [`MAX_CAPTURE_BYTES`], answering the bytes, the exit code, and the
+/// lossily-decoded stderr. stdin null (the "no terminal" contract),
+/// stdout and stderr piped, the local child killed on drop. The
+/// byte-capped read is the point: `wait_with_output` would grow the
+/// stdout buffer without bound, and stopping the read alone would
+/// leave a producer blocked on its full pipe.
+pub async fn capture_capped(
+    mut command: tokio::process::Command,
+) -> Result<(Vec<u8>, Option<i32>, String), SandboxError> {
+    use tokio::io::AsyncReadExt;
+
+    let mut child = command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|err| SandboxError::Unavailable(format!("{err}")))?;
+    let mut stdout = Vec::new();
+    if let Some(mut pipe) = child.stdout.take() {
+        let mut buffer = vec![0u8; 64 * 1024];
+        loop {
+            let read = pipe
+                .read(&mut buffer)
+                .await
+                .map_err(|err| SandboxError::Unavailable(format!("reading the capture: {err}")))?;
+            if read == 0 {
+                break;
+            }
+            if stdout.len() + read > MAX_CAPTURE_BYTES {
+                let _ = child.kill().await;
+                return Err(SandboxError::Failed(format!(
+                    "the capture is past its {}-byte cap",
+                    MAX_CAPTURE_BYTES
+                )));
+            }
+            stdout.extend_from_slice(&buffer[..read]);
+        }
+    }
+    // The stdout half is drained (or the read taken over): this waits
+    // for the child and the stderr to close.
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|err| SandboxError::Unavailable(format!("waiting for the capture: {err}")))?;
+    Ok((
+        stdout,
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    ))
+}
+
 /// Runs one spawned child to completion: both pipes pumped (complete
 /// lines live through `progress`, a capped tail kept for each), a
 /// cancel observed before the start and between chunks with the local

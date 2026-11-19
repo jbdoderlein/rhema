@@ -21,7 +21,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use base64::Engine;
 
-use rhema_sandbox::exec_util::{check_remote_path, run_child, shquote};
+use rhema_sandbox::exec_util::{capture_capped, check_remote_path, run_child, shquote};
 use rhema_sandbox::{ExecOutcome, ExecRequest, Sandbox, SandboxError, WorkspaceSeed};
 
 /// The seed budget, the shim's, the same one the fs-sharing backends
@@ -82,24 +82,12 @@ impl SshSandbox {
         &self,
         argv: &[String],
     ) -> Result<(Vec<u8>, Option<i32>, String), SandboxError> {
-        use std::process::Stdio;
-
-        let output = tokio::process::Command::new(&argv[0])
-            .args(&argv[1..])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            // The seed budget's timeout drops this future past its
-            // deadline; the drop is what kills the local ssh.
-            .kill_on_drop(true)
-            .output()
-            .await
-            .map_err(|err| SandboxError::Unavailable(format!("{err}")))?;
-        Ok((
-            output.stdout,
-            output.status.code(),
-            String::from_utf8_lossy(&output.stderr).into_owned(),
-        ))
+        // The seed budget's timeout drops this future past its
+        // deadline; the drop is what kills the local ssh. The capture
+        // is byte-capped (a read of an endless file dies in band).
+        let mut command = tokio::process::Command::new(&argv[0]);
+        command.args(&argv[1..]);
+        capture_capped(command).await
     }
 
     /// Spawns one local `ssh` carrying `argv` with `bytes` on its
@@ -330,6 +318,7 @@ impl Sandbox for SshSandbox {
         );
         let child = tokio::process::Command::new(&argv[0])
             .args(&argv[1..])
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             // The explicit kill below is the mechanism on cancel; the

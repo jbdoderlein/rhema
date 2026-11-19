@@ -367,14 +367,62 @@ where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
 {
     tokio::spawn(async move {
-        let mut lines = BufReader::new(stream).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            if tx.send((is_stderr, line)).is_err() {
+        // Lines are read as bytes under the same per-line cap the
+        // sandbox pump applies: a command that never emits a newline
+        // (`yes | tr -d '\n'`) would grow `lines`' buffer without
+        // bound until the deadline. The overrun bytes are consumed
+        // but not kept, and a marker line makes the elision visible,
+        // so framing survives.
+        let mut reader = BufReader::new(stream);
+        let mut buffer: Vec<u8> = Vec::with_capacity(MAX_LINE_BYTES);
+        'lines: loop {
+            buffer.clear();
+            let mut dropped = 0u64;
+            let got_newline = loop {
+                match reader.fill_buf().await {
+                    // EOF: the pending bytes, if any, are a final
+                    // line without its newline, deliver them below.
+                    Ok([]) => break false,
+                    Ok(available) => {
+                        let newline = available.iter().position(|&byte| byte == b'\n');
+                        let chunk_len = newline.unwrap_or(available.len());
+                        let room = MAX_LINE_BYTES.saturating_sub(buffer.len());
+                        let take = chunk_len.min(room);
+                        buffer.extend_from_slice(&available[..take]);
+                        dropped += (chunk_len - take) as u64;
+                        let consumed = newline.map_or(available.len(), |pos| pos + 1);
+                        reader.consume(consumed);
+                        if newline.is_some() {
+                            break true;
+                        }
+                    }
+                    Err(_) => break 'lines,
+                }
+            };
+            if !got_newline && buffer.is_empty() && dropped == 0 {
+                break;
+            }
+            let text = String::from_utf8_lossy(&buffer);
+            let text = text.strip_suffix('\r').unwrap_or(&text);
+            if tx.send((is_stderr, text.to_string())).is_err() {
                 break; // the resolver is gone; nothing to stream to
+            }
+            if dropped > 0 {
+                let marker = format!("[line truncated, {dropped} bytes dropped]");
+                if tx.send((is_stderr, marker)).is_err() {
+                    break;
+                }
+            }
+            if !got_newline {
+                break;
             }
         }
     })
 }
+
+/// The most bytes one delivered line may hold in memory (see `pump`).
+#[cfg(feature = "local-shell")]
+const MAX_LINE_BYTES: usize = 1024 * 1024;
 
 /// The no-shell placeholder: every command fails in-band. What
 /// `ShellTools::new` installs when the build carries no local shell,

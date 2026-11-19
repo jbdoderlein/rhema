@@ -225,24 +225,12 @@ impl LxdSandbox {
         &self,
         argv: &[String],
     ) -> Result<(Vec<u8>, Option<i32>, String), SandboxError> {
-        use std::process::Stdio;
-
-        let output = tokio::process::Command::new(&argv[0])
-            .args(&argv[1..])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            // A route past its patience drops this future; the drop
-            // kills the local lxc.
-            .kill_on_drop(true)
-            .output()
-            .await
-            .map_err(|err| SandboxError::Unavailable(format!("{err}")))?;
-        Ok((
-            output.stdout,
-            output.status.code(),
-            String::from_utf8_lossy(&output.stderr).into_owned(),
-        ))
+        // A route past its patience drops this future; the drop kills
+        // the local lxc. The capture is byte-capped (a read of an
+        // endless file dies in band).
+        let mut command = tokio::process::Command::new(&argv[0]);
+        command.args(&argv[1..]);
+        exec_util::capture_capped(command).await
     }
 }
 
@@ -439,6 +427,7 @@ impl Sandbox for LxdSandbox {
         );
         let child = tokio::process::Command::new(&argv[0])
             .args(&argv[1..])
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             // The explicit kill below is the mechanism on cancel; the
