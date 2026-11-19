@@ -20,6 +20,13 @@ pub enum ChatAction {
         /// The paste spans the message records, in prompt order.
         spans: Vec<rhema_core::paste::PasteSpan>,
     },
+    /// Something to say, not to do: a notice the app draws in the
+    /// transcript, the paste key's only way out for a fact about the
+    /// environment the input box cannot act on.
+    Notice {
+        /// The notice's text.
+        text: String,
+    },
 }
 
 /// One chip anchored in the input: the payload a [`ChatState::MARK`]
@@ -126,6 +133,28 @@ impl ChatState {
     pub fn paste_image(&mut self, image: rhema_core::Image) {
         self.chips.push(Chip::Image(image));
         self.insert_char(Self::MARK);
+    }
+
+    /// Routes one clipboard grab for the paste key: an image or a text
+    /// paste lands exactly as [`Self::paste`] and [`Self::paste_image`]
+    /// take it, a clipboard holding nothing is silence, and a
+    /// clipboard that cannot be reached is a notice, over ssh an image
+    /// cannot ride the hop, the file named in the prompt is the way.
+    pub fn paste_grab(&mut self, grab: super::clipboard::Grab) -> ChatAction {
+        match grab {
+            super::clipboard::Grab::Image(image) => {
+                self.paste_image(image);
+                ChatAction::None
+            }
+            super::clipboard::Grab::Text(text) => {
+                self.paste(&text);
+                ChatAction::None
+            }
+            super::clipboard::Grab::Nothing => ChatAction::None,
+            super::clipboard::Grab::Unreachable => ChatAction::Notice {
+                text: super::clipboard::UNREACHABLE_NOTICE.to_owned(),
+            },
+        }
     }
 
     /// Terminal text made insertable: carriage returns normalize to
@@ -344,19 +373,14 @@ impl ChatState {
         }
         // Ctrl-v (with or without shift) is paste in terminals that do
         // not bind it themselves: the clipboard is read directly, the
-        // same content a bracketed paste would have carried. A clipboard
-        // holds one thing or the other, an image is tried first and the
-        // text falls through.
+        // same content a bracketed paste would have carried. The grab
+        // routes through paste_grab, so an unreachable clipboard, an
+        // ssh hop or a plain TTY, is noticed instead of silent.
         if key.code == KeyCode::Char('v')
             && key.modifiers.contains(KeyModifiers::CONTROL)
             && !key.modifiers.contains(KeyModifiers::ALT)
         {
-            if let Some(image) = super::clipboard::read_image() {
-                self.paste_image(image);
-            } else if let Some(text) = super::clipboard::read() {
-                self.paste(&text);
-            }
-            return ChatAction::None;
+            return self.paste_grab(super::clipboard::grab());
         }
         // AltGr lands as CONTROL|ALT on most terminals outside the kitty
         // protocol: a printable char carrying both is composed text, not

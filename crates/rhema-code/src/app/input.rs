@@ -767,6 +767,10 @@ impl App {
                     }]
                 }
             }
+            ChatAction::Notice { text } => {
+                self.push_notice(&text);
+                Vec::new()
+            }
             ChatAction::None => Vec::new(),
         }
     }

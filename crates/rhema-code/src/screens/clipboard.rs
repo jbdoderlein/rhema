@@ -45,20 +45,61 @@ pub fn read() -> Option<String> {
         .filter(|text| !text.is_empty())
 }
 
-/// The clipboard's image, when one is reachable: the RGBA pixels are
-/// re-encoded as PNG, the one format every provider accepts and the
-/// neutral carrier for whatever the copy came from, and travel as bare
-/// base64, the form [`rhema_core::Image`] carries. Missing or failed
-/// reads are `None`, exactly like [`read`]: a clipboard that holds text,
-/// or nothing, is not an image.
-pub fn read_image() -> Option<rhema_core::Image> {
-    let grabbed = arboard::Clipboard::new()
-        .and_then(|mut clipboard| clipboard.get_image())
-        .ok()?;
+/// What one read of the clipboard found: the paste key's answer
+/// distinguished by cause, because a clipboard holding nothing is
+/// silence and no clipboard at all is a notice.
+pub enum Grab {
+    /// The clipboard's image: the RGBA pixels re-encoded as PNG, the
+    /// one format every provider accepts and the neutral carrier for
+    /// whatever the copy came from, as bare base64, the form
+    /// [`rhema_core::Image`] carries.
+    Image(rhema_core::Image),
+    /// The clipboard's text.
+    Text(String),
+    /// A reachable clipboard held neither: no image, and no text.
+    Nothing,
+    /// No clipboard to connect to: an ssh hop, a plain TTY, anywhere
+    /// without an X11 or Wayland display. The terminal's own paste
+    /// still carries text; an image has no way over the hop, and the
+    /// paste key says so instead of staying silent.
+    Unreachable,
+}
+
+/// The notice a paste with no clipboard to read lands in the
+/// transcript: no clipboard is an environment fact, not an error, and
+/// the file way in is the answer that works over the hop.
+pub const UNREACHABLE_NOTICE: &str = "no clipboard reachable; an image cannot ride a paste: save it in the checkout and name it in the prompt";
+
+/// Reads the clipboard for one paste key. The image is tried first, a
+/// clipboard holds one thing or the other, then the text. The one
+/// connection serves both reads, and a dead one answers
+/// [`Grab::Unreachable`], the case the paste key answers with a
+/// notice: [`Grab::Nothing`] is an empty clipboard, not a missing
+/// one.
+pub fn grab() -> Grab {
+    let mut clipboard = match arboard::Clipboard::new() {
+        Ok(clipboard) => clipboard,
+        Err(_) => return Grab::Unreachable,
+    };
+    if let Ok(grabbed) = clipboard.get_image()
+        && let Some(image) = encode(grabbed)
+    {
+        return Grab::Image(image);
+    }
+    match clipboard.get_text() {
+        Ok(text) if !text.is_empty() => Grab::Text(text),
+        _ => Grab::Nothing,
+    }
+}
+
+/// The image read's encode tail: arboard's RGBA pixels in, base64
+/// PNG out, callable without a clipboard. The pixels must fill their
+/// frame, `width * height * 4`, or the shape is a lie and encodes as
+/// nothing.
+fn encode(grabbed: arboard::ImageData) -> Option<rhema_core::Image> {
     let (width, height): (u32, u32) = match (grabbed.width.try_into(), grabbed.height.try_into()) {
-        (Ok(w), Ok(h)) => (w, h),
-        // A frame larger than the pixel types agree on encodes as
-        // nothing.
+        (Ok(width), Ok(height)) => (width, height),
+        // A frame the pixel types do not agree on encodes as nothing.
         _ => return None,
     };
     let rgba = image::RgbaImage::from_raw(width, height, grabbed.bytes.into_owned())?;
@@ -110,7 +151,7 @@ mod tests {
         assert!(encode_png(2, 2, vec![0, 0, 0, 0]).is_none());
     }
 
-    /// The pure tail of [`read_image`], callable without a clipboard.
+    /// The pure tail of encode, callable without a clipboard.
     fn encode_png(width: u32, height: u32, rgba: Vec<u8>) -> Option<rhema_core::Image> {
         let rgba = image::RgbaImage::from_raw(width, height, rgba)?;
         let mut png = Vec::new();

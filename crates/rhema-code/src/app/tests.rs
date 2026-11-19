@@ -2718,6 +2718,23 @@ fn a_submit_carries_the_pastes_payload_and_its_span() {
     );
 }
 
+/// The paste key's unreachable notice lands in the transcript: the
+/// chat screen has no notice channel of its own, the app owns the
+/// transcript.
+#[test]
+fn a_paste_notice_from_the_chat_lands_in_the_transcript() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    let notice = crate::screens::clipboard::UNREACHABLE_NOTICE.to_owned();
+    let effects = h.app.on_chat_key(
+        key(KeyCode::Char('v')),
+        crate::screens::ChatAction::Notice {
+            text: notice.clone(),
+        },
+    );
+    assert!(effects.is_empty());
+    assert_eq!(h.app.transcript.lines().last(), Some(&Line::Notice(notice)));
+}
+
 /// A command with an image attached is a prompt with an image, not
 /// a command: images route to a turn unconditionally.
 #[test]

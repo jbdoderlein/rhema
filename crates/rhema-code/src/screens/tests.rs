@@ -1738,6 +1738,43 @@ fn a_pasted_image_mints_a_chip_and_rides_submit_beside_the_text() {
 }
 
 #[test]
+fn the_paste_key_lands_what_the_clipboard_grabbed() {
+    let mut chat = ChatState::new();
+    let image = rhema_core::Image::new(rhema_core::ImageMediaType::Png, "aGVsbG8=");
+    assert_eq!(
+        chat.paste_grab(super::clipboard::Grab::Image(image.clone())),
+        ChatAction::None
+    );
+    assert_eq!(chat.chips, vec![Chip::Image(image)]);
+    assert_eq!(chat.input, ChatState::MARK.to_string());
+    assert_eq!(
+        chat.paste_grab(super::clipboard::Grab::Text("hello".into())),
+        ChatAction::None
+    );
+    assert_eq!(chat.input, format!("{}hello", ChatState::MARK));
+}
+
+/// A clipboard holding nothing is silence; a clipboard that cannot be
+/// reached, the ssh hop, is a notice naming the way an image rides
+/// instead of a dead key.
+#[test]
+fn the_paste_key_distinguishes_nothing_from_unreachable() {
+    let mut chat = ChatState::new();
+    assert_eq!(
+        chat.paste_grab(super::clipboard::Grab::Nothing),
+        ChatAction::None
+    );
+    assert_eq!(
+        chat.paste_grab(super::clipboard::Grab::Unreachable),
+        ChatAction::Notice {
+            text: super::clipboard::UNREACHABLE_NOTICE.to_owned()
+        }
+    );
+    assert!(chat.input.is_empty(), "nothing lands in the box");
+    assert!(chat.chips.is_empty());
+}
+
+#[test]
 fn interleaved_pastes_and_images_keep_each_kind_in_order() {
     let mut chat = ChatState::new();
     let first = "p1\np2\np3\np4";
