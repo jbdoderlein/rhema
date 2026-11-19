@@ -592,7 +592,17 @@ impl ResponsesAssembler {
                 }
             }
             "response.function_call_arguments.delta" => {
-                if let Some(piece) = event.delta.filter(|piece| !piece.is_empty()) {
+                // The wire allows a delta to arrive before its
+                // `output_item.added` establishes the call; an
+                // unnamed delta attaches to the most recent call.
+                // Nothing established yet means nothing to attach
+                // to: drop the fragment, the way the chat-side
+                // assembler drops stray fragments.
+                if let Some(piece) = event
+                    .delta
+                    .filter(|piece| !piece.is_empty())
+                    .filter(|_| !self.calls.is_empty())
+                {
                     let index =
                         self.target_index(event.call_id.as_deref(), event.item_id.as_deref());
                     self.claim_reasoning_for(index);
@@ -1127,6 +1137,49 @@ mod tests {
                 }),
             ]
         );
+        assert_eq!(out.stop_reason, StopReason::ToolUse);
+    }
+
+    #[test]
+    fn a_delta_ahead_of_its_call_is_dropped_not_a_panic() {
+        // A server (or proxy) may order `function_call_arguments.delta`
+        // before the `output_item.added` that names the call: the
+        // fragment has nothing to attach to, so it is dropped and the
+        // stream keeps going, rather than indexing an empty vec.
+        let mut assembler = ResponsesAssembler::new();
+        let mut sink = Collector::new();
+        for fixture in [
+            r#"{"type":"response.created","response":{}}"#,
+            r#"{"type":"response.function_call_arguments.delta","call_id":"fc_1","delta":"{\"c"}"#,
+            r#"{"type":"response.function_call_arguments.delta","item_id":"item_0","delta":"md"}"#,
+            r#"{"type":"response.output_text.delta","delta":"late"}"#,
+            r#"{"type":"response.output_item.added","output_index":1,"item":{
+                "type":"function_call","call_id":"fc_1","name":"bash","arguments":""}}"#,
+            r#"{"type":"response.function_call_arguments.delta","call_id":"fc_1","delta":"{\"cmd\":\"ls\"}"}"#,
+            r#"{"type":"response.output_item.done","output_index":1,"item":{
+                "type":"function_call","call_id":"fc_1","name":"bash",
+                "arguments":"{\"cmd\":\"ls\"}","status":"completed"}}"#,
+            r#"{"type":"response.completed","response":{"usage":{
+                "input_tokens":1,"output_tokens":1}}}"#,
+        ] {
+            assembler
+                .push(event(fixture), &mut sink)
+                .expect("event is not an error");
+        }
+        let out = assembler.finish();
+
+        // The early fragments are gone; the call and the text the
+        // established stream carries survive intact.
+        assert_eq!(
+            sink.0,
+            vec![
+                "TextDelta(\"late\")",
+                "ToolCallStart { id: \"fc_1\", name: \"bash\" }",
+                "ToolCallArgsDelta { id: \"fc_1\", delta: \"{\\\"cmd\\\":\\\"ls\\\"}\" }",
+                "Usage(Usage { input_tokens: 1, output_tokens: 1, cached_input_tokens: 0 })",
+            ]
+        );
+        assert_eq!(out.message.content.len(), 2);
         assert_eq!(out.stop_reason, StopReason::ToolUse);
     }
 
