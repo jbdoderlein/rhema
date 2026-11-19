@@ -103,6 +103,39 @@ async fn streams_sse_into_events_and_an_assembled_output() {
 }
 
 #[tokio::test]
+async fn a_stream_cut_before_its_finish_reason_fails_the_stream() {
+    // Text streams, then the connection drops: no finish_reason, no
+    // sentinel. The old leniency stood the partial answer up as a
+    // clean EndTurn; now the truncation is a retryable failure.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(
+                    "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"},\"finish_reason\":null}]}\n\n",
+                ),
+        )
+        .mount(&server)
+        .await;
+
+    let provider = OpenAiCompatibleProvider::new("secret-key").with_base_url(base(&server));
+    let mut sink = Collector(vec![]);
+    let err = provider
+        .complete(
+            request(vec![Message::text(Role::User, "hi")], vec![]),
+            &mut sink,
+        )
+        .await
+        .expect_err("a stream cut before its finish_reason must fail");
+    assert!(
+        matches!(err, ProviderError::Network(ref message) if message.contains("without its finish_reason")),
+        "the truncation error is propagated: {err:?}"
+    );
+}
+
+#[tokio::test]
 async fn mistral_stream_envelopes_and_content_arrays_are_read() {
     let server = MockServer::start().await;
     let body = concat!(

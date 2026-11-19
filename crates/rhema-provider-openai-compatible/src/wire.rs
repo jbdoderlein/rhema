@@ -1141,6 +1141,15 @@ impl ChunkAssembler {
     /// `Role::Assistant`: the streamed text as one part (chunk boundaries
     /// are transport artifacts), then tool calls in ascending index order;
     /// an empty stream yields an empty content list, not an error.
+    /// Whether a chunk carried a `finish_reason`: the terminal proof
+    /// this wire has (its `[DONE]` follows anyway), the drain checks
+    /// it before standing the assembled output up as a result.
+    pub fn has_finish_reason(&self) -> bool {
+        self.finish_reason.is_some()
+    }
+
+    /// The assembled output: the buffered text, the calls in their
+    /// chunk order, and the stop reason the final chunk named.
     pub fn finish(self) -> ModelOutput {
         let mut content: Vec<Content> = Vec::new();
         if !self.text.is_empty() {

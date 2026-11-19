@@ -362,6 +362,16 @@ pub async fn drain_chat_stream(
         }
         feed_chunk(&payload, &mut assembler, sink)?;
     }
+    // The terminal chunk (a finish_reason, then the sentinel) is this
+    // wire's proof the exchange ended on the server's own terms: the
+    // bytes running out before either is a truncated stream, and
+    // standing it up as a clean stop would commit the half answer.
+    // The retry ladder sees a retryable network failure instead.
+    if !assembler.has_finish_reason() {
+        return Err(ProviderError::Network(
+            "the chat stream ended without its finish_reason".to_owned(),
+        ));
+    }
     Ok(assembler.finish())
 }
 
