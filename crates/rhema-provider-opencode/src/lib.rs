@@ -147,10 +147,20 @@ impl OpenCodeProvider {
 
     /// Keeps this conversation's id stable across provider rebuilds and
     /// resumes. A blank id is ignored: an empty header is worse than a
-    /// fresh one.
+    /// fresh one. A value no HTTP header can carry is ignored the same
+    /// way: Go requires the id on every request and [`Self::session_id`]
+    /// reports the id actually carried, so a control character in a
+    /// hand-edited profile keeps the current id instead of panicking
+    /// construction.
     pub fn with_session_id(mut self, session_id: impl Into<String>) -> Self {
         let session_id = session_id.into();
-        if !session_id.trim().is_empty() {
+        // The id arrives from a stored profile the way the key arrives
+        // from config: runtime input. An id reqwest would reject keeps
+        // the current one; dropping the header instead would silently
+        // cost Go its routing and caching.
+        if !session_id.trim().is_empty()
+            && reqwest::header::HeaderValue::from_str(&session_id).is_ok()
+        {
             self.session_id = session_id;
             self.transport =
                 transport_for(&self.base_url, &self.api_key, &self.session_id, self.api);
@@ -215,8 +225,9 @@ impl OpenCodeProvider {
     }
 }
 
-/// A header value from the adapter's own constants; a malformed one is
-/// a programmer error caught in tests.
+/// A header value from the adapter's own constants, or a session id
+/// [`OpenCodeProvider::with_session_id`] already validated as one; a
+/// malformed one is a programmer error caught in tests.
 fn header_value(value: &str) -> reqwest::header::HeaderValue {
     value
         .parse()
@@ -348,6 +359,22 @@ mod tests {
         assert_eq!(provider.base_url, GO_BASE_URL);
         // A blank override never blanks the header.
         let provider = provider.with_session_id("   ");
+        assert_eq!(provider.session_id(), "ses_kept");
+    }
+
+    #[test]
+    fn a_session_id_no_header_can_carry_keeps_the_current_one() {
+        // A control character in a stored profile must not panic
+        // construction: the unusable override is ignored like a blank
+        // one, and the fresh id from construction is what the header
+        // carries.
+        let provider = OpenCodeProvider::new("k");
+        let fresh = provider.session_id().to_owned();
+        let provider = provider.with_session_id("bad\u{1f}id");
+        assert_eq!(provider.session_id(), fresh);
+        assert_eq!(provider.headers()[SESSION_HEADER], fresh.as_str());
+        // A usable override still lands after a rejected one.
+        let provider = provider.with_session_id("ses_kept");
         assert_eq!(provider.session_id(), "ses_kept");
     }
 
