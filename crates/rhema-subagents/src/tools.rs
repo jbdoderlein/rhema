@@ -1050,13 +1050,23 @@ impl SubagentTools {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone();
-        let child = children.as_ref().map(|children| {
+        let child = children.as_ref().and_then(|children| {
             kind::child_id(
                 children.store.as_ref(),
                 &children.parent,
                 rhema_submissions::now(),
             )
         });
+        // No attached store mints no child; an attached one whose
+        // parent id cannot carry the suffix fails the call in band:
+        // every child's id rides its parent.
+        if child.is_none() && children.is_some() {
+            return ToolResult::failure(
+                call_id.to_owned(),
+                "the parent id is too long to mint a child: every child's id rides its parent"
+                    .to_owned(),
+            );
+        }
         let rerun = JobRerun {
             def: def.clone(),
             prompt: prompt.to_owned(),

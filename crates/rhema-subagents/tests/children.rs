@@ -111,7 +111,7 @@ fn a_done_child_is_adopted_and_settles_the_parent_done() {
     let dir = tempfile::tempdir().unwrap();
     let store: Arc<dyn SessionStore> = Arc::new(FileStore::new(dir.path()));
     let parent = parent_id();
-    let child = kind::child_id(store.as_ref(), &parent, 5);
+    let child = kind::child_id(store.as_ref(), &parent, 5).expect("a short parent mints a child");
     store
         .save(&child, &child_session(&child, &parent, Status::Done))
         .unwrap();
@@ -155,7 +155,7 @@ fn a_running_child_with_a_working_tail_is_interrupted() {
     let dir = tempfile::tempdir().unwrap();
     let store: Arc<dyn SessionStore> = Arc::new(FileStore::new(dir.path()));
     let parent = parent_id();
-    let child = kind::child_id(store.as_ref(), &parent, 5);
+    let child = kind::child_id(store.as_ref(), &parent, 5).expect("a short parent mints a child");
     store
         .save(&child, &child_session(&child, &parent, Status::Running))
         .unwrap();
@@ -257,7 +257,7 @@ async fn a_resumed_child_continues_its_tail_and_settles_both_records() {
     let dir = tempfile::tempdir().unwrap();
     let store: Arc<dyn SessionStore> = Arc::new(FileStore::new(dir.path()));
     let parent = parent_id();
-    let child = kind::child_id(store.as_ref(), &parent, 5);
+    let child = kind::child_id(store.as_ref(), &parent, 5).expect("a short parent mints a child");
     store
         .save(&child, &child_session(&child, &parent, Status::Running))
         .unwrap();
@@ -393,7 +393,7 @@ async fn a_finished_child_fetches_after_a_restart() {
     let dir = tempfile::tempdir().unwrap();
     let store: Arc<dyn SessionStore> = Arc::new(FileStore::new(dir.path()));
     let parent = parent_id();
-    let child = kind::child_id(store.as_ref(), &parent, 5);
+    let child = kind::child_id(store.as_ref(), &parent, 5).expect("a short parent mints a child");
     store
         .save(&child, &child_session(&child, &parent, Status::Done))
         .unwrap();

@@ -84,10 +84,12 @@ pub fn is_child_of(parent: &SessionId, id: &SessionId) -> bool {
 
 /// A child id derived from its parent and the clock, made unique
 /// against what the store already holds.
-pub fn child_id(store: &dyn SessionStore, parent: &SessionId, at: u64) -> SessionId {
+pub fn child_id(store: &dyn SessionStore, parent: &SessionId, at: u64) -> Option<SessionId> {
     // A process-local counter keeps two starts in one millisecond
     // apart; the store check keeps a restarted process apart from the
-    // children the last one left.
+    // children the last one left. A parent id the 128-byte bound
+    // cannot hold stays `None`: every child's id rides its parent, so
+    // the caller reports the mint as a failure; the turn lives.
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let seq = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut n = 0u32;
@@ -98,13 +100,16 @@ pub fn child_id(store: &dyn SessionStore, parent: &SessionId, at: u64) -> Sessio
             format!("{at:016}-{seq:04}-{n:02}")
         };
         let raw = format!("{parent}{CHILD_MARK}{suffix}");
-        let id = SessionId::new(raw).expect("the allocated shape is a valid id");
+        let id = match SessionId::new(raw) {
+            Ok(id) => id,
+            Err(_) => return None,
+        };
         match store.load(&id) {
-            Ok(None) => return id,
+            Ok(None) => return Some(id),
             Ok(Some(_)) => n = n.saturating_add(1),
             // A store that cannot answer still gets a usable name; the
             // save reports the failure, not the mint.
-            Err(_) => return id,
+            Err(_) => return Some(id),
         }
     }
 }
