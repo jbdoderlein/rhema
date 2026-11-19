@@ -133,14 +133,16 @@ impl Dispatcher {
         let holder = holder.into();
         let lease_key = key.clone();
         self.mutate(&key, true, |mut record| {
-            if record.state == KeyState::Leased {
-                let held = record
-                    .lease
-                    .clone()
-                    .expect("a leased record always carries its lease");
+            // The sweep above has ended any lapsed lease, and resets a
+            // record that says leased without a lease to name (a
+            // hand-edited store row) rather than leaving it to trip the
+            // conflict path here.
+            if record.state == KeyState::Leased
+                && let Some(held) = record.lease.as_ref()
+            {
                 return Err(DispatchError::Conflict(Conflict::LeaseHeld {
-                    lease_id: held.id,
-                    holder: held.holder,
+                    lease_id: held.id.clone(),
+                    holder: held.holder.clone(),
                 }));
             }
             if self.leased_count(None)? >= self.config.max_concurrent_leases as usize {
@@ -599,7 +601,11 @@ fn sweep_record(
             .lease
             .as_ref()
             .is_some_and(|lease| lease.expires_at <= now);
-    if lapsed && record.state == KeyState::Leased {
+    // A leased record without a lease to name is a hand-edited store
+    // row: nothing holds the key, so it ends the way a lapsed one
+    // does, and no lease lookup downstream trips on the lease that
+    // is not there.
+    if record.state == KeyState::Leased && (lapsed || record.lease.is_none()) {
         end_lease(&mut record, now, config, None);
     }
     if record.state != KeyState::Leased {

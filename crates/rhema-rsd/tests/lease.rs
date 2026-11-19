@@ -8,8 +8,8 @@ use std::sync::Arc;
 use common::{DEBOUNCE, TTL, config, event, register_github, setup, the_key};
 use rhema_core::Message;
 use rhema_rsd::{
-    Conflict, DispatchError, Dispatcher, Expired, FixedClock, IngestResult, KeyState, Lease,
-    Outcome, ResourceKey, Session,
+    Conflict, DispatchError, Dispatcher, Expired, FixedClock, IngestResult, KeyRecord, KeyState,
+    Lease, Outcome, ResourceKey, Session, Store, VolatileStore,
 };
 
 /// A leased key: the assignment event dispatched, acquired, and drained at
@@ -85,6 +85,26 @@ fn acquiring_a_leased_key_reports_the_holder() {
         }
         other => panic!("expected LeaseHeld, got {other:?}"),
     }
+}
+
+#[test]
+fn a_leased_record_without_a_lease_is_reset_and_acquired() {
+    let clock = Arc::new(FixedClock::new(1_000));
+    let store = Arc::new(VolatileStore::new());
+    let dispatcher = Dispatcher::new(config(), clock, store.clone());
+    register_github(&dispatcher);
+    let key = the_key();
+    // The shape only a hand-edited store row carries: leased, with no
+    // lease to name. The sweep must end it in-band, not leave it for
+    // `acquire` to trip on.
+    let mut record = KeyRecord::fresh(key.clone(), 0);
+    record.state = KeyState::Leased;
+    store.save(record, None).unwrap();
+    let (lease, _session) = dispatcher.acquire(key.clone(), "handler-1").unwrap();
+    assert_eq!(lease.revision, 1);
+    let status = dispatcher.status(&key).unwrap();
+    assert_eq!(status.state, KeyState::Leased);
+    assert_eq!(status.lease.map(|lease| lease.id), Some(lease.id));
 }
 
 #[test]
