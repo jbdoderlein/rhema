@@ -115,6 +115,46 @@ async fn a_turn_streams_through_the_sse_decoder_with_the_backend_headers() {
 }
 
 #[tokio::test]
+async fn a_stream_cut_before_its_terminal_event_fails_the_turn() {
+    // Text streams, then the connection drops: no terminal
+    // `response.completed`. The old leniency stood the partial answer up
+    // as a clean EndTurn; now the truncation is a retryable failure.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(
+                    r#"data: {"type":"response.output_text.delta","delta":"Hel"}"#.to_owned()
+                        + "\n\n"
+                        + r#"data: {"type":"response.output_text.delta","delta":"lo"}"#
+                        + "\n\n",
+                ),
+        )
+        .mount(&server)
+        .await;
+
+    let mut sink = Collector(vec![]);
+    let err = provider(&server.uri(), credential("access", None, 4_102_444_800))
+        .complete(
+            rhema_core::ModelRequest {
+                system: None,
+                messages: vec![Message::text(Role::User, "say hello")],
+                tools: vec![],
+                params: ChatParams::new("gpt-5.1-codex"),
+            },
+            &mut sink,
+        )
+        .await
+        .expect_err("a stream cut before its terminal event must fail");
+    assert!(
+        matches!(err, ProviderError::Network(ref message) if message.contains("without its terminal event")),
+        "the truncation error is propagated: {err:?}"
+    );
+}
+
+#[tokio::test]
 async fn a_bare_access_token_is_accepted_and_sends_no_account_header() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

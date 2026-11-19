@@ -244,6 +244,9 @@ fn user_agent() -> String {
 
 /// Drains one Responses SSE response to its terminal event,
 /// assembling the output and emitting streaming events on the way.
+/// The bytes running out without a terminal event is a truncated
+/// stream: the drain fails as a retryable network error, never a
+/// silent stop.
 async fn drain_response(
     response: reqwest::Response,
     sink: &mut dyn EventSink,
@@ -265,6 +268,16 @@ async fn drain_response(
     }
     if let Some(err) = decoder.take_error() {
         return Err(ProviderError::Network(err));
+    }
+    // The terminal event is this wire's proof the exchange ended on
+    // the server's own terms: the bytes running out without one is a
+    // truncated stream, and standing it up as a clean stop would
+    // commit the half answer. The retry ladder sees a retryable
+    // network failure and re-issues instead.
+    if !assembler.was_completed() {
+        return Err(ProviderError::Network(
+            "the responses stream ended without its terminal event".to_owned(),
+        ));
     }
     Ok(assembler.finish())
 }
@@ -299,7 +312,8 @@ impl ModelProvider for ChatGptProvider {
     /// # Errors
     ///
     /// Fails with [`ProviderError::Network`]/[`ProviderError::Timeout`]
-    /// when the transport fails, [`ProviderError::Api`] with the HTTP
+    /// when the transport fails or the stream closes before its
+    /// terminal event, [`ProviderError::Api`] with the HTTP
     /// status on a non-2xx response (one 401-driven refresh and retry
     /// included), and [`ProviderError::Api`] without one on a malformed
     /// stream event, a mid-stream error, or a failed response.

@@ -54,7 +54,9 @@
 //!   stop reason as [`StopReason::ToolUse`]. An incomplete response
 //!   with `incomplete_details.reason == "max_output_tokens"` maps to
 //!   [`StopReason::MaxTokens`] when it carries no calls; a
-//!   `content_filter` reason is an API error.
+//!   `content_filter` reason is an API error. The bytes running out
+//!   before the terminal event is a truncated stream, which the drain
+//!   fails as a retryable network error, never a silent stop.
 //! - A `response.failed` event, a top-level `error` event, or an
 //!   `error` object on the terminal response surfaces as
 //!   [`ProviderError::Api`] without a status (the HTTP call succeeded).
@@ -368,6 +370,10 @@ pub struct StreamAssembler {
     usage: Usage,
     /// The terminal stop reason.
     stop: Option<StopReason>,
+    /// Whether a terminal `response.completed`/`response.incomplete`
+    /// event arrived: the proof the exchange ended on the server's own
+    /// terms.
+    completed: bool,
     /// The synthetic-id counter for calls that arrive without one.
     next_synthetic: usize,
 }
@@ -450,8 +456,19 @@ impl StreamAssembler {
         Ok(())
     }
 
-    /// The assembled output. Call after the stream ends; a stream that
-    /// closed before its terminal event still returns what it streamed.
+    /// Whether a terminal `response.completed`/`response.incomplete`
+    /// event arrived. A `response.failed` or a terminal `error` fails
+    /// the push outright, so this is the completed-or-incomplete proof
+    /// the drain checks before standing the assembled output up as a
+    /// result.
+    pub fn was_completed(&self) -> bool {
+        self.completed
+    }
+
+    /// The assembled output. Call after the terminal event, which the
+    /// drain requires before it calls this: a stream that closed
+    /// without one is refused there, so this never stands a truncated
+    /// exchange up as a result.
     pub fn finish(self) -> ModelOutput {
         let text = self
             .final_text
@@ -713,6 +730,7 @@ impl StreamAssembler {
 
         self.usage = usage_of(&response);
         self.stop = Some(stop_reason(incomplete, reason, &self.calls));
+        self.completed = true;
         sink.emit(Event::Usage(self.usage));
         Ok(())
     }
@@ -1139,6 +1157,34 @@ mod tests {
         let output = assembler.finish();
         assert_eq!(output.message.content, vec![Content::Text("final".into())]);
         assert_eq!(output.stop_reason, StopReason::EndTurn);
+    }
+
+    #[test]
+    fn a_terminal_event_is_the_completed_proof() {
+        // Deltas alone are not a completed stream: the drain behind the
+        // assembler refuses a stream cut here.
+        let mut assembler = StreamAssembler::new();
+        let mut sink = Collector::default();
+        assembler
+            .push(
+                r#"{"type":"response.output_text.delta","delta":"half"}"#,
+                &mut sink,
+            )
+            .expect("the delta parses");
+        assert!(!assembler.was_completed());
+    }
+
+    #[test]
+    fn the_completed_event_sets_the_completed_proof() {
+        let mut assembler = StreamAssembler::new();
+        let mut sink = Collector::default();
+        assembler
+            .push(
+                r#"{"type":"response.completed","response":{"status":"completed"}}"#,
+                &mut sink,
+            )
+            .expect("the terminal event parses");
+        assert!(assembler.was_completed());
     }
 
     #[test]
