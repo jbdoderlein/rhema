@@ -120,8 +120,17 @@ fn collect_into(dir: &Path, by_name: &mut BTreeMap<String, Skill>) {
 /// The `description` out of a leading `---` frontmatter block, and the
 /// optional `license`; `None` for the description when there is no
 /// block or no field, which makes the folder not a skill at all.
+///
+/// Tier-three skill folders cross machines and tools, so the fence is
+/// tolerated in the spellings a foreign editor leaves behind: a UTF-8
+/// BOM in front of it, and the CRLF line endings of a file authored
+/// on Windows. Refusing them drops a skill from the prompt and the
+/// pin list with no diagnostic anywhere.
 fn parse_description(raw: &str) -> Option<(String, Option<String>)> {
-    let rest = raw.strip_prefix("---\n")?;
+    let raw = raw.strip_prefix('\u{FEFF}').unwrap_or(raw);
+    let rest = raw
+        .strip_prefix("---\n")
+        .or_else(|| raw.strip_prefix("---\r\n"))?;
     let block = rest.split_once("\n---")?.0;
     let front: Frontmatter = serde_yaml::from_str(block).ok()?;
     let description = front.description.trim();
@@ -150,6 +159,37 @@ mod tests {
         )
         .unwrap();
         file
+    }
+
+    #[test]
+    fn frontmatter_tolerates_crlf_line_endings() {
+        let crlf = "---\r\ndescription: the trigger\r\n---\r\n\r\nDo the thing.\r\n";
+        let (description, license) = parse_description(crlf).expect("the CRLF fence parses");
+        assert_eq!(description, "the trigger");
+        assert_eq!(license, None);
+    }
+
+    #[test]
+    fn frontmatter_tolerates_a_bom_before_the_fence() {
+        let bom = "\u{FEFF}---\ndescription: the trigger\n---\n\nDo the thing.\n";
+        let (description, _) = parse_description(bom).expect("the BOM fence parses");
+        assert_eq!(description, "the trigger");
+    }
+
+    #[test]
+    fn a_crlf_skill_reaches_the_discovery_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("crlf-skill");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            folder.join("SKILL.md"),
+            "---\r\ndescription: the crlf trigger\r\n---\r\n\r\nDo the thing.\r\n",
+        )
+        .unwrap();
+        let mut by_name = BTreeMap::new();
+        collect_into(dir.path(), &mut by_name);
+        let skill = by_name.get("crlf-skill").expect("the folder is a skill");
+        assert_eq!(skill.description, "the crlf trigger");
     }
 
     #[test]
