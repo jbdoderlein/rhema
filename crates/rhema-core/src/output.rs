@@ -7,6 +7,7 @@ use crate::message::Message;
 /// Why the model stopped generating.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum StopReason {
     /// The model finished its turn on its own.
     EndTurn,

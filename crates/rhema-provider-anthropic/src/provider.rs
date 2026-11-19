@@ -405,6 +405,9 @@ fn transport_error(err: TransportError) -> ProviderError {
     match err {
         TransportError::Timeout => ProviderError::Timeout,
         TransportError::Other(msg) => ProviderError::Network(msg),
+        // The transport grows across releases; a variant this crate
+        // predates is a network failure, its text kept.
+        other => ProviderError::Network(other.to_string()),
     }
 }
 

@@ -6,6 +6,7 @@
 /// the reason ride the display string the aggregate renders, never a
 /// control decision (see `specs/rhema-websearch.md` §5).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum SearchError {
     /// The key or plan was refused: 401 or 403 from the vendor.
     #[error("the key or plan was refused")]

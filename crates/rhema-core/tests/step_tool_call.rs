@@ -108,6 +108,9 @@ impl From<Event<'_>> for Recorded {
                 usage,
                 stop_reason: stop_reason.clone(),
             },
+            // The enum grows across releases; a variant this suite
+            // predates fails the test with its shape, not silently.
+            other => panic!("unrecorded event: {other:?}"),
         }
     }
 }

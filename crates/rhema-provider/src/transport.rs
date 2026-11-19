@@ -85,6 +85,7 @@ impl HttpRequest {
 
 /// Why an exchange failed before an HTTP status was readable.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum TransportError {
     /// The exchange did not finish in time.
     #[error("timed out")]

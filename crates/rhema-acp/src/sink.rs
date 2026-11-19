@@ -248,6 +248,9 @@ impl EventSink for AcpSink {
             // The retry wait is the TUI's countdown material; the
             // client sees the step's outcome, recovery or final error.
             Event::RetryWait { .. } => {}
+            // The sink grows across releases; a future event has no
+            // session-update form yet, it moves nothing.
+            _ => {}
         }
     }
 }

@@ -380,6 +380,9 @@ impl App {
             StopReason::MaxTokens => "max tokens".to_owned(),
             StopReason::StopSequence => "stop sequence".to_owned(),
             StopReason::Other(other) => other.clone(),
+            // The reasons grow across releases; the notice names the
+            // reason it does not know.
+            other => format!("{other:?}"),
         }
     }
 }

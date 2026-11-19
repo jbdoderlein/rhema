@@ -10,6 +10,7 @@
 
 /// One streaming or lifecycle event of a step.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Event<'a> {
     /// The step begins; `iteration` counts the steps this agent has already
     /// completed.

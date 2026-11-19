@@ -108,6 +108,7 @@ pub enum WorkspaceSeed {
 /// Why a sandbox operation failed. In-band: the shell tool turns every
 /// variant into an `is_error` result for the model, never an abort.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum SandboxError {
     /// The sandbox could not be reached: the container is not up, the
     /// transport failed, or the response was malformed.

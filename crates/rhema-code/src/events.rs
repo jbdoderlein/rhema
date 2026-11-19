@@ -202,6 +202,9 @@ impl From<&Event<'_>> for OwnedEvent {
                 usage: *usage,
                 stop_reason: (*stop_reason).clone(),
             },
+            // The events grow across releases; a variant this version
+            // predates is no owned line, the test names it.
+            _ => panic!("unrecorded event"),
         }
     }
 }

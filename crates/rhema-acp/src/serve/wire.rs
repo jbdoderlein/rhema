@@ -182,6 +182,9 @@ pub(crate) fn acp_stop(reason: &EngineStop) -> StopReason {
             StopReason::EndTurn
         }
         EngineStop::ToolUse => StopReason::EndTurn,
+        // The reasons grow across releases; a reason this crate
+        // predates still reads as a normal end of turn.
+        _ => StopReason::EndTurn,
     }
 }
 

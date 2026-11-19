@@ -200,13 +200,10 @@ impl ServerMessage {
             // The retry wait is the TUI's countdown material; the wire
             // carries no frame for it, and the step's outcome, a
             // recovery or the final error, reaches the client anyway.
-            Event::RetryWait { .. } => {
-                // The retry wait is the TUI's countdown material; the
-                // wire carries no frame for it, and the step's outcome,
-                // a recovery or the final error, reaches the client
-                // anyway.
-                None
-            }
+            Event::RetryWait { .. } => None,
+            // The wire grows across releases; a frame-less event is
+            // dropped, the client's view stays at its wire revision.
+            _ => None,
         }
     }
 
