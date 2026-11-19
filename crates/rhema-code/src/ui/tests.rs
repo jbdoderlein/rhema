@@ -2966,6 +2966,30 @@ mod scroll_tests {
             "after the chip: chip width crossed in one step"
         );
     }
+
+    #[test]
+    fn the_cursor_counts_wide_characters_in_cells() {
+        // Each wide character is one step of the source but two cells
+        // of the render: the caret lands where they draw, not a step
+        // short per character.
+        let layout = input_layout("中文abc", &[], 40, &DARK);
+        assert_eq!(cursor_at_rows(&layout, 0), Some((0, 0)));
+        assert_eq!(cursor_at_rows(&layout, 1), Some((0, 2)), "after 中");
+        assert_eq!(cursor_at_rows(&layout, 2), Some((0, 4)), "after 中文");
+        assert_eq!(cursor_at_rows(&layout, 5), Some((0, 7)), "at the end");
+
+        // The wide text also widens the column a chip's cursor math
+        // works from.
+        let marked = format!("中{}a", ChatState::MARK);
+        let layout = input_layout(&marked, &[Chip::Paste("x\ny".to_owned())], 40, &DARK);
+        assert_eq!(cursor_at_rows(&layout, 1), Some((0, 2)), "on the chip");
+        assert_eq!(
+            cursor_at_rows(&layout, 2),
+            Some((0, 9)),
+            "the chip crossed whole after two cells of text"
+        );
+    }
+
     #[test]
     fn chips_number_across_lines_with_their_own_payload() {
         // Anchors on different logical lines: the ids run across the

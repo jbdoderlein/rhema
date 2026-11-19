@@ -282,13 +282,29 @@ pub(crate) fn cursor_at_rows(layout: &[InputRow], cursor: usize) -> Option<(usiz
     for (index, row) in layout.iter().enumerate() {
         if cursor >= consumed && cursor <= consumed + row.source_chars {
             let in_row = cursor - consumed;
-            let mut col = in_row;
-            for (source, start, width) in &row.chips {
-                if in_row == *source {
-                    return Some((index, *start));
-                }
-                if in_row > *source {
-                    col += width - 1;
+            // Walk the rendered spans the way the render laid them out:
+            // text contributes its cells one wide character at a time,
+            // a chip's single span crosses at its stored column in one
+            // source step. The lead is not part of the row's text.
+            let mut col = 0usize;
+            let mut source = 0usize;
+            let mut spans = row.line.spans.iter().skip(1);
+            while source < in_row {
+                let Some(span) = spans.next() else {
+                    break;
+                };
+                if let Some(&(_, _, width)) = row.chips.iter().find(|&&(_, start, _)| start == col)
+                {
+                    col += width;
+                    source += 1;
+                } else {
+                    for ch in span.content.chars() {
+                        if source >= in_row {
+                            break;
+                        }
+                        col += ch.width().unwrap_or(0);
+                        source += 1;
+                    }
                 }
             }
             return Some((index, col));
