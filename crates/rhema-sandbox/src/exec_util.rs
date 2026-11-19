@@ -73,7 +73,10 @@ pub const MAX_CAPTURE_BYTES: usize = 32 * 1024 * 1024;
 /// stdout and stderr piped, the local child killed on drop. The
 /// byte-capped read is the point: `wait_with_output` would grow the
 /// stdout buffer without bound, and stopping the read alone would
-/// leave a producer blocked on its full pipe.
+/// leave a producer blocked on its full pipe. stderr drains in a task
+/// beside the stdout read, a child filling one pipe must not stall
+/// the other's reader (both hold 64 KiB, and a stalled pair only ends
+/// when the caller's budget drops it as a Timeout).
 pub async fn capture_capped(
     mut command: tokio::process::Command,
 ) -> Result<(Vec<u8>, Option<i32>, String), SandboxError> {
@@ -86,6 +89,7 @@ pub async fn capture_capped(
         .kill_on_drop(true)
         .spawn()
         .map_err(|err| SandboxError::Unavailable(format!("{err}")))?;
+    let stderr_text = tokio::spawn(drain_stderr(child.stderr.take()));
     let mut stdout = Vec::new();
     if let Some(mut pipe) = child.stdout.take() {
         let mut buffer = vec![0u8; 64 * 1024];
@@ -107,17 +111,31 @@ pub async fn capture_capped(
             stdout.extend_from_slice(&buffer[..read]);
         }
     }
-    // The stdout half is drained (or the read taken over): this waits
-    // for the child and the stderr to close.
-    let output = child
-        .wait_with_output()
+    let stderr = match stderr_text.await {
+        Ok(text) => text,
+        Err(_) => {
+            return Err(SandboxError::Unavailable(
+                "the stderr drain did not finish".into(),
+            ));
+        }
+    };
+    let status = child
+        .wait()
         .await
         .map_err(|err| SandboxError::Unavailable(format!("waiting for the capture: {err}")))?;
-    Ok((
-        stdout,
-        output.status.code(),
-        String::from_utf8_lossy(&output.stderr).into_owned(),
-    ))
+    Ok((stdout, status.code(), stderr))
+}
+
+/// Reads one child's stderr pipe to EOF in its own task. Uncapped like
+/// the `wait_with_output` it replaces: the text is the error detail
+/// callers already hold whole, the read cannot pin more than the
+/// child writes.
+async fn drain_stderr(mut pipe: Option<tokio::process::ChildStderr>) -> String {
+    let mut bytes = Vec::new();
+    if let Some(pipe) = pipe.as_mut() {
+        let _ = tokio::io::AsyncReadExt::read_to_end(pipe, &mut bytes).await;
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 /// Runs one spawned child to completion: both pipes pumped (complete
@@ -405,6 +423,26 @@ mod tests {
             append_capped(&mut tail, &[b'x'; MAX_STREAM_BYTES]);
         }
         assert_eq!(tail.len(), MAX_STREAM_BYTES);
+    }
+
+    // The child floods the 64 KiB stderr pipe (8 MiB, past any pipe
+    // buffering a host grants) before writing the first stdout byte: a
+    // stdout-only reader waits on data the child cannot reach until
+    // stderr drains. The timeout turns a regression back into a stall
+    // that fails, not a hang.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_full_stderr_pipe_does_not_block_the_capture() {
+        let mut command = tokio::process::Command::new("/bin/sh");
+        command.args(["-c", "head -c 8388608 /dev/zero >&2; echo done"]);
+        let (stdout, code, stderr) =
+            tokio::time::timeout(Duration::from_secs(30), capture_capped(command))
+                .await
+                .expect("the capture finishes")
+                .expect("the capture reads");
+        assert_eq!(stdout, b"done\n".as_slice());
+        assert_eq!(code, Some(0));
+        assert_eq!(stderr.len(), 8_388_608);
     }
 
     #[tokio::test]

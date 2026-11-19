@@ -94,7 +94,10 @@ impl SshSandbox {
     /// stdin (the pipe closed after), answering the exit code and the
     /// stderr text. The far end's stdout is of no route's use, `tee`
     /// echoes, `tar -xzf -` is quiet, so it goes to null, and a large
-    /// feed cannot deadlock on a full stdout pipe.
+    /// feed cannot deadlock on a full stdout pipe. stderr drains in a
+    /// task beside the stdin write: a far end that fills it while the
+    /// tarball still crosses blocks the write, and both then sit until
+    /// the budget drops them as a Timeout.
     async fn feed(
         &self,
         argv: &[String],
@@ -113,6 +116,7 @@ impl SshSandbox {
             .kill_on_drop(true)
             .spawn()
             .map_err(|err| SandboxError::Unavailable(format!("{err}")))?;
+        let stderr_text = tokio::spawn(drain_stderr(child.stderr.take()));
         if let Some(mut pipe) = child.stdin.take() {
             pipe.write_all(&bytes)
                 .await
@@ -121,14 +125,19 @@ impl SshSandbox {
                 .await
                 .map_err(|err| SandboxError::Unavailable(format!("{err}")))?;
         }
-        let output = child
-            .wait_with_output()
+        let stderr = match stderr_text.await {
+            Ok(text) => text,
+            Err(_) => {
+                return Err(SandboxError::Unavailable(
+                    "the stderr drain did not finish".into(),
+                ));
+            }
+        };
+        let status = child
+            .wait()
             .await
             .map_err(|err| SandboxError::Unavailable(format!("waiting for ssh: {err}")))?;
-        Ok((
-            output.status.code(),
-            String::from_utf8_lossy(&output.stderr).into_owned(),
-        ))
+        Ok((status.code(), stderr))
     }
 
     /// Runs one remote seed under [`SEED_BUDGET`]: past it the local
@@ -155,6 +164,18 @@ impl SshSandbox {
             Err(_) => Err(SandboxError::Timeout(budget.as_secs())),
         }
     }
+}
+
+/// Reads one child's stderr pipe to EOF in its own task. Uncapped
+/// like the `wait_with_output` it replaces: the text is the error
+/// detail callers already hold whole, the read cannot pin more than
+/// the child writes.
+async fn drain_stderr(mut pipe: Option<tokio::process::ChildStderr>) -> String {
+    let mut bytes = Vec::new();
+    if let Some(pipe) = pipe.as_mut() {
+        let _ = tokio::io::AsyncReadExt::read_to_end(pipe, &mut bytes).await;
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 /// Maps a finished `ssh` onto a sandbox result. Exit 255 is ssh's own
@@ -506,6 +527,29 @@ mod tests {
         assert_eq!(parent_of("/note.md"), None);
         assert_eq!(parent_of("/"), None);
         assert_eq!(parent_of("/deep/"), None);
+    }
+
+    // The child floods the 64 KiB stderr pipe (8 MiB, past any pipe
+    // buffering a host grants) before it reads the bytes on stdin: a
+    // writer that drains stderr only after the feed would block on
+    // both pipes. The timeout turns a regression back into a stall
+    // that fails, not a hang.
+    #[tokio::test]
+    async fn a_full_stderr_pipe_does_not_block_the_feed() {
+        let argv = vec![
+            "sh".to_owned(),
+            "-c".to_owned(),
+            "head -c 8388608 /dev/zero >&2; cat > /dev/null".to_owned(),
+        ];
+        let answer = tokio::time::timeout(
+            Duration::from_secs(30),
+            sandbox().feed(&argv, vec![b'x'; 512 * 1024]),
+        )
+        .await
+        .expect("the feed finishes");
+        let (code, stderr) = answer.expect("the feed lands");
+        assert_eq!(code, Some(0));
+        assert_eq!(stderr.len(), 8_388_608);
     }
 
     #[test]
