@@ -1455,6 +1455,10 @@ fn a_resume_pick_under_a_running_turn_is_declined() {
 fn a_failed_resume_load_lands_in_the_error_strip() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     let path = Path::new("/tmp/rhema-test-no-such-session.json");
+    assert_eq!(
+        h.app.request_resume(path),
+        vec![Effect::ResumeSession(path.to_path_buf())]
+    );
     h.app.on_event(UiEvent::SessionResumed {
         path: path.to_path_buf(),
         result: Err("no such file".into()),
@@ -2785,6 +2789,99 @@ fn a_rebuild_promised_mid_turn_lands_at_the_turns_end() {
         steer: rx,
     });
     assert_eq!(h.app.deferred_rebuild, None, "the promise is spent");
+}
+
+/// Two picks in flight: the newest owns the landing, and the first
+/// one home does not overwrite the conversation the picker moved to.
+/// The loads land out of order, the older one after the newer one
+/// already applied.
+#[test]
+fn a_stale_resume_overwritten_by_a_newer_pick_drops() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    let dir = tempfile::tempdir().unwrap();
+    let mut first = Session::default();
+    first
+        .history
+        .push(Message::text(Role::User, "the first pick"));
+    first.cost_usd = 1.0;
+    let mut second = Session::default();
+    second
+        .history
+        .push(Message::text(Role::User, "the second pick"));
+    second.cost_usd = 2.5;
+    let first_path = dir.path().join("first.json");
+    let second_path = dir.path().join("second.json");
+    crate::sessions::write_session(&first_path, &first).unwrap();
+    crate::sessions::write_session(&second_path, &second).unwrap();
+
+    // Pick one, then the other before the first lands.
+    h.app.request_resume(&first_path);
+    h.app.request_resume(&second_path);
+    // The newer pick lands first and applies.
+    let second_load = crate::app::App::load_resume_parts(&second_path).map_err(|e| e.to_string());
+    h.app.on_event(UiEvent::SessionResumed {
+        path: second_path.clone(),
+        result: second_load,
+    });
+    assert_eq!(h.app.session_cost, 2.5, "the newer pick owns the landing");
+    assert_eq!(h.app.resume_pending, None, "its landing spent the request");
+
+    // The older pick lands late: it drops, overwriting nothing.
+    let first_load = crate::app::App::load_resume_parts(&first_path).map_err(|e| e.to_string());
+    h.app.on_event(UiEvent::SessionResumed {
+        path: first_path,
+        result: first_load,
+    });
+    assert_eq!(h.app.session_cost, 2.5, "the stale landing changes nothing");
+    assert_eq!(
+        h.app
+            .transcript
+            .lines()
+            .iter()
+            .filter(|line| matches!(line, Line::Notice(text) if text.contains("resumed")))
+            .count(),
+        1,
+        "only the newer pick announced its resume"
+    );
+}
+
+/// A load overtaken by a turn refuses the way a fresh pick would, the
+/// landing would otherwise install a second agent under the running
+/// turn'"'"'s own.
+#[test]
+fn a_resume_that_lands_mid_turn_is_refused() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    let dir = tempfile::tempdir().unwrap();
+    let mut session = Session::default();
+    session.history.push(Message::text(Role::User, "late"));
+    let path = dir.path().join("late.json");
+    crate::sessions::write_session(&path, &session).unwrap();
+
+    h.app.request_resume(&path);
+    // A turn begins before the load lands: the key handler stays
+    // live while the blocking pool still holds the file.
+    let (steer, _) = tokio::sync::mpsc::channel(STEER_QUEUE_CAP);
+    let (cancel, _cancelled) = tokio::sync::watch::channel(false);
+    h.app.begin_turn(cancel, steer, None);
+    let loaded = crate::app::App::load_resume_parts(&path).map_err(|e| e.to_string());
+    h.app.on_event(UiEvent::SessionResumed {
+        path: path.clone(),
+        result: loaded,
+    });
+    assert_eq!(
+        h.app.transcript.lines().last(),
+        Some(&Line::Notice(
+            "a turn began before the session finished loading; /resume again once it ends"
+                .to_owned()
+        )),
+        "the landing refuses with the re-pick named"
+    );
+    assert_eq!(h.app.resume_pending, None, "the request is spent");
+    assert_ne!(
+        h.app.session_file.as_deref(),
+        Some(path.as_path()),
+        "nothing of the loaded session applied"
+    );
 }
 
 /// The paste key's unreachable notice lands in the transcript: the

@@ -246,7 +246,31 @@ impl App {
                 .push_notice("a turn is running; /resume waits for it to finish");
             return Vec::new();
         }
+        // The newest pick owns the landing: an older load still in
+        // flight lands stale and drops, rather than overwriting the
+        // conversation its picker moved on from.
+        self.resume_pending = Some(path.to_path_buf());
         vec![Effect::ResumeSession(path.to_path_buf())]
+    }
+
+    /// A resume landed from the blocking pool. Only the newest pick
+    /// applies: a load superseded mid-flight by a second pick drops,
+    /// and a load overtaken by a running turn refuses the same way a
+    /// fresh pick would, the pick is easy to make again once the turn
+    /// ends. [`Self::apply_resume`] alone never checks — the runner
+    /// can hand it states the picker already refused.
+    pub(crate) fn land_resume(&mut self, path: &Path, loaded: Result<Box<ResumedLoad>, String>) {
+        if self.resume_pending.as_deref() != Some(path) {
+            return;
+        }
+        self.resume_pending = None;
+        if self.turn.running {
+            self.transcript.push_notice(
+                "a turn began before the session finished loading; /resume again once it ends",
+            );
+            return;
+        }
+        self.apply_resume(path, loaded);
     }
 
     /// Loads a saved session and applies it on the spot: the

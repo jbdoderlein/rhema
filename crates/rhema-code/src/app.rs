@@ -208,6 +208,11 @@ pub struct App {
     /// being stood up off the UI thread. Turns and further switches
     /// wait for it; the answer arrives as `UiEvent::SandboxAssembled`.
     pub assembling: Option<SandboxChoice>,
+    /// The `/resume` pick currently loading: the newest request owns
+    /// the landing, and a result for any path but this one is stale —
+    /// a second pick superseded it mid-load. Cleared when its load
+    /// lands, whatever the landing then finds.
+    pub resume_pending: Option<std::path::PathBuf>,
     /// A rebuild a running turn's checkout ate, with the stamp it
     /// asked for: mid-turn settings toggles promised their rebuild
     /// for the turn's end, and only the turn's finish runs it — the
@@ -643,6 +648,7 @@ impl App {
             sandbox_offered: setup.sandbox_machines.offered_for(&effective),
             assembling: None,
             deferred_rebuild: None,
+            resume_pending: None,
             update: crate::screens::UpdatePage::default(),
             logo_rect: None,
             bubble_pieces: Vec::new(),

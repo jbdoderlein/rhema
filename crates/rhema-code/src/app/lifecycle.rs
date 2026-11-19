@@ -27,7 +27,7 @@ impl App {
                 Vec::new()
             }
             UiEvent::SessionResumed { path, result } => {
-                self.apply_resume(&path, result);
+                self.land_resume(&path, result);
                 Vec::new()
             }
             UiEvent::ClipboardGrabbed { grab } => {
