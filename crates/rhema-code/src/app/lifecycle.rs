@@ -30,6 +30,15 @@ impl App {
                 self.apply_resume(&path, result);
                 Vec::new()
             }
+            UiEvent::ClipboardGrabbed { grab } => {
+                // The read ran off the key handler; the grab routes
+                // the same way the synchronous one did, the chat
+                // screen has no notice channel of its own.
+                if let ChatAction::Notice { text } = self.chat.paste_grab(grab) {
+                    self.push_notice(&text);
+                }
+                Vec::new()
+            }
             UiEvent::UsageLoaded { provider, result } => {
                 // Err or a switched-away backend both degrade to a
                 // smaller badge, never to a stale figure.

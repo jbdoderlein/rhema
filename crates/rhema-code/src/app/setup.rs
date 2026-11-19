@@ -816,6 +816,9 @@ pub enum Effect {
     /// Fetch the active backend's subscription allowance, if its
     /// provider reports one.
     FetchUsage,
+    /// Read the clipboard for the paste key off the UI thread; the
+    /// grab lands back as a `UiEvent::ClipboardGrabbed`.
+    GrabClipboard,
     /// Start one turn with this prompt: the text, the paste spans it
     /// records, and the images beside it, in the order they were
     /// submitted.

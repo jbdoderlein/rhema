@@ -658,6 +658,12 @@ impl App {
             if key.code == KeyCode::Char('p') && !self.turn.running {
                 return self.open_picker();
             }
+            // Ctrl-V only asks; the read runs off this handler and
+            // lands later as an event, so its effect is one this gate
+            // must pass through.
+            if matches!(action, ChatAction::Paste) {
+                return vec![Effect::GrabClipboard];
+            }
             return Vec::new();
         }
         // Esc while entering a command cancels the entry instead of the
@@ -771,6 +777,7 @@ impl App {
                 self.push_notice(&text);
                 Vec::new()
             }
+            ChatAction::Paste => vec![Effect::GrabClipboard],
             ChatAction::None => Vec::new(),
         }
     }

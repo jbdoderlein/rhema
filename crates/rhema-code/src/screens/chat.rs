@@ -27,6 +27,11 @@ pub enum ChatAction {
         /// The notice's text.
         text: String,
     },
+    /// The paste key: read the clipboard and route what it held
+    /// through `paste_grab`. The connection round trip and any image's
+    /// PNG re-encode are blocking work, so the app runs the read off
+    /// the key handler and lands the grab back here as an event.
+    Paste,
 }
 
 /// One chip anchored in the input: the payload a [`ChatState::MARK`]
@@ -378,15 +383,18 @@ impl ChatState {
             return ChatAction::None;
         }
         // Ctrl-v (with or without shift) is paste in terminals that do
-        // not bind it themselves: the clipboard is read directly, the
-        // same content a bracketed paste would have carried. The grab
-        // routes through paste_grab, so an unreachable clipboard, an
-        // ssh hop or a plain TTY, is noticed instead of silent.
+        // not bind it themselves: the clipboard read is the same
+        // content a bracketed paste would have carried. The connection
+        // round trip and any image's PNG re-encode are blocking work,
+        // so the key only asks and the app runs the read off its
+        // thread, landing the grab back through paste_grab: an
+        // unreachable clipboard, an ssh hop or a plain TTY, is noticed
+        // instead of silent.
         if key.code == KeyCode::Char('v')
             && key.modifiers.contains(KeyModifiers::CONTROL)
             && !key.modifiers.contains(KeyModifiers::ALT)
         {
-            return self.paste_grab(super::clipboard::grab());
+            return ChatAction::Paste;
         }
         // AltGr lands as CONTROL|ALT on most terminals outside the kitty
         // protocol: a printable char carrying both is composed text, not

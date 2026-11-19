@@ -2718,6 +2718,31 @@ fn a_submit_carries_the_pastes_payload_and_its_span() {
     );
 }
 
+/// The paste key runs its read off the key handler: the key only
+/// asks, and the grab lands back as an event that inserts the paste
+/// or the notice the failure carries.
+#[test]
+fn the_paste_key_spawns_off_the_handler_and_lands_as_an_event() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    let paste = ctrl('v');
+    assert_eq!(h.app.on_key(paste), vec![Effect::GrabClipboard]);
+
+    // The grab's arrival inserts exactly what the synchronous read
+    // did: text into the box, a failure's notice into the transcript.
+    h.app.on_event(UiEvent::ClipboardGrabbed {
+        grab: crate::screens::clipboard::Grab::Text("pasted".to_owned()),
+    });
+    assert!(h.app.chat.input.contains("pasted"));
+    h.app.on_event(UiEvent::ClipboardGrabbed {
+        grab: crate::screens::clipboard::Grab::Oversized(6 * 1024 * 1024),
+    });
+    let last = h.app.transcript.lines().last();
+    assert!(
+        matches!(last, Some(Line::Notice(text)) if text.contains("too large")),
+        "the notice lands: {last:?}"
+    );
+}
+
 /// The paste key's unreachable notice lands in the transcript: the
 /// chat screen has no notice channel of its own, the app owns the
 /// transcript.

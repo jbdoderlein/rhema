@@ -45,8 +45,8 @@ use crate::sessions;
 use crate::status::{self, Status, Tracker, first_line};
 use crate::store::{ConfigStore, DiskStore};
 use crate::turn::{
-    spawn_model_fetch, spawn_session_resume, spawn_turn, spawn_update_check, spawn_update_install,
-    spawn_usage_fetch,
+    spawn_clipboard_grab, spawn_model_fetch, spawn_session_resume, spawn_turn, spawn_update_check,
+    spawn_update_install, spawn_usage_fetch,
 };
 use crate::{events::UiEvent, ui};
 
@@ -972,6 +972,9 @@ fn dispatch(
                 return;
             }
             spawn_model_fetch(backends, why, tx.clone());
+        }
+        Effect::GrabClipboard => {
+            spawn_clipboard_grab(tx.clone());
         }
         Effect::ResumeSession(path) => {
             spawn_session_resume(path, tx.clone());

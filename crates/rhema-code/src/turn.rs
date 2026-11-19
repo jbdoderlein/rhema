@@ -371,6 +371,18 @@ pub fn spawn_session_resume(
     })
 }
 
+/// Spawns the clipboard read for the paste key on the blocking pool:
+/// the connection round trip and any image's PNG re-encode are
+/// blocking work a key handler must not run inline, a large
+/// screenshot would freeze every redraw until it encoded. The grab
+/// lands as a `UiEvent::ClipboardGrabbed`.
+pub fn spawn_clipboard_grab(events: UnboundedSender<UiEvent>) -> JoinHandle<()> {
+    tokio::task::spawn_blocking(move || {
+        let grab = crate::screens::clipboard::grab();
+        let _ = events.send(UiEvent::ClipboardGrabbed { grab });
+    })
+}
+
 /// Spawns the subscription-allowance fetch on a tokio task. The result
 /// is tagged with the backend's config name, so a report of a backend
 /// the session has since switched away from never shows.
@@ -466,6 +478,7 @@ pub async fn drive_turn_for_test(
             | UiEvent::ApprovalRequested { .. }
             | UiEvent::SandboxAssembled { .. }
             | UiEvent::SessionResumed { .. }
+            | UiEvent::ClipboardGrabbed { .. }
             | UiEvent::UpdateChecked { .. }
             | UiEvent::UpdateInstalled { .. }
             | UiEvent::LoginUpdate(_) => {}

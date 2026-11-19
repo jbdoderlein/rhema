@@ -75,9 +75,12 @@ pub enum Grab {
 /// the file way in is the answer that works over the hop.
 pub const UNREACHABLE_NOTICE: &str = "no clipboard reachable; an image cannot ride a paste: save it in the checkout and name it in the prompt";
 
-/// Reads the clipboard for one paste key. The image is tried first, a
-/// clipboard holds one thing or the other, then the text. The one
-/// connection serves both reads, and a dead one answers
+/// Reads the clipboard for one paste key, on the blocking pool: the
+/// connection round trip and any image's PNG re-encode stall a draw
+/// loop, so the key handler spawns this and lands the result as an
+/// event. The image is tried first, a clipboard holds one thing or
+/// the other, then the text. The one connection serves both reads,
+/// and a dead one answers
 /// [`Grab::Unreachable`], the case the paste key answers with a
 /// notice: [`Grab::Nothing`] is an empty clipboard, not a missing
 /// one.

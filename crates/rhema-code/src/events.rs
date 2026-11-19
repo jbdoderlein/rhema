@@ -289,6 +289,13 @@ pub enum UiEvent {
         /// The installer's output tail, or the failure text.
         result: Result<String, String>,
     },
+    /// The paste key's clipboard read finished off-thread: what the
+    /// clipboard held, routed through `paste_grab` on arrival.
+    ClipboardGrabbed {
+        /// The grab's answer: an image or text to paste, or the notice
+        /// its failure cases carry.
+        grab: crate::screens::clipboard::Grab,
+    },
     /// A `/resume` pick finished loading off-thread. The session file
     /// is a JSON read plus a parse, and the usage accounting it derives
     /// is more of the same, neither belongs on the UI thread, which
