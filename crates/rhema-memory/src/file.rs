@@ -36,7 +36,8 @@
 //! each record is next touched.
 //!
 //! Writes are atomic: a `put` writes to a `.tmp` sibling, `sync_all`s it,
-//! and renames, so a `put` that returned `Ok` survives a crash. A crash
+//! renames, and fsyncs the directory, so a `put` that returned `Ok`
+//! survives a crash. A crash
 //! *during* a write can leave a `.tmp` behind; the `.md`-only scan ignores
 //! it. Files a hand edit corrupted are skipped by `search` and reported
 //! by `get`/`put` as [`MemoryError::Corrupt`], never taken down, and
@@ -156,8 +157,10 @@ fn serialize(record: &MemoryRecord) -> Result<String, MemoryError> {
     Ok(format!("---\n{yaml}---\n{}", record.body))
 }
 
-/// Writes through a `.tmp` sibling, `sync_all`ed, then renamed, the
-/// rename is the moment the write becomes durable.
+/// Writes through a `.tmp` sibling, `sync_all`ed, then renamed with the
+/// directory synced, the return is the moment the write is durable: the
+/// rename alone is not, a crash can lose a directory entry the fs did
+/// not yet flush.
 fn write_file(path: &Path, record: &MemoryRecord) -> Result<(), MemoryError> {
     let text = serialize(record)?;
     let tmp = path.with_extension("md.tmp");
@@ -166,7 +169,47 @@ fn write_file(path: &Path, record: &MemoryRecord) -> Result<(), MemoryError> {
     file.sync_all()?;
     drop(file);
     fs::rename(&tmp, path)?;
-    Ok(())
+    sync_dir(path)
+}
+
+/// Fsyncs the directory that now names the file, the same tail
+/// `rhema-session-store-file`'s atomic write performs: platforms that
+/// refuse a directory handle (and filesystems that refuse its fsync)
+/// are ignored, there the rename is all the durability there is.
+/// Windows takes the non-unix arm because it refuses to open a
+/// directory as a file at all.
+fn sync_dir(path: &Path) -> Result<(), MemoryError> {
+    #[cfg(unix)]
+    {
+        let dir = path
+            .parent()
+            .filter(|dir| !dir.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        let handle = match fs::File::open(dir) {
+            Ok(handle) => handle,
+            Err(err) if unsupported(&err) => return Ok(()),
+            Err(err) => return Err(err.into()),
+        };
+        match handle.sync_all() {
+            Ok(()) => Ok(()),
+            Err(err) if unsupported(&err) => Ok(()),
+            Err(err) => Err(err.into()),
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Ok(())
+    }
+}
+
+/// Whether the platform declined the directory fsync rather than failing.
+#[cfg(unix)]
+fn unsupported(err: &io::Error) -> bool {
+    matches!(
+        err.kind(),
+        io::ErrorKind::InvalidInput | io::ErrorKind::Unsupported
+    )
 }
 
 /// Parses a record file. `Corrupt` says what was wrong; `search` skips
