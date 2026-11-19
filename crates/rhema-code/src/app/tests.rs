@@ -7459,8 +7459,8 @@ fn a_retry_of_a_record_settled_permanent_runs_unrecorded_with_a_notice() {
         })
         .unwrap_or_default();
     assert_eq!(
-        notice, "retrying, though the ledger kept the failed turn's record closed",
-        "the notice says the retry is running, not that it failed"
+        notice, "the retry was not recorded",
+        "the notice stays the observation, without the record's id and verdict"
     );
     // The refused record is untouched: still failed, still permanent.
     let record = rhema_submissions::snapshot(agent.session())

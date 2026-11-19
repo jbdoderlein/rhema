@@ -464,12 +464,9 @@ impl App {
                 // A permanent verdict this build did not write (it
                 // settles every failed turn re-armable, and `reconcile`
                 // never fails a turn): a record an older build or a
-                // non-TUI driver settled. The user asked for the retry
-                // by name, so it runs, and the notice says what was
-                // left out, not that the retry failed.
-                self.transcript.push_notice(
-                    "retrying, though the ledger kept the failed turn's record closed",
-                );
+                // non-TUI driver settled. The retry still runs; only
+                // its record is gone, and that is the whole notice.
+                self.transcript.push_notice("the retry was not recorded");
                 return None;
             }
             Err(err) => {
