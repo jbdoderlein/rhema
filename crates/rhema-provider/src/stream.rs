@@ -74,7 +74,15 @@ impl SseDecoder {
             return events;
         }
         if !self.buffer.is_empty() {
-            let tail = String::from_utf8_lossy(&self.buffer).into_owned();
+            // The same CR rule the newline path applies: a
+            // `CRLF`-terminated stream whose last line lacks the `LF`,
+            // or a lone `\r`, must read as an empty line, not carry
+            // the return into the payload.
+            let mut end = self.buffer.len();
+            if end > 0 && self.buffer[end - 1] == b'\r' {
+                end -= 1;
+            }
+            let tail = String::from_utf8_lossy(&self.buffer[..end]).into_owned();
             self.buffer.clear();
             self.take_line(tail, &mut events);
         }

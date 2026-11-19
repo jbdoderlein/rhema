@@ -97,7 +97,9 @@ pub struct ChatParams {
     pub max_tokens: Option<u32>,
     /// Strings that end generation when the model would emit one. The
     /// stop text never appears in the reply. Empty leaves the provider's
-    /// default; providers cap how many they accept.
+    /// default. Every adapter forwards the list verbatim, no
+    /// adapter caps it: the provider's own limit rejects an oversized
+    /// one at request time.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stop: Vec<String>,
     /// How much reasoning the model should do. Defaults to

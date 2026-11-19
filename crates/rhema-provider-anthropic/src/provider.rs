@@ -545,6 +545,16 @@ impl ModelProvider for AnthropicProvider {
         for payload in payloads {
             feed_chunk(&payload, &mut assembler, sink)?;
         }
+        // A `message_delta` is this wire's terminal proof: the one
+        // stream event that carries the final stop reason and usage.
+        // The bytes running out before one is a truncated stream, not
+        // a silent stop; the retry ladder sees a retryable transport
+        // failure and re-issues.
+        if !assembler.has_terminal() {
+            return Err(transport_error(TransportError::Other(
+                "the anthropic stream ended without its message_delta".into(),
+            )));
+        }
         Ok(assembler.finish())
     }
 }

@@ -1452,9 +1452,7 @@ impl EventSink for Forwarder<'_> {
             Event::ToolStatus { .. }
             | Event::ToolCallArgsDelta { .. }
             | Event::ToolOutputDelta { .. } => {}
-            Event::Usage(usage)
-                if self.context.as_ref() != Some(&usage) =>
-            {
+            Event::Usage(usage) if self.context.as_ref() != Some(&usage) => {
                 self.context = Some(usage);
                 self.send();
             }

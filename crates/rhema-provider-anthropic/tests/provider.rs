@@ -170,7 +170,13 @@ async fn a_bearer_provider_authenticates_by_the_authorization_header() {
         .respond_with(
             ResponseTemplate::new(200)
                 .insert_header("content-type", "text/event-stream")
-                .set_body_string(event("message_stop", r#"{"type":"message_stop"}"#)),
+                .set_body_string(
+                    event(
+                        "message_delta",
+                        r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#,
+                    ) + "\n\n"
+                        + &event("message_stop", r#"{"type":"message_stop"}"#),
+                ),
         )
         .mount(&server)
         .await;
@@ -232,6 +238,7 @@ async fn a_tool_use_reply_streams_call_events_and_multi_chunk_args() {
             "message_delta",
             r#"{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":3}}"#,
         ),
+        event("message_delta", r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#),
         event("message_stop", r#"{"type":"message_stop"}"#),
     ]
     .concat();
@@ -288,7 +295,13 @@ async fn history_with_tool_results_maps_to_the_messages_json() {
         .respond_with(
             ResponseTemplate::new(200)
                 .insert_header("content-type", "text/event-stream")
-                .set_body_string(event("message_stop", r#"{"type":"message_stop"}"#)),
+                .set_body_string(
+                    event(
+                        "message_delta",
+                        r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#,
+                    ) + "\n\n"
+                        + &event("message_stop", r#"{"type":"message_stop"}"#),
+                ),
         )
         .mount(&server)
         .await;
@@ -412,6 +425,7 @@ async fn pings_in_the_stream_are_ignored() {
             r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}"#,
         ),
         event("content_block_stop", r#"{"type":"content_block_stop","index":0}"#),
+        event("message_delta", r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#),
         event("message_delta", r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#),
         event("message_stop", r#"{"type":"message_stop"}"#),
     ]

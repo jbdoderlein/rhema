@@ -944,6 +944,10 @@ pub struct ChunkAssembler {
     blocks: BTreeMap<u32, PartialBlock>,
     stop_reason: Option<String>,
     usage: Usage,
+    /// Whether a `message_delta` arrived: the observable terminal of
+    /// this wire's stream, the one event that carries the final stop
+    /// reason and the usage.
+    terminal: bool,
 }
 
 impl ChunkAssembler {
@@ -1138,6 +1142,7 @@ impl ChunkAssembler {
                 }
             }
             "message_delta" => {
+                self.terminal = true;
                 if let Some(reason) = event.delta.and_then(|delta| delta.stop_reason) {
                     self.stop_reason = Some(reason);
                 }
@@ -1149,10 +1154,22 @@ impl ChunkAssembler {
         Ok(())
     }
 
+    /// Whether a `message_delta` arrived: the stream's terminal proof.
+    /// Anthropic's own stream always ends in one (and its `message_stop`
+    /// follows); the bytes running out before one is a truncated stream,
+    /// not a silent stop.
+    pub fn has_terminal(&self) -> bool {
+        self.terminal
+    }
+
     /// Consumes the assembler into the final output. The message is always
     /// `Role::Assistant`: blocks in stream order, empty text blocks
     /// dropped; an empty stream yields an empty content list, not an error.
     pub fn finish(self) -> ModelOutput {
+        let has_calls = self
+            .blocks
+            .values()
+            .any(|block| matches!(block, PartialBlock::ToolCall { .. }));
         let mut content: Vec<Content> = Vec::new();
         // The trace streamed since the last call: the chain of thought that
         // led to it, replayed on that call. Text never consumes it, and a
@@ -1194,7 +1211,16 @@ impl ChunkAssembler {
                 role: Role::Assistant,
                 content,
             },
-            stop_reason: stop_reason(self.stop_reason.as_deref()),
+            // A streamed call outranks the wire's final reason, the
+            // siblings' convention: a repeat or late `message_delta`
+            // must not downgrade a tool turn to `EndTurn`, which the
+            // engine reads as "the model is done" and strands the
+            // calls it asked for.
+            stop_reason: if has_calls {
+                StopReason::ToolUse
+            } else {
+                stop_reason(self.stop_reason.as_deref())
+            },
             usage: self.usage,
         }
     }
