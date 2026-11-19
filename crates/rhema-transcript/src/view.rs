@@ -280,6 +280,9 @@ impl TranscriptStats {
 pub enum WorkerOutcome {
     /// The worker answered; the section's stand-in was upgraded.
     Upgraded,
+    /// The worker answered, but the target range left the block (a
+    /// merge consumed it); the text is dropped and the stand-in stays.
+    Dropped,
     /// The worker failed; the extractive stand-in stays in place.
     Failed,
 }
@@ -791,13 +794,27 @@ impl Transcript {
     /// longer matches, a concurrent plan rebuilt it, and the text is
     /// dropped: every intermediate state stays a valid view.
     pub fn commit_summary(&mut self, pending: &PendingSummary, text: String) -> bool {
-        let Some(section) = self.sections.get(pending.section) else {
-            return false;
+        // The index a pending names is where the section sat when the
+        // fill was commissioned. A consolidation in a later flush
+        // shifts every section below the merge, so the flush that
+        // commissioned the fill and the merge that consolidated it
+        // cannot both be told by that number. The range is the stable
+        // address, sections tile without overlap, so an index that
+        // moved is corrected against it and a range that no section
+        // holds (a fill that outlived a second merge into a wider
+        // union) fails the commit.
+        let index = match self.sections.get(pending.section) {
+            Some(section) if section.range == pending.range => pending.section,
+            _ => match self
+                .sections
+                .iter()
+                .position(|section| section.range == pending.range)
+            {
+                Some(index) => index,
+                None => return false,
+            },
         };
-        if section.range != pending.range {
-            return false;
-        }
-        let section = &mut self.sections[pending.section];
+        let section = &mut self.sections[index];
         let mut text = compact::cap_summary(text);
         // Pinned bodies ride after the fill: the worker condenses the
         // range's events, the skill text stays whole beneath it.
@@ -1297,8 +1314,11 @@ impl TranscriptView {
                                 messages: Vec::new(),
                                 context: None,
                             };
-                            transcript.commit_summary(&pending, text);
-                            transcript.record_worker_call(WorkerOutcome::Upgraded);
+                            let upgraded = transcript.commit_summary(&pending, text);
+                            transcript.record_worker_call(match upgraded {
+                                true => WorkerOutcome::Upgraded,
+                                false => WorkerOutcome::Dropped,
+                            });
                         }
                         None => transcript.record_worker_call(WorkerOutcome::Failed),
                     }
@@ -1841,6 +1861,62 @@ mod tests {
         let text = &transcript.sections[summary.section].text;
         assert!(text.starts_with("## Goals Met\n- dense fill"), "{text}");
         assert!(text.contains(&body), "{text}");
+    }
+
+    #[test]
+    fn a_fill_lands_after_the_flushs_own_consolidation_moves_it() {
+        // One plan_flush both extends the block and consolidates it, so
+        // the extend halves' pending indices are stamped before the
+        // merges shift every section below them. Every fill whose
+        // range a section still holds must land, and the fixture must
+        // move at least one commissioned section off the index its
+        // pending names.
+        let mut transcript = Transcript::new(TranscriptSettings {
+            max_view_bytes: 40_000,
+            step_bytes: 4_000,
+            max_block_bytes: 1_000,
+            ..TranscriptSettings::default()
+        });
+        let mut messages = vec![Message::text(Role::User, "fix the build")];
+        messages.extend(long_history(30));
+        messages.push(Message::text(Role::User, "and now summarize"));
+        transcript.observe(&messages);
+        let pending = transcript.plan_flush();
+        assert!(
+            transcript.stats.consolidations > 0,
+            "the fixture must consolidate"
+        );
+
+        let moved = pending.iter().filter(|summary| {
+            transcript
+                .sections
+                .get(summary.section)
+                .is_none_or(|section| section.range != summary.range)
+        });
+        assert!(
+            moved.count() > 0,
+            "the fixture must move a commissioned section"
+        );
+
+        for summary in &pending {
+            let index = transcript
+                .sections
+                .iter()
+                .position(|section| section.range == summary.range);
+            let committed = transcript.commit_summary(summary, "## dense fill".into());
+            assert_eq!(
+                index.is_some(),
+                committed,
+                "the range decides, not the index"
+            );
+            if let Some(index) = index {
+                assert_eq!(transcript.sections[index].text, "## dense fill");
+                assert!(matches!(
+                    transcript.sections[index].origin,
+                    SectionOrigin::Model
+                ));
+            }
+        }
     }
 
     #[test]
