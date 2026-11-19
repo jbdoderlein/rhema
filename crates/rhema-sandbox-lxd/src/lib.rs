@@ -497,16 +497,23 @@ impl Sandbox for LxdSandbox {
                         let _ = tokio::fs::remove_file(staged).await;
                     }
                 } else {
+                    // Best-effort like the mounted arm, but still under
+                    // the seed budget: a black-holed `lxc exec` here
+                    // would hang the route past its budget, which no
+                    // other lxc crossing in this crate is allowed to do.
                     let _ = self
-                        .capture(&[
-                            "lxc".to_owned(),
-                            "exec".to_owned(),
-                            self.instance.clone(),
-                            "--".to_owned(),
-                            "rm".to_owned(),
-                            "-f".to_owned(),
-                            staging.clone(),
-                        ])
+                        .budgeted(
+                            SEED_BUDGET,
+                            self.capture(&[
+                                "lxc".to_owned(),
+                                "exec".to_owned(),
+                                self.instance.clone(),
+                                "--".to_owned(),
+                                "rm".to_owned(),
+                                "-f".to_owned(),
+                                staging.clone(),
+                            ]),
+                        )
                         .await;
                 }
                 unpacked
