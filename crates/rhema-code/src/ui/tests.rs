@@ -1359,6 +1359,28 @@ fn the_marker_never_lands_on_the_footer_row() {
     );
 }
 
+/// Wide characters are two cells each however many characters they
+/// are: the fit that passes a line through verbatim measures cells,
+/// or a CJK line walks past the terminal edge with no wrapped row
+/// beneath it.
+#[test]
+fn wrap_passes_a_line_through_only_when_it_fits_in_cells() {
+    let wide: String = "中".repeat(45);
+    let line = Line::from(Span::raw(wide.clone()));
+    let rows = wrap_line(&line, 60);
+    assert_eq!(rows.len(), 2, "90 cells at width 60 wrap to 2 rows");
+    let joined: String = rows
+        .iter()
+        .flat_map(|row| row.iter().map(|span| span.content.clone()))
+        .collect();
+    assert_eq!(joined, wide);
+    let width: usize = rows[0].iter().map(|span| span.content.width()).sum();
+    assert!(width <= 60, "no row exceeds the width: {width}");
+    // A line that fits in cells still passes through in one piece.
+    let fits = Line::from(Span::raw("中".repeat(30)));
+    assert_eq!(wrap_line(&fits, 60).len(), 1);
+}
+
 /// A word wider than the row is hard-split: no row exceeds the width
 /// and the pieces stay in order.
 #[test]
@@ -2944,7 +2966,6 @@ mod scroll_tests {
             "after the chip: chip width crossed in one step"
         );
     }
-
     #[test]
     fn chips_number_across_lines_with_their_own_payload() {
         // Anchors on different logical lines: the ids run across the

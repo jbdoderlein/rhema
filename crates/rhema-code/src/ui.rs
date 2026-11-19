@@ -392,12 +392,11 @@ fn model_row(
 fn wrap_line(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
     // A line that already fits passes through verbatim: re-tokenizing
     // would collapse the whitespace runs that table padding and indents
-    // depend on.
-    let total: usize = line
-        .spans
-        .iter()
-        .map(|span| span.content.chars().count())
-        .sum();
+    // depend on. The fit measures display cells, the unit of the
+    // wrap itself: a wide character renders two cells however many
+    // characters it is, and a pass-through measured in characters
+    // would hand the terminal a row it clips.
+    let total: usize = line.spans.iter().map(|span| span.content.width()).sum();
     if total <= width && width > 0 {
         let owned: Vec<Span<'static>> = line
             .spans
