@@ -778,11 +778,11 @@ fn usage_of(response: &Value) -> Usage {
     Usage {
         input_tokens: u32_of(usage.get("input_tokens")),
         output_tokens: u32_of(usage.get("output_tokens")),
-        cached_input_tokens: usage
-            .get("input_tokens_details")
-            .and_then(|details| details.get("cached_tokens"))
-            .and_then(Value::as_u64)
-            .unwrap_or(0) as u32,
+        cached_input_tokens: u32_of(
+            usage
+                .get("input_tokens_details")
+                .and_then(|details| details.get("cached_tokens")),
+        ),
     }
 }
 

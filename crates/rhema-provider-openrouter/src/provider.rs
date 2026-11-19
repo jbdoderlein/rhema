@@ -248,7 +248,7 @@ impl ModelListing for OpenRouterProvider {
             if fetched == 0 || !more {
                 return Ok(models);
             }
-            offset += fetched as u32;
+            offset += u32::try_from(fetched).unwrap_or(u32::MAX);
         }
     }
 }

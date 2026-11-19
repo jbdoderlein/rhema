@@ -202,15 +202,21 @@ impl OpenCodeProvider {
         headers.insert(SESSION_HEADER, header_value(&self.session_id));
         headers.insert(reqwest::header::USER_AGENT, header_value(USER_AGENT));
         if !self.api_key.is_empty() {
+            // The key comes from config or the environment: runtime
+            // input, unlike the constants around it. A control
+            // character pasted into it must skip the header, not
+            // panic the constructor.
             let value = format!("Bearer {}", self.api_key);
-            headers.insert(reqwest::header::AUTHORIZATION, header_value(&value));
+            if let Ok(parsed) = value.parse() {
+                headers.insert(reqwest::header::AUTHORIZATION, parsed);
+            }
         }
         headers
     }
 }
 
-/// A header value from trusted adapter strings; a malformed one is a
-/// programmer error caught in tests, never runtime input.
+/// A header value from the adapter's own constants; a malformed one is
+/// a programmer error caught in tests.
 fn header_value(value: &str) -> reqwest::header::HeaderValue {
     value
         .parse()
@@ -343,6 +349,18 @@ mod tests {
         // A blank override never blanks the header.
         let provider = provider.with_session_id("   ");
         assert_eq!(provider.session_id(), "ses_kept");
+    }
+
+    #[test]
+    fn a_key_with_a_control_character_skips_the_header() {
+        // A newline pasted into the key must not panic the
+        // constructor: the header is dropped, the constants around it
+        // stay.
+        let provider = OpenCodeProvider::new("oc_sk\nbroken");
+        let headers = provider.headers();
+        assert!(!headers.contains_key(reqwest::header::AUTHORIZATION));
+        assert!(headers.contains_key(SESSION_HEADER));
+        assert!(headers.contains_key(reqwest::header::USER_AGENT));
     }
 
     #[test]
