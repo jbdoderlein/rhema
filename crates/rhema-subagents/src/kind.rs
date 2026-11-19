@@ -270,16 +270,17 @@ fn verdict(child: &Session) -> Recovery {
                 });
             }
             Status::Failed => {
-                let retryable = matches!(
-                    record.outcome,
-                    Some(Outcome::Failed {
-                        retryable: true,
-                        ..
-                    })
-                );
-                if retryable {
-                    return Recovery::Interrupted;
-                }
+                // A failure is a settle: the child named its error
+                // before it died, so the verdict is Failed whatever
+                // the failure's class. `retryable` is the in-session
+                // ladder's decision, made while the work was live; a
+                // resume has no business acting on it. Returning
+                // `Interrupted` here once made the ledger auto-retry
+                // the child at every load, silently re-running an
+                // audit whose only fault was a provider 429. The path
+                // back is a fresh request with the same recipe: the
+                // recovered record is a tombstone that names the
+                // error.
                 let error = match &record.outcome {
                     Some(Outcome::Failed { error, .. }) => error.clone(),
                     _ => "the subagent failed".to_owned(),

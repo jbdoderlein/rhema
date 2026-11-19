@@ -423,3 +423,104 @@ async fn a_finished_child_fetches_after_a_restart() {
     assert!(!result.is_error, "{}", result.content);
     assert_eq!(result.content, "the report");
 }
+
+#[test]
+fn a_retryable_failure_never_reads_interrupted_on_recovery() {
+    // A child that settled `Failed { retryable: true }` before its
+    // process died (a provider 429, a dropped connection) must
+    // recover as Failed: the retryable flag is the in-session ladder's
+    // business, not the next load's. The old mapping through
+    // `Interrupted` made every resume restart the child behind the
+    // user's back.
+    let dir = tempfile::tempdir().unwrap();
+    let store: Arc<dyn SessionStore> = Arc::new(FileStore::new(dir.path()));
+    let parent = parent_id();
+    let child = kind::child_id(store.as_ref(), &parent, 5).expect("a short parent mints a child");
+    // A `Running` child (descriptor, started turn, a dangling tail)
+    // settled by the child's own driver into a retryable failure: the
+    // exact shape a provider 429 leaves behind.
+    let mut child_session = child_session(&child, &parent, Status::Running);
+    let turn_id = snapshot(&child_session)
+        .unwrap()
+        .iter()
+        .find(|record| record.kind == turn::kind())
+        .unwrap()
+        .id
+        .clone();
+    rhema_submissions::settle(
+        &mut child_session,
+        &turn_id,
+        Outcome::Failed {
+            error: "provider api error (HTTP 429): Rate limit exceeded.".into(),
+            retryable: true,
+        },
+        3,
+    )
+    .unwrap();
+    store.save(&child, &child_session).unwrap();
+
+    let mut parent_session = Session::default();
+    submit(
+        &mut parent_session,
+        kind::kind(),
+        serde_json::to_value(Payload {
+            child: child.clone(),
+            def: "worker".into(),
+            prompt: "do the work".into(),
+            model: None,
+        })
+        .unwrap(),
+        1,
+    )
+    .unwrap();
+    let id = snapshot(&parent_session)
+        .unwrap()
+        .newest()
+        .unwrap()
+        .id
+        .clone();
+    start(&mut parent_session, &id, 2, None).unwrap();
+
+    let changes = reconcile(
+        &mut parent_session,
+        &Kinds::new().with(Arc::new(SubagentKind::new(
+            Arc::new(FileStore::new(dir.path())),
+            parent.clone(),
+        ))),
+        10,
+    )
+    .unwrap();
+    assert_eq!(changes.len(), 1);
+    let record = snapshot(&parent_session)
+        .unwrap()
+        .get(&id)
+        .cloned()
+        .unwrap();
+    assert_eq!(record.status, Status::Failed);
+    // A recovered verdict is a tombstone: the flag flattens to
+    // `false`, so the explicit retry verb refuses this record too and
+    // the only path back is a fresh request with the same recipe.
+    assert!(matches!(
+        record.outcome,
+        Some(Outcome::Failed {
+            retryable: false,
+            ..
+        })
+    ));
+    assert!(
+        rhema_submissions::retry(&mut parent_session, &id, 15).is_err(),
+        "a recovered failure cannot be retried"
+    );
+    // And a second load sees a settled record, not stale work: no
+    // further recovery fires.
+    let changes = reconcile(
+        &mut parent_session,
+        &Kinds::new().with(Arc::new(SubagentKind::new(
+            Arc::new(FileStore::new(dir.path())),
+            parent,
+        ))),
+        20,
+    )
+    .unwrap();
+    assert!(changes.is_empty());
+}
