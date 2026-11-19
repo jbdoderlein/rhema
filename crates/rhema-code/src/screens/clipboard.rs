@@ -56,6 +56,11 @@ pub enum Grab {
     Image(rhema_core::Image),
     /// The clipboard's text.
     Text(String),
+    /// The clipboard's image past the per-image ceiling every provider
+    /// accepts, the encoded PNG's byte length, refused here the same
+    /// way the see staging refuses at its CLI, one limit for both
+    /// routes in. The paste key answers with a notice naming it.
+    Oversized(usize),
     /// A reachable clipboard held neither: no image, and no text.
     Nothing,
     /// No clipboard to connect to: an ssh hop, a plain TTY, anywhere
@@ -82,8 +87,15 @@ pub fn grab() -> Grab {
         Err(_) => return Grab::Unreachable,
     };
     if let Ok(grabbed) = clipboard.get_image()
-        && let Some(image) = encode(grabbed)
+        && let Some((png_bytes, image)) = encode(grabbed)
     {
+        // The ceiling the see path enforces at staging, enforced at
+        // read for a clipboard image, the only other way an image
+        // enters a message: past it the provider refuses the whole
+        // request, better named at the paste key.
+        if png_bytes > rhema_bash::vision::MAX_IMAGE_BYTES {
+            return Grab::Oversized(png_bytes);
+        }
         return Grab::Image(image);
     }
     match clipboard.get_text() {
@@ -92,11 +104,13 @@ pub fn grab() -> Grab {
     }
 }
 
-/// The image read's encode tail: arboard's RGBA pixels in, base64
-/// PNG out, callable without a clipboard. The pixels must fill their
-/// frame, `width * height * 4`, or the shape is a lie and encodes as
-/// nothing.
-fn encode(grabbed: arboard::ImageData) -> Option<rhema_core::Image> {
+/// The image read's encode tail: arboard's RGBA pixels in, the
+/// encoded PNG's byte length and its base64 out, callable without a
+/// clipboard. The pixels must fill their frame, `width * height * 4`,
+/// or the shape is a lie and encodes as nothing. The byte length is
+/// the plain-encoding size the ceiling reads, measured before the
+/// base64 covers it.
+fn encode(grabbed: arboard::ImageData) -> Option<(usize, rhema_core::Image)> {
     let (width, height): (u32, u32) = match (grabbed.width.try_into(), grabbed.height.try_into()) {
         (Ok(width), Ok(height)) => (width, height),
         // A frame the pixel types do not agree on encodes as nothing.
@@ -106,10 +120,12 @@ fn encode(grabbed: arboard::ImageData) -> Option<rhema_core::Image> {
     let mut png = Vec::new();
     rgba.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
         .ok()?;
-    Some(rhema_core::Image::new(
+    let bytes = png.len();
+    let image = rhema_core::Image::new(
         rhema_core::ImageMediaType::Png,
         base64::engine::general_purpose::STANDARD.encode(png),
-    ))
+    );
+    Some((bytes, image))
 }
 
 #[cfg(test)]
@@ -126,7 +142,7 @@ mod tests {
 
     #[test]
     fn rgba_pixels_encode_as_bare_base64_png() {
-        let image = encode_png(1, 1, vec![255, 0, 0, 255]).unwrap();
+        let (bytes, image) = encode_png(1, 1, vec![255, 0, 0, 255]).unwrap();
         assert_eq!(image.media_type, rhema_core::ImageMediaType::Png);
         assert!(
             !image.data.contains("data:"),
@@ -142,6 +158,9 @@ mod tests {
             rhema_core::ImageMediaType::sniff(&decoded),
             Some(rhema_core::ImageMediaType::Png)
         );
+        // The byte length is the plain encoding's, not the base64's,
+        // the size the ceiling reads.
+        assert_eq!(bytes, decoded.len());
     }
 
     /// Pixels that do not fill their frame encode as nothing, the
@@ -152,14 +171,16 @@ mod tests {
     }
 
     /// The pure tail of encode, callable without a clipboard.
-    fn encode_png(width: u32, height: u32, rgba: Vec<u8>) -> Option<rhema_core::Image> {
+    fn encode_png(width: u32, height: u32, rgba: Vec<u8>) -> Option<(usize, rhema_core::Image)> {
         let rgba = image::RgbaImage::from_raw(width, height, rgba)?;
         let mut png = Vec::new();
         rgba.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
             .ok()?;
-        Some(rhema_core::Image::new(
+        let bytes = png.len();
+        let image = rhema_core::Image::new(
             rhema_core::ImageMediaType::Png,
             base64::engine::general_purpose::STANDARD.encode(png),
-        ))
+        );
+        Some((bytes, image))
     }
 }

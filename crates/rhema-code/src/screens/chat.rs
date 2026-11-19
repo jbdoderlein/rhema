@@ -151,6 +151,12 @@ impl ChatState {
                 ChatAction::None
             }
             super::clipboard::Grab::Nothing => ChatAction::None,
+            super::clipboard::Grab::Oversized(bytes) => ChatAction::Notice {
+                text: format!(
+                    "clipboard image too large: {bytes} bytes, the limit is {} MB; paste a smaller one",
+                    rhema_bash::vision::MAX_IMAGE_BYTES / (1024 * 1024)
+                ),
+            },
             super::clipboard::Grab::Unreachable => ChatAction::Notice {
                 text: super::clipboard::UNREACHABLE_NOTICE.to_owned(),
             },

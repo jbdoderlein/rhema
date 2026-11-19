@@ -28,7 +28,7 @@ The wheel and PgUp/PgDn walk the transcript's history; scrolling back down to th
 
 ### Pasting
 
-Ctrl-v pastes the system clipboard: an image lands as a chip (RGBA re-encoded as PNG), text joins the input inline or as a chip past three lines. Where the terminal binds its own paste, ctrl-shift-v usually, text arrives as a bracketed paste; an image does not, terminal paste is text-only. With no desktop clipboard to connect, an ssh hop or a plain TTY, ctrl-v says so in a notice instead of staying silent, and an image rides a file: save it in the checkout and name it in the prompt, the `see` command shows it to the model.
+Ctrl-v pastes the system clipboard: an image lands as a chip (RGBA re-encoded as PNG, up to 5 MB per image, the same limit the `see` staging refuses at), text joins the input inline or as a chip past three lines. A larger image is refused at the key with a notice naming the count and the limit. Where the terminal binds its own paste, ctrl-shift-v usually, text arrives as a bracketed paste; an image does not, terminal paste is text-only. With no desktop clipboard to connect, an ssh hop or a plain TTY, ctrl-v says so in a notice instead of staying silent, and an image rides a file: save it in the checkout and name it in the prompt, the `see` command shows it to the model.
 
 ### Prompts
 

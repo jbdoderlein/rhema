@@ -1754,6 +1754,27 @@ fn the_paste_key_lands_what_the_clipboard_grabbed() {
     assert_eq!(chat.input, format!("{}hello", ChatState::MARK));
 }
 
+/// An image past the per-image ceiling is refused at the paste key
+/// with the count and the limit, the same refusal the see staging
+/// gives at its CLI: the provider would bounce it anyway, and the
+/// whole request rides the bounce.
+#[test]
+fn the_paste_key_refuses_an_oversized_image_with_the_count() {
+    let mut chat = ChatState::new();
+    let bytes = rhema_bash::vision::MAX_IMAGE_BYTES + 1;
+    assert_eq!(
+        chat.paste_grab(super::clipboard::Grab::Oversized(bytes)),
+        ChatAction::Notice {
+            text: format!(
+                "clipboard image too large: {bytes} bytes, the limit is {} MB; paste a smaller one",
+                rhema_bash::vision::MAX_IMAGE_BYTES / (1024 * 1024)
+            )
+        }
+    );
+    assert!(chat.input.is_empty(), "nothing lands in the box");
+    assert!(chat.chips.is_empty());
+}
+
 /// A clipboard holding nothing is silence; a clipboard that cannot be
 /// reached, the ssh hop, is a notice naming the way an image rides
 /// instead of a dead key.
