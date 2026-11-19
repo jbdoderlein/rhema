@@ -76,14 +76,18 @@ where
 /// The kinds whose endpoints speak the Responses API default to it:
 /// deepseek, opencode, and openrouter always (all three are one
 /// endpoint whose documented API includes `POST {base}/responses`;
-/// openrouter's flip lives in its adapter, the other two here), and
-/// openai when speaking to OpenAI itself, a stored route override
+/// openrouter's flip lives in its adapter, the other two here), the
+/// mistral kinds always too (Mistral's reference publishes the route
+/// beside chat completions, and a stored base URL still names a
+/// dedicated Mistral deployment, not an alien server), and openai
+/// when speaking to OpenAI itself, a stored route override
 /// points at an arbitrary OpenAI-compatible server, and that one gets
 /// the conservative chat completions dialect, the one every such
 /// server answers. An explicit `api` (`"chat"` or `"responses"`,
 /// straight from the stored instance) overrides the route rule for the
-/// kinds that honor it, `openai`, because a user who knows their
-/// endpoint speaks Responses should not be told otherwise; any other
+/// kinds that honor it, `openai` and the mistral pair, because a
+/// user who knows their endpoint speaks Responses should not be told
+/// otherwise; any other
 /// spelling falls back to the rule. llama.cpp stays on chat completions too: its
 /// server's `/responses` route is newer than its tool handling and its
 /// default dialect is the one every build serves. ChatGPT needs no
@@ -136,7 +140,10 @@ pub fn build(
         "mistral" | "mistral-vibe" => {
             // One wire for the API key and the Vibe subscription; the
             // subscription asks its own catalog endpoint. A stored route
-            // reaches a dedicated Mistral deployment.
+            // reaches a dedicated Mistral deployment, still Mistral, so
+            // the dialect follows the same rule as the home route rather
+            // than dropping to the conservative chat shape an
+            // OpenAI-compatible override gets.
             let mut provider = if name == "mistral-vibe" {
                 MistralProvider::vibe(keyed()?)
             } else {
@@ -145,7 +152,7 @@ pub fn build(
             if let Some(base_url) = non_blank(base_url) {
                 provider = provider.with_base_url(base_url);
             }
-            assembled(provider)
+            assembled(provider.with_api(mistral_api(api)))
         }
         "llama-cpp" => {
             let mut provider = LlamaCppProvider::new(
@@ -190,6 +197,21 @@ fn non_blank(base_url: Option<&str>) -> Option<&str> {
     base_url.map(str::trim).filter(|url| !url.is_empty())
 }
 
+/// Which dialect the mistral kinds speak. An explicit stored choice
+/// (`"chat"` / `"responses"`) wins, the same override the `openai` kind
+/// honors; otherwise the Responses API, home route and deployment
+/// override alike, since both name Mistral, whose published surface
+/// includes `POST {base}/responses`. The stored `api` field is the one
+/// escape hatch an older deployment without the route needs.
+fn mistral_api(api: Option<&str>) -> Api {
+    match api.map(str::trim) {
+        Some("chat") => Api::Chat,
+        // Unset, unknown, or pinning the modern shape: the latest
+        // dialect everywhere the kind addresses.
+        _ => Api::Responses,
+    }
+}
+
 /// Which dialect the `openai` kind speaks. An explicit stored choice
 /// (`"chat"` / `"responses"`) wins; otherwise the Responses API at
 /// OpenAI itself, the home route serves `POST /v1/responses`, and
@@ -228,6 +250,21 @@ mod tests {
             chosen_api(None, Some("http://localhost:1234/v1")),
             Api::Chat
         );
+    }
+
+    #[test]
+    fn the_mistral_kinds_default_to_the_latest_dialect() {
+        // Unset, blank, or an unknown spelling: the Responses API,
+        // home route and deployment override alike.
+        for api in [None, Some(""), Some("graphql"), Some("responses")] {
+            assert_eq!(mistral_api(api), Api::Responses, "{api:?}");
+        }
+        // The explicit choice that pins an older deployment back to
+        // the dialect it answers.
+        assert_eq!(mistral_api(Some("chat")), Api::Chat);
+        // Whitespace reads as unset, the same trimming every stored
+        // string gets.
+        assert_eq!(mistral_api(Some("  responses  ")), Api::Responses);
     }
 
     #[test]

@@ -163,7 +163,9 @@ fn stored_route(profile: &Profile, kind: &str) -> Option<String> {
 
 /// The stored request shape the instance chose, when it did: the
 /// registry honors it for the `openai` kind, whose dialect its route
-/// alone cannot imply.
+/// alone cannot imply, and the mistral pair as the one pin back to
+/// chat completions, since both otherwise default to the Responses
+/// API their endpoints publish.
 fn stored_api(profile: &Profile, kind: &str) -> Option<&'static str> {
     profile
         .instance_for_provider(kind)

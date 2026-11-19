@@ -142,7 +142,8 @@ pub struct ProviderInstance {
     /// The request shape the instance speaks, when the user chose one:
     /// `chat` or `responses`. Unset lets the provider's route rule
     /// decide (OpenAI itself: responses; a custom endpoint: chat
-    /// completions).
+    /// completions; Mistral: responses, the pin a deployment
+    /// without the route sets back to chat completions).
     pub api: Option<ProviderApi>,
 }
 

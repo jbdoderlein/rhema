@@ -12,6 +12,7 @@ use rhema_core::{
 };
 use rhema_provider::ModelListing;
 use rhema_provider_mistral::MistralProvider;
+use rhema_provider_openai_compatible::Api;
 
 struct NullSink;
 
@@ -56,6 +57,45 @@ async fn live_mistral_answers_a_trivial_prompt() {
         .complete(request, &mut sink)
         .await
         .expect("the live streaming call succeeds");
+    let text = out
+        .message
+        .content
+        .iter()
+        .filter_map(|content| match content {
+            Content::Text(text) => Some(text.clone()),
+            _ => None,
+        })
+        .collect::<String>();
+    assert!(
+        !text.trim().is_empty(),
+        "expected non-empty text, got {out:?}"
+    );
+}
+
+/// The Responses API beside chat completions: the same key and base,
+/// `POST {base}/responses`, the OpenAI-shaped wire their reference
+/// publishes. Runs as the same smoke as the chat dialect.
+///
+/// Run with:
+///
+/// ```sh
+/// MISTRAL_API_KEY=... MISTRAL_MODEL=zai-glm-5-3 cargo test -p rhema-provider-mistral --all-features -- --ignored live
+/// ```
+#[tokio::test]
+#[ignore = "hits the live Mistral API; set MISTRAL_API_KEY to run"]
+async fn live_mistral_answers_over_the_responses_route() {
+    let provider = MistralProvider::new(live_key()).with_api(Api::Responses);
+    let request = ModelRequest {
+        system: None,
+        messages: vec![Message::text(Role::User, "Reply with exactly: ok")],
+        tools: vec![],
+        params: ChatParams::new(live_model()),
+    };
+    let mut sink = NullSink;
+    let out = provider
+        .complete(request, &mut sink)
+        .await
+        .expect("the live Responses call succeeds");
     let text = out
         .message
         .content

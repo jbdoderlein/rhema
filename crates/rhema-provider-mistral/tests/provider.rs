@@ -9,6 +9,7 @@ use rhema_core::{
 };
 use rhema_provider::{InteractiveLogin, LoginSink, LoginUpdate, ModelListing};
 use rhema_provider_mistral::{MistralProvider, MistralVibeLogin};
+use rhema_provider_openai_compatible::Api;
 use wiremock::matchers::{body_partial_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -59,6 +60,38 @@ async fn completions_ride_chat_completions_with_the_bearer_key() {
         .complete(request(), &mut sink)
         .await
         .expect("the chat route answered");
+    assert_eq!(out.message.content, vec![Content::Text("ok".into())]);
+    assert_eq!(out.stop_reason, StopReason::EndTurn);
+    assert!(sink.0.iter().any(|line| line.starts_with("TextDelta")));
+}
+
+#[tokio::test]
+async fn with_api_rides_the_responses_route_with_the_bearer_key() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .and(header("authorization", "Bearer vibe-key"))
+        .and(body_partial_json(serde_json::json!({
+            "model": "mistral-large-4-0",
+            "instructions": "be terse",
+            "store": false,
+            "stream": true,
+            "input": [{"type": "message", "role": "user", "content": "hi"}]
+        })))
+        .respond_with(sse(
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n             data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let provider = MistralProvider::vibe("vibe-key")
+        .with_base_url(server.uri())
+        .with_api(Api::Responses);
+    let mut sink = Collector::new();
+    let out = provider
+        .complete(request(), &mut sink)
+        .await
+        .expect("the Responses route answered");
     assert_eq!(out.message.content, vec![Content::Text("ok".into())]);
     assert_eq!(out.stop_reason, StopReason::EndTurn);
     assert!(sink.0.iter().any(|line| line.starts_with("TextDelta")));

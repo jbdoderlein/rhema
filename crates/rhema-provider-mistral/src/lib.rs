@@ -2,19 +2,23 @@
 //! rhema-core's [`ModelProvider`](rhema_core::provider::ModelProvider)
 //! seam.
 //!
-//! Mistral's hosted API speaks OpenAI-compatible chat completions:
-//! one `POST {base}/chat/completions` with `stream: true` per exchange,
-//! the API key in the `Authorization: Bearer` header, and the SSE
-//! stream decoded by the shared OpenAI-compatible core. The same route
-//! serves a Mistral Vibe subscription, because Vibe's browser sign-in
-//! mints an ordinary Mistral API key scoped to the signed-in plan.
+//! Mistral's hosted API speaks two request shapes: OpenAI-compatible
+//! chat completions and the Responses API beside it, one
+//! `POST {base}/chat/completions` or `POST {base}/responses` with
+//! `stream: true` per exchange, the API key in the `Authorization:
+//! Bearer` header, and the SSE stream decoded by the shared
+//! OpenAI-compatible core; [`MistralProvider::with_api`]
+//! chooses between them. The same routes serve a Mistral Vibe
+//! subscription, because Vibe's browser sign-in mints an ordinary
+//! Mistral API key scoped to the signed-in plan.
+//!
 //! `GET {base}/models` names the chat models plus their context windows
 //! and vision capability; a Vibe subscription reads
 //! `GET {base}/model-catalog?surface=vibe-code` instead, falling back to
 //! `/models` on deployments without it. The adapter adds the published
 //! per-MTok prices from its own table.
 //!
-//! Two credentials reach the one route:
+//! Two credentials reach the same routes:
 //! - a Mistral API key, pasted into the login dialog;
 //! - a Vibe subscription key, minted by [`MistralVibeLogin`] through
 //!   `console.mistral.ai`'s PKCE browser sign-in.

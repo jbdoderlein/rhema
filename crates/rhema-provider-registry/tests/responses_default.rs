@@ -156,14 +156,16 @@ async fn an_openai_route_override_stays_on_chat_completions() {
 }
 
 #[tokio::test]
-async fn both_mistral_kinds_speak_chat_completions() {
-    // The API and the Vibe subscription share one route; only the
-    // credential's origin differs.
+async fn both_mistral_kinds_default_to_the_responses_route() {
+    // The API and the Vibe subscription share one dialect and only the
+    // credential's origin differs; the deployment override the mock
+    // server's URL plays still names Mistral, whose API publishes the
+    // route, so the latest shape is the default there too.
     for kind in ["mistral", "mistral-vibe"] {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/chat/completions"))
-            .respond_with(sse(&chat_sse()))
+            .and(path("/responses"))
+            .respond_with(sse(&responses_sse()))
             .expect(1)
             .mount(&server)
             .await;
@@ -173,11 +175,43 @@ async fn both_mistral_kinds_speak_chat_completions() {
             .provider
             .complete(request(), &mut sink)
             .await
-            .expect("the chat route answered");
+            .expect("the Responses route answered");
         assert_eq!(
             out.message.content,
             vec![Content::Text("ok".into())],
-            "{kind} stays on chat completions"
+            "{kind} speaks the Responses dialect by default"
         );
     }
+}
+
+#[tokio::test]
+async fn an_explicit_chat_choice_pins_a_mistral_instance_back() {
+    // The stored escape hatch for an older deployment without the
+    // route: `api: chat` keeps the dialect that always answered.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(sse(&chat_sse()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let built = build(
+        "mistral-vibe",
+        Some("key"),
+        None,
+        Some(&server.uri()),
+        Some("chat"),
+    )
+    .expect("builds");
+    let mut sink = Collector::new();
+    let out = built
+        .provider
+        .complete(request(), &mut sink)
+        .await
+        .expect("the chat completions route answered");
+    assert_eq!(
+        out.message.content,
+        vec![Content::Text("ok".into())],
+        "the stored choice beats the Responses default"
+    );
 }

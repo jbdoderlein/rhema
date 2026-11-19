@@ -1,9 +1,11 @@
-//! The [`MistralProvider`]: Mistral's hosted chat completions and model
-//! catalog.
+//! The [`MistralProvider`]: Mistral's hosted chat completions and
+//! Responses dialects, and its model catalog.
 //!
 //! Completions ride the shared OpenAI-compatible core at
 //! [`DEFAULT_BASE_URL`], so the tool-call, reasoning, and stop-reason
-//! mapping stays one implementation. The catalog is fetched here
+//! mapping stays one implementation; the provider's default dialect is
+//! chat completions, and [`MistralProvider::with_api`] flips the same
+//! transport onto Mistral's `POST {base}/responses`. The catalog is fetched here
 //! instead: Mistral's `/models` is a bare array with capability and
 //! context metadata, and a Vibe subscription reads its own
 //! `/model-catalog` envelope; both are richer than the generic
@@ -19,7 +21,7 @@ use rhema_core::provider::{ModelProvider, ProviderError};
 use rhema_core::request::{ModelRequest, ThinkingEffort};
 use rhema_provider::{Allowance, ModelCard, ModelListing};
 use rhema_provider_openai_compatible::provider::{OpenAiCompatibleProvider, network_error};
-use rhema_provider_openai_compatible::{Dialect, reasoning_effort_value};
+use rhema_provider_openai_compatible::{Api, Dialect, reasoning_effort_value};
 
 use crate::wire;
 use crate::wire::{WireBudget, WireModelsPage, normalize_models, reasoning_levels};
@@ -125,6 +127,18 @@ impl MistralProvider {
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into().trim_end_matches('/').to_owned();
         self.transport = transport_for(&self.base_url, &self.api_key);
+        self
+    }
+
+    /// Chooses the request shape `complete` speaks. The default is the
+    /// chat-completions dialect, the older documented shape; `Api::Responses`
+    /// rides Mistral's `POST {base}/responses`, the OpenAI-shaped API
+    /// their reference publishes beside it: reasoning streams as
+    /// `reasoning_text` deltas, a tool result's images ride its
+    /// `function_call_output`. The catalog, budget, and effort-clamp
+    /// routes are shape-independent and keep their answers either way.
+    pub fn with_api(mut self, api: Api) -> Self {
+        self.transport = self.transport.with_api(api);
         self
     }
 
