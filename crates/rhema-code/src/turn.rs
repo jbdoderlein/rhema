@@ -214,16 +214,25 @@ pub fn spawn_turn(
         }
         match outcome {
             Some(result) => {
-                // Settle with the error still in hand: the failure class
-                // decides whether a retry may start this record again.
+                // Settle with the error still in hand. Every failed
+                // turn in this frontend re-arms: `/retry` re-sends the
+                // failed request as it stands, be it after a rate
+                // limit, a rejected key, or a switched model, and the
+                // offer that gates it (`App::retryable`) looks at the
+                // error alone, never its class. The ledger's
+                // `retryable` must say the same, or the record refuses
+                // the re-arm. The transient/permanent split stays
+                // where it belongs: `rhema-provider`'s auto-retry
+                // ladder, not the ledger's manual one.
                 let outcome = match &result {
                     Ok(_) => Outcome::Done,
                     Err(err) => Outcome::Failed {
                         error: err.to_string(),
-                        retryable: matches!(
-                            err,
-                            HostAgentError::Agent(agent) if agent.is_retryable()
-                        ),
+                        // Subagent child turns keep the class verdict
+                        // (their `retryable` decides whether `/retry`
+                        // restarts the job), but this chain settles
+                        // only the parent's turn.
+                        retryable: true,
                     },
                 };
                 settle_submission(&mut agent, submission.as_ref(), outcome);
@@ -723,6 +732,72 @@ mod mock_tests {
                 ..
             })
         ));
+    }
+
+    /// A provider failing the way a rejected key does: permanent to
+    /// the ladder's eye, re-armable to `/retry`'s hand.
+    struct FailsPermanent;
+
+    #[async_trait::async_trait]
+    impl ModelProvider for FailsPermanent {
+        async fn complete(
+            &self,
+            _req: ModelRequest,
+            _sink: &mut dyn EventSink,
+        ) -> Result<ModelOutput, ProviderError> {
+            Err(ProviderError::Api {
+                message: "bad key".into(),
+                status: Some(401),
+            })
+        }
+    }
+
+    /// A 4xx failure settles re-armable too: `/retry` re-sends the
+    /// failed request whatever the class (the rate-limit story is
+    /// `/model` then `/retry`), so the ledger's gate must not refuse
+    /// the re-arm the offer promises.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_permanently_failed_chain_settles_rearmable_and_saves() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_, cancelled) = watch_cancel();
+        let dir = tempfile::tempdir().unwrap();
+        let save = dir.path().join("session.json");
+        let mut agent = HostAgent::new(HostAgentConfig::new(
+            Arc::new(FailsPermanent) as Arc<dyn ModelProvider>,
+            "test-model",
+            std::env::temp_dir(),
+            rhema_host_agent::AllowAll,
+        ))
+        .unwrap();
+        let id = start_submission(&mut agent, "hi");
+        let (_steer_tx, steered) = tokio::sync::mpsc::channel(crate::app::STEER_QUEUE_CAP);
+        spawn_turn(
+            agent,
+            Prompt::text("hi"),
+            Some(save.clone()),
+            Some(id.clone()),
+            cancelled,
+            steered,
+            tx,
+        );
+        let mut transcript = Transcript::new();
+        let (_agent, result) = drive_turn_for_test(&mut rx, &mut transcript).await;
+        assert!(result.is_err(), "the rejected key fails the chain");
+
+        let mut saved = HostAgent::load_session_from(&save).unwrap();
+        let snapshot = rhema_submissions::snapshot(&saved).unwrap();
+        let record = snapshot.get(&id).expect("the chain's record survived");
+        assert_eq!(record.status, rhema_submissions::Status::Failed);
+        assert!(matches!(
+            &record.outcome,
+            Some(Outcome::Failed {
+                retryable: true,
+                ..
+            })
+        ));
+        // The re-arm the verdict just promised is granted, so `/retry`
+        // has a record to run under.
+        rhema_submissions::retry(&mut saved, &id, 2).expect("the settled record re-arms");
     }
 
     #[tokio::test(flavor = "multi_thread")]

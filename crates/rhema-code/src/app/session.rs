@@ -444,7 +444,9 @@ impl App {
     /// Re-arms the last turn's record for `/retry`: the failed record
     /// becomes `Running` again without a second prompt record, because
     /// the retry re-issues the same request. `None` when there is no
-    /// retryable record, the retry then runs without one.
+    /// record to re-arm, or the ledger refuses to re-open one another
+    /// driver settled as permanent; the retry then runs without one,
+    /// because the verb is the user's, never the record's.
     pub(crate) fn retry_turn_submission(
         &mut self,
         agent: &mut HostAgent,
@@ -456,10 +458,25 @@ impl App {
         })?;
         let id = record.id.clone();
         let at = rhema_submissions::now();
-        if let Err(err) = rhema_submissions::retry(agent.session_mut(), &id, at) {
-            self.transcript
-                .push_notice(&format!("the retry was not recorded: {err}"));
-            return None;
+        match rhema_submissions::retry(agent.session_mut(), &id, at) {
+            Ok(_) => {}
+            Err(rhema_submissions::SubmissionError::NotRetryable { .. }) => {
+                // A permanent verdict this build did not write (it
+                // settles every failed turn re-armable, and `reconcile`
+                // never fails a turn): a record an older build or a
+                // non-TUI driver settled. The user asked for the retry
+                // by name, so it runs, and the notice says what was
+                // left out, not that the retry failed.
+                self.transcript.push_notice(
+                    "retrying, though the ledger kept the failed turn's record closed",
+                );
+                return None;
+            }
+            Err(err) => {
+                self.transcript
+                    .push_notice(&format!("the retry was not recorded: {err}"));
+                return None;
+            }
         }
         self.ensure_checkpoint_target();
         if let Some(path) = self.checkpoint_target()

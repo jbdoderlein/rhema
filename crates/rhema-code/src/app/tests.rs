@@ -7423,6 +7423,55 @@ fn a_retry_rearms_the_failed_turns_record() {
 }
 
 #[test]
+fn a_retry_of_a_record_settled_permanent_runs_unrecorded_with_a_notice() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    let mut agent = h.app.agent.take().expect("the harness builds an agent");
+    let id = h
+        .app
+        .begin_turn_submission(&mut agent, "go")
+        .expect("the turn is recorded");
+    // The verdict a driver that was not this build writes: permanent.
+    // The ledger refuses the re-arm; the user's retry keeps going.
+    rhema_submissions::settle(
+        agent.session_mut(),
+        &id,
+        rhema_submissions::Outcome::Failed {
+            error: "rejected key".into(),
+            retryable: false,
+        },
+        2,
+    )
+    .unwrap();
+
+    assert!(
+        h.app.retry_turn_submission(&mut agent).is_none(),
+        "the retry runs without a record"
+    );
+    let notice = h
+        .app
+        .transcript
+        .lines()
+        .iter()
+        .rev()
+        .find_map(|line| match line {
+            Line::Notice(text) => Some(text.as_str()),
+            _ => None,
+        })
+        .unwrap_or_default();
+    assert_eq!(
+        notice, "retrying, though the ledger kept the failed turn's record closed",
+        "the notice says the retry is running, not that it failed"
+    );
+    // The refused record is untouched: still failed, still permanent.
+    let record = rhema_submissions::snapshot(agent.session())
+        .unwrap()
+        .get(&id)
+        .unwrap()
+        .clone();
+    assert_eq!(record.status, rhema_submissions::Status::Failed);
+}
+
+#[test]
 fn a_recovered_finished_turn_is_announced_with_its_answer() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     let mut session = Session::default();

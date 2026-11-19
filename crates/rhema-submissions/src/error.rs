@@ -33,8 +33,11 @@ pub enum SubmissionError {
         to: Status,
     },
     /// The failure was classed permanent at settle time, so `retry` may
-    /// not start the record again.
-    #[error("submission {id} failed in a way a retry cannot fix")]
+    /// not start the record again. The verdict is the record's claim,
+    /// written when the failure was in hand, not a truth about the
+    /// work: a driver may still re-issue the work itself, only not
+    /// through this transition.
+    #[error("submission {id} was recorded with a permanent failure")]
     NotRetryable {
         /// The record the caller tried to retry.
         id: SessionId,
