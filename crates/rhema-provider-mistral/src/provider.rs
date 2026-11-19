@@ -72,6 +72,11 @@ pub struct MistralProvider {
     api_key: String,
     http: reqwest::Client,
     transport: OpenAiCompatibleProvider,
+    /// The request shape `complete` speaks; the default is the
+    /// chat-completions dialect. The choice lives here, not on the
+    /// transport, so the transport rebuild of [`Self::with_base_url`]
+    /// keeps it.
+    api: Api,
     catalog: CatalogRoute,
     /// The reasoning-effort levels each model accepts, fetched once on
     /// the first request that needs clamping. A failed fetch caches an
@@ -102,7 +107,8 @@ impl MistralProvider {
         let api_key = api_key.into();
         Self {
             base_url: DEFAULT_BASE_URL.to_owned(),
-            transport: transport_for(DEFAULT_BASE_URL, &api_key),
+            transport: transport_for(DEFAULT_BASE_URL, &api_key, Api::Chat),
+            api: Api::Chat,
             api_key,
             http: http_client(),
             catalog: CatalogRoute::Models,
@@ -126,7 +132,7 @@ impl MistralProvider {
     /// deployment, and how tests reach a mock server.
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into().trim_end_matches('/').to_owned();
-        self.transport = transport_for(&self.base_url, &self.api_key);
+        self.transport = transport_for(&self.base_url, &self.api_key, self.api);
         self
     }
 
@@ -137,8 +143,11 @@ impl MistralProvider {
     /// `reasoning_text` deltas, a tool result's images ride its
     /// `function_call_output`. The catalog, budget, and effort-clamp
     /// routes are shape-independent and keep their answers either way.
+    /// The choice lives here, not on the transport, so the transport
+    /// rebuild of [`Self::with_base_url`] keeps it.
     pub fn with_api(mut self, api: Api) -> Self {
-        self.transport = self.transport.with_api(api);
+        self.api = api;
+        self.transport = transport_for(&self.base_url, &self.api_key, self.api);
         self
     }
 
@@ -339,7 +348,7 @@ pub fn api_error(status: reqwest::StatusCode, raw: &str) -> ProviderError {
 
 /// The dialect-core transport for one base: the client name, and the
 /// bearer key when present.
-fn transport_for(base_url: &str, api_key: &str) -> OpenAiCompatibleProvider {
+fn transport_for(base_url: &str, api_key: &str, api: Api) -> OpenAiCompatibleProvider {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
         reqwest::header::USER_AGENT,
@@ -348,6 +357,7 @@ fn transport_for(base_url: &str, api_key: &str) -> OpenAiCompatibleProvider {
     OpenAiCompatibleProvider::new(api_key)
         .with_base_url(base_url)
         .with_dialect(MISTRAL)
+        .with_api(api)
         .with_extra_headers(headers)
 }
 
@@ -525,5 +535,17 @@ mod tests {
     fn a_base_url_override_rebuilds_the_transport() {
         let provider = MistralProvider::new("k").with_base_url("http://localhost:1234/v1/");
         assert_eq!(provider.base_url, "http://localhost:1234/v1");
+    }
+
+    #[test]
+    fn the_responses_choice_survives_the_transport_rebuilds() {
+        let provider = MistralProvider::new("k")
+            .with_api(Api::Responses)
+            .with_base_url("http://localhost:1234/v1");
+        assert_eq!(provider.api, Api::Responses);
+        assert_eq!(provider.base_url, "http://localhost:1234/v1");
+        // Chat stays the default, before and after a rebuild.
+        let provider = MistralProvider::new("k").with_base_url("http://localhost:1234/v1");
+        assert_eq!(provider.api, Api::Chat);
     }
 }
