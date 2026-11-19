@@ -267,10 +267,12 @@ pub struct WireUsageMetadata {
     /// Prompt tokens billed.
     #[serde(default)]
     pub prompt_token_count: Option<u32>,
-    /// Output tokens billed (thinking tokens are counted separately and are
-    /// deliberately not folded in).
+    /// Output tokens billed.
     #[serde(default)]
     pub candidates_token_count: Option<u32>,
+    /// The reasoning tokens a thinking model billed as output.
+    #[serde(default)]
+    pub thoughts_token_count: Option<u32>,
     /// Prompt subset served from the provider's cache.
     #[serde(default)]
     pub cached_content_token_count: Option<u32>,
@@ -694,7 +696,13 @@ impl ChunkAssembler {
         if let Some(usage) = &chunk.usage_metadata {
             self.usage = Usage {
                 input_tokens: usage.prompt_token_count.unwrap_or(0),
-                output_tokens: usage.candidates_token_count.unwrap_or(0),
+                // Gemini bills a thinking model's reasoning tokens as
+                // output, so the sum is what the bill and every
+                // downstream figure sees.
+                output_tokens: usage
+                    .candidates_token_count
+                    .unwrap_or(0)
+                    .saturating_add(usage.thoughts_token_count.unwrap_or(0)),
                 cached_input_tokens: usage.cached_content_token_count.unwrap_or(0),
             };
             // Gemini reports cumulative usage on every chunk: the live
@@ -1651,6 +1659,32 @@ mod tests {
                 input_tokens: 9,
                 output_tokens: 7,
                 cached_input_tokens: 3,
+            }
+        );
+    }
+
+    #[test]
+    fn thinking_tokens_fold_into_output_tokens() {
+        let mut assembler = ChunkAssembler::new();
+        let mut sink = Collector::new();
+        assembler
+            .push(
+                chunk(concat!(
+                    "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":",
+                    "[{\"text\":\"ok\"}]},\"finishReason\":\"STOP\"}],",
+                    "\"usageMetadata\":{\"promptTokenCount\":10,\"candidatesTokenCount\":2,",
+                    "\"thoughtsTokenCount\":8}}"
+                )),
+                &mut sink,
+            )
+            .expect("chunk is not an error");
+        // Gemini bills thoughts as output; the sum is the billed figure.
+        assert_eq!(
+            assembler.finish().usage,
+            Usage {
+                input_tokens: 10,
+                output_tokens: 10,
+                cached_input_tokens: 0,
             }
         );
     }
