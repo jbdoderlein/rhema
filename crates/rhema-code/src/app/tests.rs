@@ -2884,6 +2884,38 @@ fn a_resume_that_lands_mid_turn_is_refused() {
     );
 }
 
+/// A picker Enter under a running background turn is declined the
+/// way every other interactive switch is: the pick would apply over
+/// the stale pre-turn snapshot and the turn'"'"'s end would then hand
+/// the old conversation'"'"'s agent back on top of it.
+#[test]
+fn a_model_pick_under_a_running_turn_is_declined() {
+    let mut h = harness(Some("k"), Some("m-a"), Session::default());
+    h.app.on_key(ctrl('p'));
+    assert!(
+        matches!(h.app.screen, Screen::Picker(_)),
+        "the picker sits open for the pick"
+    );
+    h.app.turn.running = true;
+    let effects = h.app.choose_model("google", Some("google"), "m-z");
+    assert!(effects.is_empty(), "the declined pick changes nothing");
+    assert_eq!(
+        h.app.transcript.lines().last(),
+        Some(&Line::Notice(
+            "a turn is running; the model pick waits for it to finish".to_owned()
+        ))
+    );
+    assert!(
+        matches!(h.app.screen, Screen::Picker(_)),
+        "the picker stays up; the pick can be made again at idle"
+    );
+    assert_ne!(
+        h.app.effective().model.as_deref(),
+        Some("m-z"),
+        "the model did not move under the running turn"
+    );
+}
+
 /// The paste key's unreachable notice lands in the transcript: the
 /// chat screen has no notice channel of its own, the app owns the
 /// transcript.

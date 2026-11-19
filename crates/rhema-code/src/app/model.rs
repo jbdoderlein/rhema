@@ -657,6 +657,16 @@ impl App {
         instance: Option<&str>,
         id: &str,
     ) -> Vec<Effect> {
+        // The guard every sibling switch holds: with the agent out on
+        // a running turn, the apply would read the stale pre-turn
+        // session snapshot and end_turn would then hand the old
+        // conversation's agent back, sitting it on top of the rebuilt
+        // one. The pick waits like /profile's.
+        if self.turn.running {
+            self.transcript
+                .push_notice("a turn is running; the model pick waits for it to finish");
+            return Vec::new();
+        }
         let from_chat =
             matches!(&self.screen, Screen::Picker(_)) || matches!(&self.screen, Screen::Chat);
         match self.apply_model_choice(provider, instance, id) {
