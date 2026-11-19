@@ -167,7 +167,8 @@ impl IdentityStore for SqliteIdentityStore {
         )?;
         let rows = stmt
             .query_map([], row_account)?
-            .collect::<Result<Vec<_>, rusqlite::Error>>()?;
+            .collect::<Result<Vec<_>, rusqlite::Error>>()
+            .map_err(identity)?;
         Ok(rows)
     }
 
@@ -205,7 +206,7 @@ impl IdentityStore for SqliteIdentityStore {
             params![id],
             row_account,
         )
-        .map_err(IdentityError::from)
+        .map_err(identity)
     }
 
     fn secret(&self, id: &str) -> Result<Option<Secret>, IdentityError> {
@@ -217,9 +218,7 @@ impl IdentityStore for SqliteIdentityStore {
             |row| {
                 let kind: String = row.get(0)?;
                 Ok(Secret {
-                    kind: SecretKind::parse(&kind).unwrap_or_else(|| {
-                        unreachable!("the CHECK constraint only admits 'token' and 'password'")
-                    }),
+                    kind: known_kind(kind)?,
                     value: row.get(1)?,
                 })
             },
@@ -239,12 +238,53 @@ fn row_account(row: &rusqlite::Row<'_>) -> Result<Account, rusqlite::Error> {
         service: row.get(2)?,
         url: row.get(3)?,
         username: row.get(4)?,
-        secret_kind: SecretKind::parse(&kind).unwrap_or_else(|| {
-            unreachable!("the CHECK constraint only admits 'token' and 'password'")
-        }),
+        secret_kind: known_kind(kind)?,
         created_at: row.get::<_, i64>(6)? as u64,
         updated_at: row.get::<_, i64>(7)? as u64,
     })
+}
+
+/// Decodes the `secret_kind` column, naming the one bad value a row can
+/// carry: the table was hand-edited past its CHECK constraint, and an
+/// unknown spelling is the store's [`IdentityError::Corrupt`], never a
+/// panic. The text travels through the one channel the row mapper has,
+/// rusqlite's conversion failure, and widens at the store's edge.
+fn known_kind(raw: String) -> Result<SecretKind, rusqlite::Error> {
+    SecretKind::parse(&raw).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            5,
+            rusqlite::types::Type::Text,
+            Box::new(UnknownKind(raw)),
+        )
+    })
+}
+
+/// The marker [`known_kind`] ships inside the row failure, how
+/// [`identity`] tells a hand-edited kind from every other conversion
+/// failure.
+#[derive(Debug)]
+struct UnknownKind(String);
+
+impl std::fmt::Display for UnknownKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "secret kind {:?} is not one this version knows", self.0)
+    }
+}
+
+impl std::error::Error for UnknownKind {}
+
+/// Widens a row failure to the store's error: a hand-edited kind reads
+/// as [`IdentityError::Corrupt`], everything else keeps its backend
+/// shape.
+fn identity(err: rusqlite::Error) -> IdentityError {
+    if let rusqlite::Error::FromSqlConversionFailure(_, _, inner) = &err
+        && let Some(UnknownKind(kind)) = inner.downcast_ref::<UnknownKind>()
+    {
+        return IdentityError::Corrupt {
+            kind: kind.to_owned(),
+        };
+    }
+    IdentityError::from(err)
 }
 
 /// The `created_at` of an existing row, for update paths that must
@@ -321,7 +361,7 @@ impl<T> OptionalRow<T> for Result<T, rusqlite::Error> {
         match self {
             Ok(value) => Ok(Some(value)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(err) => Err(IdentityError::from(err)),
+            Err(err) => Err(identity(err)),
         }
     }
 }
@@ -359,6 +399,40 @@ mod tests {
             .expect("secret")
             .expect("stored");
         assert_eq!(secret.value, "tok");
+    }
+
+    #[test]
+    fn an_unknown_kind_surfaces_as_a_corrupt_row_not_a_panic() {
+        // The way a hand-edited table actually arrives: the row is in the
+        // file and its `secret_kind` is not one this version writes. The
+        // CHECK constraint is sidestepped on the way in, as an edit
+        // outside the store would sidestep it.
+        let store = SqliteIdentityStore::in_memory().expect("store opens");
+        let conn = store.conn.lock().unwrap_or_else(PoisonError::into_inner);
+        conn.execute_batch(
+            "PRAGMA ignore_check_constraints = ON;
+             INSERT INTO accounts
+                 (id, label, service, url, username, secret_kind, secret,
+                  created_at, updated_at)
+             VALUES
+                 ('20260101T000000-00000000', 'acme', 'github', NULL, NULL,
+                  'quux', 'tok', 0, 0);",
+        )
+        .expect("the hand edit lands");
+        drop(conn);
+        let id = "20260101T000000-00000000";
+        for err in [
+            store.get(id).expect_err("the read is loud"),
+            store.secret(id).expect_err("the secret is loud"),
+            // `list` fails on the row itself, the whole table is the one
+            // hand edit away from unreadable.
+            store.list().expect_err("the listing is loud"),
+        ] {
+            assert!(
+                matches!(err, IdentityError::Corrupt { ref kind } if kind == "quux"),
+                "{err:?}"
+            );
+        }
     }
 
     #[test]

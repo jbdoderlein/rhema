@@ -86,6 +86,15 @@ pub enum IdentityError {
         /// The absent id.
         id: String,
     },
+    /// A stored row carries a value this version cannot decode, a
+    /// `secret_kind` spelling outside [`crate::record::SecretKind::name`]
+    /// on a table hand-edited past its CHECK constraint. The row reports;
+    /// it is never guessed at.
+    #[error("stored secret kind {kind:?} is not one this version knows")]
+    Corrupt {
+        /// The stored spelling.
+        kind: String,
+    },
     /// The SQLite backend failed. The engine's error rides boxed behind
     /// the `Error + Send + Sync` shape, so the public enum names no
     /// backend while `source()` still chains to the engine's own error.
