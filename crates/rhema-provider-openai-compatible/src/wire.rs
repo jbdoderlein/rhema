@@ -102,6 +102,8 @@
 //!   listing guarantees only `data[].id`; `name`, `description`, and
 //!   `context_length` are read when present and everything else is
 //!   defaulted, no field is invented.
+//!
+//! [`ChatParams::session_id`]: rhema_core::request::ChatParams::session_id
 
 use std::collections::BTreeMap;
 
@@ -146,6 +148,8 @@ pub struct Dialect {
     pub sends_stream_options: bool,
     /// Whether the dialect forwards the request's conversation id
     /// ([`ChatParams::session_id`]) as the wire's `session_id`. Only
+    ///
+    /// [`ChatParams::session_id`]: rhema_core::request::ChatParams::session_id
     /// OpenRouter does: the key drives its sticky routing, and its
     /// schema names the field. The other servers behind this dialect
     /// reject unknown top-level fields (Mistral's `extra_forbidden`,

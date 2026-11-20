@@ -118,6 +118,8 @@ pub struct HostAgentConfig {
     /// caching on it (OpenRouter's sticky-routing key). A driver that
     /// persists its conversations names its own (rhema-code: the
     /// checkpoint's id, stable across a restart); `None` sends nothing,
+    ///
+    /// [`ChatParams::session_id`]: rhema_core::request::ChatParams::session_id
     /// and the server falls back to its own conversation identity.
     pub session_id: Option<String>,
     /// How much reasoning the model should do; providers without a knob

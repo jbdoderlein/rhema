@@ -14,7 +14,7 @@
 //!   `{"_openrouter_args_text": <raw>}` so the call still round-trips.
 //! - A request-root `cache_control: {"type": "ephemeral"}` rides on
 //!   every request for the vendors that cache solely on explicit
-//!   request (Anthropic and Alibaba's Qwen, [`cache_control_directive`]);
+//!   request (Anthropic and Alibaba's Qwen, `cache_control_directive`);
 //!   both chat-completions and Responses bodies carry it, the
 //!   breakpoint the router translates rides the last cacheable block
 //!   and advances as the conversation grows. Without it those vendors
@@ -40,6 +40,8 @@
 //! What remains here is the catalog side (paginated `/models` with
 //! per-token pricing and modality facts) and the account side
 //! (`/credits` + `/auth/key` headroom).
+//!
+//! [`ChatParams::session_id`]: rhema_core::request::ChatParams::session_id
 
 use rhema_provider::{Allowance, ModelCard, Pricing};
 use rhema_provider_openai_compatible::wire::Dialect;
