@@ -714,11 +714,14 @@ step and the settings Skills page flip it, the prompt filter
 after discovery alike) reads it, and the UIs show disabled rows greyed
 rather than hidden. Re-enabling re-seeds a missing folder; a user's
 folder of the same name shadows a bundled one like any other skill.
-Discovery reads three tiers, the workspace's `.rhema/skills`, the
-global config directory, and the cross-agent `~/.agents/skills`, the
-highest tier shadowing the lower by name, so a skill in
-either rhema directory hides an `.agents` copy of the same name,
-never the reverse. Skills
+Discovery reads four tiers, from highest to lowest: the workspace's
+`.rhema/skills`, the global config directory, the workspace's
+`.agents/skills`, and `~/.agents/skills`. A higher tier shadows a
+lower tier by name, so a skill in either rhema directory hides an
+`.agents` copy of the same name, never the reverse. The two `.agents`
+tiers are the cross-agent convention: the `skills` CLI
+(`npx skills add`) installs project skills in the workspace's
+`.agents/skills` and global skills (`-g`) in `~/.agents/skills`. Skills
 carry an optional frontmatter `license` (plus a `NOTICE` file
 where attribution must travel with copies), which the UIs render a
 step dimmer than the description.

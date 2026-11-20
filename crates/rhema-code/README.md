@@ -127,6 +127,15 @@ Every conversation checkpoints to disk as turns stream, through the same store A
 
 Skills are folders holding a `SKILL.md` whose frontmatter `description` is the trigger the agent sees; an optional `license` line is shown (dimmed, under the description) in the Skills page of `/settings` and in the onboarding wizard. Drop one into `.rhema/skills/` in your workspace or `~/.config/rhema/skills/` for every workspace; project shadows global.
 
+Rhema also reads the cross-agent directories `.agents/skills/` (in the workspace) and `~/.agents/skills/`. Thus, skills that you install with the [`skills` CLI](https://skills.sh) are available in rhema:
+
+```
+npx skills add <owner/repo>        # project: .agents/skills/
+npx skills add <owner/repo> -g     # global: ~/.agents/skills/
+```
+
+A skill in a rhema directory hides a skill with the same name in an `.agents` directory. Rhema ignores a skill folder that is a symlink.
+
 Rhema bundles two skills, `commit-message` and `unslop`, and seeds them into the global skills directory on start. A bundled skill you have edited is left alone, and a folder of the same name shadows it like any other. Toggle skills on and off from the Skills page (`enter`/`space`) or at onboarding; a switched-off skill's trigger leaves the system prompt but keeps its row, greyed, in the lists.
 
 MCP servers wire through bash: the global `~/.config/rhema/mcp.yaml` (or the profile's `mcp_servers`) names them, the prompt's `mcp` section discloses what survived, and the generated `atlassian create_issue --project ENG`-shaped commands call the bridge (`rhema mcp servers/tools/schema/call` runs the same calls from your own shell; `specs/rhema-mcp.md` is the design).

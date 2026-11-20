@@ -74,8 +74,9 @@ pub(crate) async fn ensure_seeded(
 }
 
 /// The same discovery the local path's prompt renders, the
-/// cross-agent `~/.agents/skills` under rhema's global config
-/// directory under the workspace's `.rhema/skills`, a higher tier
+/// cross-agent `~/.agents/skills` under the workspace's
+/// `.agents/skills` under rhema's global config directory under the
+/// workspace's `.rhema/skills`, a higher tier
 /// shadowing a lower by name, paired with each body read host-side
 /// now. The seeded postures' returned list names the rewritten,
 /// sandbox-side paths and carries the bodies `seed_workspace` writes; a
