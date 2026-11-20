@@ -178,6 +178,10 @@ impl AgentAssembly {
             // against.
             disabled_subagents: std::collections::BTreeSet::new(),
             subagent_providers: None,
+            // No conversation key yet: the assembly is the durable
+            // object's sent config, and the DO names no session id of
+            // its own to forward.
+            session_id: None,
             max_turn_steps: self.max_turn_steps,
             thinking: self.thinking,
             tools: Some(shell.clone()),

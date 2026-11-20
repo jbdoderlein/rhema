@@ -248,6 +248,7 @@ impl App {
         thinking: ThinkingEffort,
         model: &str,
         workspace: &std::path::Path,
+        session_id: &str,
     ) -> HostAgentConfig {
         let mut config = HostAgentConfig {
             max_turn_steps: self
@@ -260,6 +261,10 @@ impl App {
             // `set_approval` before each turn; until one runs, deny.
             ..HostAgentConfig::new(provider, model, workspace, rhema_host_agent::DenyAll)
         };
+        // The client's session id is the conversation's stable key: it
+        // survives config switches and a `session/load` across
+        // restarts, so a resumed conversation keeps its sticky bucket.
+        config.session_id = Some(session_id.to_owned());
         // The `bash` tool does its own I/O here (no fs/terminal
         // callbacks), so commands run on this host and the vision
         // wiring works; the map carries it to the shell and the prompt
@@ -501,7 +506,7 @@ impl App {
                 .session()
                 .clone();
             let agent = HostAgent::from_session(
-                self.agent_config(provider.clone(), slot.thinking, &model, &slot.workspace),
+                self.agent_config(provider.clone(), slot.thinking, &model, &slot.workspace, id),
                 session,
             )
             .map_err(|err| Error::internal_error().data(err.to_string()))?;
@@ -549,7 +554,13 @@ impl App {
                 .session()
                 .clone();
             let agent = HostAgent::from_session(
-                self.agent_config(slot.provider.clone(), effort, &slot.model, &slot.workspace),
+                self.agent_config(
+                    slot.provider.clone(),
+                    effort,
+                    &slot.model,
+                    &slot.workspace,
+                    id,
+                ),
                 session,
             )
             .map_err(|err| Error::internal_error().data(err.to_string()))?;

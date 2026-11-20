@@ -345,6 +345,7 @@ async fn history_with_tool_results_maps_to_the_messages_json() {
             thinking: rhema_core::request::ThinkingEffort::Default,
             top_p: None,
             stop: Vec::new(),
+            session_id: None,
         },
     };
 

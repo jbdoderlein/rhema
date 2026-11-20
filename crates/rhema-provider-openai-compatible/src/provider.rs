@@ -528,7 +528,7 @@ impl ModelProvider for OpenAiCompatibleProvider {
                 drain_chat_stream(response, &self.dialect, sink).await
             }
             Api::Responses => {
-                let body = crate::responses::request_body(&req);
+                let body = crate::responses::request_body(&req, &self.dialect);
                 let url = format!("{}/responses", self.base_url);
                 let response = self.post_stream(&url, &body).await?;
                 drain_responses_stream(response, sink).await

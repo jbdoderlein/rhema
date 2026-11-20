@@ -113,6 +113,13 @@ pub struct HostAgentConfig {
     ///
     /// [`StopReason::ToolUse`]: rhema_core::StopReason::ToolUse
     pub max_turn_steps: NonZeroU32,
+    /// The conversation's stable id, stamped into every request's
+    /// [`ChatParams::session_id`] for the dialects that key routing or
+    /// caching on it (OpenRouter's sticky-routing key). A driver that
+    /// persists its conversations names its own (rhema-code: the
+    /// checkpoint's id, stable across a restart); `None` sends nothing,
+    /// and the server falls back to its own conversation identity.
+    pub session_id: Option<String>,
     /// How much reasoning the model should do; providers without a knob
     /// ignore it, and [`ThinkingEffort::Default`] sends nothing.
     pub thinking: ThinkingEffort,
@@ -292,6 +299,7 @@ impl HostAgentConfig {
             skills: None,
             disabled_skills: std::collections::BTreeSet::new(),
             max_turn_steps: Self::DEFAULT_MAX_TURN_STEPS,
+            session_id: None,
             thinking: ThinkingEffort::Default,
             tools: None,
             extra_resolver: None,

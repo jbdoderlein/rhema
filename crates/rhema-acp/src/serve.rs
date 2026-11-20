@@ -197,14 +197,15 @@ async fn serve_connection(
                         ));
                     };
                     let provider = backend.provider.clone();
+                    let id = app.fresh_id();
                     let agent = HostAgent::new(app.agent_config(
                         backend.provider,
                         app.thinking(),
                         &backend.model,
                         &request.cwd,
+                        &id,
                     ))
                     .map_err(|err| Error::internal_error().data(err.to_string()))?;
-                    let id = app.fresh_id();
                     let catalog = app.catalog().await;
                     let config_options =
                         app.config_selects(backend.kind, &backend.model, app.thinking(), &catalog);
@@ -307,6 +308,7 @@ async fn serve_connection(
                             app.thinking(),
                             &backend.model,
                             &request.cwd,
+                            &request.session_id.0,
                         ),
                         session,
                     )

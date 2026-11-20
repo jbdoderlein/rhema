@@ -49,6 +49,16 @@
 //!   servers predate it.
 //! - A named thinking effort rides in `reasoning_effort`; absent, the
 //!   server's default stands.
+//! - A request-root `cache_control: {"type": "ephemeral"}` rides only
+//!   where [`Dialect::automatic_cache_control`] names one for the model
+//!   id: the vendors that cache solely on explicit request (behind
+//!   OpenRouter, Anthropic and Alibaba's Qwen). The generic dialects
+//!   send none, their servers cache implicitly, and the field would be
+//!   dead weight at best.
+//! - The conversation id ([`ChatParams::session_id`]) rides as
+//!   `session_id` only where [`Dialect::sends_session_id`] says so,
+//!   OpenRouter's sticky-routing key. The other servers reject unknown
+//!   top-level fields, and none of their routing reads one.
 //! - Streaming chunks: `delta.content` becomes one `TextDelta` per
 //!   non-empty piece. It is usually a bare string; Mistral's list arm
 //!   (typed `text` and `thinking` chunks) is read too, with thinking
@@ -130,15 +140,38 @@ pub struct Dialect {
     /// OpenAI shapes do; OpenRouter's usage is unconditional and the
     /// opt-in there is deprecated.
     pub sends_stream_options: bool,
+    /// Whether the dialect forwards the request's conversation id
+    /// ([`ChatParams::session_id`]) as the wire's `session_id`. Only
+    /// OpenRouter does: the key drives its sticky routing, and its
+    /// schema names the field. The other servers behind this dialect
+    /// reject unknown top-level fields (Mistral's `extra_forbidden`,
+    /// llama.cpp's strict schema), and their routing has nothing to
+    /// key on.
+    pub sends_session_id: bool,
     /// The wire spelling of a thinking level; `None` sends nothing and
     /// the server's default stands.
     pub reasoning_effort: fn(ThinkingEffort) -> Option<Value>,
+    /// The request-root prompt-cache directive a model id needs, when
+    /// its vendor caches only on explicit request (OpenRouter's
+    /// `cache_control`, [`{"type": "ephemeral"}`]). A fn of the verbatim
+    /// model id, so one dialect can opt in per vendor: `None` sends
+    /// nothing and the vendor's automatic caching stands, the honest
+    /// default, explicit opt-ins would be dead weight on servers that
+    /// cache by themselves.
+    pub automatic_cache_control: fn(&str) -> Option<Value>,
 }
 
 /// The effort spelling for dialects that never send one: the thinking
 /// level is a server-side knob there (a llama.cpp launch flag, say),
 /// not a request field.
 pub fn no_effort(_thinking: ThinkingEffort) -> Option<Value> {
+    None
+}
+
+/// The cache directive for dialects whose servers cache implicitly: no
+/// vendor behind them needs the request-root opt-in, so no id maps to
+/// one and `cache_control` never rides the request.
+pub fn no_cache_control(_model: &str) -> Option<Value> {
     None
 }
 
@@ -151,7 +184,9 @@ pub const OPENAI_COMPATIBLE: Dialect = Dialect {
     replays_reasoning_as_thinking: false,
     effort_key: "reasoning_effort",
     sends_stream_options: true,
+    sends_session_id: false,
     reasoning_effort: reasoning_effort_value,
+    automatic_cache_control: no_cache_control,
 };
 
 // --- Request wire types (serialize) ---
@@ -186,6 +221,18 @@ pub struct ChatCompletionRequest {
     /// Stop sequences, when any.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub stop: Vec<String>,
+    /// The request-root prompt-cache opt-in the dialect's fn named for
+    /// this model, when one exists ([`Dialect::automatic_cache_control`]).
+    /// OpenRouter's spelling of the directive every explicit-opt-in
+    /// vendor translates; absent, the vendor caches, or not, by its own
+    /// default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<Value>,
+    /// The request's conversation id, when the dialect forwards it and
+    /// the driver named one ([`Dialect::sends_session_id`]). Absent,
+    /// the server derives whatever it needs from the messages alone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
     /// The dialect's effort field, one entry under the server family's
     /// own key. Flattened so the wire sees `{"…effort_key": …}` at the
     /// top level, exactly where each family looks for it.
@@ -765,6 +812,11 @@ pub fn request_body(req: &ModelRequest, dialect: &Dialect) -> ChatCompletionRequ
         top_p: req.params.top_p,
         max_tokens: req.params.max_tokens,
         stop: req.params.stop.clone(),
+        cache_control: (dialect.automatic_cache_control)(&req.params.model),
+        session_id: dialect
+            .sends_session_id
+            .then(|| req.params.session_id.clone())
+            .flatten(),
         effort: effort_field(req.params.thinking, dialect),
     }
 }
@@ -1279,6 +1331,7 @@ mod tests {
                 max_tokens: Some(256),
                 stop: vec!["STOP".into()],
                 thinking: ThinkingEffort::Default,
+                session_id: None,
             },
         };
 
@@ -1943,6 +1996,35 @@ mod tests {
     }
 
     #[test]
+    fn the_generic_dialect_never_names_a_cache_directive() {
+        // OpenAI shapes cache implicitly; even an id whose vendor caches
+        // by opt-in elsewhere (OpenRouter's Anthropic routes) leaves
+        // bare, the directive is OpenRouter's spelling and has no
+        // generic meaning.
+        let req = ModelRequest {
+            system: None,
+            messages: vec![Message::text(Role::User, "hello")],
+            tools: Vec::new(),
+            params: ChatParams {
+                model: "anthropic/claude-opus-5.5".into(),
+                ..ChatParams::new("anthropic/claude-opus-5.5")
+            },
+        };
+        let body =
+            serde_json::to_value(request_body(&req, &OPENAI_COMPATIBLE)).expect("body serializes");
+        assert!(body.get("cache_control").is_none(), "{body}");
+
+        // The conversation key has no generic meaning either: even a
+        // request carrying one stays off the wire, the strict servers
+        // behind this dialect reject unknown top-level fields.
+        let mut req = req;
+        req.params.session_id = Some("20261120120000-00".into());
+        let body =
+            serde_json::to_value(request_body(&req, &OPENAI_COMPATIBLE)).expect("body serializes");
+        assert!(body.get("session_id").is_none(), "{body}");
+    }
+
+    #[test]
     fn a_named_thinking_effort_rides_in_reasoning_effort() {
         let mut req = ModelRequest {
             system: None,
@@ -1955,6 +2037,7 @@ mod tests {
                 max_tokens: None,
                 stop: Vec::new(),
                 thinking: ThinkingEffort::High,
+                session_id: None,
             },
         };
         let body = serde_json::to_string(&request_body(&req, &OPENAI_COMPATIBLE)).unwrap();
@@ -2126,6 +2209,7 @@ mod tests {
                 max_tokens: None,
                 stop: Vec::new(),
                 thinking: ThinkingEffort::Default,
+                session_id: None,
             },
         };
         let body = request_body(&req, &OPENAI_COMPATIBLE);

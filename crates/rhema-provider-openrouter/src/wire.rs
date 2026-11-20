@@ -12,6 +12,26 @@
 //!   (not OpenAI's `reasoning_effort` string / `reasoning_content`).
 //! - A malformed streamed arguments payload wraps as
 //!   `{"_openrouter_args_text": <raw>}` so the call still round-trips.
+//! - A request-root `cache_control: {"type": "ephemeral"}` rides on
+//!   every request for the vendors that cache solely on explicit
+//!   request (Anthropic and Alibaba's Qwen, [`cache_control_directive`]);
+//!   both chat-completions and Responses bodies carry it, the
+//!   breakpoint the router translates rides the last cacheable block
+//!   and advances as the conversation grows. Without it those vendors
+//!   never cache and report no `cached_tokens`, which is how a whole
+//!   session can bill millions of input tokens at full price. The
+//!   usage accounting comes back on
+//!   `prompt_tokens_details.cached_tokens` (chat) /
+//!   `input_tokens_details.cached_tokens` (Responses) either way, and
+//!   the shared mapping reads both.
+//! - The conversation id rides as the request-root `session_id`
+//!   whenever the request carries one ([`ChatParams::session_id`]).
+//!   The key is OpenRouter's sticky-routing opt-in: with it, the
+//!   provider that served the conversation keeps serving it from the
+//!   first request on (without it sticky routing waits for a first
+//!   cache hit, and a conversation whose opening messages change
+//!   between requests hashes to new buckets), and OpenRouter's Logs
+//!   group one key's requests under one session.
 //!
 //! Everything else, roles, content parts for images, tool-call
 //! fragment assembly by index, the `[DONE]` sentinel, usage on the
@@ -36,7 +56,9 @@ pub const OPENROUTER: Dialect = Dialect {
     // Usage rides every stream unconditionally; the opt-in flag is
     // deprecated on OpenRouter.
     sends_stream_options: false,
+    sends_session_id: true,
     reasoning_effort: reasoning_effort_value,
+    automatic_cache_control: cache_control_directive,
 };
 
 /// The OpenRouter wire spelling of a thinking level: an effort object
@@ -49,6 +71,25 @@ fn reasoning_effort_value(thinking: rhema_core::request::ThinkingEffort) -> Opti
         rhema_core::request::ThinkingEffort::High => "high",
     };
     Some(json!({ "effort": effort }))
+}
+
+/// The request-root `cache_control` a model id needs: OpenRouter's
+/// automatic-caching directive for the vendors that cache solely on
+/// explicit request, Anthropic and Alibaba's Qwen being the two
+/// OpenRouter itself calls out (their usage carries
+/// `prompt_tokens_details.cached_tokens` only once the opt-in rides,
+/// and Anthropic bills the whole prompt uncached without it). The
+/// directive marks the request root, the breakpoint rides the last
+/// cacheable block and advances as the conversation grows, which is
+/// the shape an agent loop already has. Every other vendor caches
+/// implicitly, so nothing is sent, a dead field on OpenAI or DeepSeek
+/// routes buys nothing and risks an odd lookup.
+fn cache_control_directive(model: &str) -> Option<Value> {
+    const NEEDS_OPT_IN: [&str; 2] = ["anthropic/", "qwen/"];
+    NEEDS_OPT_IN
+        .iter()
+        .any(|vendor| model.starts_with(vendor))
+        .then(|| json!({ "type": "ephemeral" }))
 }
 
 /// Whether the model is a text chat model. Every listed row is served
@@ -268,6 +309,7 @@ mod tests {
     use rhema_core::message::{Content, Message, Role};
     use rhema_core::request::{ChatParams, ModelRequest, ThinkingEffort};
     use rhema_core::tool::ToolCall;
+    use rhema_provider_openai_compatible::responses::request_body as responses_request_body;
     use rhema_provider_openai_compatible::wire::request_body;
     use serde_json::json;
 
@@ -284,6 +326,7 @@ mod tests {
                 thinking: ThinkingEffort::High,
                 top_p: None,
                 stop: Vec::new(),
+                session_id: None,
             },
         };
         let body = serde_json::to_string(&request_body(&req, &OPENROUTER)).unwrap();
@@ -320,6 +363,7 @@ mod tests {
                 thinking: ThinkingEffort::Default,
                 top_p: None,
                 stop: Vec::new(),
+                session_id: None,
             },
         };
         let body = serde_json::to_value(request_body(&req, &OPENROUTER)).expect("body serializes");
@@ -344,5 +388,105 @@ mod tests {
                 .all(|m| m.get("reasoning").is_none()),
             "{body}"
         );
+    }
+
+    /// A one-turn request naming `model`, the least body the cache
+    /// directive's presence or absence can be read from.
+    fn req_for(model: &str) -> ModelRequest {
+        ModelRequest {
+            system: None,
+            messages: vec![Message::text(Role::User, "hello")],
+            tools: Vec::new(),
+            params: ChatParams::new(model),
+        }
+    }
+
+    #[test]
+    fn an_anthropic_model_requests_automatic_caching() {
+        let body = serde_json::to_value(request_body(
+            &req_for("anthropic/claude-opus-5.5"),
+            &OPENROUTER,
+        ))
+        .expect("body serializes");
+        // The request-root directive, the opt-in Anthropic caches by.
+        assert_eq!(body["cache_control"], json!({ "type": "ephemeral" }));
+    }
+
+    #[test]
+    fn a_qwen_model_requests_automatic_caching() {
+        let body = serde_json::to_value(request_body(&req_for("qwen/qwen4-max"), &OPENROUTER))
+            .expect("body serializes");
+        assert_eq!(body["cache_control"], json!({ "type": "ephemeral" }));
+    }
+
+    #[test]
+    fn route_suffixes_change_nothing_about_the_vendor_match() {
+        // `:batch`, `:nitro`, `:free` suffixes mark the route, not the
+        // vendor; the id still opens with the vendor slug.
+        let body = serde_json::to_value(request_body(
+            &req_for("anthropic/claude-opus-5.5:batch"),
+            &OPENROUTER,
+        ))
+        .expect("body serializes");
+        assert_eq!(body["cache_control"], json!({ "type": "ephemeral" }));
+    }
+
+    #[test]
+    fn an_implicit_caching_model_sends_no_directive() {
+        // OpenAI caches by itself; the field would be dead weight, and
+        // a vendor the directive doesn't fit must not receive it.
+        for model in [
+            "openai/gpt-4o-mini",
+            "deepseek/deepseek-chat",
+            "z-ai/glm-5.3",
+        ] {
+            let body = serde_json::to_value(request_body(&req_for(model), &OPENROUTER)).unwrap();
+            assert!(body.get("cache_control").is_none(), "{model}: {body}");
+        }
+    }
+
+    #[test]
+    fn the_conversation_id_rides_when_the_request_carries_one() {
+        let mut req = req_for("anthropic/claude-opus-5.5");
+        req.params.session_id = Some("20261120120000-00".into());
+        let body = serde_json::to_value(request_body(&req, &OPENROUTER)).expect("body serializes");
+        // The sticky-routing key, at the request root where OpenRouter
+        // reads it.
+        assert_eq!(body["session_id"], "20261120120000-00");
+
+        // No key named, nothing sent: the server falls back to its own
+        // conversation identity.
+        let body = serde_json::to_value(request_body(
+            &req_for("anthropic/claude-opus-5.5"),
+            &OPENROUTER,
+        ))
+        .expect("body serializes");
+        assert!(body.get("session_id").is_none(), "{body}");
+    }
+
+    #[test]
+    fn the_responses_body_carries_the_conversation_id_too() {
+        let mut req = req_for("openai/gpt-4o-mini");
+        req.params.session_id = Some("20261120120000-00".into());
+        let body = serde_json::to_value(responses_request_body(&req, &OPENROUTER))
+            .expect("body serializes");
+        assert_eq!(body["session_id"], "20261120120000-00");
+    }
+
+    #[test]
+    fn the_responses_body_carries_the_directive_too() {
+        let body = serde_json::to_value(responses_request_body(
+            &req_for("anthropic/claude-opus-5.5"),
+            &OPENROUTER,
+        ))
+        .expect("body serializes");
+        assert_eq!(body["cache_control"], json!({ "type": "ephemeral" }));
+
+        let body = serde_json::to_value(responses_request_body(
+            &req_for("openai/gpt-4o-mini"),
+            &OPENROUTER,
+        ))
+        .expect("body serializes");
+        assert!(body.get("cache_control").is_none(), "{body}");
     }
 }

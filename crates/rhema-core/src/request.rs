@@ -106,6 +106,13 @@ pub struct ChatParams {
     /// [`ThinkingEffort::Default`] so pre-seam payloads load unchanged.
     #[serde(default)]
     pub thinking: ThinkingEffort,
+    /// The driver's stable conversation id, sent by the dialects that
+    /// key routing or caching on it (OpenRouter's sticky-routing
+    /// `session_id`). The engine and the other adapters never read it;
+    /// a dialect that has no use for the key leaves it off the wire.
+    /// Serde-defaulted, so pre-seam payloads load without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
 }
 
 impl ChatParams {

@@ -1058,6 +1058,7 @@ mod tests {
                 top_p: Some(0.9),
                 max_tokens: Some(256),
                 stop: vec!["STOP".into()],
+                session_id: None,
             },
         };
 
@@ -1484,6 +1485,7 @@ mod tests {
                 thinking: ThinkingEffort::High,
                 top_p: None,
                 stop: Vec::new(),
+                session_id: None,
             },
         };
         let body =

@@ -164,6 +164,55 @@ async fn defaults_to_the_responses_route() {
     assert!(sink.0.iter().any(|line| line.starts_with("TextDelta")));
 }
 
+#[tokio::test]
+async fn an_anthropic_model_requests_automatic_caching_on_both_routes() {
+    // Anthropic caches solely on explicit request; the request-root
+    // directive is the opt-in, and its absence is how a session bills
+    // its whole history uncached. Both request shapes carry it.
+    for route in ["/chat/completions", "/responses"] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(route))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(if route == "/chat/completions" {
+                        sse_body()
+                    } else {
+                        responses_sse_body()
+                    }),
+            )
+            .mount(&server)
+            .await;
+
+        let mut sink = Collector(vec![]);
+        let openrouter = OpenRouterProvider::new("secret-key").with_base_url(server.uri());
+        let openrouter = if route == "/chat/completions" {
+            openrouter.with_api(Api::Chat)
+        } else {
+            openrouter
+        };
+        let mut req = request(vec![Message::text(Role::User, "hi")], vec![]);
+        let mut params = ChatParams::new("anthropic/claude-opus-5.5");
+        // The driver's conversation key, the sticky-routing opt-in.
+        params.session_id = Some("20261120120000-00".into());
+        req.params = params;
+        openrouter
+            .complete(req, &mut sink)
+            .await
+            .expect("streaming call succeeds");
+
+        let received = server
+            .received_requests()
+            .await
+            .expect("request recording is on");
+        let body: Value = serde_json::from_slice(&received[0].body).expect("json body");
+        assert_eq!(body["model"], "anthropic/claude-opus-5.5");
+        assert_eq!(body["cache_control"], json!({ "type": "ephemeral" }));
+        assert_eq!(body["session_id"], "20261120120000-00");
+    }
+}
+
 /// A Responses-API stream: one text delta, then the terminal event
 /// carrying usage.
 fn responses_sse_body() -> String {

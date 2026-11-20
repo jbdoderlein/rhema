@@ -565,6 +565,7 @@ impl App {
                             .profile
                             .as_deref()
                             .unwrap_or(rhema_config::DEFAULT_PROFILE),
+                        Some(&jobs_tag),
                         &setup.config.disabled_mcp_servers,
                         setup.secrets.as_ref(),
                         jobs.as_ref().map(crate::jobs::JobsHandle::steering),

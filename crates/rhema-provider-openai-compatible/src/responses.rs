@@ -22,6 +22,11 @@
 //!   `instructions`; the API inserts it as the first system message.
 //! - `ChatParams::top_p` maps onto `top_p`; `stop` has no field in the
 //!   Responses request shape and is ignored.
+//! - The dialect's request-root prompt-cache opt-in
+//!   ([`Dialect::automatic_cache_control`]) rides as `cache_control`
+//!   exactly as in chat completions; the API documents the field at the
+//!   request root here too. So does the conversation id
+//!   ([`Dialect::sends_session_id`]) as `session_id`.
 //! - A text-only turn keeps a bare string content, strict servers
 //!   predate the parts shape; a turn with images spells a parts array
 //!   of `input_text`/`input_image` items, the data-URI form a pasted
@@ -57,7 +62,7 @@ use rhema_core::request::{ModelRequest, ThinkingEffort};
 use rhema_core::tool::ToolCall;
 
 use crate::wire::{
-    OPENAI_COMPATIBLE, arguments_text, joined_texts, parse_args, reasoning_effort_value,
+    Dialect, OPENAI_COMPATIBLE, arguments_text, joined_texts, parse_args, reasoning_effort_value,
 };
 
 // --- Request wire types (serialize) ---
@@ -92,6 +97,20 @@ pub struct ResponsesRequest {
     /// Output token ceiling, when set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<u32>,
+    /// The request-root prompt-cache opt-in the dialect's fn named for
+    /// this model, when one exists
+    /// ([`Dialect::automatic_cache_control`]) — the same directive the
+    /// chat-completions body carries, this API documents it at the
+    /// request root too. Absent, the vendor caches, or not, by its own
+    /// default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<Value>,
+    /// The request's conversation id, when the dialect forwards it and
+    /// the driver named one ([`Dialect::sends_session_id`]) — the API
+    /// documents the field at the request root here too. Absent, the
+    /// server derives whatever it needs from the messages alone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
     /// The thinking level, when the request sets a non-default one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<WireReasoning>,
@@ -218,7 +237,7 @@ pub struct WireReasoningSummary {
 /// Builds the `POST {base}/responses` body for a request: instructions
 /// from the system prompts, one input item per content block, images
 /// riding their turn or their tool result as content parts.
-pub fn request_body(req: &ModelRequest) -> ResponsesRequest {
+pub fn request_body(req: &ModelRequest, dialect: &Dialect) -> ResponsesRequest {
     let mut instructions: Vec<String> = Vec::new();
     if let Some(system) = req.system.as_deref().filter(|s| !s.trim().is_empty()) {
         instructions.push(system.to_owned());
@@ -260,6 +279,11 @@ pub fn request_body(req: &ModelRequest) -> ResponsesRequest {
         temperature: req.params.temperature,
         top_p: req.params.top_p,
         max_output_tokens: req.params.max_tokens,
+        cache_control: (dialect.automatic_cache_control)(&req.params.model),
+        session_id: dialect
+            .sends_session_id
+            .then(|| req.params.session_id.clone())
+            .flatten(),
         reasoning: reasoning(req.params.thinking),
     }
 }
@@ -920,7 +944,8 @@ mod tests {
             },
         };
 
-        let body = serde_json::to_value(request_body(&req)).expect("body serializes");
+        let body =
+            serde_json::to_value(request_body(&req, &OPENAI_COMPATIBLE)).expect("body serializes");
         assert_eq!(body["model"], "deepseek-flash");
         assert_eq!(body["top_p"], serde_json::json!(0.8_f32));
         assert_eq!(body["instructions"], "be terse");
@@ -965,7 +990,7 @@ mod tests {
             params: ChatParams::new("deepseek-flash"),
         }
         .normalized();
-        let body = request_body(&req);
+        let body = request_body(&req, &OPENAI_COMPATIBLE);
         assert_eq!(body.instructions.as_deref(), Some("a\n\nb"));
         assert_eq!(body.input.len(), 1);
     }
@@ -991,7 +1016,8 @@ mod tests {
             },
         ]);
 
-        let body = serde_json::to_value(request_body(&req)).expect("body serializes");
+        let body =
+            serde_json::to_value(request_body(&req, &OPENAI_COMPATIBLE)).expect("body serializes");
         let input = body["input"].as_array().expect("input");
         // The image rides its user turn as an input_image data-URI part.
         assert_eq!(
@@ -1044,7 +1070,8 @@ mod tests {
             ],
         }]);
 
-        let body = serde_json::to_value(request_body(&req)).expect("body serializes");
+        let body =
+            serde_json::to_value(request_body(&req, &OPENAI_COMPATIBLE)).expect("body serializes");
         let input = body["input"].as_array().expect("input");
         assert_eq!(input.len(), 3, "{input:?}");
         assert_eq!(
@@ -1092,7 +1119,8 @@ mod tests {
             },
         };
 
-        let body = serde_json::to_value(request_body(&req)).expect("body serializes");
+        let body =
+            serde_json::to_value(request_body(&req, &OPENAI_COMPATIBLE)).expect("body serializes");
         assert_eq!(body["input"][0]["arguments"], "{}");
         assert_eq!(body["reasoning"], serde_json::json!({"effort": "high"}));
     }

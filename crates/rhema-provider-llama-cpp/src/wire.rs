@@ -36,7 +36,9 @@ pub const LLAMA_CPP: Dialect = Dialect {
     replays_reasoning_as_thinking: false,
     effort_key: "reasoning_effort",
     sends_stream_options: true,
+    sends_session_id: false,
     reasoning_effort: rhema_provider_openai_compatible::wire::no_effort,
+    automatic_cache_control: rhema_provider_openai_compatible::wire::no_cache_control,
 };
 
 /// One page of the `GET /v1/models` response.

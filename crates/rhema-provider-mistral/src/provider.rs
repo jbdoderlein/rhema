@@ -21,6 +21,7 @@ use rhema_core::provider::{ModelProvider, ProviderError};
 use rhema_core::request::{ModelRequest, ThinkingEffort};
 use rhema_provider::{Allowance, ModelCard, ModelListing};
 use rhema_provider_openai_compatible::provider::{OpenAiCompatibleProvider, network_error};
+use rhema_provider_openai_compatible::wire::no_cache_control;
 use rhema_provider_openai_compatible::{Api, Dialect, reasoning_effort_value};
 
 use crate::wire;
@@ -40,7 +41,9 @@ const MISTRAL: Dialect = Dialect {
     replays_reasoning_as_thinking: true,
     effort_key: "reasoning_effort",
     sends_stream_options: false,
+    sends_session_id: false,
     reasoning_effort: reasoning_effort_value,
+    automatic_cache_control: no_cache_control,
 };
 
 /// The client identification Mistral's edge records instead of the HTTP

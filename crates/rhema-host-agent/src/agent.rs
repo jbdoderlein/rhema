@@ -336,6 +336,7 @@ impl HostAgent {
             .system(system)
             .params(ChatParams {
                 thinking: config.thinking,
+                session_id: config.session_id.clone(),
                 ..ChatParams::new(config.model.clone())
             })
             .build()?;

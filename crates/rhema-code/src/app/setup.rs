@@ -972,6 +972,7 @@ fn agent_config(
     provider: Arc<dyn ModelProvider>,
     options: &RunOptions,
     model: Option<String>,
+    session_id: Option<&str>,
     disabled_skills: &std::collections::BTreeSet<String>,
     disabled_subagents: &std::collections::BTreeSet<String>,
 ) -> HostAgentConfig {
@@ -982,6 +983,11 @@ fn agent_config(
         base_system: options.base_system.clone(),
         disabled_skills: disabled_skills.clone(),
         disabled_subagents: disabled_subagents.clone(),
+        // The conversation's own key rides the OpenRouter dialect's
+        // sticky-routing `session_id`; the checkpoint id is stable
+        // across a restart, so a resumed conversation keeps its bucket
+        // and its warm provider cache.
+        session_id: session_id.map(str::to_owned),
         // Approval is intentionally `AllowAll`: the sandbox, not a
         // prompt, is the isolation boundary. The approval modal is a
         // seam for a future policy.
@@ -1029,6 +1035,7 @@ pub(crate) fn session_agent_config(
     disabled_subagents: &std::collections::BTreeSet<String>,
     profile: &rhema_config::Profile,
     session_key: &str,
+    session_id: Option<&str>,
     disabled_mcp: &std::collections::BTreeSet<String>,
     secrets: Option<&Arc<dyn rhema_config::secrets::SecretStore>>,
     jobs_steering: Option<Arc<dyn rhema_host_agent::Steering>>,
@@ -1042,6 +1049,7 @@ pub(crate) fn session_agent_config(
         provider.clone(),
         options,
         model,
+        session_id,
         disabled_skills,
         disabled_subagents,
     );

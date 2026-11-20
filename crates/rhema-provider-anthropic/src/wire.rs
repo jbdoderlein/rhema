@@ -1324,6 +1324,7 @@ mod tests {
                 thinking: ThinkingEffort::High,
                 top_p: None,
                 stop: Vec::new(),
+                session_id: None,
             },
         };
         let body = serde_json::to_value(request_body(&req).unwrap()).expect("body serializes");
@@ -1367,6 +1368,7 @@ mod tests {
                 thinking,
                 top_p: None,
                 stop: Vec::new(),
+                session_id: None,
             },
         };
 
@@ -1435,6 +1437,7 @@ mod tests {
                 max_tokens: Some(256),
                 top_p: None,
                 stop: Vec::new(),
+                session_id: None,
             },
         };
 
@@ -1819,6 +1822,7 @@ mod tests {
                 max_tokens: None,
                 stop: vec!["STOP".into()],
                 thinking: ThinkingEffort::Default,
+                session_id: None,
             },
         };
         let body = serde_json::to_value(request_body(&req).expect("request maps"))
