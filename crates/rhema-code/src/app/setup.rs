@@ -907,23 +907,26 @@ pub(crate) fn subagent_rows(
 
 /// The skills page's rows (and the wizard's skills step's): every
 /// discovered skill with its source, bundled skills seeded into the
-/// global directory read as bundled, a workspace folder as workspace,
-/// a folder under the cross-agent `~/.agents/skills` as agents, and
-/// everything else global, and its on/off state from the config's
-/// disabled set.
+/// global directory read as bundled, a folder under the workspace's
+/// `.rhema/skills` as workspace, a folder under either cross-agent
+/// `.agents/skills` (home or workspace) as agents, and everything else
+/// global, and its on/off state from the config's disabled set.
 pub(crate) fn skill_rows(
     agents: Option<&Path>,
     global: Option<&Path>,
     workspace: &Path,
     disabled: &std::collections::BTreeSet<String>,
 ) -> Vec<SkillRow> {
-    let workspace_dir = workspace.join(".rhema").join("skills");
+    let workspace_dir = rhema_skills::skills_dir(workspace);
+    let workspace_agents_dir = rhema_skills::agents_skills_dir(workspace);
     rhema_skills::discover(agents, global, workspace)
         .into_iter()
         .map(|skill| {
             let source = if skill.path.starts_with(&workspace_dir) {
                 SkillSource::Workspace
-            } else if agents.is_some_and(|dir| skill.path.starts_with(dir)) {
+            } else if skill.path.starts_with(&workspace_agents_dir)
+                || agents.is_some_and(|dir| skill.path.starts_with(dir))
+            {
                 SkillSource::Agents
             } else if crate::bundled::is_bundled(&skill.name) {
                 SkillSource::Bundled

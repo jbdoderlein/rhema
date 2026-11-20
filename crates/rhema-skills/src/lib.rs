@@ -6,10 +6,10 @@
 //! enter a system prompt; the model reads a skill's body itself with
 //! the bash tool (`cat`) when a trigger applies, so skills need no
 //! tool of their own, no approval, and no machinery beyond discovery.
-//! Skills shadow by folder name across three tiers. The workspace's
-//! `.rhema/skills` wins over rhema's global directory, which wins over
-//! the cross-agent `~/.agents/skills`. A rhema skill of the same name
-//! hides the `.agents` one, never the reverse.
+//! Skills shadow by folder name across four tiers. From highest to
+//! lowest: the workspace's `.rhema/skills`, rhema's global directory,
+//! the workspace's `.agents/skills`, and `~/.agents/skills`. A rhema
+//! skill of the same name hides an `.agents` one, never the reverse.
 //!
 //! rhema-prompt renders the discovered list into its template; the
 //! sandbox seeders, the subagent specs, and the settings UI read the
@@ -58,11 +58,19 @@ pub fn skills_dir(workspace: &Path) -> PathBuf {
     rhema_core::workspace::rhema_dir(workspace).join("skills")
 }
 
+/// The workspace's cross-agent skill tier (`<workspace>/.agents/skills`),
+/// under the two rhema tiers and over `~/.agents/skills`: other agents
+/// and the `skills` CLI install project skills here.
+pub fn agents_skills_dir(workspace: &Path) -> PathBuf {
+    workspace.join(".agents").join("skills")
+}
+
 /// Discovers skills from the lowest shadowing tier up: the cross-agent
-/// `agents` directory, rhema's own `global` directory, then the
-/// workspace's `.rhema/skills`. A name found twice appears once, the
-/// higher tier shadowing the lower by folder name, so a skill in
-/// either rhema directory hides the `.agents` copy of the same name.
+/// `agents` directory, the workspace's `.agents/skills`, rhema's own
+/// `global` directory, then the workspace's `.rhema/skills`. A name
+/// found twice appears once, the higher tier shadowing the lower by
+/// folder name, so a skill in either rhema directory hides the
+/// `.agents` copy of the same name.
 /// A folder is a skill only when its `SKILL.md` parses with a
 /// `description`; the trigger is the whole point, and an undescribed
 /// skill has nothing to show the model.
@@ -71,6 +79,7 @@ pub fn discover(agents: Option<&Path>, global: Option<&Path>, workspace: &Path) 
     if let Some(agents) = agents {
         collect_into(agents, &mut by_name);
     }
+    collect_into(&agents_skills_dir(workspace), &mut by_name);
     if let Some(global) = global {
         collect_into(global, &mut by_name);
     }
@@ -394,6 +403,63 @@ mod tests {
             vec!["askill", "zskill"],
             "sorted by name, both present"
         );
+    }
+
+    #[test]
+    fn the_workspace_agents_directory_is_discovered() {
+        let workspace = tempfile::tempdir().unwrap();
+        write_skill(
+            &workspace.path().join(".agents").join("skills"),
+            "installed",
+            "installed trigger",
+        );
+
+        let skills = discover(None, None, workspace.path());
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].description, "installed trigger");
+        assert!(
+            skills[0]
+                .path
+                .starts_with(workspace.path().join(".agents").join("skills"))
+        );
+    }
+
+    #[test]
+    fn the_workspace_agents_tier_sits_between_home_agents_and_rhema_global() {
+        let home = tempfile::tempdir().unwrap();
+        let global = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let home_agents = home.path().join(".agents").join("skills");
+        write_skill(&home_agents, "shared", "home agents trigger");
+        write_skill(
+            &workspace.path().join(".agents").join("skills"),
+            "shared",
+            "workspace agents trigger",
+        );
+
+        // The workspace .agents copy hides the home .agents copy.
+        let skills = discover(Some(&home_agents), Some(global.path()), workspace.path());
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].description, "workspace agents trigger");
+
+        // Rhema's global copy hides the workspace .agents copy.
+        write_skill(global.path(), "shared", "global trigger");
+        let skills = discover(Some(&home_agents), Some(global.path()), workspace.path());
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].description, "global trigger");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_skill_folder_in_the_workspace_agents_tier_is_not_followed() {
+        let workspace = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        write_skill(elsewhere.path(), "linked", "linked trigger");
+        let tier = workspace.path().join(".agents").join("skills");
+        std::fs::create_dir_all(&tier).unwrap();
+        std::os::unix::fs::symlink(elsewhere.path().join("linked"), tier.join("linked")).unwrap();
+
+        assert!(discover(None, None, workspace.path()).is_empty());
     }
 
     #[test]

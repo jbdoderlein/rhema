@@ -262,9 +262,9 @@ pub struct SkillRow {
 }
 
 /// Where a skill lives: shipped with rhema, in the config directory,
-/// in the workspace, or in the cross-agent `~/.agents/skills`, the
-/// same shadowing order discovery reads, workspace highest and
-/// `.agents` lowest, so a row never names a hidden copy.
+/// in the workspace's `.rhema/skills`, or in a cross-agent
+/// `.agents/skills` (home or workspace). Discovery shadows by name, so
+/// a row never names a hidden copy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkillSource {
     /// Seeded by rhema from the binary's bundled set.
@@ -273,7 +273,8 @@ pub enum SkillSource {
     Global,
     /// A folder under the workspace's `.rhema/skills`.
     Workspace,
-    /// A folder under the cross-agent `~/.agents/skills`.
+    /// A folder under a cross-agent `.agents/skills`, in the home or
+    /// in the workspace.
     Agents,
 }
 

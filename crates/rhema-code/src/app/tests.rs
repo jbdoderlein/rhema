@@ -100,6 +100,25 @@ fn a_workspace_skill_of_an_agents_name_shadows_to_workspace() {
     assert_eq!(rows[0].description, "workspace trigger");
 }
 
+#[test]
+fn a_workspace_agents_skill_is_tagged_agents() {
+    let workspace = tempfile::tempdir().unwrap();
+    write_skill(
+        &workspace.path().join(".agents").join("skills"),
+        "installed",
+        "installed trigger",
+    );
+
+    let rows = skill_rows(
+        None,
+        None,
+        workspace.path(),
+        &std::collections::BTreeSet::new(),
+    );
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].source, SkillSource::Agents);
+}
+
 fn key(code: KeyCode) -> KeyEvent {
     KeyEvent::new(code, KeyModifiers::empty())
 }
