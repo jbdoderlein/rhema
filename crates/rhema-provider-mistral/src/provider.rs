@@ -42,6 +42,10 @@ const MISTRAL: Dialect = Dialect {
     effort_key: "reasoning_effort",
     sends_stream_options: false,
     sends_session_id: false,
+    // Their caching guide names `prompt_cache_key` on
+    // chat-completions; their Responses surface does not document it,
+    // so the key rides the chat body only.
+    sends_prompt_cache_key: rhema_provider_openai_compatible::wire::PromptCacheKeyRoute::Chat,
     reasoning_effort: reasoning_effort_value,
     automatic_cache_control: no_cache_control,
 };
@@ -503,6 +507,31 @@ mod tests {
         assert!(body.get("stream_options").is_none(), "{body}");
         // The effort field is shared and still rides through.
         assert_eq!(body["reasoning_effort"], json!("high"), "{body}");
+    }
+
+    #[test]
+    fn the_cache_routing_key_rides_the_chat_body_only() {
+        use rhema_core::message::Message;
+        use rhema_core::message::Role;
+        use rhema_core::request::ChatParams;
+        use rhema_provider_openai_compatible::responses::request_body as responses_body;
+        use rhema_provider_openai_compatible::wire::request_body;
+        let mut req = rhema_core::ModelRequest {
+            system: None,
+            messages: vec![Message::text(Role::User, "go")],
+            tools: vec![],
+            params: ChatParams::new("mistral-large-latest"),
+        };
+        req.params.session_id = Some("support-session-42".into());
+        // Their caching guide names prompt_cache_key on
+        // chat-completions: the conversation id rides as the routing
+        // key.
+        let body = serde_json::to_value(request_body(&req, &MISTRAL)).expect("body serializes");
+        assert_eq!(body["prompt_cache_key"], "support-session-42", "{body}");
+        // Their Responses surface does not document the field; a
+        // strict parser there would 422, so the body stays clean.
+        let body = serde_json::to_value(responses_body(&req, &MISTRAL)).expect("body serializes");
+        assert!(body.get("prompt_cache_key").is_none(), "{body}");
     }
 
     #[test]

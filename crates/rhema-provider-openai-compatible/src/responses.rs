@@ -111,6 +111,11 @@ pub struct ResponsesRequest {
     /// server derives whatever it needs from the messages alone.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
+    /// The cache-routing key, when the dialect takes it there
+    /// ([`Dialect::sends_prompt_cache_key`] at `Both`): the
+    /// conversation id again, under the OpenAI spelling.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_key: Option<String>,
     /// The thinking level, when the request sets a non-default one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<WireReasoning>,
@@ -282,6 +287,11 @@ pub fn request_body(req: &ModelRequest, dialect: &Dialect) -> ResponsesRequest {
         cache_control: (dialect.automatic_cache_control)(&req.params.model),
         session_id: dialect
             .sends_session_id
+            .then(|| req.params.session_id.clone())
+            .flatten(),
+        prompt_cache_key: dialect
+            .sends_prompt_cache_key
+            .responses()
             .then(|| req.params.session_id.clone())
             .flatten(),
         reasoning: reasoning(req.params.thinking),
@@ -976,6 +986,32 @@ mod tests {
             })
         );
         assert_eq!(body["input"].as_array().expect("input").len(), 2);
+    }
+
+    #[test]
+    fn the_cache_routing_key_rides_where_the_dialect_takes_it() {
+        use crate::wire::{OPENAI, PromptCacheKeyRoute};
+        let mut req = ModelRequest {
+            system: None,
+            messages: vec![Message::text(Role::User, "go")],
+            tools: vec![],
+            params: ChatParams::new("gpt-5"),
+        };
+        req.params.session_id = Some("20261120120000-00".into());
+        // OpenAI's home dialect: the Responses body carries the key.
+        let body = serde_json::to_value(request_body(&req, &OPENAI)).expect("serializes");
+        assert_eq!(body["prompt_cache_key"], "20261120120000-00");
+        // The loosest dialect: absent, an unknown server sees nothing.
+        let body =
+            serde_json::to_value(request_body(&req, &OPENAI_COMPATIBLE)).expect("serializes");
+        assert!(body.get("prompt_cache_key").is_none());
+        // Chat-only dialects (Mistral): the Responses body stays clean.
+        let chat_only = Dialect {
+            sends_prompt_cache_key: PromptCacheKeyRoute::Chat,
+            ..OPENAI_COMPATIBLE
+        };
+        let body = serde_json::to_value(request_body(&req, &chat_only)).expect("serializes");
+        assert!(body.get("prompt_cache_key").is_none());
     }
 
     #[test]

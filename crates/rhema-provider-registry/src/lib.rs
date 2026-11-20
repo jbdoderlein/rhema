@@ -111,8 +111,9 @@ pub fn build(
         "copilot" => assembled(CopilotProvider::new(keyed()?)),
         "chatgpt" => assembled(ChatGptProvider::new(keyed()?)),
         "openai" => {
-            let mut provider =
-                OpenAiCompatibleProvider::new(keyed()?).with_api(chosen_api(api, base_url));
+            let mut provider = OpenAiCompatibleProvider::new(keyed()?)
+                .with_api(chosen_api(api, base_url))
+                .with_dialect(openai_dialect(base_url));
             if let Some(base_url) = non_blank(base_url) {
                 provider = provider.with_base_url(base_url.to_owned());
             }
@@ -189,6 +190,18 @@ pub fn build_opencode(api_key: &str, base_url: Option<&str>, session_id: Option<
     // default dialect.
     provider = provider.with_api(Api::Responses);
     assembled(provider)
+}
+
+/// The dialect the `openai` kind speaks: the home route is OpenAI
+/// itself, so its own schema rules and the cache-routing key rides;
+/// a base override names an unknown server, and the loosest schema
+/// rules, nothing on the body a stricter parser would reject.
+fn openai_dialect(base_url: Option<&str>) -> rhema_provider_openai_compatible::wire::Dialect {
+    if non_blank(base_url).is_some() {
+        rhema_provider_openai_compatible::wire::OPENAI_COMPATIBLE
+    } else {
+        rhema_provider_openai_compatible::wire::OPENAI
+    }
 }
 
 /// A route override that is present and not whitespace, blank means

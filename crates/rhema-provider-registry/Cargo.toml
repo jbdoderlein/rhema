@@ -23,6 +23,7 @@ rhema-provider-opencode = { path = "../rhema-provider-opencode", version = "0.4.
 thiserror = { workspace = true }
 
 [dev-dependencies]
+serde_json = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 # In-process HTTP mock for offline route tests
 wiremock = "0.6"

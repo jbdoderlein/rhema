@@ -321,6 +321,7 @@ impl Inner {
         ride: &Ride,
         def: &SubagentDef,
         inner_shell: &Arc<ShellTools>,
+        session_key: &str,
     ) -> Result<Agent, JobFailure> {
         // The inner system prompt: the stamp with this definition's
         // body appended verbatim. A body is plain text, never
@@ -354,6 +355,11 @@ impl Inner {
             .system(system)
             .params(ChatParams {
                 thinking: self.thinking,
+                // The run's conversation key: a child's requests stick
+                // to one provider bucket of their own, and the cache
+                // the dialects opt into reads the child's prefix, not
+                // the parent's.
+                session_id: Some(session_key.to_owned()),
                 ..ChatParams::new(ride.model.clone())
             })
             .build()
@@ -380,7 +386,16 @@ impl Inner {
         progress: &mut dyn ToolProgress,
         child: Option<&SessionId>,
     ) -> Result<String, JobFailure> {
-        let mut agent = self.agent(ride, def, inner_shell)?;
+        // The conversation key this run's requests carry: the
+        // persisted child id when one exists (a restart resumes the
+        // same id, so the retried conversation lands back on its
+        // sticky bucket), the job's run shape otherwise (the nested
+        // synchronous call runs without a store). Dialects that key
+        // routing or caching on it read it; the rest ignore it.
+        let session_key = child
+            .map(|id| id.as_str().to_owned())
+            .unwrap_or_else(|| format!("{}/subagent:{}", ctx.run_id, def.name));
+        let mut agent = self.agent(ride, def, inner_shell, &session_key)?;
         if let Some(target) = self.child_run(child) {
             agent.set_commit_hook(Some(target.commit_hook()));
         }
@@ -595,9 +610,11 @@ impl SubagentTools {
         let inner_shell = self
             .inner
             .inner_shell(&self.shell, self.shell.current_approval());
+        // The revived run keeps its child id: the resumed conversation
+        // lands back on the sticky bucket the first run warmed.
         let mut agent = self
             .inner
-            .agent(&ride, def, &inner_shell)
+            .agent(&ride, def, &inner_shell, child.as_str())
             .map_err(|failure| failure.reason().to_owned())?;
 
         // Classify what the dead process left, then repair the tail:
@@ -1700,16 +1717,26 @@ mod tests {
     /// asserting where a run actually rode.
     struct Recording {
         models: std::sync::Mutex<Vec<String>>,
+        /// The conversation keys the run's requests carried, in call
+        /// order; every entry but the first is a tool-call step.
+        session_keys: std::sync::Mutex<Vec<Option<String>>>,
     }
 
     impl Recording {
         fn new() -> Arc<Self> {
             Arc::new(Self {
                 models: std::sync::Mutex::new(Vec::new()),
+                session_keys: std::sync::Mutex::new(Vec::new()),
             })
         }
         fn taken(&self) -> Vec<String> {
             self.models
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+        }
+        fn keys(&self) -> Vec<Option<String>> {
+            self.session_keys
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .clone()
@@ -1727,6 +1754,10 @@ mod tests {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .push(req.params.model);
+            self.session_keys
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(req.params.session_id.clone());
             Ok(ModelOutput {
                 message: Message::text(Role::Assistant, "the report"),
                 stop_reason: rhema_core::StopReason::EndTurn,
@@ -1786,6 +1817,54 @@ mod tests {
         );
         assert_eq!(other.taken(), vec!["claude-haiku"]);
         assert!(session.taken().is_empty(), "the session provider is idle");
+    }
+
+    #[tokio::test]
+    async fn a_run_names_its_conversation_key_on_every_request() {
+        let session = Recording::new();
+        let def = SubagentDef {
+            name: "scout".into(),
+            description: "explores".into(),
+            model: None,
+            max_steps: None,
+            body: "Explore.".into(),
+        };
+        let tools = SubagentTools::new(
+            session.clone() as Arc<dyn ModelProvider>,
+            vec![def],
+            Arc::new(ShellTools::new("/workspace")),
+            "parent-model",
+        );
+        let sync = SubagentTools::synchronous(tools.inner.clone(), tools.shell.clone());
+        let call = ToolCall {
+            id: "c1".into(),
+            name: "subagent".into(),
+            args: serde_json::json!({ "name": "scout", "prompt": "go" }),
+            provider_data: serde_json::Value::Null,
+        };
+        let ctx = rhema_core::ToolContext {
+            cwd: "/workspace".into(),
+            run_id: "turn-1".into(),
+            cancelled: Arc::new(AtomicBool::new(false)),
+        };
+        let result = sync.resolve(call, &ctx).await;
+        assert!(
+            !result.is_error,
+            "the synchronous run should complete: {:?}",
+            result
+        );
+        // No child store is wired here, so the key is the run's own
+        // shape; a wired run keys on the persisted child id instead.
+        // Every request of the run carries the same key, so a dialect
+        // that routes or caches by it keeps the whole conversation in
+        // one bucket.
+        let keys = session.keys();
+        assert!(!keys.is_empty(), "the run made at least one call");
+        assert!(
+            keys.iter()
+                .all(|key| key.as_deref() == Some("turn-1/subagent:scout")),
+            "{keys:?}"
+        );
     }
 
     /// A progress channel that keeps everything it is handed.

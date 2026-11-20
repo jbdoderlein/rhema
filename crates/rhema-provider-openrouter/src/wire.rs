@@ -57,6 +57,7 @@ pub const OPENROUTER: Dialect = Dialect {
     // deprecated on OpenRouter.
     sends_stream_options: false,
     sends_session_id: true,
+    sends_prompt_cache_key: rhema_provider_openai_compatible::wire::PromptCacheKeyRoute::None,
     reasoning_effort: reasoning_effort_value,
     automatic_cache_control: cache_control_directive,
 };

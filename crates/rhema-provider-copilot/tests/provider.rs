@@ -64,6 +64,93 @@ fn sse_body() -> String {
     .join("\n")
 }
 
+/// An Anthropic Messages stream: header, one text block, the final
+/// stop with its token counts, the closing frame.
+fn messages_sse_body() -> String {
+    [
+        "event: message_start",
+        r#"data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-4-5","content":[],"stop_reason":null,"usage":{"input_tokens":9,"output_tokens":1}}}"#,
+        "",
+        "event: content_block_start",
+        r#"data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+        "",
+        "event: content_block_delta",
+        r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}"#,
+        "",
+        "event: content_block_delta",
+        r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"lo"}}"#,
+        "",
+        "event: content_block_stop",
+        r#"data: {"type":"content_block_stop","index":0}"#,
+        "",
+        "event: message_delta",
+        r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":4}}"#,
+        "",
+        "event: message_stop",
+        r#"data: {"type":"message_stop"}"#,
+        "",
+    ]
+    .join("\n")
+}
+
+#[tokio::test]
+async fn a_claude_model_runs_the_messages_route_with_its_breakpoints() {
+    let server = MockServer::start().await;
+    mount_exchange(&server, &server.uri(), 4_102_444_800, 1).await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        // The Messages route authenticates with the current Copilot
+        // token as the bearer, same as the chat route, and carries the
+        // editor identity.
+        .and(header("Authorization", "Bearer tid=abc;exp=1;ctu=1;"))
+        .and(header("Copilot-Integration-Id", "vscode-chat"))
+        // The caching opt-in: the native Anthropic wire marks the
+        // system prompt, and with tools the last tool and the
+        // conversation tail. The system breakpoint alone proves the
+        // route builds the Messages body, not a chat-completions one.
+        .and(body_partial_json(serde_json::json!({
+            "model": "claude-sonnet-4-5",
+            "system": [{"cache_control": {"type": "ephemeral"}}]
+        })))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(messages_sse_body()),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let request = rhema_core::ModelRequest {
+        system: Some("be terse".into()),
+        messages: vec![Message::text(Role::User, "say hello")],
+        tools: vec![],
+        params: ChatParams::new("claude-sonnet-4-5"),
+    };
+    let mut sink = Collector(vec![]);
+    let output = provider(&server.uri())
+        .complete(request, &mut sink)
+        .await
+        .expect("the stream completes");
+
+    assert_eq!(output.stop_reason, StopReason::EndTurn);
+    // Cache reads surface through the shared usage shape.
+    assert_eq!(output.usage.input_tokens, 9);
+    assert_eq!(output.message.content, vec![Content::Text("Hello".into())]);
+    // The Messages assembler emits message_start's usage first, the
+    // deltas, then the final chunk's usage, the shape the native
+    // Anthropic adapter streams.
+    assert_eq!(
+        sink.0,
+        vec![
+            "Usage(Usage { input_tokens: 9, output_tokens: 1, cached_input_tokens: 0 })".to_owned(),
+            "TextDelta(\"Hel\")".to_owned(),
+            "TextDelta(\"lo\")".to_owned(),
+            "Usage(Usage { input_tokens: 9, output_tokens: 4, cached_input_tokens: 0 })".to_owned(),
+        ]
+    );
+}
+
 #[tokio::test]
 async fn chat_completions_streams_through_the_sse_decoder() {
     let server = MockServer::start().await;

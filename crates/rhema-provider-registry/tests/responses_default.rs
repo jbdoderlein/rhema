@@ -185,6 +185,32 @@ async fn both_mistral_kinds_default_to_the_responses_route() {
 }
 
 #[tokio::test]
+async fn an_openai_base_override_keeps_the_loosest_dialect() {
+    // A base override names an unknown server, the loosest-schema
+    // dialect: no cache-routing key, no session id, whatever the
+    // conversation carries.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(sse(&chat_sse()))
+        .mount(&server)
+        .await;
+    let built = build("openai", Some("key"), None, Some(&server.uri()), None).expect("builds");
+    let mut req = request();
+    req.params.session_id = Some("20261120120000-00".into());
+    let mut sink = Collector::new();
+    built
+        .provider
+        .complete(req, &mut sink)
+        .await
+        .expect("the chat completions route answered");
+    let received = server.received_requests().await.expect("requests");
+    let body: serde_json::Value = serde_json::from_slice(&received[0].body).unwrap();
+    assert!(body.get("prompt_cache_key").is_none(), "{body}");
+    assert!(body.get("session_id").is_none(), "{body}");
+}
+
+#[tokio::test]
 async fn an_explicit_chat_choice_pins_a_mistral_instance_back() {
     // The stored escape hatch for an older deployment without the
     // route: `api: chat` keeps the dialect that always answered.

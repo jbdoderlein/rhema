@@ -26,6 +26,7 @@
 //! the non-streaming calls (token exchange, models list) under a 20s
 //! overall timeout. Streaming calls get no total timeout.
 
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -33,7 +34,10 @@ use rhema_core::event::EventSink;
 use rhema_core::output::ModelOutput;
 use rhema_core::provider::{ModelProvider, ProviderError};
 use rhema_core::request::ModelRequest;
-use rhema_provider::{Allowance, ModelCard, ModelListing};
+use rhema_provider::{
+    Allowance, HttpRequest, HttpResponse, ModelCard, ModelListing, Transport, TransportError,
+};
+use rhema_provider_anthropic::{AnthropicProvider, ReqwestTransport};
 use rhema_provider_openai_compatible::provider::{
     drain_chat_stream, network_error as dialect_network_error,
 };
@@ -115,9 +119,12 @@ struct WireEndpoints {
     api: String,
 }
 
-/// The GitHub Copilot chat models, driven by a GitHub OAuth token the
-/// provider exchanges for short-lived Copilot tokens as needed.
-pub struct CopilotProvider {
+/// The GitHub OAuth token exchange and the cached short-lived Copilot
+/// token, shared between every route that needs a token at send time:
+/// the OpenAI-shaped chat route, the models page, and the
+/// Anthropic-shaped messages route's transport.
+#[derive(Clone)]
+struct TokenSource {
     github_api_url: String,
     api_base: String,
     github_token: String,
@@ -125,14 +132,14 @@ pub struct CopilotProvider {
     /// The cached Copilot token, shared across calls: exchanges are
     /// serialized on it, the lock is held across the exchange, so a
     /// burst of steps cannot stampede the endpoint.
-    cached: AsyncMutex<Option<CopilotToken>>,
+    cached: Arc<AsyncMutex<Option<CopilotToken>>>,
 }
 
-impl std::fmt::Debug for CopilotProvider {
+impl std::fmt::Debug for TokenSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // The OAuth token and the cached Copilot token both authenticate:
-        // neither prints; the plain data does.
-        f.debug_struct("CopilotProvider")
+        // The OAuth token and the cached Copilot token both
+        // authenticate: neither prints; the plain data does.
+        f.debug_struct("TokenSource")
             .field("github_api_url", &self.github_api_url)
             .field("api_base", &self.api_base)
             .field("github_token", &"<redacted>")
@@ -142,39 +149,20 @@ impl std::fmt::Debug for CopilotProvider {
     }
 }
 
-impl CopilotProvider {
-    /// A provider exchanging `github_token`, the device flow's
-    /// long-lived output, against [`DEFAULT_GITHUB_API_URL`].
-    pub fn new(github_token: impl Into<String>) -> Self {
+impl TokenSource {
+    fn new(github_api_url: &str, api_base: &str, github_token: &str) -> Self {
         Self {
-            github_api_url: DEFAULT_GITHUB_API_URL.to_owned(),
-            api_base: DEFAULT_API_BASE.to_owned(),
-            github_token: github_token.into(),
+            github_api_url: github_api_url.to_owned(),
+            api_base: api_base.to_owned(),
+            github_token: github_token.to_owned(),
             http: http_client(),
-            cached: AsyncMutex::new(None),
+            cached: Arc::new(AsyncMutex::new(None)),
         }
-    }
-
-    /// Targets `github_api_url` for the internal endpoints instead of
-    /// [`DEFAULT_GITHUB_API_URL`] (trailing slashes trimmed). A test
-    /// seam: production code never calls this.
-    pub fn with_github_api_url(mut self, github_api_url: impl Into<String>) -> Self {
-        self.github_api_url = github_api_url.into().trim_end_matches('/').to_owned();
-        self
-    }
-
-    /// Answers chat calls at `api_base` instead of the served base. A
-    /// test seam: production resolution takes the token's `proxy-ep`
-    /// claim, then the exchange response's `endpoints.api`, then this
-    /// default.
-    pub fn with_api_base(mut self, api_base: impl Into<String>) -> Self {
-        self.api_base = api_base.into().trim_end_matches('/').to_owned();
-        self
     }
 
     /// A live Copilot token: the cached one when it outlives the expiry
     /// margin, else a fresh exchange that replaces it.
-    async fn copilot_token(&self) -> Result<CopilotToken, ProviderError> {
+    async fn fresh(&self) -> Result<CopilotToken, ProviderError> {
         let mut cached = self.cached.lock().await;
         if let Some(token) = cached.as_ref()
             && now_epoch() + EXPIRY_MARGIN < token.expires_at
@@ -184,6 +172,13 @@ impl CopilotProvider {
         let fresh = self.exchange().await?;
         *cached = Some(fresh.clone());
         Ok(fresh)
+    }
+
+    /// Drops the cached token: the next `fresh` exchanges again. The
+    /// 401 path calls this, a token that died between the margin check
+    /// and the call it authenticated.
+    async fn invalidate(&self) {
+        *self.cached.lock().await = None;
     }
 
     /// Exchanges the GitHub OAuth token for a Copilot token. Callers
@@ -234,13 +229,23 @@ impl CopilotProvider {
             api_base: api_base.trim_end_matches('/').to_owned(),
         })
     }
+}
 
+impl CopilotProvider {
     /// The seat's premium-request allowance (`GET
     /// {api}/copilot_internal/user`, authenticated with the OAuth
     /// token, no Copilot-token exchange needed). The endpoint is
     /// GitHub's internal one, outside any contract; a drifted shape
     /// maps to an error and the badge simply never shows.
     pub async fn allowance(&self) -> Result<Allowance, ProviderError> {
+        self.tokens.allowance().await
+    }
+}
+
+impl TokenSource {
+    /// The seat's premium-request allowance, the shared source's own
+    /// view of the seat.
+    async fn allowance(&self) -> Result<Allowance, ProviderError> {
         let response = self
             .http
             .get(format!("{}/copilot_internal/user", self.github_api_url))
@@ -272,6 +277,19 @@ impl CopilotProvider {
     }
 }
 
+/// The editor identity as plain pairs, the same five headers the
+/// reqwest extension attaches, so the Messages transport can carry
+/// them through a seam that builds its own request.
+fn editor_header_pairs() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("Editor-Version", EDITOR_VERSION),
+        ("Editor-Plugin-Version", EDITOR_PLUGIN_VERSION),
+        ("Copilot-Integration-Id", COPILOT_INTEGRATION_ID),
+        ("X-GitHub-Api-Version", COPILOT_API_VERSION),
+        (reqwest::header::USER_AGENT.as_str(), USER_AGENT),
+    ]
+}
+
 /// The editor headers every proxy call carries.
 trait EditorHeaders {
     /// Attaches the editor identity headers.
@@ -280,11 +298,162 @@ trait EditorHeaders {
 
 impl EditorHeaders for reqwest::RequestBuilder {
     fn editor_headers(self) -> reqwest::RequestBuilder {
-        self.header("Editor-Version", EDITOR_VERSION)
-            .header("Editor-Plugin-Version", EDITOR_PLUGIN_VERSION)
-            .header("Copilot-Integration-Id", COPILOT_INTEGRATION_ID)
-            .header("X-GitHub-Api-Version", COPILOT_API_VERSION)
-            .header(reqwest::header::USER_AGENT, USER_AGENT)
+        let mut builder = self;
+        for (name, value) in editor_header_pairs() {
+            builder = builder.header(name, value);
+        }
+        builder
+    }
+}
+
+/// The GitHub Copilot chat models, driven by a GitHub OAuth token the
+/// provider exchanges for short-lived Copilot tokens as needed.
+pub struct CopilotProvider {
+    tokens: Arc<TokenSource>,
+    /// The Anthropic-shaped Messages route for Claude models, built on
+    /// first use: its transport draws the current Copilot token from
+    /// `tokens` at send time, and the wire is the native Anthropic
+    /// adapter's, breakpoints included.
+    messages: OnceLock<Arc<AnthropicProvider>>,
+}
+
+impl std::fmt::Debug for CopilotProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The OAuth token and the cached Copilot token both authenticate:
+        // neither prints; the plain data does.
+        f.debug_struct("CopilotProvider")
+            .field("tokens", &self.tokens)
+            .field("messages", &self.messages)
+            .finish()
+    }
+}
+
+impl CopilotProvider {
+    /// A provider exchanging `github_token`, the device flow's
+    /// long-lived output, against [`DEFAULT_GITHUB_API_URL`].
+    pub fn new(github_token: impl Into<String>) -> Self {
+        Self {
+            tokens: Arc::new(TokenSource::new(
+                DEFAULT_GITHUB_API_URL,
+                DEFAULT_API_BASE,
+                &github_token.into(),
+            )),
+            messages: OnceLock::new(),
+        }
+    }
+
+    /// Targets `github_api_url` for the internal endpoints instead of
+    /// [`DEFAULT_GITHUB_API_URL`] (trailing slashes trimmed). A test
+    /// seam: production code never calls this.
+    pub fn with_github_api_url(mut self, github_api_url: impl Into<String>) -> Self {
+        let mut tokens = (*self.tokens).clone();
+        tokens.github_api_url = github_api_url.into().trim_end_matches('/').to_owned();
+        self.tokens = Arc::new(tokens);
+        self
+    }
+
+    /// Answers chat calls at `api_base` instead of the served base. A
+    /// test seam: production resolution takes the token's `proxy-ep`
+    /// claim, then the exchange response's `endpoints.api`, then this
+    /// default.
+    pub fn with_api_base(mut self, api_base: impl Into<String>) -> Self {
+        let mut tokens = (*self.tokens).clone();
+        tokens.api_base = api_base.into().trim_end_matches('/').to_owned();
+        self.tokens = Arc::new(tokens);
+        self
+    }
+
+    /// The Messages route: the native Anthropic adapter over a
+    /// transport that rewrites every request onto the token's served
+    /// base with the current Copilot token. The base the provider
+    /// itself holds is a placeholder, replaced at send time; the
+    /// adapter's own bearer key is replaced the same way.
+    fn messages_provider(&self) -> Arc<AnthropicProvider> {
+        self.messages
+            .get_or_init(|| {
+                let transport = MessagesTransport {
+                    tokens: self.tokens.clone(),
+                    inner: ReqwestTransport::new(),
+                };
+                Arc::new(
+                    AnthropicProvider::new_with_transport("", Arc::new(transport))
+                        .with_bearer_auth(),
+                )
+            })
+            .clone()
+    }
+
+    /// Completes a Claude-model turn over the Messages route. A 401
+    /// means the token died between the margin check and the call it
+    /// authenticated: force one refresh and retry, the same chore the
+    /// chat route runs; a second failure is the server's answer.
+    async fn complete_messages(
+        &self,
+        req: ModelRequest,
+        sink: &mut dyn EventSink,
+    ) -> Result<ModelOutput, ProviderError> {
+        let inner = self.messages_provider();
+        match inner.complete(req.clone(), sink).await {
+            Err(ProviderError::Api {
+                status: Some(401), ..
+            }) => {
+                self.tokens.invalidate().await;
+                inner.complete(req, sink).await
+            }
+            result => result,
+        }
+    }
+}
+
+/// The transport under the Messages route: the native Anthropic
+/// adapter hands over a fully formed request carrying its own bearer
+/// key and placeholder base, and this rewrites it onto the Copilot
+/// endpoint the current token serves, with the editor identity the
+/// other routes carry. The retry lives above the seam, in
+/// `complete_messages`.
+struct MessagesTransport {
+    tokens: Arc<TokenSource>,
+    inner: ReqwestTransport,
+}
+
+impl MessagesTransport {
+    /// Aims one request at Copilot's Messages endpoint: the token's
+    /// served base, the current token as the bearer, the editor
+    /// identity. Idempotent, the 401 retry aims the same request twice.
+    fn aim(&self, request: &mut HttpRequest, token: &CopilotToken) {
+        // The endpoint Copilot serves Claude models at, Anthropic
+        // Messages shape; GitHub's own client routes them there too.
+        request.url = format!("{}/v1/messages", token.api_base);
+        for (name, value) in request.headers.iter_mut() {
+            if name.eq_ignore_ascii_case("authorization") {
+                *value = format!("Bearer {}", token.token);
+            }
+        }
+        // Set, not pushed twice: the retry aims an already-aimed
+        // request.
+        for (name, value) in editor_header_pairs() {
+            let carried = request
+                .headers
+                .iter_mut()
+                .find(|(carried, _)| carried.eq_ignore_ascii_case(name));
+            match carried {
+                Some((_, carried)) => *carried = value.to_owned(),
+                None => request.headers.push((name.to_owned(), value.to_owned())),
+            }
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Transport for MessagesTransport {
+    async fn send(&self, mut request: HttpRequest) -> Result<HttpResponse, TransportError> {
+        let token = self
+            .tokens
+            .fresh()
+            .await
+            .map_err(|err| TransportError::Other(err.to_string()))?;
+        self.aim(&mut request, &token);
+        self.inner.send(request).await
     }
 }
 
@@ -346,9 +515,10 @@ impl ModelListing for CopilotProvider {
     /// {api}/models`), chat-capable rows only, see
     /// [`crate::wire::normalize_models`].
     async fn list_models(&self) -> Result<Vec<ModelCard>, ProviderError> {
-        let token = self.copilot_token().await?;
+        let token = self.tokens.fresh().await?;
         let base = token.api_base.clone();
         let response = self
+            .tokens
             .http
             .get(format!("{base}/models"))
             .bearer_auth(&token.token)
@@ -386,16 +556,25 @@ impl ModelProvider for CopilotProvider {
         sink: &mut dyn EventSink,
     ) -> Result<ModelOutput, ProviderError> {
         let req = req.normalized();
+        // Claude models: Copilot serves them in Anthropic Messages
+        // shape at /v1/messages, where prompt caching needs
+        // caller-placed breakpoints; the chat-completions route sends
+        // neither that format nor that caching. The native Anthropic
+        // wire runs behind a token-swapping transport, breakpoints and
+        // thinking mapping included.
+        if req.params.model.starts_with("claude") {
+            return self.complete_messages(req, sink).await;
+        }
         let body = request_body(&req, &OPENAI_COMPATIBLE);
-        let mut token = self.copilot_token().await?;
+        let mut token = self.tokens.fresh().await?;
         let mut response = self.post_chat(&token, &body).await?;
 
         // A 401 mid-turn means the cached token died between the margin
         // check and the call: one forced refresh and retry, a second
         // failure is the server's answer, not a refresh problem.
         if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-            *self.cached.lock().await = None;
-            token = self.copilot_token().await?;
+            self.tokens.invalidate().await;
+            token = self.tokens.fresh().await?;
             response = self.post_chat(&token, &body).await?;
         }
 
@@ -419,7 +598,8 @@ impl CopilotProvider {
         body: &ChatCompletionRequest,
     ) -> Result<reqwest::Response, ProviderError> {
         let url = format!("{}/chat/completions", token.api_base);
-        self.http
+        self.tokens
+            .http
             .post(&url)
             .bearer_auth(&token.token)
             .editor_headers()
@@ -453,7 +633,7 @@ mod tests {
     async fn debug_prints_neither_the_oauth_token_nor_the_cached_one() {
         let provider = CopilotProvider::new("gho_long_lived_secret");
         {
-            let mut cached = provider.cached.lock().await;
+            let mut cached = provider.tokens.cached.lock().await;
             *cached = Some(CopilotToken {
                 token: "copilot_short_lived_secret".into(),
                 expires_at: u64::MAX,

@@ -6,7 +6,8 @@ use rhema_core::{
     Role, StopReason, ToolCall, ToolSpec, Usage,
 };
 use rhema_provider::ModelListing;
-use rhema_provider_openai_compatible::{DEFAULT_BASE_URL, OpenAiCompatibleProvider};
+use rhema_provider_openai_compatible::wire::OPENAI;
+use rhema_provider_openai_compatible::{Api, DEFAULT_BASE_URL, OpenAiCompatibleProvider};
 use serde_json::{Value, json};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -100,6 +101,40 @@ async fn streams_sse_into_events_and_an_assembled_output() {
         body["messages"][0],
         json!({ "role": "user", "content": "hi" })
     );
+}
+
+#[tokio::test]
+async fn the_openai_dialect_names_the_cache_routing_key_and_the_loosest_one_does_not() {
+    let server = MockServer::start().await;
+    let responses_sse = [
+        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n",
+    ]
+    .concat();
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(responses_sse),
+        )
+        .mount(&server)
+        .await;
+    let provider = OpenAiCompatibleProvider::new("key")
+        .with_api(Api::Responses)
+        .with_dialect(OPENAI)
+        .with_base_url(server.uri());
+    let mut req = request(vec![Message::text(Role::User, "hi")], vec![]);
+    req.params.session_id = Some("20261120120000-00".into());
+    let mut sink = Collector(vec![]);
+    provider
+        .complete(req, &mut sink)
+        .await
+        .expect("the stream completes");
+    let received = server.received_requests().await.expect("recorded");
+    let body: Value = serde_json::from_slice(&received[0].body).unwrap();
+    assert_eq!(body["prompt_cache_key"], "20261120120000-00", "{body}");
+    assert!(body.get("session_id").is_none(), "{body}");
 }
 
 #[tokio::test]

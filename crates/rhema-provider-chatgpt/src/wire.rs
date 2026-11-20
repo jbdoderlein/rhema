@@ -96,7 +96,11 @@ pub fn request_body(req: &ModelRequest) -> ResponsesRequest {
         store: false,
         stream: true,
         max_output_tokens: req.params.max_tokens,
-        prompt_cache_key: None,
+        // The conversation's key, when the driver named one: the
+        // backend routes requests that share it to the same cache
+        // server, so a conversation's prefix stays warm. Absent, the
+        // backend routes on its own prompt identity.
+        prompt_cache_key: req.params.session_id.clone(),
     }
 }
 
@@ -977,6 +981,16 @@ mod tests {
         );
         assert!(body.tools.is_none());
         assert!(body.reasoning.is_none());
+        // No conversation key named, nothing sent.
+        assert!(body.prompt_cache_key.is_none());
+    }
+
+    #[test]
+    fn the_conversation_key_names_the_prompt_cache() {
+        let mut req = request();
+        req.params.session_id = Some("20261120120000-00".into());
+        let body = request_body(&req);
+        assert_eq!(body.prompt_cache_key.as_deref(), Some("20261120120000-00"));
     }
 
     #[test]

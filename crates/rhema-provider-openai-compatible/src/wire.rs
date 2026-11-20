@@ -59,6 +59,10 @@
 //!   `session_id` only where [`Dialect::sends_session_id`] says so,
 //!   OpenRouter's sticky-routing key. The other servers reject unknown
 //!   top-level fields, and none of their routing reads one.
+//! - The same id rides as `prompt_cache_key`, the cache-routing key,
+//!   where [`Dialect::sends_prompt_cache_key`] takes it: OpenAI's home
+//!   dialect on both request shapes, Mistral's chat body only, the
+//!   loosest dialect nowhere.
 //! - Streaming chunks: `delta.content` becomes one `TextDelta` per
 //!   non-empty piece. It is usually a bare string; Mistral's list arm
 //!   (typed `text` and `thinking` chunks) is read too, with thinking
@@ -148,6 +152,14 @@ pub struct Dialect {
     /// llama.cpp's strict schema), and their routing has nothing to
     /// key on.
     pub sends_session_id: bool,
+    /// Where the dialect takes `prompt_cache_key`, the cache-routing
+    /// key: the conversation id rides as the value, so a
+    /// conversation's requests share one routing hint and the server
+    /// keeps their prefix warm. `None` sends nothing, the honest
+    /// default; `Chat` names the chat-completions body only, Mistral's
+    /// documented surface; `Both` adds the Responses body, OpenAI's
+    /// documented surface for either API.
+    pub sends_prompt_cache_key: PromptCacheKeyRoute,
     /// The wire spelling of a thinking level; `None` sends nothing and
     /// the server's default stands.
     pub reasoning_effort: fn(ThinkingEffort) -> Option<Value>,
@@ -178,6 +190,33 @@ pub fn no_cache_control(_model: &str) -> Option<Value> {
 /// The dialect this crate implements: the OpenAI-shaped chat
 /// completions API, OpenAI itself, DeepSeek-style servers, and the
 /// generic proxies that copy them.
+/// How far `prompt_cache_key` travels on one dialect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptCacheKeyRoute {
+    /// Nowhere: the field stays off the body.
+    None,
+    /// The chat-completions body only.
+    Chat,
+    /// The chat-completions and the Responses bodies.
+    Both,
+}
+
+impl PromptCacheKeyRoute {
+    /// Whether the chat-completions body takes the key.
+    pub fn chat(self) -> bool {
+        !matches!(self, Self::None)
+    }
+
+    /// Whether the Responses body takes the key.
+    pub fn responses(self) -> bool {
+        matches!(self, Self::Both)
+    }
+}
+
+/// Any server speaking the OpenAI chat-completions dialect, addressed by
+/// its own defaults: the shape an unknown OpenAI-compatible server
+/// speaks, nothing on it that the loosest server in the family would
+/// reject.
 pub const OPENAI_COMPATIBLE: Dialect = Dialect {
     args_key: "_openai_args_text",
     assistant_reasoning_key: Some("reasoning_content"),
@@ -185,8 +224,18 @@ pub const OPENAI_COMPATIBLE: Dialect = Dialect {
     effort_key: "reasoning_effort",
     sends_stream_options: true,
     sends_session_id: false,
+    sends_prompt_cache_key: PromptCacheKeyRoute::None,
     reasoning_effort: reasoning_effort_value,
     automatic_cache_control: no_cache_control,
+};
+
+/// OpenAI itself, home route: its own API, its own schema, so it takes
+/// every field its docs name. The cache-routing key rides both
+/// request shapes, routing one conversation's requests to the same
+/// cache server.
+pub const OPENAI: Dialect = Dialect {
+    sends_prompt_cache_key: PromptCacheKeyRoute::Both,
+    ..OPENAI_COMPATIBLE
 };
 
 // --- Request wire types (serialize) ---
@@ -233,6 +282,11 @@ pub struct ChatCompletionRequest {
     /// the server derives whatever it needs from the messages alone.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
+    /// The cache-routing key, when the dialect takes it
+    /// ([`Dialect::sends_prompt_cache_key`]): the conversation id
+    /// again, under the OpenAI spelling Mistral adopted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_key: Option<String>,
     /// The dialect's effort field, one entry under the server family's
     /// own key. Flattened so the wire sees `{"…effort_key": …}` at the
     /// top level, exactly where each family looks for it.
@@ -817,6 +871,11 @@ pub fn request_body(req: &ModelRequest, dialect: &Dialect) -> ChatCompletionRequ
             .sends_session_id
             .then(|| req.params.session_id.clone())
             .flatten(),
+        prompt_cache_key: dialect
+            .sends_prompt_cache_key
+            .chat()
+            .then(|| req.params.session_id.clone())
+            .flatten(),
         effort: effort_field(req.params.thinking, dialect),
     }
 }
@@ -1263,6 +1322,32 @@ fn stop_reason(finish_reason: Option<&str>, has_calls: bool) -> StopReason {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_chat_cache_routing_key_follows_the_dialect_route() {
+        let mut req = ModelRequest {
+            system: None,
+            messages: vec![Message::text(Role::User, "go")],
+            tools: vec![],
+            params: ChatParams::new("mistral-large-latest"),
+        };
+        req.params.session_id = Some("20261120120000-00".into());
+        let body = serde_json::to_value(request_body(&req, &OPENAI)).expect("serializes");
+        assert_eq!(body["prompt_cache_key"], "20261120120000-00");
+        let body =
+            serde_json::to_value(request_body(&req, &OPENAI_COMPATIBLE)).expect("serializes");
+        assert!(body.get("prompt_cache_key").is_none());
+        // No conversation named, nothing sent even where the route takes it.
+        let mut bare = ModelRequest {
+            system: None,
+            messages: vec![Message::text(Role::User, "go")],
+            tools: vec![],
+            params: ChatParams::new("mistral-large-latest"),
+        };
+        bare.params.session_id = None;
+        let body = serde_json::to_value(request_body(&bare, &OPENAI)).expect("serializes");
+        assert!(body.get("prompt_cache_key").is_none());
+    }
+
     use super::*;
     use rhema_core::event::Event;
     use rhema_core::message::{Image, ImageMediaType};
