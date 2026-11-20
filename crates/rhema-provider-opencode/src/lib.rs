@@ -19,10 +19,14 @@
 //! Every request also carries the stable conversation id Go requires in
 //! [`SESSION_HEADER`], plus a client-identifying user agent instead of
 //! the HTTP library's default. Console uses both for routing and prompt
-//! caching. A provider instance is one conversation; [`with_session_id`]
-//! lets a caller keep the id across rebuilds or resumes.
+//! caching. The header follows the request's own conversation id
+//! ([`ChatParams::session_id`]) when one rides, the durable identity a
+//! frontend stamps per conversation, so a resumed conversation keeps
+//! its bucket across a restart; [`with_session_id`] seeds the id a
+//! request naming none carries, and keeps it across provider rebuilds.
 //!
 //! [`with_session_id`]: OpenCodeProvider::with_session_id
+//! [`ChatParams::session_id`]: rhema_core::request::ChatParams::session_id
 
 #![forbid(unsafe_code)]
 
@@ -81,8 +85,26 @@ pub struct OpenCodeProvider {
     /// route on.
     api: Api,
     /// The dialect-core transport carrying the session header; every
-    /// completion goes through it.
-    transport: OpenAiCompatibleProvider,
+    /// completion goes through it. Behind a lock so a completion can
+    /// re-aim the header at the request's conversation: the lock
+    /// covers only the swap, the generation runs on an owned clone,
+    /// so concurrent completions never serialize.
+    transport: std::sync::Mutex<AimedTransport>,
+}
+
+/// The transport aimed at one conversation: the id its session header
+/// carries and the transport carrying it, swapped together.
+struct AimedTransport {
+    provider: std::sync::Arc<OpenAiCompatibleProvider>,
+    session_id: String,
+}
+
+/// Builds the transport aimed at `session_id`.
+fn aimed_transport(base_url: &str, api_key: &str, session_id: &str, api: Api) -> AimedTransport {
+    AimedTransport {
+        provider: std::sync::Arc::new(transport_for(base_url, api_key, session_id, api)),
+        session_id: session_id.to_owned(),
+    }
 }
 
 impl std::fmt::Debug for OpenCodeProvider {
@@ -110,7 +132,12 @@ impl OpenCodeProvider {
         let session_id = new_session_id();
         Self {
             base_url: DEFAULT_BASE_URL.to_owned(),
-            transport: transport_for(DEFAULT_BASE_URL, &api_key, &session_id, Api::Chat),
+            transport: std::sync::Mutex::new(aimed_transport(
+                DEFAULT_BASE_URL,
+                &api_key,
+                &session_id,
+                Api::Chat,
+            )),
             api_key,
             session_id,
             http: http_client(),
@@ -129,7 +156,12 @@ impl OpenCodeProvider {
     /// Go, and how tests reach a mock server.
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into().trim_end_matches('/').to_owned();
-        self.transport = transport_for(&self.base_url, &self.api_key, &self.session_id, self.api);
+        self.transport = std::sync::Mutex::new(aimed_transport(
+            &self.base_url,
+            &self.api_key,
+            &self.session_id,
+            self.api,
+        ));
         self
     }
 
@@ -141,7 +173,12 @@ impl OpenCodeProvider {
     /// [`Self::with_base_url`] and [`Self::with_session_id`] keep it.
     pub fn with_api(mut self, api: Api) -> Self {
         self.api = api;
-        self.transport = transport_for(&self.base_url, &self.api_key, &self.session_id, self.api);
+        self.transport = std::sync::Mutex::new(aimed_transport(
+            &self.base_url,
+            &self.api_key,
+            &self.session_id,
+            self.api,
+        ));
         self
     }
 
@@ -161,9 +198,13 @@ impl OpenCodeProvider {
         if !session_id.trim().is_empty()
             && reqwest::header::HeaderValue::from_str(&session_id).is_ok()
         {
-            self.session_id = session_id;
-            self.transport =
-                transport_for(&self.base_url, &self.api_key, &self.session_id, self.api);
+            self.session_id = session_id.clone();
+            self.transport = std::sync::Mutex::new(aimed_transport(
+                &self.base_url,
+                &self.api_key,
+                &session_id,
+                self.api,
+            ));
         }
         self
     }
@@ -311,7 +352,32 @@ impl ModelProvider for OpenCodeProvider {
         req: ModelRequest,
         sink: &mut dyn EventSink,
     ) -> Result<ModelOutput, ProviderError> {
-        self.transport.complete(req, sink).await
+        // The gateway keys its routing and its cache bucket on the
+        // session header. The request's conversation id (rhema-code
+        // stamps the checkpoint stem, stable across a restart) is the
+        // durable identity, so it aims the header and a resumed
+        // conversation keeps its bucket; a request naming none keeps
+        // the constructed id. The lock covers only the swap: the
+        // generation runs on an owned clone.
+        let wanted = req
+            .params
+            .session_id
+            .as_deref()
+            .filter(|id| {
+                !id.trim().is_empty() && reqwest::header::HeaderValue::from_str(id).is_ok()
+            })
+            .unwrap_or(&self.session_id);
+        let transport = {
+            let mut aimed = self
+                .transport
+                .lock()
+                .expect("the transport lock is not poisoned");
+            if aimed.session_id != wanted {
+                *aimed = aimed_transport(&self.base_url, &self.api_key, wanted, self.api);
+            }
+            std::sync::Arc::clone(&aimed.provider)
+        };
+        transport.complete(req, sink).await
     }
 }
 

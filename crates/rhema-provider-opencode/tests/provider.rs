@@ -161,6 +161,94 @@ async fn completions_carry_the_session_header_and_use_the_shared_core() {
     assert_eq!(body["messages"][0]["content"], "hi");
 }
 
+/// One chat-completions stream, the shape every completion test
+/// answers with.
+fn chat_sse() -> String {
+    [
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\",\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\",\"role\":\"assistant\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":1,\"total_tokens\":4}}\n\n",
+        "data: [DONE]\n\n",
+    ]
+    .concat()
+}
+
+#[tokio::test]
+async fn the_request_s_conversation_id_aims_the_session_header() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(chat_sse()),
+        )
+        .mount(&server)
+        .await;
+
+    // The constructed id answers a request that names no conversation.
+    let mut sink = Collector(vec![]);
+    provider(&server)
+        .complete(request(), &mut sink)
+        .await
+        .expect("the stream completes");
+
+    // A request naming its conversation aims the header at it, and a
+    // second conversation aims elsewhere: each request carries its own
+    // id, so a resumed conversation keeps its bucket.
+    let base = rhema_core::ChatParams::new("deepseek-v4.1-flash");
+    for conversation in ["ses_checkpoint_one", "ses_checkpoint_two"] {
+        let mut req = request();
+        req.params = base.clone();
+        req.params.session_id = Some(conversation.to_owned());
+        let mut sink = Collector(vec![]);
+        provider(&server)
+            .complete(req, &mut sink)
+            .await
+            .expect("the stream completes");
+    }
+
+    let received = server.received_requests().await.expect("recorded");
+    let headers: Vec<String> = received
+        .iter()
+        .map(|request| {
+            request
+                .headers
+                .get(SESSION_HEADER)
+                .and_then(|value| value.to_str().ok())
+                .expect("the session header is present")
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(
+        headers,
+        ["ses_test", "ses_checkpoint_one", "ses_checkpoint_two"]
+    );
+}
+
+#[tokio::test]
+async fn a_conversation_id_no_header_can_carry_keeps_the_constructed_one() {
+    let server = MockServer::start().await;
+    // The mock serves only the constructed id: a leaked control
+    // character would fail the match and the completion.
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .and(header(SESSION_HEADER, "ses_test"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(chat_sse()),
+        )
+        .mount(&server)
+        .await;
+    let mut req = request();
+    req.params.session_id = Some("ses_bad\n\r".to_owned());
+    let mut sink = Collector(vec![]);
+    provider(&server)
+        .complete(req, &mut sink)
+        .await
+        .expect("the stream completes");
+}
+
 #[tokio::test]
 async fn a_non_2xx_response_keeps_the_status_and_console_message() {
     let server = MockServer::start().await;
