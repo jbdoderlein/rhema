@@ -58,7 +58,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use rhema_bash::jobs::{EventKind, JobEvent, JobRow, EXIT_NO_BACKEND};
+use rhema_bash::jobs::{EXIT_NO_BACKEND, EventKind, JobEvent, JobRow};
 use rhema_host_agent::Steering;
 
 /// How long the reconnect waits before reopening the stream, and how
@@ -275,7 +275,9 @@ fn on_event(watch: &mut Watch, feed: &mut Feed, stopped: &HashSet<String>, event
             watch.finished.remove(id);
             if !watch.is_tracked(id) {
                 feed.note_start(&event.row);
-                watch.running.push((event.row.id.clone(), event.row.clone()));
+                watch
+                    .running
+                    .push((event.row.id.clone(), event.row.clone()));
             }
         }
         EventKind::Stopped | EventKind::Removed => {
@@ -564,12 +566,7 @@ impl JobsHandle {
             entries: Arc::new(Mutex::new(
                 entries
                     .into_iter()
-                    .map(|entry| {
-                        (
-                            entry.row,
-                            now.checked_sub(entry.age).unwrap_or(now),
-                        )
-                    })
+                    .map(|entry| (entry.row, now.checked_sub(entry.age).unwrap_or(now)))
                     .collect(),
             )),
             feed: Arc::new(Mutex::new(Feed::default())),
@@ -807,9 +804,7 @@ kill "$2" 2>/dev/null"#,
             let ends = matches!(event.kind, EventKind::Stopped | EventKind::Removed);
             let stopped = if ends && watch.is_tracked(&event.row.id) {
                 let mut stopped = rhema_bash::jobs::stopped_ids(&session);
-                if !stopped.contains(&event.row.id)
-                    && sleep_slices(&stop, STOP_RECORD_GRACE)
-                {
+                if !stopped.contains(&event.row.id) && sleep_slices(&stop, STOP_RECORD_GRACE) {
                     return;
                 }
                 if !stopped.contains(&event.row.id) {
@@ -941,7 +936,12 @@ mod tests {
         let mut watch = Watch::default();
         let mut feed = Feed::default();
         let none = HashSet::new();
-        on_event(&mut watch, &mut feed, &none, &event(EventKind::Added, "abc", None));
+        on_event(
+            &mut watch,
+            &mut feed,
+            &none,
+            &event(EventKind::Added, "abc", None),
+        );
         assert_eq!(watch.running.len(), 1, "the add tracks the job");
         assert_eq!(feed.started.len(), 1, "the start its record needs");
         on_event(
@@ -963,7 +963,12 @@ mod tests {
         let mut watch = Watch::default();
         let mut feed = Feed::default();
         let none = HashSet::new();
-        on_event(&mut watch, &mut feed, &none, &event(EventKind::Added, "abc", None));
+        on_event(
+            &mut watch,
+            &mut feed,
+            &none,
+            &event(EventKind::Added, "abc", None),
+        );
         on_event(
             &mut watch,
             &mut feed,
@@ -984,7 +989,12 @@ mod tests {
         let mut watch = Watch::default();
         let mut feed = Feed::default();
         let none = HashSet::new();
-        on_event(&mut watch, &mut feed, &none, &event(EventKind::Added, "abc", None));
+        on_event(
+            &mut watch,
+            &mut feed,
+            &none,
+            &event(EventKind::Added, "abc", None),
+        );
         on_event(
             &mut watch,
             &mut feed,
@@ -1012,7 +1022,12 @@ mod tests {
     fn an_end_the_session_ordered_is_silent() {
         let mut watch = Watch::default();
         let mut feed = Feed::default();
-        on_event(&mut watch, &mut feed, &HashSet::new(), &event(EventKind::Added, "abc", None));
+        on_event(
+            &mut watch,
+            &mut feed,
+            &HashSet::new(),
+            &event(EventKind::Added, "abc", None),
+        );
         let stopped: HashSet<String> = ["abc".to_owned()].into();
         on_event(
             &mut watch,
@@ -1035,7 +1050,12 @@ mod tests {
         assert!(feed.pending.is_empty());
         // One the session did not stop still announces.
         let mut watch = Watch::default();
-        on_event(&mut watch, &mut feed, &HashSet::new(), &event(EventKind::Added, "def", None));
+        on_event(
+            &mut watch,
+            &mut feed,
+            &HashSet::new(),
+            &event(EventKind::Added, "def", None),
+        );
         on_event(
             &mut watch,
             &mut feed,
@@ -1209,6 +1229,10 @@ esac
         std::thread::sleep(Duration::from_millis(20));
         let entries = handle.entries();
         assert_eq!(entries.len(), 1);
-        assert!(entries[0].age >= Duration::from_millis(15), "{:?}", entries[0].age);
+        assert!(
+            entries[0].age >= Duration::from_millis(15),
+            "{:?}",
+            entries[0].age
+        );
     }
 }
