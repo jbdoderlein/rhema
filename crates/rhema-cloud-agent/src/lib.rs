@@ -60,7 +60,7 @@ pub use gate::{ApprovalChannel, ClientGate};
 // The sandbox seam lives in rhema-sandbox; re-exported so this crate's
 // public surface does not churn during the transition.
 pub use rhema_sandbox::{
-    ExecOutcome, ExecRequest, Sandbox, SandboxError, ShellSandbox, WorkspaceSeed,
+    RunOutcome, RunRequest, Sandbox, SandboxError, ShellSandbox, WorkspaceSeed,
 };
 pub use wire::{ClientMessage, ServerMessage};
 

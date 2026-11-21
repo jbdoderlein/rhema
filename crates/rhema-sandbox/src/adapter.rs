@@ -11,12 +11,11 @@
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-use std::time::Duration;
 
 use async_trait::async_trait;
-use rhema_bash::exec::{Executed, ShellError, ShellExecutor};
+use rhema_bash::exec::{ShellError, ShellExecutor};
 
-use crate::{ExecRequest, Sandbox, SandboxError};
+use crate::{RunOutcome, RunRequest, Sandbox, SandboxError, ToolProgress};
 
 /// The shell executor that runs every command in a [`Sandbox`].
 pub struct ShellSandbox {
@@ -35,6 +34,7 @@ impl ShellSandbox {
 fn shell_error(err: SandboxError) -> ShellError {
     match err {
         SandboxError::Timeout(secs) => ShellError::Timeout(secs),
+        SandboxError::OutOfMemory => ShellError::OutOfMemory,
         SandboxError::Unavailable(msg) | SandboxError::Failed(msg) => ShellError::Failed(msg),
     }
 }
@@ -43,28 +43,13 @@ fn shell_error(err: SandboxError) -> ShellError {
 impl ShellExecutor for ShellSandbox {
     async fn run(
         &self,
-        command: &str,
-        cwd: &std::path::Path,
-        timeout: Duration,
+        request: RunRequest,
         cancelled: &AtomicBool,
-        progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
-    ) -> Result<Executed, ShellError> {
-        // The workspace path is a POSIX path inside the sandbox; it rode
-        // through a `PathBuf` unchanged and leaves as text.
-        let request = ExecRequest {
-            command: command.to_owned(),
-            cwd: cwd.to_string_lossy().into_owned(),
-            timeout,
-        };
-        let outcome = self
-            .sandbox
-            .exec(request, cancelled, progress)
+        progress: &mut dyn ToolProgress,
+    ) -> Result<RunOutcome, ShellError> {
+        self.sandbox
+            .run(request, cancelled, progress)
             .await
-            .map_err(shell_error)?;
-        Ok(Executed {
-            stdout: outcome.stdout,
-            stderr: outcome.stderr,
-            code: outcome.code,
-        })
+            .map_err(shell_error)
     }
 }

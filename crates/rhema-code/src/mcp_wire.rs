@@ -3,7 +3,7 @@
 //! process.
 //!
 //! The gate is the spec's §10 rule: a sandboxed session wires
-//! nothing, so nothing advertises what cannot run (`ExecRequest`
+//! nothing, so nothing advertises what cannot run (`RunRequest`
 //! carries no environment, a provisioned map could not reach the
 //! executor anyway). Rewiring on a profile switch leaves the old
 //! session's servers idling, the manager's children are stateful by

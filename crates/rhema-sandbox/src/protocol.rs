@@ -15,6 +15,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::{RunRequest, ToolProgress};
+
 /// Runs one command: [`ExecCall`] in, [`ExecReply`] out.
 pub const EXEC: &str = "/exec";
 /// Writes one file: [`PutFile`] in, [`Ack`] out.
@@ -120,18 +122,29 @@ pub enum SeedRequest {
 /// The v1 shim buffers the whole (already tail-capped) output, so this
 /// is one burst, not live lines, the callback shape is the contract a
 /// streaming shim fills in.
-pub fn stream_reply(reply: &ExecReply, progress: &mut (dyn for<'a> FnMut(&'a str) + Send)) {
+pub fn stream_reply(reply: &ExecReply, progress: &mut dyn ToolProgress) {
     for line in reply.stdout.lines() {
-        progress(&format!("{line}\n"));
+        progress.output(&format!("{line}\n"));
     }
     for line in reply.stderr.lines() {
-        progress(&format!("{line}\n"));
+        progress.output(&format!("{line}\n"));
+    }
+}
+
+impl From<&RunRequest> for ExecCall {
+    fn from(request: &RunRequest) -> Self {
+        Self {
+            command: request.command.clone(),
+            cwd: Some(request.cwd.to_string_lossy().into_owned()),
+            timeout_secs: request.timeout.as_secs(),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rhema_core::OutputOnly;
 
     #[test]
     fn an_exec_call_round_trips_with_a_cwd() {
@@ -326,7 +339,7 @@ mod tests {
         };
         let mut lines: Vec<String> = Vec::new();
         {
-            let mut progress = |line: &str| lines.push(line.to_owned());
+            let mut progress = OutputOnly(|line: &str| lines.push(line.to_owned()));
             stream_reply(&reply, &mut progress);
         }
         assert_eq!(lines, vec!["one\n", "two\n", "warn\n", "boom\n"]);
@@ -342,7 +355,7 @@ mod tests {
         };
         let mut lines: Vec<String> = Vec::new();
         {
-            let mut progress = |line: &str| lines.push(line.to_owned());
+            let mut progress = OutputOnly(|line: &str| lines.push(line.to_owned()));
             stream_reply(&reply, &mut progress);
         }
         assert_eq!(lines, vec!["no trailing newline\n"]);

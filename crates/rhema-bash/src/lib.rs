@@ -39,5 +39,5 @@ pub mod websearch;
 pub use approval::{AllowAll, Approval, DenyAll};
 #[cfg(feature = "local-shell")]
 pub use exec::LocalShell;
-pub use exec::{Executed, ShellError, ShellExecutor};
+pub use exec::{RunOutcome, RunRequest, ShellError, ShellExecutor};
 pub use shell::ShellTools;

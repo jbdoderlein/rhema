@@ -58,9 +58,9 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use base64::Engine;
-use rhema_sandbox::exec_util::{self, MAX_STREAM_BYTES, STAGING, under_workspace};
+use rhema_sandbox::exec_util::{self, EXEC_TAIL_BYTES, STAGING, under_workspace};
 use rhema_sandbox::fsroot::FsRoot;
-use rhema_sandbox::{ExecOutcome, ExecRequest, Sandbox, SandboxError, WorkspaceSeed};
+use rhema_sandbox::{RunOutcome, RunRequest, Sandbox, SandboxError, ToolProgress, WorkspaceSeed};
 
 /// The image a session boots when the profile names none:
 /// `ghcr.io/vhaudiquet/rhema-images:latest`, the rhema-ready base. The
@@ -468,7 +468,7 @@ impl StreamTail {
     /// guest's first write, absence is silence, not an error.
     async fn pump(
         &mut self,
-        progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
+        progress: &mut dyn ToolProgress,
         final_pass: bool,
     ) -> Result<(), SandboxError> {
         use tokio::io::{AsyncReadExt, AsyncSeekExt as _};
@@ -504,11 +504,11 @@ impl StreamTail {
         self.pos += complete.len() as u64;
         if complete.last() != Some(&b'\n') {
             let line = String::from_utf8_lossy(complete).into_owned();
-            progress(&format!("{line}\n"));
+            progress.output(&format!("{line}\n"));
             append_capped(&mut self.tail, format!("{line}\n").as_bytes());
         } else {
             for line in complete.split(|b| *b == b'\n').filter(|l| !l.is_empty()) {
-                progress(&format!("{}\n", String::from_utf8_lossy(line)));
+                progress.output(&format!("{}\n", String::from_utf8_lossy(line)));
             }
             append_capped(&mut self.tail, complete);
         }
@@ -522,12 +522,12 @@ impl StreamTail {
 }
 
 /// Appends `bytes` to `tail`, keeping at most the last
-/// [`MAX_STREAM_BYTES`], the same cap the pipe pump applies as the
+/// [`EXEC_TAIL_BYTES`], the same cap the pipe pump applies as the
 /// bytes land.
 fn append_capped(tail: &mut Vec<u8>, bytes: &[u8]) {
     tail.extend_from_slice(bytes);
-    if tail.len() > MAX_STREAM_BYTES {
-        let excess = tail.len() - MAX_STREAM_BYTES;
+    if tail.len() > EXEC_TAIL_BYTES {
+        let excess = tail.len() - EXEC_TAIL_BYTES;
         tail.drain(..excess);
     }
 }
@@ -551,7 +551,7 @@ fn classify(
     ecrou_stderr: String,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
-) -> Result<ExecOutcome, SandboxError> {
+) -> Result<RunOutcome, SandboxError> {
     let failed = code != Some(0) && ecrou_stderr.lines().any(is_ecrou_error);
     if failed {
         let detail = ecrou_stderr
@@ -566,7 +566,7 @@ fn classify(
             .unwrap_or_else(|| ecrou_stderr.trim().to_owned());
         return Err(SandboxError::Unavailable(detail));
     }
-    Ok(ExecOutcome {
+    Ok(RunOutcome {
         stdout,
         stderr,
         code,
@@ -655,18 +655,18 @@ fn ecrou_ready() -> bool {
 
 #[async_trait]
 impl Sandbox for EcrouSandbox {
-    async fn exec(
+    async fn run(
         &self,
-        request: ExecRequest,
+        request: RunRequest,
         cancelled: &AtomicBool,
-        progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
-    ) -> Result<ExecOutcome, SandboxError> {
+        progress: &mut dyn ToolProgress,
+    ) -> Result<RunOutcome, SandboxError> {
         // The trait's first observation point: a flip before the start
         // never boots a machine.
         if cancelled.load(Ordering::Relaxed) {
             return Err(SandboxError::Failed("cancelled".into()));
         }
-        let workdir = self.guest_cwd(&request.cwd)?;
+        let workdir = self.guest_cwd(&request.cwd.to_string_lossy())?;
         let mount = self.mount_point();
         // The capture directory lives one call: the guest writes the
         // payload's streams into it through the share ecrou takes,
@@ -699,7 +699,7 @@ impl Sandbox for EcrouSandbox {
             Err(SandboxError::Unavailable(detail))
                 if detail.contains("persist base mismatch") && self.persist.is_some() =>
             {
-                progress(
+                progress.output(
                     "# ecrou: the sandbox image changed since this workspace's state was saved; \
                      the state was reset and this command starts fresh (reinstall anything missing)\n",
                 );
@@ -764,13 +764,13 @@ impl EcrouSandbox {
         &self,
         workdir: &str,
         mount: &str,
-        request: &ExecRequest,
+        request: &RunRequest,
         cancelled: &AtomicBool,
-        progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
+        progress: &mut dyn ToolProgress,
         capture: &tempfile::TempDir,
         git_env: Option<&GitEnv>,
         persist_reset: bool,
-    ) -> Result<ExecOutcome, SandboxError> {
+    ) -> Result<RunOutcome, SandboxError> {
         use std::process::Stdio;
 
         let argv = run_argv(
@@ -867,7 +867,7 @@ impl EcrouSandbox {
             .map_err(|err| SandboxError::Unavailable(format!("{err}")))?;
         // The prefix's own codes decide: budget expiry, or the
         // external kill that must not read as one.
-        rhema_sandbox::exec_util::exit_status(output.status.code(), SEED_BUDGET.as_secs())?;
+        rhema_sandbox::exec_util::classify_exit(output.status.code(), SEED_BUDGET.as_secs())?;
         if !output.status.success() {
             let detail = String::from_utf8_lossy(&output.stderr);
             let detail = detail.trim();
@@ -884,6 +884,7 @@ impl EcrouSandbox {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use rhema_sandbox::OutputOnly;
     use std::path::Path;
     use std::sync::Arc;
 
@@ -910,20 +911,17 @@ mod tests {
         (EcrouSandbox::new("alpine:3.23", root, ws), dir)
     }
 
-    fn request(command: &str) -> ExecRequest {
-        ExecRequest {
+    fn request(command: &str) -> RunRequest {
+        RunRequest {
             command: command.to_owned(),
             cwd: "/".into(),
             timeout: Duration::from_secs(30),
         }
     }
 
-    async fn run(
-        sandbox: &EcrouSandbox,
-        request: ExecRequest,
-    ) -> Result<ExecOutcome, SandboxError> {
+    async fn run(sandbox: &EcrouSandbox, request: RunRequest) -> Result<RunOutcome, SandboxError> {
         sandbox
-            .exec(request, &AtomicBool::new(false), &mut |_| {})
+            .run(request, &AtomicBool::new(false), &mut OutputOnly(|_| {}))
             .await
     }
 
@@ -1200,7 +1198,7 @@ mod tests {
         // clean exit: the next boot starts from it.
         let first = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: "mkdir -p /opt && echo persisted > /opt/marker && echo wrote".into(),
                 cwd: "/".into(),
                 timeout: Duration::from_secs(60),
@@ -1212,7 +1210,7 @@ mod tests {
 
         let second = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: "cat /opt/marker".into(),
                 cwd: "/".into(),
                 timeout: Duration::from_secs(60),
@@ -1231,7 +1229,7 @@ mod tests {
         // last clean run left.
         let dirty = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: "echo dirty > /opt/marker; exit 3".into(),
                 cwd: "/".into(),
                 timeout: Duration::from_secs(60),
@@ -1243,7 +1241,7 @@ mod tests {
 
         let after = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: "cat /opt/marker".into(),
                 cwd: "/".into(),
                 timeout: Duration::from_secs(60),
@@ -1268,9 +1266,9 @@ mod tests {
         fixture_repo_at(dir.path());
         let git_present = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: "command -v git".into(),
-                cwd: dir.path().to_string_lossy().into_owned(),
+                cwd: dir.path().to_owned(),
                 timeout: Duration::from_secs(30),
             },
         )
@@ -1308,9 +1306,9 @@ mod tests {
 
         let outcome = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: "git commit -q --allow-empty -m from-the-machine".into(),
-                cwd: root.to_string_lossy().into_owned(),
+                cwd: root.to_owned(),
                 timeout: Duration::from_secs(60),
             },
         )
@@ -1340,8 +1338,8 @@ mod tests {
     #[test]
     fn append_capped_keeps_only_the_last_cap() {
         let mut tail = Vec::new();
-        append_capped(&mut tail, &[b'x'; MAX_STREAM_BYTES * 3]);
-        assert_eq!(tail.len(), MAX_STREAM_BYTES);
+        append_capped(&mut tail, &[b'x'; EXEC_TAIL_BYTES * 3]);
+        assert_eq!(tail.len(), EXEC_TAIL_BYTES);
     }
 
     #[tokio::test]
@@ -1355,7 +1353,7 @@ mod tests {
         };
         let mut lines: Vec<String> = Vec::new();
         stream
-            .pump(&mut |line| lines.push(line.to_owned()), false)
+            .pump(&mut OutputOnly(|line| lines.push(line.to_owned())), false)
             .await
             .expect("the first pump reads");
         assert_eq!(lines, vec!["first\n".to_owned()]);
@@ -1369,7 +1367,7 @@ mod tests {
         file.write_all(b"ond\n").expect("the second chunk lands");
         drop(file);
         stream
-            .pump(&mut |line| lines.push(line.to_owned()), false)
+            .pump(&mut OutputOnly(|line| lines.push(line.to_owned())), false)
             .await
             .expect("the second pump reads");
         assert_eq!(lines, vec!["first\n".to_owned(), "second\n".to_owned()]);
@@ -1387,7 +1385,7 @@ mod tests {
         };
         let mut lines: Vec<String> = Vec::new();
         stream
-            .pump(&mut |line| lines.push(line.to_owned()), true)
+            .pump(&mut OutputOnly(|line| lines.push(line.to_owned())), true)
             .await
             .expect("the final pump reads");
         assert_eq!(lines, vec!["no newline at the end\n".to_owned()]);
@@ -1403,7 +1401,7 @@ mod tests {
         };
         let mut lines: Vec<String> = Vec::new();
         stream
-            .pump(&mut |line| lines.push(line.to_owned()), false)
+            .pump(&mut OutputOnly(|line| lines.push(line.to_owned())), false)
             .await
             .expect("absence is silence");
         assert!(lines.is_empty());
@@ -1468,7 +1466,7 @@ mod tests {
         let (sandbox, _dir) = sandbox();
         let cancelled = AtomicBool::new(true);
         let error = sandbox
-            .exec(request("echo hi"), &cancelled, &mut |_| {})
+            .run(request("echo hi"), &cancelled, &mut OutputOnly(|_| {}))
             .await
             .expect_err("a cancelled run does not boot");
         assert_eq!(error, SandboxError::Failed("cancelled".into()));
@@ -1479,7 +1477,7 @@ mod tests {
         let (sandbox, _dir) = sandbox();
         let error = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: "pwd".into(),
                 cwd: "/../etc".into(),
                 timeout: Duration::from_secs(30),
@@ -1527,10 +1525,10 @@ mod tests {
         let outcome = {
             let cancelled = AtomicBool::new(false);
             sandbox
-                .exec(
+                .run(
                     request("echo from the vm; echo to err 1>&2; exit 7"),
                     &cancelled,
-                    &mut |line| lines.push(line.to_owned()),
+                    &mut OutputOnly(|line| lines.push(line.to_owned())),
                 )
                 .await
                 .expect("the machine runs")
@@ -1561,9 +1559,9 @@ mod tests {
         let ws = dir.path().to_string_lossy().into_owned();
         let outcome = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: "cat note.txt && echo guest >> note.txt".into(),
-                cwd: ws,
+                cwd: ws.into(),
                 timeout: Duration::from_secs(30),
             },
         )
@@ -1587,7 +1585,7 @@ mod tests {
         let started = Instant::now();
         let error = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: "sleep 60".into(),
                 cwd: "/".into(),
                 timeout: Duration::from_secs(2),
@@ -1618,7 +1616,7 @@ mod tests {
         });
         let started = Instant::now();
         let error = sandbox
-            .exec(request("sleep 60"), &cancelled, &mut |_| {})
+            .run(request("sleep 60"), &cancelled, &mut OutputOnly(|_| {}))
             .await
             .expect_err("the flip stops the run");
         assert_eq!(error, SandboxError::Failed("cancelled".into()));

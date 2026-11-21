@@ -17,7 +17,7 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::fsroot::FsRoot;
-use crate::{ExecOutcome, ExecRequest, SandboxError};
+use crate::{RunOutcome, RunRequest, SandboxError, ToolProgress};
 
 /// The environment a captured command runs with, and the host's `setsid`
 /// probe, re-exported from the bash tool's executor: every backend that
@@ -25,11 +25,11 @@ use crate::{ExecOutcome, ExecRequest, SandboxError};
 /// the definition lives where the `bash` tool's spec does.
 pub use rhema_bash::exec::{NONINTERACTIVE_ENV, setsid_executable};
 
-/// The stream tail a finished command keeps, the shim's
-/// `MAX_STREAM_BYTES`: a runaway command cannot flood memory, and the
-/// tool applies its display caps again on top (spec §3, caps are
-/// per-implementation policy; this implementation keeps the shim's).
-pub const MAX_STREAM_BYTES: usize = 50 * 1024;
+/// The stream tail a finished command keeps: a runaway command cannot
+/// flood memory, and the tool applies its display caps again on top
+/// (spec §3, caps are per-implementation policy; this implementation
+/// keeps the shim's).
+pub const EXEC_TAIL_BYTES: usize = 50 * 1024;
 
 /// How often the cancelled flag is sampled while output is quiet. An
 /// `AtomicBool` carries no wakeup, so a silent command would otherwise
@@ -50,13 +50,10 @@ pub const STAGING: &str = ".rhema-seed.tar.gz";
 /// as a timeout would have the model widen the budget and re-run the
 /// same memory-hungry command, so it reads as a plain failure. Any
 /// other exit, nonzero included, is the command's own result.
-pub fn exit_status(code: Option<i32>, budget_secs: u64) -> Result<Option<i32>, SandboxError> {
+pub fn classify_exit(code: Option<i32>, budget_secs: u64) -> Result<Option<i32>, SandboxError> {
     match code {
         Some(124) => Err(SandboxError::Timeout(budget_secs)),
-        Some(137) => Err(SandboxError::Failed(
-            "the command was killed (SIGKILL, exit 137): most often the machine's out-of-memory killer, not the time budget"
-                .into(),
-        )),
+        Some(137) => Err(SandboxError::OutOfMemory),
         other => Ok(other),
     }
 }
@@ -65,10 +62,10 @@ pub fn exit_status(code: Option<i32>, budget_secs: u64) -> Result<Option<i32>, S
 /// file (`/dev/zero`) through a remote backend must fail in band, not
 /// pin memory until the budget expires: past the cap the child is
 /// killed and the read reports the failure.
-pub const MAX_CAPTURE_BYTES: usize = 32 * 1024 * 1024;
+pub const EXEC_CAPTURE_BYTES: usize = 32 * 1024 * 1024;
 
 /// Runs one spawned `argv` to completion with its stdout held under
-/// [`MAX_CAPTURE_BYTES`], answering the bytes, the exit code, and the
+/// [`EXEC_CAPTURE_BYTES`], answering the bytes, the exit code, and the
 /// lossily-decoded stderr. stdin null (the "no terminal" contract),
 /// stdout and stderr piped, the local child killed on drop. The
 /// byte-capped read is the point: `wait_with_output` would grow the
@@ -88,7 +85,7 @@ pub async fn capture_capped(
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|err| SandboxError::Unavailable(format!("{err}")))?;
+        .map_err(SandboxError::from)?;
     let stderr_text = tokio::spawn(drain_stderr(child.stderr.take()));
     let mut stdout = Vec::new();
     if let Some(mut pipe) = child.stdout.take() {
@@ -101,11 +98,11 @@ pub async fn capture_capped(
             if read == 0 {
                 break;
             }
-            if stdout.len() + read > MAX_CAPTURE_BYTES {
+            if stdout.len() + read > EXEC_CAPTURE_BYTES {
                 let _ = child.kill().await;
                 return Err(SandboxError::Failed(format!(
                     "the capture is past its {}-byte cap",
-                    MAX_CAPTURE_BYTES
+                    EXEC_CAPTURE_BYTES
                 )));
             }
             stdout.extend_from_slice(&buffer[..read]);
@@ -142,14 +139,14 @@ async fn drain_stderr(mut pipe: Option<tokio::process::ChildStderr>) -> String {
 /// lines live through `progress`, a capped tail kept for each), a
 /// cancel observed before the start and between chunks with the local
 /// child killed on it, and the exit read through the `timeout`
-/// prefix's codes (see [`exit_status`]). Any other exit, nonzero
+/// prefix's codes (see [`classify_exit`]). Any other exit, nonzero
 /// included, is the command's own result and rides to the caller.
 pub async fn run_child(
     mut child: tokio::process::Child,
-    request: &ExecRequest,
+    request: &RunRequest,
     cancelled: &AtomicBool,
-    progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
-) -> Result<ExecOutcome, SandboxError> {
+    progress: &mut dyn ToolProgress,
+) -> Result<RunOutcome, SandboxError> {
     // One reader per stream, complete lines into one channel: each
     // line streams live through `progress`, and each reader keeps
     // its own capped tail for the result.
@@ -161,7 +158,7 @@ pub async fn run_child(
         tokio::select! {
             line = rx.recv() => match line {
                 Some((_, line)) => {
-                    progress(&format!("{line}\n"));
+                    progress.output(&format!("{line}\n"));
                     if cancelled.load(Ordering::Relaxed) {
                         kill(&mut child).await;
                         return Err(SandboxError::Failed("cancelled".into()));
@@ -186,8 +183,8 @@ pub async fn run_child(
         .wait()
         .await
         .map_err(|err| SandboxError::Unavailable(format!("waiting for the command: {err}")))?;
-    let code = exit_status(status.code(), request.timeout.as_secs())?;
-    Ok(ExecOutcome {
+    let code = classify_exit(status.code(), request.timeout.as_secs())?;
+    Ok(RunOutcome {
         stdout,
         stderr,
         code,
@@ -230,7 +227,7 @@ where
                         // `fill_buf` borrow must end first.
                         let newline = available.iter().position(|&byte| byte == b'\n');
                         let chunk_len = newline.unwrap_or(available.len());
-                        let room = MAX_LINE_BYTES.saturating_sub(buffer.len());
+                        let room = EXEC_LINE_BYTES.saturating_sub(buffer.len());
                         let take = chunk_len.min(room);
                         buffer.extend_from_slice(&available[..take]);
                         dropped += (chunk_len - take) as u64;
@@ -278,16 +275,17 @@ where
 /// otherwise pin its whole output in the line buffer; `read_until`
 /// grows without bound. The overrun is consumed but not kept, and a
 /// marker line follows the truncated one, so framing survives and the
-/// elision is visible.
-pub const MAX_LINE_BYTES: usize = 1024 * 1024;
+/// elision is visible. The bash side's definition, re-exported: the
+/// process-spawning backends share the cap, one value, one doc.
+pub use rhema_bash::exec::EXEC_LINE_BYTES;
 
 /// Appends `bytes` to `tail`, keeping at most the last
-/// [`MAX_STREAM_BYTES`], the cap is applied as the bytes land, so a
+/// [`EXEC_TAIL_BYTES`], the cap is applied as the bytes land, so a
 /// runaway command never holds more than the tail.
 fn append_capped(tail: &mut Vec<u8>, bytes: &[u8]) {
     tail.extend_from_slice(bytes);
-    if tail.len() > MAX_STREAM_BYTES {
-        let excess = tail.len() - MAX_STREAM_BYTES;
+    if tail.len() > EXEC_TAIL_BYTES {
+        let excess = tail.len() - EXEC_TAIL_BYTES;
         tail.drain(..excess);
     }
 }
@@ -420,9 +418,9 @@ mod tests {
     fn the_tail_is_capped_as_the_bytes_land() {
         let mut tail = Vec::new();
         for _ in 0..4 {
-            append_capped(&mut tail, &[b'x'; MAX_STREAM_BYTES]);
+            append_capped(&mut tail, &[b'x'; EXEC_TAIL_BYTES]);
         }
-        assert_eq!(tail.len(), MAX_STREAM_BYTES);
+        assert_eq!(tail.len(), EXEC_TAIL_BYTES);
     }
 
     // The child floods the 64 KiB stderr pipe (8 MiB, past any pipe
@@ -463,7 +461,7 @@ mod tests {
         let tail = pump(Some(&payload[..]), false, tx).await;
         let (is_stderr, first) = rx.recv().await.expect("the truncated line arrives");
         assert!(!is_stderr);
-        assert_eq!(first.len(), MAX_LINE_BYTES);
+        assert_eq!(first.len(), EXEC_LINE_BYTES);
         let (_, marker) = rx.recv().await.expect("the marker arrives");
         assert_eq!(
             marker,
@@ -472,7 +470,7 @@ mod tests {
         assert!(rx.try_recv().is_err(), "nothing else was delivered");
         // The tail keeps the marker, not the whole line.
         assert!(String::from_utf8_lossy(&tail).contains("bytes dropped]"));
-        assert!(tail.len() <= MAX_STREAM_BYTES + marker.len() + 1);
+        assert!(tail.len() <= EXEC_TAIL_BYTES + marker.len() + 1);
     }
 
     #[tokio::test]

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rhema_cloud_agent::mock::ScriptedSandbox;
 use rhema_cloud_agent::{
-    AgentAssembly, ApprovalChannel, ApprovalPolicy, ExecOutcome, Sandbox, ShellSandbox,
+    AgentAssembly, ApprovalChannel, ApprovalPolicy, RunOutcome, Sandbox, ShellSandbox,
 };
 use rhema_core::{
     ChatParams, CommitHook, Content, Event, EventSink, Message, ModelOutput, ModelProvider,
@@ -138,7 +138,7 @@ impl EventSink for NoopSink {
 #[tokio::test]
 async fn a_full_turn_runs_bash_in_the_sandbox_through_the_round_trip() {
     let mut rig = rig(Arc::new(bash_then_done("c1", "echo hello", "done")));
-    rig.sandbox.push_exec(Ok(ExecOutcome {
+    rig.sandbox.push_run(Ok(RunOutcome {
         stdout: b"hello\n".to_vec(),
         stderr: Vec::new(),
         code: Some(0),
@@ -251,7 +251,7 @@ async fn a_crash_mid_command_resumes_with_the_call_reported_interrupted() {
     // workspace's view of a container eviction between commit and
     // result.
     let mut rig = rig(Arc::new(bash_then_done("c1", "long build", "ignored")));
-    rig.sandbox.hold_next_exec();
+    rig.sandbox.hold_next_run();
     let mut agent = rig.agent;
     // Both signals registered before the turn starts, so neither
     // wakeup can be missed.

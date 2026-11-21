@@ -9,12 +9,13 @@
 //! `NONINTERACTIVE_ENV` guards, so an editor or pager fails fast
 //! instead of taking the frontend's terminal. The kill is the prefix's,
 //! not tokio's: the budget is the mechanism the spec's kill-semantics
-//! decision (§4/§9) fixed, so `ExecRequest::timeout` means the same
+//! decision (§4/§9) fixed, so `RunRequest::timeout` means the same
 //! thing on every backend that lacks a per-command kill, including
 //! this one. `timeout` kills at the budget (exit 124) and
 //! `--kill-after` escalates to SIGKILL, which the shell reports as 137;
-//! those two codes are how a run is read as a timeout, the shim's
-//! `timed_out` detection restated for a process child. Streams pump
+//! those two codes are how a run is read, as a timeout or as the
+//! out-of-memory error, the shim's `timed_out` detection restated for
+//! a process child. Streams pump
 //! live lines and keep a capped tail each, the shim's caps restated
 //! host-side, the wiring is `exec_util`'s, shared with the docker
 //! and ssh backends.
@@ -28,7 +29,9 @@ use base64::Engine;
 
 use rhema_sandbox::exec_util::{self, STAGING};
 use rhema_sandbox::fsroot::FsRoot;
-use rhema_sandbox::{ExecOutcome, ExecRequest, Sandbox, SandboxError, WorkspaceSeed};
+use rhema_sandbox::{
+    OutputOnly, RunOutcome, RunRequest, Sandbox, SandboxError, ToolProgress, WorkspaceSeed,
+};
 
 /// The local sandbox a session's commands run in: every POSIX path it
 /// is handed maps into one host directory.
@@ -52,14 +55,14 @@ impl LocalSandbox {
         // The shim's seed budget for both seed kinds.
         const SEED_BUDGET: Duration = Duration::from_secs(300);
         let outcome = self
-            .exec(
-                ExecRequest {
+            .run(
+                RunRequest {
                     command,
                     cwd: "/".into(),
                     timeout: SEED_BUDGET,
                 },
                 &AtomicBool::new(false),
-                &mut |_| {},
+                &mut OutputOnly(|_| {}),
             )
             .await?;
         if outcome.code != Some(0) {
@@ -77,12 +80,12 @@ impl LocalSandbox {
 
 #[async_trait]
 impl Sandbox for LocalSandbox {
-    async fn exec(
+    async fn run(
         &self,
-        request: ExecRequest,
+        request: RunRequest,
         cancelled: &AtomicBool,
-        progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
-    ) -> Result<ExecOutcome, SandboxError> {
+        progress: &mut dyn ToolProgress,
+    ) -> Result<RunOutcome, SandboxError> {
         use std::process::Stdio;
         use std::sync::atomic::Ordering;
 
@@ -91,7 +94,7 @@ impl Sandbox for LocalSandbox {
         if cancelled.load(Ordering::Relaxed) {
             return Err(SandboxError::Failed("cancelled".into()));
         }
-        let cwd = self.root.map(&request.cwd)?;
+        let cwd = self.root.map(&request.cwd.to_string_lossy())?;
         // `setsid` first, so the whole family (timeout, bash, whatever
         // the command starts) is in a session with no controlling
         // terminal; timeout's group kill still reaches it. Without
@@ -120,7 +123,7 @@ impl Sandbox for LocalSandbox {
             // drop is the backstop for the early returns.
             .kill_on_drop(true)
             .spawn()
-            .map_err(|err| SandboxError::Unavailable(format!("{err}")))?;
+            .map_err(SandboxError::from)?;
         exec_util::run_child(child, &request, cancelled, progress).await
     }
 
@@ -165,11 +168,12 @@ impl Sandbox for LocalSandbox {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use rhema_sandbox::OutputOnly;
     use std::sync::Arc;
     use std::sync::atomic::Ordering;
 
     // The cap the tail test asserts against.
-    use rhema_sandbox::exec_util::MAX_STREAM_BYTES;
+    use rhema_sandbox::exec_util::EXEC_TAIL_BYTES;
 
     /// A sandbox over a fresh tempdir; the guard comes back so the
     /// root outlives the test's calls and vanishes after.
@@ -194,8 +198,8 @@ mod tests {
     }
 
     /// One exec request at the root, budgeted for a test.
-    fn request(command: &str) -> ExecRequest {
-        ExecRequest {
+    fn request(command: &str) -> RunRequest {
+        RunRequest {
             command: command.to_owned(),
             cwd: "/".into(),
             timeout: Duration::from_secs(30),
@@ -204,12 +208,11 @@ mod tests {
 
     /// One exec through the sandbox with nothing cancelled and nothing
     /// watching the progress, the shape most tests want.
-    async fn run(
-        sandbox: &LocalSandbox,
-        request: ExecRequest,
-    ) -> Result<ExecOutcome, SandboxError> {
+    async fn run(sandbox: &LocalSandbox, request: RunRequest) -> Result<RunOutcome, SandboxError> {
         let cancelled = AtomicBool::new(false);
-        sandbox.exec(request, &cancelled, &mut |_| {}).await
+        sandbox
+            .run(request, &cancelled, &mut OutputOnly(|_| {}))
+            .await
     }
 
     /// Runs one git command in `dir`; the global and system config are
@@ -286,9 +289,11 @@ mod tests {
         let cancelled = AtomicBool::new(false);
         let mut lines: Vec<String> = Vec::new();
         let outcome = sandbox
-            .exec(request("echo hi"), &cancelled, &mut |line| {
-                lines.push(line.to_owned())
-            })
+            .run(
+                request("echo hi"),
+                &cancelled,
+                &mut OutputOnly(|line| lines.push(line.to_owned())),
+            )
             .await
             .expect("the command runs");
         assert_eq!(outcome.code, Some(0));
@@ -312,7 +317,7 @@ mod tests {
             .expect("the write lands");
         let outcome = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: "ls".into(),
                 cwd: "/workspace".into(),
                 timeout: Duration::from_secs(30),
@@ -354,7 +359,7 @@ mod tests {
         let (sandbox, _dir) = sandbox();
         let error = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: "sleep 5".into(),
                 cwd: "/".into(),
                 timeout: Duration::from_secs(1),
@@ -379,7 +384,7 @@ mod tests {
         let outcome = run(&sandbox, request("seq 1 20000"))
             .await
             .expect("the command runs");
-        assert_eq!(outcome.stdout.len(), MAX_STREAM_BYTES);
+        assert_eq!(outcome.stdout.len(), EXEC_TAIL_BYTES);
     }
 
     #[tokio::test]
@@ -414,7 +419,7 @@ mod tests {
         let (sandbox, _dir) = sandbox();
         let error = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: "pwd".into(),
                 cwd: "/../etc".into(),
                 timeout: Duration::from_secs(30),
@@ -433,7 +438,7 @@ mod tests {
         let (sandbox, _dir) = sandbox();
         let cancelled = AtomicBool::new(true);
         let error = sandbox
-            .exec(request("echo hi"), &cancelled, &mut |_| {})
+            .run(request("echo hi"), &cancelled, &mut OutputOnly(|_| {}))
             .await
             .expect_err("a cancelled run does not start");
         assert_eq!(error, SandboxError::Failed("cancelled".into()));
@@ -456,7 +461,7 @@ mod tests {
         });
         let started = std::time::Instant::now();
         let error = sandbox
-            .exec(request("sleep 30"), &cancelled, &mut |_| {})
+            .run(request("sleep 30"), &cancelled, &mut OutputOnly(|_| {}))
             .await
             .expect_err("the flip stops the run");
         assert_eq!(error, SandboxError::Failed("cancelled".into()));

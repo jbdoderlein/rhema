@@ -5,10 +5,10 @@
 //! §4's "container, v1" row, the bind-mount posture): `FsRoot` plus a
 //! `docker exec` prefix, no Engine API. The kill is the prefix's, as
 //! on every backend without a per-command kill,
-//! `timeout --kill-after=5` rides inside the container, `ExecRequest::
+//! `timeout --kill-after=5` rides inside the container, `RunRequest::
 //! timeout` stays the one budget knob, and the prefix's codes read
-//! through the shared `exit_status` (124 at the budget; an external
-//! SIGKILL is a plain failure). Streams pump live lines through the shared `run_child`
+//! through the shared `classify_exit` (124 at the budget; an external
+//! SIGKILL reads as the out-of-memory error). Streams pump live lines through the shared `run_child`
 //! wiring (`exec_util`), caps included.
 #![forbid(unsafe_code)]
 
@@ -20,7 +20,7 @@ use base64::Engine;
 
 use rhema_sandbox::exec_util::{self, STAGING, check_remote_path, under_workspace};
 use rhema_sandbox::fsroot::FsRoot;
-use rhema_sandbox::{ExecOutcome, ExecRequest, Sandbox, SandboxError, WorkspaceSeed};
+use rhema_sandbox::{RunOutcome, RunRequest, Sandbox, SandboxError, ToolProgress, WorkspaceSeed};
 
 /// The docker sandbox a session's commands run in: one running
 /// container whose bind mount is the sandbox filesystem.
@@ -102,7 +102,7 @@ impl DockerSandbox {
             .map_err(|err| SandboxError::Unavailable(format!("{err}")))?;
         // The prefix's own codes decide: budget expiry, or the
         // external kill that must not read as one.
-        rhema_sandbox::exec_util::exit_status(output.status.code(), SEED_BUDGET.as_secs())?;
+        rhema_sandbox::exec_util::classify_exit(output.status.code(), SEED_BUDGET.as_secs())?;
         if !output.status.success() {
             let detail = String::from_utf8_lossy(&output.stderr);
             let detail = detail.trim();
@@ -175,12 +175,12 @@ fn exec_argv(
 
 #[async_trait]
 impl Sandbox for DockerSandbox {
-    async fn exec(
+    async fn run(
         &self,
-        request: ExecRequest,
+        request: RunRequest,
         cancelled: &AtomicBool,
-        progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
-    ) -> Result<ExecOutcome, SandboxError> {
+        progress: &mut dyn ToolProgress,
+    ) -> Result<RunOutcome, SandboxError> {
         use std::process::Stdio;
         use std::sync::atomic::Ordering;
 
@@ -192,11 +192,11 @@ impl Sandbox for DockerSandbox {
         // The cwd is the container's to interpret, not this process's
         // fs: the textual guard is what stands between the model and a
         // `..` climb, the same guard the fs-disjoint backends lean on.
-        check_remote_path(&request.cwd)?;
+        check_remote_path(&request.cwd.to_string_lossy())?;
         // The caller names paths instance-side (the mirrored
         // workspace's own path); the workdir join wants mount-relative
         // ones.
-        let cwd = under_workspace(&self.workspace, &request.cwd);
+        let cwd = under_workspace(&self.workspace, &request.cwd.to_string_lossy());
         let argv = exec_argv(
             &self.container,
             &self.workspace,
@@ -214,7 +214,7 @@ impl Sandbox for DockerSandbox {
             // drop is the backstop for the early returns.
             .kill_on_drop(true)
             .spawn()
-            .map_err(|err| SandboxError::Unavailable(format!("{err}")))?;
+            .map_err(SandboxError::from)?;
         exec_util::run_child(child, &request, cancelled, progress).await
     }
 
@@ -262,6 +262,7 @@ impl Sandbox for DockerSandbox {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use rhema_sandbox::OutputOnly;
     use std::process::Stdio;
 
     /// A sandbox over a fresh tempdir standing in for the host side of
@@ -415,14 +416,14 @@ mod tests {
     async fn a_relative_cwd_is_refused_without_spawning_docker() {
         let (sandbox, _dir) = sandbox();
         let error = sandbox
-            .exec(
-                ExecRequest {
+            .run(
+                RunRequest {
                     command: "pwd".into(),
                     cwd: "workspace".into(),
                     timeout: Duration::from_secs(30),
                 },
                 &AtomicBool::new(false),
-                &mut |_| {},
+                &mut OutputOnly(|_| {}),
             )
             .await
             .expect_err("the relative cwd is refused");
@@ -436,14 +437,14 @@ mod tests {
     async fn a_dot_dot_cwd_is_refused_without_spawning_docker() {
         let (sandbox, _dir) = sandbox();
         let error = sandbox
-            .exec(
-                ExecRequest {
+            .run(
+                RunRequest {
                     command: "pwd".into(),
                     cwd: "/../etc".into(),
                     timeout: Duration::from_secs(30),
                 },
                 &AtomicBool::new(false),
-                &mut |_| {},
+                &mut OutputOnly(|_| {}),
             )
             .await
             .expect_err("the climb is refused");
@@ -458,14 +459,14 @@ mod tests {
         let (sandbox, _dir) = sandbox();
         let cancelled = AtomicBool::new(true);
         let error = sandbox
-            .exec(
-                ExecRequest {
+            .run(
+                RunRequest {
                     command: "echo hi".into(),
                     cwd: "/".into(),
                     timeout: Duration::from_secs(30),
                 },
                 &cancelled,
-                &mut |_| {},
+                &mut OutputOnly(|_| {}),
             )
             .await
             .expect_err("a cancelled run does not start");
@@ -655,12 +656,11 @@ mod tests {
 
     /// One exec through the sandbox with nothing cancelled and nothing
     /// watching the progress.
-    async fn run(
-        sandbox: &DockerSandbox,
-        request: ExecRequest,
-    ) -> Result<ExecOutcome, SandboxError> {
+    async fn run(sandbox: &DockerSandbox, request: RunRequest) -> Result<RunOutcome, SandboxError> {
         let cancelled = AtomicBool::new(false);
-        sandbox.exec(request, &cancelled, &mut |_| {}).await
+        sandbox
+            .run(request, &cancelled, &mut OutputOnly(|_| {}))
+            .await
     }
 
     #[tokio::test]
@@ -675,14 +675,14 @@ mod tests {
         let cancelled = AtomicBool::new(false);
         let mut lines: Vec<String> = Vec::new();
         let outcome = sandbox
-            .exec(
-                ExecRequest {
+            .run(
+                RunRequest {
                     command: "echo hi".into(),
                     cwd: "/".into(),
                     timeout: Duration::from_secs(30),
                 },
                 &cancelled,
-                &mut |line| lines.push(line.to_owned()),
+                &mut OutputOnly(|line| lines.push(line.to_owned())),
             )
             .await
             .expect("the command runs in the container");
@@ -702,7 +702,7 @@ mod tests {
         let sandbox = DockerSandbox::new(container, root, "/workspace");
         let error = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: "sleep 5".into(),
                 cwd: "/".into(),
                 timeout: Duration::from_secs(1),

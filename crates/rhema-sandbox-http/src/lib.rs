@@ -30,7 +30,7 @@ use rhema_sandbox::protocol::TOKEN_HEADER;
 use rhema_sandbox::protocol::{
     self, Ack, EXEC, ExecCall, ExecReply, FileReply, GET, PUT, PutFile, SEED, SeedRequest,
 };
-use rhema_sandbox::{ExecOutcome, ExecRequest, Sandbox, SandboxError, WorkspaceSeed};
+use rhema_sandbox::{RunOutcome, RunRequest, Sandbox, SandboxError, ToolProgress, WorkspaceSeed};
 
 /// One JSON POST in, the status and body bytes out: the transport seam
 /// under every route. The worker crate implements this over host fetch
@@ -187,12 +187,12 @@ fn ack_result(ack: Ack) -> Result<(), SandboxError> {
 
 #[async_trait]
 impl Sandbox for HttpSandbox {
-    async fn exec(
+    async fn run(
         &self,
-        request: ExecRequest,
+        request: RunRequest,
         cancelled: &AtomicBool,
-        progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
-    ) -> Result<ExecOutcome, SandboxError> {
+        progress: &mut dyn ToolProgress,
+    ) -> Result<RunOutcome, SandboxError> {
         // Checked before the command starts, and nowhere else: a
         // command that completed remotely reports its true result,
         // the model sees the truth, whatever the turn decided
@@ -200,17 +200,13 @@ impl Sandbox for HttpSandbox {
         if cancelled.load(std::sync::atomic::Ordering::Relaxed) {
             return Err(SandboxError::Failed("cancelled".into()));
         }
-        let call = ExecCall {
-            command: request.command,
-            cwd: Some(request.cwd),
-            timeout_secs: request.timeout.as_secs(),
-        };
+        let call = ExecCall::from(&request);
         let reply: ExecReply = self.post(EXEC, &call).await?;
         if reply.timed_out {
             return Err(SandboxError::Timeout(request.timeout.as_secs()));
         }
         protocol::stream_reply(&reply, progress);
-        Ok(ExecOutcome {
+        Ok(RunOutcome {
             stdout: reply.stdout.into_bytes(),
             stderr: reply.stderr.into_bytes(),
             code: reply.exit_code,
@@ -255,6 +251,7 @@ impl Sandbox for HttpSandbox {
 #[cfg(all(test, unix, feature = "native"))]
 mod tests {
     use super::*;
+    use rhema_sandbox::OutputOnly;
     use serde_json::json;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::sync::mpsc;
@@ -377,8 +374,8 @@ mod tests {
     }
 
     /// One command, budgeted for the test.
-    fn exec_request(command: &str) -> ExecRequest {
-        ExecRequest {
+    fn exec_request(command: &str) -> RunRequest {
+        RunRequest {
             command: command.to_owned(),
             cwd: "/workspace".into(),
             timeout: Duration::from_secs(120),
@@ -399,9 +396,11 @@ mod tests {
         let cancelled = AtomicBool::new(false);
         let mut lines: Vec<String> = Vec::new();
         let outcome = sandbox(base)
-            .exec(exec_request("cargo test"), &cancelled, &mut |line| {
-                lines.push(line.to_owned())
-            })
+            .run(
+                exec_request("cargo test"),
+                &cancelled,
+                &mut OutputOnly(|line| lines.push(line.to_owned())),
+            )
             .await
             .expect("the exec answers");
         assert_eq!(outcome.code, Some(0));
@@ -429,7 +428,11 @@ mod tests {
         .await;
         let cancelled = AtomicBool::new(false);
         let error = sandbox(base)
-            .exec(exec_request("sleep 100"), &cancelled, &mut |_| {})
+            .run(
+                exec_request("sleep 100"),
+                &cancelled,
+                &mut OutputOnly(|_| {}),
+            )
             .await
             .expect_err("the kill surfaces");
         assert_eq!(error, SandboxError::Timeout(120));
@@ -440,7 +443,7 @@ mod tests {
         let (base, mut requests) = serve(|_| (200, String::new())).await;
         let cancelled = AtomicBool::new(true);
         let error = sandbox(base)
-            .exec(exec_request("true"), &cancelled, &mut |_| {})
+            .run(exec_request("true"), &cancelled, &mut OutputOnly(|_| {}))
             .await
             .expect_err("a cancelled run does not start");
         assert_eq!(error, SandboxError::Failed("cancelled".into()));
@@ -533,7 +536,7 @@ mod tests {
         let (base, _requests) = serve(|_| (401, "wrong token".to_owned())).await;
         let cancelled = AtomicBool::new(false);
         let error = sandbox(base)
-            .exec(exec_request("true"), &cancelled, &mut |_| {})
+            .run(exec_request("true"), &cancelled, &mut OutputOnly(|_| {}))
             .await
             .expect_err("the refusal surfaces");
         match error {

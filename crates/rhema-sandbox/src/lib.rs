@@ -51,41 +51,14 @@ pub use protocol::{
     Ack, EXEC, ExecCall, ExecReply, FileReply, GET, PUT, PutFile, SEED, SeedRequest, TOKEN_HEADER,
     stream_reply,
 };
+pub use rhema_bash::exec::{RunOutcome, RunRequest};
+pub use rhema_core::{OutputOnly, ToolProgress};
 pub use seed::seed_workspace;
 pub use shared::InstanceLock;
 
 use std::sync::atomic::AtomicBool;
-use std::time::Duration;
 
 use async_trait::async_trait;
-
-/// One command to run in the sandbox workspace.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExecRequest {
-    /// The command line, run with `bash -c`.
-    pub command: String,
-    /// Working directory inside the sandbox, POSIX-style (`/workspace`).
-    /// A string, not a `PathBuf`: the path is meaningful only inside the
-    /// sandbox's filesystem, and no host should be tempted to touch it.
-    pub cwd: String,
-    /// Wall-clock budget. The sandbox kills the command, and every
-    /// process it started, past it, and reports
-    /// [`SandboxError::Timeout`].
-    pub timeout: Duration,
-}
-
-/// What a command left behind. The sandbox side tail-caps each stream
-/// before it crosses the wire, so a runaway command cannot flood the
-/// transport; the tool applies its display caps again host-side.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExecOutcome {
-    /// Everything the command wrote to stdout, tail-capped.
-    pub stdout: Vec<u8>,
-    /// Everything the command wrote to stderr, tail-capped.
-    pub stderr: Vec<u8>,
-    /// The exit code; `None` when the process died by signal.
-    pub code: Option<i32>,
-}
 
 /// How a fresh workspace gets its contents. The sandbox persists across
 /// turns and idle sleeps; a full container eviction loses the files, and
@@ -117,10 +90,23 @@ pub enum SandboxError {
     /// The command ran past its budget and was killed.
     #[error("command timed out after {0}s and was killed")]
     Timeout(u64),
+    /// The command was killed by a SIGKILL from outside its time
+    /// budget, most often the machine's out-of-memory killer; the
+    /// budget's own kills read as [`SandboxError::Timeout`].
+    #[error(
+        "the command was killed (SIGKILL, exit 137): most often the machine's out-of-memory killer, not the time budget"
+    )]
+    OutOfMemory,
     /// The operation failed inside the sandbox: a missing file, a clone
     /// that would not clone.
     #[error("sandbox command failed: {0}")]
     Failed(String),
+}
+
+impl From<std::io::Error> for SandboxError {
+    fn from(err: std::io::Error) -> Self {
+        Self::Unavailable(err.to_string())
+    }
 }
 
 /// The sandbox a session's commands run in. One instance per session,
@@ -133,12 +119,12 @@ pub trait Sandbox: Send + Sync {
     /// output at completion; the callback shape is the contract either
     /// way). A flip of `cancelled` stops the run where the transport
     /// can observe it, before the command starts, and between chunks.
-    async fn exec(
+    async fn run(
         &self,
-        request: ExecRequest,
+        request: RunRequest,
         cancelled: &AtomicBool,
-        progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
-    ) -> Result<ExecOutcome, SandboxError>;
+        progress: &mut dyn ToolProgress,
+    ) -> Result<RunOutcome, SandboxError>;
 
     /// Seeds a fresh workspace. Calling this on a workspace that already
     /// has contents replaces them; callers seed when the DO storage says

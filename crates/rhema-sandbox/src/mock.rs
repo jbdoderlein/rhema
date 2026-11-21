@@ -11,10 +11,10 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
 
-use crate::{ExecOutcome, ExecRequest, Sandbox, SandboxError, WorkspaceSeed};
+use crate::{RunOutcome, RunRequest, Sandbox, SandboxError, ToolProgress, WorkspaceSeed};
 
 /// What the next `exec` answers, queued by the test.
-type ScriptedOutcome = Result<ExecOutcome, SandboxError>;
+type ScriptedOutcome = Result<RunOutcome, SandboxError>;
 
 /// A sandbox that answers from a script.
 #[derive(Default)]
@@ -52,7 +52,7 @@ impl ScriptedSandbox {
     }
 
     /// Queues the next `exec` answer.
-    pub fn push_exec(&self, outcome: ScriptedOutcome) {
+    pub fn push_run(&self, outcome: ScriptedOutcome) {
         self.outcomes
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -68,7 +68,7 @@ impl ScriptedSandbox {
 
     /// Makes the next `exec` park until [`Self::release`], or forever,
     /// which is how a turn is made to die mid-command.
-    pub fn hold_next_exec(&self) {
+    pub fn hold_next_run(&self) {
         // The sender stays with the receiver: a sender dropped here
         // would close the channel at once and the "park" would never
         // hold.
@@ -111,12 +111,12 @@ impl ScriptedSandbox {
 
 #[async_trait]
 impl Sandbox for ScriptedSandbox {
-    async fn exec(
+    async fn run(
         &self,
-        request: ExecRequest,
+        request: RunRequest,
         _cancelled: &AtomicBool,
-        _progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
-    ) -> Result<ExecOutcome, SandboxError> {
+        _progress: &mut dyn ToolProgress,
+    ) -> Result<RunOutcome, SandboxError> {
         self.executed
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -138,7 +138,7 @@ impl Sandbox for ScriptedSandbox {
         // asserts on.
         let mut outcomes = self.outcomes.lock().unwrap_or_else(PoisonError::into_inner);
         let outcome = if outcomes.is_empty() {
-            Ok(ExecOutcome {
+            Ok(RunOutcome {
                 stdout: Vec::new(),
                 stderr: Vec::new(),
                 code: Some(0),

@@ -30,7 +30,7 @@
 //! line; LXD does not), so nothing here is quoted for a middle
 //! shell. The kill is
 //! the prefix's, as on every backend without a per-command kill,
-//! the `timeout` prefix's codes (124 at the budget, an external SIGKILL reads as a plain failure) read through `rhema-sandbox`'s shared `exit_status`. Streams pump live lines through
+//! the `timeout` prefix's codes (124 at the budget, an external SIGKILL reads as the out-of-memory error) read through `rhema-sandbox`'s shared `classify_exit`. Streams pump live lines through
 //! the shared `run_child` wiring (`exec_util`), caps included.
 //!
 //! Cancelling mid-run kills the local `lxc` process only; the command
@@ -51,7 +51,7 @@ use rhema_sandbox::exec_util::{
     self, STAGING, check_remote_path, read_through, under_workspace, write_through,
 };
 use rhema_sandbox::fsroot::FsRoot;
-use rhema_sandbox::{ExecOutcome, ExecRequest, Sandbox, SandboxError, WorkspaceSeed};
+use rhema_sandbox::{RunOutcome, RunRequest, Sandbox, SandboxError, ToolProgress, WorkspaceSeed};
 
 /// The seed budget for both seed kinds, the shim's and the siblings'.
 const SEED_BUDGET: Duration = Duration::from_secs(300);
@@ -165,7 +165,7 @@ impl LxdSandbox {
             .map_err(|err| SandboxError::Unavailable(format!("{err}")))?;
         // The prefix's own codes decide: budget expiry, or the
         // external kill that must not read as one.
-        rhema_sandbox::exec_util::exit_status(output.status.code(), SEED_BUDGET.as_secs())?;
+        rhema_sandbox::exec_util::classify_exit(output.status.code(), SEED_BUDGET.as_secs())?;
         if !output.status.success() {
             let detail = String::from_utf8_lossy(&output.stderr);
             let detail = detail.trim();
@@ -391,12 +391,12 @@ fn lxd_failure(code: Option<i32>, stderr: &str) -> SandboxError {
 
 #[async_trait]
 impl Sandbox for LxdSandbox {
-    async fn exec(
+    async fn run(
         &self,
-        request: ExecRequest,
+        request: RunRequest,
         cancelled: &AtomicBool,
-        progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
-    ) -> Result<ExecOutcome, SandboxError> {
+        progress: &mut dyn ToolProgress,
+    ) -> Result<RunOutcome, SandboxError> {
         use std::process::Stdio;
         use std::sync::atomic::Ordering;
 
@@ -408,13 +408,13 @@ impl Sandbox for LxdSandbox {
         // The cwd is the instance's to interpret, not this process's
         // fs: the textual guard is what stands between the model and a
         // `..` climb, the same guard the fs-disjoint backends lean on.
-        check_remote_path(&request.cwd)?;
+        check_remote_path(&request.cwd.to_string_lossy())?;
         // The mounted caller names paths instance-side (the mirrored
         // workspace's own path); the workdir join wants mount-relative
         // ones. Attached, the paths are already instance-side.
         let cwd = match &self.root {
-            Some(_) => under_workspace(&self.workspace, &request.cwd),
-            None => request.cwd.clone(),
+            Some(_) => under_workspace(&self.workspace, &request.cwd.to_string_lossy()),
+            None => request.cwd.to_string_lossy().into_owned(),
         };
         let argv = exec_argv(
             &self.instance,
@@ -434,7 +434,7 @@ impl Sandbox for LxdSandbox {
             // drop is the backstop for the early returns.
             .kill_on_drop(true)
             .spawn()
-            .map_err(|err| SandboxError::Unavailable(format!("{err}")))?;
+            .map_err(SandboxError::from)?;
         exec_util::run_child(child, &request, cancelled, progress).await
     }
 
@@ -583,6 +583,7 @@ impl Sandbox for LxdSandbox {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use rhema_sandbox::OutputOnly;
     use std::process::Stdio;
 
     /// A mounted sandbox over a fresh tempdir standing in for the host
@@ -809,14 +810,14 @@ mod tests {
         let (sandbox, _guard) = mounted();
         for cwd in ["src", "src/../.."] {
             let err = sandbox
-                .exec(
-                    ExecRequest {
+                .run(
+                    RunRequest {
                         command: "echo hi".into(),
-                        cwd: cwd.to_owned(),
+                        cwd: cwd.into(),
                         timeout: Duration::from_secs(30),
                     },
                     &AtomicBool::new(false),
-                    &mut |_| {},
+                    &mut OutputOnly(|_| {}),
                 )
                 .await
                 .expect_err("the guard wins");
@@ -829,14 +830,14 @@ mod tests {
         let (sandbox, _guard) = mounted();
         let cancelled = AtomicBool::new(true);
         let err = sandbox
-            .exec(
-                ExecRequest {
+            .run(
+                RunRequest {
                     command: "echo hi".into(),
                     cwd: "/".into(),
                     timeout: Duration::from_secs(30),
                 },
                 &cancelled,
-                &mut |_| {},
+                &mut OutputOnly(|_| {}),
             )
             .await
             .expect_err("the flip wins");
@@ -1003,7 +1004,7 @@ mod tests {
         let sandbox = LxdSandbox::attached(instance).with_workspace("/root/proj");
         let outcome = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: "echo hello-from-lxd".into(),
                 cwd: "/".into(),
                 timeout: Duration::from_secs(30),
@@ -1021,10 +1022,10 @@ mod tests {
     }
 
     /// One exec, answer collected.
-    async fn run(sandbox: &LxdSandbox, request: ExecRequest) -> ExecOutcome {
+    async fn run(sandbox: &LxdSandbox, request: RunRequest) -> RunOutcome {
         let cancelled = AtomicBool::new(false);
         sandbox
-            .exec(request, &cancelled, &mut |_| {})
+            .run(request, &cancelled, &mut OutputOnly(|_| {}))
             .await
             .expect("the exec answers")
     }

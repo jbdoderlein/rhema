@@ -101,10 +101,7 @@ impl ToolResolver for ClientGate {
     }
 
     async fn resolve(&self, call: ToolCall, ctx: &ToolContext) -> ToolResult {
-        // A fn item, not a closure: its lifetime-generic signature is
-        // what the higher-ranked progress bound needs.
-        fn silent(_: &str) {}
-        self.resolve_decided(call, ctx, &mut rhema_core::OutputOnly(silent))
+        self.resolve_decided(call, ctx, &mut rhema_core::OutputOnly(|_| {}))
             .await
     }
 

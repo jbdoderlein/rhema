@@ -23,11 +23,32 @@ use async_trait::async_trait;
 #[cfg(feature = "local-shell")]
 use tokio::io::{AsyncBufReadExt, BufReader};
 
+use rhema_core::ToolProgress;
+
+/// One command to run: the single request shape every executor and
+/// sandbox seam takes. `command` runs with `bash -c`; `cwd` is the
+/// working directory, a host path for a host executor, a POSIX path
+/// inside a sandbox (it rides through the `PathBuf` unchanged); and
+/// `timeout` is the wall-clock budget past which the run is killed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunRequest {
+    /// The command line, run with `bash -c`.
+    pub command: String,
+    /// Working directory for the command. A host path on a host
+    /// executor; inside a sandbox the path is meaningful only in the
+    /// sandbox's filesystem, and no host should be tempted to touch it.
+    pub cwd: PathBuf,
+    /// Wall-clock budget. The executor kills the command, and every
+    /// process it started, past it, and reports
+    /// [`ShellError::Timeout`].
+    pub timeout: Duration,
+}
+
 /// What one command left behind: the captured streams and the exit code.
 /// The streams carry whatever the executor captured; the tool, not the
 /// executor, applies the display caps to them.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Executed {
+pub struct RunOutcome {
     /// Everything the command wrote to stdout.
     pub stdout: Vec<u8>,
     /// Everything the command wrote to stderr.
@@ -43,6 +64,13 @@ pub enum ShellError {
     /// The command ran past its timeout and was killed.
     #[error("command timed out after {0}s and was killed")]
     Timeout(u64),
+    /// The command was killed by a SIGKILL from outside its time
+    /// budget, most often the machine's out-of-memory killer; the
+    /// budget's own kills read as [`ShellError::Timeout`].
+    #[error(
+        "the command was killed (SIGKILL, exit 137): most often the machine's out-of-memory killer, not the time budget"
+    )]
+    OutOfMemory,
     /// The driver cancelled the command mid-run: the context's cancelled
     /// flag flipped before the command finished.
     #[error("cancelled")]
@@ -152,24 +180,22 @@ fn spawn_error(err: std::io::Error) -> ShellError {
 /// Runs shell commands for the `bash` tool.
 #[async_trait]
 pub trait ShellExecutor: Send + Sync {
-    /// Runs `command` with `bash -c` and `cwd` as working directory,
-    /// streaming complete output lines through `progress` as they land
-    /// and returning what the command left behind. A command outliving
-    /// `timeout` is killed and reported as [`ShellError::Timeout`]; a
-    /// flip of `cancelled` mid-run stops the run with
-    /// [`ShellError::Cancelled`]. A captured run is non-interactive: the
-    /// child never receives the frontend's terminal on stdin, and an
-    /// implementation must not hand it one. Implementations must not
-    /// panic and must not abort: every failure comes back as a
-    /// [`ShellError`].
+    /// Runs `request.command` with `bash -c` and `request.cwd` as
+    /// working directory, streaming complete output lines through
+    /// `progress` as they land and returning what the command left
+    /// behind. A command outliving `request.timeout` is killed and
+    /// reported as [`ShellError::Timeout`]; a flip of `cancelled`
+    /// mid-run stops the run with [`ShellError::Cancelled`]. A captured
+    /// run is non-interactive: the child never receives the frontend's
+    /// terminal on stdin, and an implementation must not hand it one.
+    /// Implementations must not panic and must not abort: every failure
+    /// comes back as a [`ShellError`].
     async fn run(
         &self,
-        command: &str,
-        cwd: &Path,
-        timeout: Duration,
+        request: RunRequest,
         cancelled: &AtomicBool,
-        progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
-    ) -> Result<Executed, ShellError>;
+        progress: &mut dyn ToolProgress,
+    ) -> Result<RunOutcome, ShellError>;
 }
 
 /// How often the cancelled flag is sampled while a command's output is
@@ -223,17 +249,15 @@ impl Default for LocalShell {
 impl ShellExecutor for LocalShell {
     async fn run(
         &self,
-        command: &str,
-        cwd: &Path,
-        timeout: Duration,
+        request: RunRequest,
         cancelled: &AtomicBool,
-        progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
-    ) -> Result<Executed, ShellError> {
+        progress: &mut dyn ToolProgress,
+    ) -> Result<RunOutcome, ShellError> {
         use std::sync::atomic::Ordering;
 
         // kill_on_drop so the timeout dropping the child handle kills the
         // process; without it an expired command would keep running.
-        let mut child = captured_command(command, cwd, &self.env)
+        let mut child = captured_command(&request.command, &request.cwd, &self.env)
             .spawn()
             .map_err(spawn_error)?;
         // One reader per stream, complete lines into one channel: each
@@ -247,6 +271,7 @@ impl ShellExecutor for LocalShell {
             pump(stderr, true, tx.clone());
         }
         drop(tx);
+        let timeout = request.timeout;
         let deadline = tokio::time::Instant::now() + timeout;
         let mut stdout: Vec<u8> = Vec::new();
         let mut stderr: Vec<u8> = Vec::new();
@@ -275,7 +300,7 @@ impl ShellExecutor for LocalShell {
                                 .map_or(keep_from, |position| keep_from + position + 1);
                             sink.drain(..boundary);
                         }
-                        progress(&format!("{line}\n"));
+                        progress.output(&format!("{line}\n"));
                     }
                     // Both streams closed: only the exit status is left.
                     None => break,
@@ -304,7 +329,7 @@ impl ShellExecutor for LocalShell {
             // the handle; the caller reads a timeout like any other.
             _ => return Err(ShellError::Timeout(timeout.as_secs())),
         };
-        Ok(Executed {
+        Ok(RunOutcome {
             stdout,
             stderr,
             code: status.code(),
@@ -374,7 +399,7 @@ where
         // but not kept, and a marker line makes the elision visible,
         // so framing survives.
         let mut reader = BufReader::new(stream);
-        let mut buffer: Vec<u8> = Vec::with_capacity(MAX_LINE_BYTES);
+        let mut buffer: Vec<u8> = Vec::with_capacity(EXEC_LINE_BYTES);
         'lines: loop {
             buffer.clear();
             let mut dropped = 0u64;
@@ -386,7 +411,7 @@ where
                     Ok(available) => {
                         let newline = available.iter().position(|&byte| byte == b'\n');
                         let chunk_len = newline.unwrap_or(available.len());
-                        let room = MAX_LINE_BYTES.saturating_sub(buffer.len());
+                        let room = EXEC_LINE_BYTES.saturating_sub(buffer.len());
                         let take = chunk_len.min(room);
                         buffer.extend_from_slice(&available[..take]);
                         dropped += (chunk_len - take) as u64;
@@ -421,8 +446,10 @@ where
 }
 
 /// The most bytes one delivered line may hold in memory (see `pump`).
-#[cfg(feature = "local-shell")]
-const MAX_LINE_BYTES: usize = 1024 * 1024;
+/// One definition, here where the line pump lives; the process-spawning
+/// sandbox backends take it through `exec_util`'s re-export, so the two
+/// layers' line framing cannot drift apart.
+pub const EXEC_LINE_BYTES: usize = 1024 * 1024;
 
 /// The no-shell placeholder: every command fails in-band. What
 /// `ShellTools::new` installs when the build carries no local shell,
@@ -436,12 +463,10 @@ pub struct NoShell;
 impl ShellExecutor for NoShell {
     async fn run(
         &self,
-        _command: &str,
-        _cwd: &Path,
-        _timeout: Duration,
+        _request: RunRequest,
         _cancelled: &AtomicBool,
-        _progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
-    ) -> Result<Executed, ShellError> {
+        _progress: &mut dyn ToolProgress,
+    ) -> Result<RunOutcome, ShellError> {
         Err(ShellError::Failed(
             "this build has no local shell; install a shell executor \
              (ShellTools::with_executor)"
@@ -489,22 +514,24 @@ pub fn default_executor() -> std::sync::Arc<dyn ShellExecutor> {
 #[cfg(all(test, feature = "local-shell"))]
 mod tests {
     use super::*;
+    use rhema_core::OutputOnly;
     use std::sync::atomic::AtomicBool;
-
-    fn silent(_line: &str) {}
 
     /// One run through an executor, the deadline and the cwd the tests
     /// share; the output is the assertion, so a nonzero exit still
     /// comes back here.
-    async fn run_collected(executor: &dyn ShellExecutor, command: &str) -> Executed {
+    async fn run_collected(executor: &dyn ShellExecutor, command: &str) -> RunOutcome {
         let cancelled = AtomicBool::new(false);
+        let mut sink = OutputOnly(|_| {});
         executor
             .run(
-                command,
-                Path::new("/tmp"),
-                Duration::from_secs(30),
+                RunRequest {
+                    command: command.to_owned(),
+                    cwd: Path::new("/tmp").to_path_buf(),
+                    timeout: Duration::from_secs(30),
+                },
                 &cancelled,
-                &mut silent,
+                &mut sink,
             )
             .await
             .expect("the command runs")
@@ -615,13 +642,16 @@ mod tests {
         env.insert("GIT_CONFIG_SYSTEM".to_owned(), "/dev/null".to_owned());
         let executor = default_executor_with(&env);
         let cancelled = AtomicBool::new(false);
+        let mut sink = OutputOnly(|_| {});
         let executed = executor
             .run(
-                "git -c user.name=t -c user.email=t@example.com commit",
-                dir.path(),
-                Duration::from_secs(30),
+                RunRequest {
+                    command: "git -c user.name=t -c user.email=t@example.com commit".to_owned(),
+                    cwd: dir.path().to_path_buf(),
+                    timeout: Duration::from_secs(30),
+                },
                 &cancelled,
-                &mut silent,
+                &mut sink,
             )
             .await
             .expect("the command runs");
@@ -640,13 +670,16 @@ mod tests {
         let cancelled = Arc::new(AtomicBool::new(false));
         // ~1.8 MB of stdout: far past the capture window, far under
         // the deadline, so the cap, not the timeout, is what held.
+        let mut sink = OutputOnly(|_| {});
         let executed = shell
             .run(
-                "seq 1 300000",
-                Path::new("/tmp"),
-                Duration::from_secs(60),
+                RunRequest {
+                    command: "seq 1 300000".to_owned(),
+                    cwd: Path::new("/tmp").to_path_buf(),
+                    timeout: Duration::from_secs(60),
+                },
                 &cancelled,
-                &mut silent,
+                &mut sink,
             )
             .await
             .unwrap();

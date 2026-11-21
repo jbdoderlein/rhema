@@ -30,7 +30,7 @@ use rhema_core::{
 };
 
 use crate::approval::Approval;
-use crate::exec::{Executed, ShellError, ShellExecutor};
+use crate::exec::{RunOutcome, RunRequest, ShellError, ShellExecutor};
 
 /// Command output streams are each cut at this size, in bytes and in
 /// lines, whichever is hit first, keeping the tail: errors and final
@@ -200,16 +200,18 @@ impl ShellTools {
         let Some(command) = arg_str(&call.args, "command") else {
             return ToolResult::failure(call.id, "missing required argument: command");
         };
-        // The executor's seam speaks raw output chunks; the status half of
-        // the progress channel has no command-side counterpart.
+        // A command has no status phases to report: the channel
+        // carries the output lines only.
         match self
             .exec
             .run(
-                &command,
-                &self.workspace,
-                BASH_TIMEOUT,
+                RunRequest {
+                    command,
+                    cwd: self.workspace.clone(),
+                    timeout: BASH_TIMEOUT,
+                },
                 cancelled,
-                &mut |chunk: &str| progress.output(chunk),
+                progress,
             )
             .await
         {
@@ -232,7 +234,7 @@ impl ShellTools {
 
 /// The tool result for a command that reached an exit: the output, the
 /// success flag from the code, and the code itself for the UI.
-fn finished(id: String, executed: Executed) -> ToolResult {
+fn finished(id: String, executed: RunOutcome) -> ToolResult {
     let content = format_command_output(executed.code, &executed.stdout, &executed.stderr);
     let result = if executed.code == Some(0) {
         ToolResult::success(id, content)
@@ -252,9 +254,7 @@ impl ToolResolver for ShellTools {
     }
 
     async fn resolve(&self, call: ToolCall, ctx: &ToolContext) -> ToolResult {
-        // A fn item, not a closure: its lifetime-generic signature is
-        // what the higher-ranked progress bound needs.
-        self.resolve_streaming(call, ctx, &mut OutputOnly(silent))
+        self.resolve_streaming(call, ctx, &mut OutputOnly(|_| {}))
             .await
     }
 
@@ -279,10 +279,6 @@ impl ToolResolver for ShellTools {
 fn arg_str(args: &Value, key: &str) -> Option<String> {
     args.get(key).and_then(Value::as_str).map(str::to_owned)
 }
-
-/// The no-op progress: the plain `resolve` path runs the same streaming
-/// code with nobody listening.
-fn silent(_: &str) {}
 
 /// Canonicalizes `path`, falling back to the input when it does not exist
 /// yet.
@@ -403,7 +399,7 @@ mod executor_tests {
     /// An executor that answers from a script, recording the commands it
     /// was handed: the delegation tests run without spawning anything.
     struct Scripted {
-        outcome: Result<Executed, ShellError>,
+        outcome: Result<RunOutcome, ShellError>,
         commands: Mutex<Vec<String>>,
         streamed: Mutex<Vec<String>>,
     }
@@ -411,7 +407,7 @@ mod executor_tests {
     impl Scripted {
         fn ok(stdout: &str) -> Self {
             Self {
-                outcome: Ok(Executed {
+                outcome: Ok(RunOutcome {
                     stdout: stdout.as_bytes().to_vec(),
                     stderr: Vec::new(),
                     code: Some(0),
@@ -426,17 +422,15 @@ mod executor_tests {
     impl ShellExecutor for Scripted {
         async fn run(
             &self,
-            command: &str,
-            _cwd: &Path,
-            _timeout: Duration,
+            request: RunRequest,
             _cancelled: &AtomicBool,
-            progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
-        ) -> Result<Executed, ShellError> {
+            progress: &mut dyn ToolProgress,
+        ) -> Result<RunOutcome, ShellError> {
             self.commands
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
-                .push(command.to_owned());
-            progress("streamed line\n");
+                .push(request.command);
+            progress.output("streamed line\n");
             self.streamed
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
@@ -467,7 +461,7 @@ mod executor_tests {
         let executor = Arc::new(Scripted::ok("out\n"));
         let tools = ShellTools::with_executor("/tmp", executor.clone());
         tools.install_approval(Arc::new(AllowAll));
-        let mut progress = OutputOnly(silent);
+        let mut progress = OutputOnly(|_| {});
         let result = tools
             .resolve_streaming(call("echo hi"), &ToolContext::default(), &mut progress)
             .await;
@@ -513,7 +507,7 @@ mod executor_tests {
     #[tokio::test]
     async fn a_non_zero_exit_is_an_error_result_with_the_code() {
         let executor = Arc::new(Scripted {
-            outcome: Ok(Executed {
+            outcome: Ok(RunOutcome {
                 stdout: b"boom\n".to_vec(),
                 stderr: b"trace\n".to_vec(),
                 code: Some(3),

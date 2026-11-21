@@ -5,8 +5,8 @@
 //! §4's SSH row, first variant): zero setup beyond an ssh login. Exec
 //! is `ssh <host> -- timeout --kill-after=5 <secs> bash -c <command>`
 //!, the same prefix, so the same budget knob and the same timeout
-//! reading (124 at the budget; an external SIGKILL is a plain
-//! failure), with the streams pumped live through the shared
+//! reading (124 at the budget; an external SIGKILL reads as the
+//! out-of-memory error), with the streams pumped live through the shared
 //! `run_child` wiring (`exec_util`). Files cross as `ssh cat`
 //! and `ssh tee`; seeding is a remote `git clone` or a tarball
 //! streamed raw to a remote `tar -xzf -`. Every fs operation crosses
@@ -22,7 +22,7 @@ use async_trait::async_trait;
 use base64::Engine;
 
 use rhema_sandbox::exec_util::{capture_capped, check_remote_path, run_child, shquote};
-use rhema_sandbox::{ExecOutcome, ExecRequest, Sandbox, SandboxError, WorkspaceSeed};
+use rhema_sandbox::{RunOutcome, RunRequest, Sandbox, SandboxError, ToolProgress, WorkspaceSeed};
 
 /// The seed budget, the shim's, the same one the fs-sharing backends
 /// give their seed commands. A clone or unpack past it is a timeout:
@@ -115,7 +115,7 @@ impl SshSandbox {
             // future, and the drop kills the local ssh.
             .kill_on_drop(true)
             .spawn()
-            .map_err(|err| SandboxError::Unavailable(format!("{err}")))?;
+            .map_err(SandboxError::from)?;
         let stderr_text = tokio::spawn(drain_stderr(child.stderr.take()));
         if let Some(mut pipe) = child.stdin.take() {
             pipe.write_all(&bytes)
@@ -312,12 +312,12 @@ fn tar_argv(host: &str, workspace: &str) -> Vec<String> {
 
 #[async_trait]
 impl Sandbox for SshSandbox {
-    async fn exec(
+    async fn run(
         &self,
-        request: ExecRequest,
+        request: RunRequest,
         cancelled: &AtomicBool,
-        progress: &mut (dyn for<'a> FnMut(&'a str) + Send),
-    ) -> Result<ExecOutcome, SandboxError> {
+        progress: &mut dyn ToolProgress,
+    ) -> Result<RunOutcome, SandboxError> {
         use std::process::Stdio;
         use std::sync::atomic::Ordering;
 
@@ -328,13 +328,13 @@ impl Sandbox for SshSandbox {
         }
         // There is no local root to resolve against: the textual guard
         // is the whole defense on a remote path.
-        check_remote_path(&request.cwd)?;
+        check_remote_path(&request.cwd.to_string_lossy())?;
         // Run from this process's own directory, there is no local
         // root; the sandbox cwd is remote, and rides in the script.
         let argv = exec_argv(
             &self.host,
             request.timeout.as_secs(),
-            &request.cwd,
+            &request.cwd.to_string_lossy(),
             &request.command,
         );
         let child = tokio::process::Command::new(&argv[0])
@@ -421,6 +421,7 @@ impl Sandbox for SshSandbox {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use rhema_sandbox::OutputOnly;
 
     /// A sandbox aimed at a host no test ever reaches, the pure-argv
     /// and guard tests spawn nothing, so the name only has to be
@@ -576,14 +577,14 @@ mod tests {
     #[tokio::test]
     async fn a_relative_cwd_is_refused_without_spawning_ssh() {
         let error = sandbox()
-            .exec(
-                ExecRequest {
+            .run(
+                RunRequest {
                     command: "pwd".into(),
                     cwd: "workspace".into(),
                     timeout: Duration::from_secs(30),
                 },
                 &AtomicBool::new(false),
-                &mut |_| {},
+                &mut OutputOnly(|_| {}),
             )
             .await
             .expect_err("the relative cwd is refused");
@@ -598,14 +599,14 @@ mod tests {
         let sandbox = sandbox();
         for error in [
             sandbox
-                .exec(
-                    ExecRequest {
+                .run(
+                    RunRequest {
                         command: "pwd".into(),
                         cwd: "/../etc".into(),
                         timeout: Duration::from_secs(30),
                     },
                     &AtomicBool::new(false),
-                    &mut |_| {},
+                    &mut OutputOnly(|_| {}),
                 )
                 .await
                 .expect_err("the cwd climb is refused"),
@@ -629,14 +630,14 @@ mod tests {
     async fn a_flip_before_the_start_never_reaches_the_wire() {
         let cancelled = AtomicBool::new(true);
         let error = sandbox()
-            .exec(
-                ExecRequest {
+            .run(
+                RunRequest {
                     command: "echo hi".into(),
                     cwd: "/".into(),
                     timeout: Duration::from_secs(30),
                 },
                 &cancelled,
-                &mut |_| {},
+                &mut OutputOnly(|_| {}),
             )
             .await
             .expect_err("a cancelled run does not start");
@@ -670,9 +671,11 @@ mod tests {
 
     /// One exec through the sandbox with nothing cancelled and nothing
     /// watching the progress.
-    async fn run(sandbox: &SshSandbox, request: ExecRequest) -> Result<ExecOutcome, SandboxError> {
+    async fn run(sandbox: &SshSandbox, request: RunRequest) -> Result<RunOutcome, SandboxError> {
         let cancelled = AtomicBool::new(false);
-        sandbox.exec(request, &cancelled, &mut |_| {}).await
+        sandbox
+            .run(request, &cancelled, &mut OutputOnly(|_| {}))
+            .await
     }
 
     #[tokio::test]
@@ -685,14 +688,14 @@ mod tests {
         let cancelled = AtomicBool::new(false);
         let mut lines: Vec<String> = Vec::new();
         let outcome = sandbox
-            .exec(
-                ExecRequest {
+            .run(
+                RunRequest {
                     command: "echo hi".into(),
                     cwd: "/tmp".into(),
                     timeout: Duration::from_secs(30),
                 },
                 &cancelled,
-                &mut |line| lines.push(line.to_owned()),
+                &mut OutputOnly(|line| lines.push(line.to_owned())),
             )
             .await
             .expect("the command runs remotely");
@@ -710,7 +713,7 @@ mod tests {
         let sandbox = SshSandbox::new("localhost");
         let error = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: "sleep 5".into(),
                 cwd: "/".into(),
                 timeout: Duration::from_secs(1),
@@ -745,7 +748,7 @@ mod tests {
         // is best-effort cleanup, not an assertion.
         let _ = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: format!("rm -rf {}", shquote(&remote)),
                 cwd: "/".into(),
                 timeout: Duration::from_secs(30),
@@ -806,7 +809,7 @@ mod tests {
         assert_eq!(read, b"from git");
         let _ = run(
             &sandbox,
-            ExecRequest {
+            RunRequest {
                 command: format!("rm -rf {}", shquote(&remote)),
                 cwd: "/".into(),
                 timeout: Duration::from_secs(30),
