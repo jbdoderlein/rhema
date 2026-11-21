@@ -67,10 +67,11 @@
 //! `description` (the trigger). Only name, trigger, and file enter the
 //! system prompt, as the [`prompt`] module's `skills` list; the model
 //! reads a body itself through the bash tool when a trigger applies.
-//! Skills live per-workspace under `.rhema/skills`, globally under the
-//! config directory, and, at the lowest tier, in the cross-agent
-//! `~/.agents/skills`. A name claimed by a higher tier hides the lower
-//! copies, project over global over `.agents`.
+//! Skills live in four tiers: the workspace's `.rhema/skills`, the
+//! config directory, the workspace's `.agents/skills`, and, at the
+//! lowest tier, the cross-agent `~/.agents/skills`. A name claimed by
+//! a higher tier hides the lower copies, the rhema tiers over the
+//! `.agents` ones.
 
 #![forbid(unsafe_code)]
 
