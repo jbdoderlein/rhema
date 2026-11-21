@@ -12,7 +12,7 @@
 
 use std::num::NonZeroU32;
 
-use rhema_prompt::Skill;
+use rhema_prompt::{Skill, SkillTier};
 
 /// The default model, when the session carries no config yet.
 pub const DEFAULT_MODEL: &str = "claude-sonnet-4-5";
@@ -96,6 +96,7 @@ impl SessionConfig {
                 description: seed.description.clone(),
                 license: seed.license.clone(),
                 path: format!("{}/.rhema/skills/{}/SKILL.md", self.workspace, seed.name).into(),
+                tier: SkillTier::Workspace,
                 body: seed.body.clone(),
             })
             .collect()

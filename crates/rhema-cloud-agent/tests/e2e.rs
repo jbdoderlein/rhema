@@ -17,7 +17,7 @@ use rhema_core::{
     ChatParams, CommitHook, Content, Event, EventSink, Message, ModelOutput, ModelProvider,
     ModelRequest, ProviderError, Role, Session, StopReason, ToolCall, Usage, mock::MockProvider,
 };
-use rhema_prompt::Skill;
+use rhema_prompt::{Skill, SkillTier};
 use tokio::sync::{Notify, mpsc, oneshot};
 
 /// The model asks for one `bash` call, then ends the turn.
@@ -346,6 +346,7 @@ async fn seeded_skills_reach_the_prompt_without_a_filesystem() {
         description: "Triggers on deploy tasks.".into(),
         license: None,
         path: "/workspace/.rhema/skills/deploy/SKILL.md".parse().unwrap(),
+        tier: SkillTier::Workspace,
         body: "---\ndescription: Triggers on deploy tasks.\n---\nRun the deploy.".into(),
     }];
     let assembly = AgentAssembly {

@@ -150,6 +150,7 @@ pub fn render_template(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rhema_skills::SkillTier;
     use serde_json::json;
 
     fn skill(name: &str, description: &str) -> Skill {
@@ -158,6 +159,7 @@ mod tests {
             description: description.into(),
             license: None,
             path: format!("/cfg/skills/{name}/SKILL.md").into(),
+            tier: SkillTier::Global,
             body: "the rules".into(),
         }
     }

@@ -10,6 +10,8 @@
 //! lowest: the workspace's `.rhema/skills`, rhema's global directory,
 //! the workspace's `.agents/skills`, and `~/.agents/skills`. A rhema
 //! skill of the same name hides an `.agents` one, never the reverse.
+//! Each discovered skill carries the tier it came from, so a consumer
+//! routes by tier and never matches the tier directories' paths.
 //!
 //! rhema-prompt renders the discovered list into its template; the
 //! sandbox seeders, the subagent specs, and the settings UI read the
@@ -25,6 +27,24 @@ use serde::{Deserialize, Serialize};
 /// stalling startup with a huge or endless file.
 pub const MAX_SKILL_BYTES: u64 = 1024 * 1024;
 
+/// The shadowing tier a skill was discovered in, from the top of the
+/// order down. Discovery stamps it on every [`Skill`], so a consumer
+/// tags or routes by tier, and a tier's directory can move or a tier
+/// join the order without touching any consumer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum SkillTier {
+    /// The workspace's `.rhema/skills`, the top of the shadowing
+    /// order.
+    Workspace,
+    /// rhema's global config directory, over the `.agents` tiers.
+    Global,
+    /// The workspace's `.agents/skills`, the `skills` CLI's project
+    /// tier, over the home one.
+    WorkspaceAgents,
+    /// The home `~/.agents/skills`, the bottom of the order.
+    HomeAgents,
+}
+
 /// One discovered skill.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Skill {
@@ -38,6 +58,10 @@ pub struct Skill {
     pub license: Option<String>,
     /// Absolute path of the `SKILL.md` the model reads.
     pub path: PathBuf,
+    /// The tier discovery read the skill from. The path alone does not
+    /// say where a skill lives; a consumer tags or routes by this,
+    /// never by matching the path against a tier directory.
+    pub tier: SkillTier,
     /// The whole `SKILL.md`, frontmatter included, as discovery read
     /// it. Only the transcript's skill pinning consumes it today; the
     /// prompt carries name, trigger, and path only.
@@ -77,19 +101,23 @@ pub fn agents_skills_dir(workspace: &Path) -> PathBuf {
 pub fn discover(agents: Option<&Path>, global: Option<&Path>, workspace: &Path) -> Vec<Skill> {
     let mut by_name: BTreeMap<String, Skill> = BTreeMap::new();
     if let Some(agents) = agents {
-        collect_into(agents, &mut by_name);
+        collect_into(agents, SkillTier::HomeAgents, &mut by_name);
     }
-    collect_into(&agents_skills_dir(workspace), &mut by_name);
+    collect_into(
+        &agents_skills_dir(workspace),
+        SkillTier::WorkspaceAgents,
+        &mut by_name,
+    );
     if let Some(global) = global {
-        collect_into(global, &mut by_name);
+        collect_into(global, SkillTier::Global, &mut by_name);
     }
-    collect_into(&skills_dir(workspace), &mut by_name);
+    collect_into(&skills_dir(workspace), SkillTier::Workspace, &mut by_name);
     by_name.into_values().collect()
 }
 
 /// Reads every skill directly under `dir` into the map, keyed by folder
-/// name.
-fn collect_into(dir: &Path, by_name: &mut BTreeMap<String, Skill>) {
+/// name, each stamped with `tier`.
+fn collect_into(dir: &Path, tier: SkillTier, by_name: &mut BTreeMap<String, Skill>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -130,6 +158,7 @@ fn collect_into(dir: &Path, by_name: &mut BTreeMap<String, Skill>) {
                 description,
                 license,
                 path: file,
+                tier,
                 body: raw,
             },
         );
@@ -206,7 +235,7 @@ mod tests {
         )
         .unwrap();
         let mut by_name = BTreeMap::new();
-        collect_into(dir.path(), &mut by_name);
+        collect_into(dir.path(), SkillTier::Global, &mut by_name);
         let skill = by_name.get("crlf-skill").expect("the folder is a skill");
         assert_eq!(skill.description, "the crlf trigger");
     }
@@ -231,6 +260,7 @@ mod tests {
                     description: "the a trigger".into(),
                     license: None,
                     path: workspace.path().join(".rhema/skills/askill/SKILL.md"),
+                    tier: SkillTier::Workspace,
                     body: "---\ndescription: the a trigger\n---\n\nDo the thing.\n".into(),
                 },
                 Skill {
@@ -238,6 +268,7 @@ mod tests {
                     description: "the z trigger".into(),
                     license: None,
                     path: global.path().join("zskill/SKILL.md"),
+                    tier: SkillTier::Global,
                     body: "---\ndescription: the z trigger\n---\n\nDo the thing.\n".into(),
                 },
             ]
@@ -447,6 +478,45 @@ mod tests {
         let skills = discover(Some(&home_agents), Some(global.path()), workspace.path());
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].description, "global trigger");
+    }
+
+    #[test]
+    fn every_discovered_skill_names_its_tier() {
+        let home = tempfile::tempdir().unwrap();
+        let global = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        write_skill(
+            &home.path().join(".agents").join("skills"),
+            "home",
+            "the home trigger",
+        );
+        write_skill(
+            &workspace.path().join(".agents").join("skills"),
+            "project",
+            "the project trigger",
+        );
+        write_skill(global.path(), "global", "the global trigger");
+        write_skill(
+            &workspace.path().join(".rhema").join("skills"),
+            "workspace",
+            "the workspace trigger",
+        );
+
+        let skills = discover(
+            Some(&home.path().join(".agents").join("skills")),
+            Some(global.path()),
+            workspace.path(),
+        );
+        let tier_of = |name: &str| {
+            skills
+                .iter()
+                .find(|skill| skill.name == name)
+                .map(|skill| skill.tier)
+        };
+        assert_eq!(tier_of("workspace"), Some(SkillTier::Workspace));
+        assert_eq!(tier_of("global"), Some(SkillTier::Global));
+        assert_eq!(tier_of("project"), Some(SkillTier::WorkspaceAgents));
+        assert_eq!(tier_of("home"), Some(SkillTier::HomeAgents));
     }
 
     #[cfg(unix)]

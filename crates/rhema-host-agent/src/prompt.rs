@@ -45,6 +45,7 @@ mod tests {
             description: description.into(),
             license: None,
             path: format!("/cfg/skills/{name}/SKILL.md").into(),
+            tier: rhema_prompt::SkillTier::Global,
             body: "the rules".into(),
         }
     }

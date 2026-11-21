@@ -73,23 +73,21 @@ pub(crate) async fn ensure_seeded(
     Ok(())
 }
 
-/// The same discovery the local path's prompt renders, the
-/// cross-agent `~/.agents/skills` under the workspace's
-/// `.agents/skills` under rhema's global config directory under the
-/// workspace's `.rhema/skills`, a higher tier
+/// The same discovery the local path's prompt renders, a higher tier
 /// shadowing a lower by name, paired with each body read host-side
 /// now. The seeded postures' returned list names the rewritten,
 /// sandbox-side paths and carries the bodies `seed_workspace` writes; a
 /// body that cannot be read here would be unreadable there too, so it
-/// drops from both. Mounted, paths stand as discovered, the
-/// workspace's and the two global trees' 1:1 mounts put them at their
-/// own paths inside the instance, the mounts are the delivery, nothing
-/// is copied, and a skill edited mid-session is simply the new text
-/// the next read sees. Only a skill outside all three trees rides the
-/// seed, which on the mountless postures is the whole list anyway. The
-/// two global directories arrive resolved, `Home::agents_skills` and
-/// `Home::skills` at the call site, so a test points them
-/// at scratch paths instead of the machine's own.
+/// drops from both. Mounted, paths stand as discovered, the workspace
+/// bind mount carrying the two workspace tiers and the two read-only
+/// mounts their own tiers at the same paths inside the instance, the
+/// mounts are the delivery, nothing is copied, and a skill edited
+/// mid-session is simply the new text the next read sees. Only a skill
+/// whose tier rides no mount takes the seed, which on the mountless
+/// postures is the whole list anyway. The two global directories
+/// arrive resolved, `Home::agents_skills` and `Home::skills` at the
+/// call site, so a test points them at scratch paths instead of the
+/// machine's own.
 pub(crate) fn discovered_skills(
     agents: Option<&Path>,
     global: Option<&Path>,
@@ -101,11 +99,15 @@ pub(crate) fn discovered_skills(
     let mut bodies = Vec::new();
     let discovered = rhema_skills::discover(agents, global, workspace);
     for skill in discovered {
-        // A mounted tree's skill needs no delivery; anything outside
-        // the three trees travels as a body into the workspace seed.
-        let on_a_mount = skill.path.starts_with(workspace)
-            || global.is_some_and(|dir| skill.path.starts_with(dir))
-            || agents.is_some_and(|dir| skill.path.starts_with(dir));
+        // A mounted tier's skill needs no delivery: the workspace bind
+        // mount carries both workspace tiers, and each read-only mount
+        // carries its tier when present. Anything off the mounts
+        // travels as a body into the workspace seed.
+        let on_a_mount = match skill.tier {
+            rhema_skills::SkillTier::Workspace | rhema_skills::SkillTier::WorkspaceAgents => true,
+            rhema_skills::SkillTier::Global => global.is_some(),
+            rhema_skills::SkillTier::HomeAgents => agents.is_some(),
+        };
         if mounted && on_a_mount {
             skills.push(skill);
             continue;
@@ -118,6 +120,9 @@ pub(crate) fn discovered_skills(
             path: rhema_skills::skills_dir(Path::new(&sandbox_workspace))
                 .join(&skill.name)
                 .join("SKILL.md"),
+            // The rewritten path sits in the sandbox workspace's own
+            // tier, whatever tier it was discovered in.
+            tier: rhema_skills::SkillTier::Workspace,
             body: skill.body,
         });
     }

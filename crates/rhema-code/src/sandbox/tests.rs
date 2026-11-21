@@ -623,6 +623,7 @@ fn the_assembly_applies_tools_before_and_workspace_after_the_wire_order() {
             description: "trigger".into(),
             license: None,
             path: PathBuf::from("/workspace/.rhema/skills/review/SKILL.md"),
+            tier: rhema_prompt::SkillTier::Workspace,
             body: "---\ndescription: trigger\n---\nthe review rules".into(),
         }],
         instance_lock: None,

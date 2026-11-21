@@ -927,6 +927,7 @@ mod extra_tools_tests {
         Content, Event, ModelProvider, ModelRequest, ProviderError, StopReason, ToolCall,
         ToolResult, Usage, async_trait,
     };
+    use rhema_prompt::SkillTier;
     use std::sync::Mutex;
 
     use serde_json::json;
@@ -1097,6 +1098,7 @@ mod extra_tools_tests {
             description: "Triggers on deploy tasks.".into(),
             license: None,
             path: workspace.join(".rhema/skills/deploy/SKILL.md"),
+            tier: SkillTier::Workspace,
             body: "the deploy rules".into(),
         };
         let prompt = stamped_system_with_skills(None, &workspace, &[], &[skill]).unwrap();

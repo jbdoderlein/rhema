@@ -721,8 +721,11 @@ lower tier by name, so a skill in either rhema directory hides an
 `.agents` copy of the same name, never the reverse. The two `.agents`
 tiers are the cross-agent convention: the `skills` CLI
 (`npx skills add`) installs project skills in the workspace's
-`.agents/skills` and global skills (`-g`) in `~/.agents/skills`. Skills
-carry an optional frontmatter `license` (plus a `NOTICE` file
+`.agents/skills` and global skills (`-g`) in `~/.agents/skills`.
+Discovery stamps each skill with the tier it came from, and the
+settings page and the sandbox seeders route by that stamp, so moving a
+tier's directory or adding a tier is a change to discovery alone.
+Skills carry an optional frontmatter `license` (plus a `NOTICE` file
 where attribution must travel with copies), which the UIs render a
 step dimmer than the description.
 

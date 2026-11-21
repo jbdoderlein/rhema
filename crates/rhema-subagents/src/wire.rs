@@ -625,6 +625,7 @@ mod tests {
             description: "does a thing".into(),
             license: None,
             path: root.join("SKILL.md"),
+            tier: rhema_prompt::SkillTier::Workspace,
             body: "the rules".into(),
         }]);
 

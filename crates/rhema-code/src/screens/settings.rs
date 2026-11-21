@@ -262,9 +262,11 @@ pub struct SkillRow {
 }
 
 /// Where a skill lives: shipped with rhema, in the config directory,
-/// in the workspace's `.rhema/skills`, or in a cross-agent
-/// `.agents/skills` (home or workspace). Discovery shadows by name, so
-/// a row never names a hidden copy.
+/// in the workspace, or in a cross-agent `.agents/skills` (home or
+/// workspace). The row's source is the tier discovery stamped on the
+/// skill, so the page never re-derives a tier from paths, and
+/// discovery's shadowing by name keeps a row from naming a hidden
+/// copy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkillSource {
     /// Seeded by rhema from the binary's bundled set.

@@ -245,6 +245,7 @@ fn the_skills_share_excludes_the_mcp_section() {
         description: "a demo skill".into(),
         license: None,
         path: workspace.join("SKILL.md"),
+        tier: rhema_prompt::SkillTier::Workspace,
         body: String::new(),
     }];
     let mcp = |description: &str| {
