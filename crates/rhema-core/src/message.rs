@@ -51,7 +51,7 @@ pub struct Message {
     /// Ordered content blocks; a single turn may mix text and tool blocks.
     pub content: Vec<Content>,
     /// Consumer-owned notes about this message, keyed by consumer name
-    /// (`rhema-code` records its paste spans here). The engine, the
+    /// (a frontend's display notes, say). The engine, the
     /// providers, and the tool loop never read them: they exist so a
     /// frontend can record a display decision beside the text it made
     /// and find it again after a checkpoint. Serde-defaulted and
@@ -231,10 +231,10 @@ mod tests {
     #[test]
     fn an_annotation_rides_the_message_through_serde() {
         let mut message = Message::user("hi");
-        message.annotate("rhema-code", serde_json::json!({ "pastes": [] }));
+        message.annotate("consumer", serde_json::json!({ "note": 1 }));
         assert_eq!(
-            message.annotation("rhema-code"),
-            Some(&serde_json::json!({ "pastes": [] }))
+            message.annotation("consumer"),
+            Some(&serde_json::json!({ "note": 1 }))
         );
         assert!(message.annotation("someone-else").is_none());
         let back: Message =

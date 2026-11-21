@@ -47,8 +47,6 @@ Rules:
   - `engine`: the `Agent` step engine, `run_turn`, and the
     dangling-call close/revive pair (`src/engine.rs`)
   - `overlay`: the two-resolver combiner (`src/overlay.rs`)
-  - `paste`: the paste-span record and the legacy embedded-form
-    migration (`src/paste.rs`)
   - `mock`: `MockProvider` (`src/mock.rs`, `mock` feature)
   - `tests`: integration suites under `crates/rhema-core/tests/`
   - `rhema-provider`: the adapter-family base: the `ModelCard` catalog

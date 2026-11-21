@@ -2716,7 +2716,7 @@ fn a_submit_carries_the_pastes_payload_and_its_span() {
     let mut h = harness(Some("k"), Some("m-a"), Session::default());
     let long = "l1\nl2\nl3\nl4\nl5";
     h.app.chat.paste(long);
-    let spans = vec![rhema_core::paste::PasteSpan {
+    let spans = vec![crate::paste::PasteSpan {
         start: 0,
         end: long.len(),
         lines: 5,

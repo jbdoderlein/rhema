@@ -19,6 +19,8 @@
 //! - [`store`]: the config persistence seam
 //! - [`approval`]: the synchronous approval bridge
 //! - [`transcript`]: chat transcript lines from history and events
+//! - [`paste`]: the paste chip record on a user message, and the
+//!   legacy embedded form's rewrite on a resume
 //! - [`screens`]: login, model picker, chat input: pure state, plus
 //!   the clipboard read the paste keys go through
 //! - [`onboarding`]: the first-run wizard's steps and keys
@@ -66,6 +68,7 @@ pub(crate) mod mcp_wire;
 pub mod onboarding;
 mod open_url;
 pub mod palette;
+pub mod paste;
 pub mod run;
 pub mod sandbox;
 pub mod screens;

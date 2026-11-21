@@ -18,7 +18,7 @@ pub enum ChatAction {
         /// Images submitted beside the text.
         images: Vec<rhema_core::Image>,
         /// The paste spans the message records, in prompt order.
-        spans: Vec<rhema_core::paste::PasteSpan>,
+        spans: Vec<crate::paste::PasteSpan>,
     },
     /// Something to say, not to do: a notice the app draws in the
     /// transcript, the paste key's only way out for a fact about the
@@ -96,7 +96,7 @@ impl ChatState {
     /// mints it, always paired with a payload, text arriving with
     /// marks of its own loses them, so a chip glyph copied back out of
     /// the box can never anchor empty.
-    pub const MARK: char = rhema_core::paste::MARK;
+    pub const MARK: char = crate::paste::MARK;
 
     /// A fresh input box.
     pub fn new() -> Self {
@@ -172,7 +172,7 @@ impl ChatState {
     /// newlines, and anchor marks are dropped, a mark is only ever
     /// minted by [`Self::paste`], paired with a payload.
     fn normalize(text: &str) -> String {
-        rhema_core::paste::normalize(text)
+        crate::paste::normalize(text)
     }
 
     /// Inserts one character at the cursor.
@@ -199,13 +199,7 @@ impl ChatState {
     /// the spans the message annotates so the transcript can draw each
     /// payload as its chip. Image anchors drop out of the text: an image
     /// travels as a block beside it.
-    fn submission(
-        &self,
-    ) -> (
-        String,
-        Vec<rhema_core::Image>,
-        Vec<rhema_core::paste::PasteSpan>,
-    ) {
+    fn submission(&self) -> (String, Vec<rhema_core::Image>, Vec<crate::paste::PasteSpan>) {
         let mut text = String::with_capacity(self.input.len());
         let mut pastes = Vec::new();
         let mut images = Vec::new();
@@ -215,7 +209,7 @@ impl ChatState {
                     Some(Chip::Paste(payload)) => {
                         let start = text.len();
                         text.push_str(payload);
-                        pastes.push(rhema_core::paste::PasteSpan {
+                        pastes.push(crate::paste::PasteSpan {
                             start,
                             end: text.len(),
                             lines: payload.lines().count(),

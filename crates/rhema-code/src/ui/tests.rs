@@ -2513,7 +2513,7 @@ mod scroll_tests {
         app.transcript.push_user_with(
             &format!("look at {long} this"),
             Vec::new(),
-            vec![rhema_core::paste::PasteSpan {
+            vec![crate::paste::PasteSpan {
                 start: "look at ".len(),
                 end: "look at ".len() + long.len(),
                 lines: 5,

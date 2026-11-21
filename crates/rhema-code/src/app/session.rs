@@ -846,7 +846,12 @@ impl App {
     /// not do. Runs on the blocking pool via
     /// [`crate::turn::spawn_session_resume`].
     pub(crate) fn load_resume_parts(path: &Path) -> std::io::Result<Box<ResumedLoad>> {
-        let session = HostAgent::load_session_from(&path.to_path_buf())?;
+        let mut session = HostAgent::load_session_from(&path.to_path_buf())?;
+        // A session written before paste spans existed carries the
+        // embedded form in its prompts; the provider must never see a
+        // mark. One rewrite on the way in (see [`crate::paste`]), so
+        // every reader below sees the plain form.
+        crate::paste::migrate(&mut session.history);
         let stats = crate::sessions::UsageStats::from_session(&session);
         Ok(Box::new(ResumedLoad { session, stats }))
     }

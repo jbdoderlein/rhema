@@ -2,21 +2,21 @@
 //!
 //! A submitted prompt is plain text with each multi-line paste's payload
 //! in place, exactly what the model reads, and the message carries a
-//! [`PasteSpan`] list under [`CONSUMER`] saying which byte ranges a UI
-//! should draw as chips. The engine, the providers, and the summarizer
-//! never read that annotation; the UI that made the chips does, and it
+//! [`PasteSpan`] list under [`CONSUMER`] saying which byte ranges the
+//! transcript draws as chips. The engine, the providers, and the
+//! summarizer never read that annotation; this crate does, and it
 //! survives a checkpoint because it rides the message.
 //!
 //! [`PasteSpan`] replaced an embedded encoding, [`MARK`], payload,
-//! [`MARK`], written into the text; [`expand`] restored the plain form
-//! at the provider seam. Sessions written that way still load:
-//! [`migrate`] rewrites one into plain text plus spans. The encoding and
-//! [`expand`] are kept for that migration and for nothing else; a
-//! session that never carried marks is unaffected.
+//! [`MARK`], written into the text. Sessions written that way still
+//! load: [`migrate`] rewrites one into plain text plus spans, and both
+//! resume paths call it right after the session file loads (the
+//! startup build in `app` and the headless runner in `run`). The
+//! encoding and [`expand`] are kept for that migration and for nothing
+//! else; a session that never carried marks is unaffected.
 
+use rhema_core::{Content, Message, Role};
 use serde::{Deserialize, Serialize};
-
-use crate::{Content, Message, Role};
 
 /// The object-replacement character: opens and closes one embedded
 /// paste. Two marks always bracket a payload; a lone mark is literal
@@ -225,6 +225,35 @@ mod tests {
         );
         assert_eq!(embedded, format!("x{MARK}p\nq{MARK}"));
         assert_eq!(expand(&embedded), "xp\nq");
+    }
+    #[test]
+    fn a_saved_legacy_session_migrates_on_the_resume_path() {
+        use rhema_core::Session;
+
+        let payload = "l1\nl2\nl3\nl4";
+        let embedded = embed(&format!("look at {MARK} this"), &[payload.to_owned()]);
+        let mut session = Session::default();
+        session.history.push(Message::text(Role::User, embedded));
+
+        // Saved the way the TUI saves, loaded the way a resume loads:
+        // the sequence both resume paths run, load then rewrite.
+        let base = tempfile::tempdir().unwrap();
+        let workspace = base.path().join("ws");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let path = crate::sessions::save_session(base.path(), &workspace, &session)
+            .unwrap()
+            .unwrap();
+        let mut loaded = rhema_host_agent::HostAgent::load_session_from(&path).unwrap();
+        migrate(&mut loaded.history);
+
+        let text = format!("look at {payload} this");
+        assert_eq!(
+            loaded.history[0].content,
+            Message::text(Role::User, text.clone()).content
+        );
+        let spans = spans(&loaded.history[0]);
+        assert_eq!(spans.len(), 1);
+        assert_eq!(&text[spans[0].start..spans[0].end], payload);
     }
 }
 

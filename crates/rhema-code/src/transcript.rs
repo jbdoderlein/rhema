@@ -6,7 +6,7 @@
 //! or a model switch must render the same lines the live stream produced
 //! (within the summary/truncation rules).
 
-use rhema_core::paste::PasteSpan;
+use crate::paste::PasteSpan;
 use rhema_core::{Content, Image, Message, Role};
 // The one truncation rule, shared with the session store's picker rows.
 use rhema_session_store::truncate_chars;
@@ -129,7 +129,7 @@ impl Transcript {
                             _ => None,
                         })
                         .collect();
-                    transcript.push_user_with(&text, images, rhema_core::paste::spans(message));
+                    transcript.push_user_with(&text, images, crate::paste::spans(message));
                 }
                 Role::Assistant => {
                     for content in &message.content {
@@ -671,7 +671,7 @@ mod tests {
         let mut streamed = Transcript::new();
         streamed.push_user_with(&text, Vec::new(), spans.clone());
         let mut message = Message::text(Role::User, text.clone());
-        rhema_core::paste::annotate(&mut message, &spans);
+        crate::paste::annotate(&mut message, &spans);
         let rebuilt = Transcript::from_history(&[message]);
         assert_eq!(rebuilt.lines(), streamed.lines());
     }
@@ -681,12 +681,12 @@ mod tests {
     #[test]
     fn a_legacy_embedded_paste_rebuilds_as_a_chip() {
         let payload = "l1\nl2\nl3\nl4";
-        let embedded = rhema_core::paste::embed(
-            &format!("look at {}", rhema_core::paste::MARK),
+        let embedded = crate::paste::embed(
+            &format!("look at {}", crate::paste::MARK),
             &[payload.to_owned()],
         );
         let mut message = Message::text(Role::User, embedded);
-        rhema_core::paste::migrate(std::slice::from_mut(&mut message));
+        crate::paste::migrate(std::slice::from_mut(&mut message));
         let text = format!("look at {payload}");
         assert_eq!(message.content, Message::text(Role::User, text).content);
         let rebuilt = Transcript::from_history(&[message]);

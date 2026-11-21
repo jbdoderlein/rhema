@@ -1701,7 +1701,7 @@ fn a_long_paste_anchors_at_the_cursor_and_submits_its_payload_in_place() {
         ChatAction::Submit {
             text: format!("look at {long} closely"),
             images: Vec::new(),
-            spans: vec![rhema_core::paste::PasteSpan {
+            spans: vec![crate::paste::PasteSpan {
                 start: "look at ".len(),
                 end: "look at ".len() + long.len(),
                 lines: 4,
@@ -1822,12 +1822,12 @@ fn interleaved_pastes_and_images_keep_each_kind_in_order() {
             text: format!("{first} mid  end{second}"),
             images: vec![image],
             spans: vec![
-                rhema_core::paste::PasteSpan {
+                crate::paste::PasteSpan {
                     start: 0,
                     end: first.len(),
                     lines: 4,
                 },
-                rhema_core::paste::PasteSpan {
+                crate::paste::PasteSpan {
                     start: first.len() + " mid  end".len(),
                     end: first.len() + " mid  end".len() + second.len(),
                     lines: 5,

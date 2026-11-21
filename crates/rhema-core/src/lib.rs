@@ -34,7 +34,6 @@ pub mod message;
 pub mod mock;
 pub mod output;
 pub mod overlay;
-pub mod paste;
 pub mod provider;
 pub mod request;
 pub mod session;

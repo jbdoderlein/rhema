@@ -351,7 +351,9 @@ impl HostAgent {
 
     /// A fresh agent resuming `session` (e.g. from
     /// [`HostAgent::load_session_from`]); the next turn continues the
-    /// prior history.
+    /// prior history. The history arrives exactly as the caller loaded
+    /// it: a consumer that stores its own display encodings in the
+    /// text sanitizes before it calls.
     ///
     /// The conversation's environment report is conversation state: a
     /// session carrying one reuses its bytes verbatim, whatever the
@@ -363,13 +365,8 @@ impl HostAgent {
     /// carries it forward.
     pub fn from_session(
         mut config: HostAgentConfig,
-        mut session: Session,
+        session: Session,
     ) -> Result<Self, HostAgentError> {
-        // A session written before paste spans existed carries the
-        // embedded form in its prompts; the provider must never see a
-        // mark. One rewrite on the way in, and the chips survive as the
-        // annotation the UI reads.
-        rhema_core::paste::migrate(&mut session.history);
         if let Some(stamped) = session
             .driver_state
             .get(ENVIRONMENT_STATE_KEY)
@@ -726,7 +723,7 @@ fn store_to_io(err: StoreError) -> io::Error {
 }
 
 #[cfg(test)]
-mod paste_tests {
+mod provider_boundary_tests {
     use super::*;
     use rhema_bash::AllowAll;
     use rhema_core::{
@@ -771,17 +768,12 @@ mod paste_tests {
     }
 
     #[tokio::test]
-    async fn a_prompt_with_paste_spans_reaches_the_provider_plain() {
-        let payload = "l1\nl2\nl3\nl4";
-        let text = format!("look at {payload} this");
-        let mut message = Message::text(Role::User, text.clone());
-        rhema_core::paste::annotate(
-            &mut message,
-            &[rhema_core::paste::PasteSpan {
-                start: "look at ".len(),
-                end: "look at ".len() + payload.len(),
-                lines: 4,
-            }],
+    async fn an_annotated_prompt_reaches_the_provider_plain() {
+        let text = "look at l1\nl2 this";
+        let mut message = Message::text(Role::User, text.to_owned());
+        message.annotate(
+            "ui",
+            serde_json::json!({ "spans": [{ "start": 8, "end": 13 }] }),
         );
         let recording = Arc::new(Recording(Mutex::new(Vec::new())));
         let mut agent = HostAgent::new(HostAgentConfig::new(
@@ -796,44 +788,13 @@ mod paste_tests {
             .await
             .unwrap();
 
-        // The session keeps the plain text and the UI's spans.
+        // The session keeps the plain text and the caller's note.
         assert_eq!(agent.session().history[0], message);
-        assert_eq!(
-            rhema_core::paste::spans(&agent.session().history[0]).len(),
-            1
-        );
+        assert!(agent.session().history[0].annotation("ui").is_some());
         // The provider sees the same plain text, payload and all.
         let seen = recording.0.lock().unwrap();
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0], text);
-    }
-
-    #[tokio::test]
-    async fn a_legacy_session_is_migrated_on_resume() {
-        let payload = "l1\nl2\nl3\nl4";
-        let embedded = rhema_core::paste::embed(
-            &format!("look at {} this", rhema_core::paste::MARK),
-            &[payload.to_owned()],
-        );
-        let mut session = Session::default();
-        session.history.push(Message::text(Role::User, embedded));
-        let recording = Arc::new(Recording(Mutex::new(Vec::new())));
-        let config = HostAgentConfig::new(recording.clone(), "m", std::env::temp_dir(), AllowAll);
-        let agent = HostAgent::from_session(config, session).unwrap();
-
-        // The marks are gone and the chip is a span, not an encoding.
-        let resumed = &agent.session().history[0];
-        let text = format!("look at {payload} this");
-        assert_eq!(
-            resumed.content,
-            Message::text(Role::User, text.clone()).content
-        );
-        let spans = rhema_core::paste::spans(resumed);
-        assert_eq!(spans.len(), 1);
-        let Content::Text(plain) = &resumed.content[0] else {
-            panic!("expected a text block");
-        };
-        assert_eq!(&plain[spans[0].start..spans[0].end], payload);
     }
 
     /// Records the content blocks of every User message each request

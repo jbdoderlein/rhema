@@ -77,7 +77,7 @@ pub enum Prompt {
         images: Vec<Image>,
         /// The paste spans the message annotates, for the transcript's
         /// chips.
-        spans: Vec<rhema_core::paste::PasteSpan>,
+        spans: Vec<crate::paste::PasteSpan>,
     },
     /// The failed request again: no new message, the turn re-issues
     /// the step loop on the history as the failed turn left it (see
@@ -184,7 +184,7 @@ pub fn spawn_turn(
                     std::mem::take(&mut text),
                     std::mem::take(&mut images),
                 );
-                rhema_core::paste::annotate(&mut message, &std::mem::take(&mut spans));
+                crate::paste::annotate(&mut message, &std::mem::take(&mut spans));
                 Box::pin(agent.turn_message_with_cancel(
                     message,
                     &mut sink,

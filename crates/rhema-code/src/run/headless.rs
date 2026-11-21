@@ -322,11 +322,16 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
             eprintln!("warning: the profile choice was not remembered: {err}");
         }
     }
-    let session = match &args.resume {
+    let mut session = match &args.resume {
         Some(path) => HostAgent::load_session_from(path)
             .with_context(|| format!("cannot resume session: {}", path.display()))?,
         None => Session::default(),
     };
+    // A session written before paste spans existed carries the embedded
+    // form in its prompts; the provider must never see a mark (see
+    // [`crate::paste`]). The load is the one entry, so one rewrite
+    // covers the whole headless run.
+    crate::paste::migrate(&mut session.history);
     let mut agent = HostAgent::from_session(agent_config, session)?;
 
     // The checkpoint, opt-in headless: when `--save` names a file, the

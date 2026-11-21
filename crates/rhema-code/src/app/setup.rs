@@ -828,7 +828,7 @@ pub enum Effect {
         /// The images beside the text.
         images: Vec<Image>,
         /// The paste spans the message records, in prompt order.
-        spans: Vec<rhema_core::paste::PasteSpan>,
+        spans: Vec<crate::paste::PasteSpan>,
     },
     /// Re-run the failed turn: no new prompt, the same request goes
     /// back out (`Prompt::Retry`). The app marks the turn running and

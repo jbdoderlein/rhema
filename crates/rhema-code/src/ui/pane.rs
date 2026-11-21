@@ -1,7 +1,7 @@
 //! The transcript pane: partitioning into blocks, block rendering through
 //! the wrap cache, and the per-line rendering underneath.
 
-use rhema_core::paste::PasteSpan;
+use crate::paste::PasteSpan;
 
 use super::input::{chip_label, chip_spans, image_chip_label};
 use super::*;
