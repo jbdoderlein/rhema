@@ -14,18 +14,13 @@ pub(crate) struct HeadlessSink {
     /// The intent the status shows: the prompt's first line until a
     /// tool call names a more specific one.
     msg: Option<String>,
-    /// The last announced step, for the status' `progress`.
-    step: Option<u32>,
-    /// The turn's step cap, the denominator of `progress`.
-    max_steps: u32,
 }
 
 impl HeadlessSink {
-    /// Re-announces the working state from the current step and tool.
+    /// Re-announces the working state from the current tool.
     fn report(&self) {
         status::emit(&Status::Working {
             msg: self.msg.clone(),
-            progress: self.step.map(|step| status::progress(step, self.max_steps)),
         });
     }
 }
@@ -38,10 +33,7 @@ impl EventSink for HeadlessSink {
                 print!("{delta}");
                 let _ = std::io::stdout().flush();
             }
-            ModelEvent::StepStart { iteration } => {
-                self.step = Some(iteration);
-                self.report();
-            }
+            ModelEvent::StepStart { .. } => self.report(),
             ModelEvent::ToolCallStart { name, .. } => {
                 eprintln!("⌁ {name}");
                 self.msg = Some(name.to_owned());
@@ -88,7 +80,6 @@ pub(crate) async fn run_headless(args: RunArgs) -> anyhow::Result<()> {
     }
     status::emit(&Status::Working {
         msg: Some(first_line(&prompt)),
-        progress: None,
     });
     let outcome = run_prompt(args, prompt).await;
     match outcome {
@@ -357,8 +348,6 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
 
     let mut sink = HeadlessSink {
         msg: Some(first_line(&prompt)),
-        step: None,
-        max_steps: args.max_steps.get(),
     };
     let outcome: Result<_, anyhow::Error> = match agent.turn(prompt, &mut sink).await {
         Ok(output) if output.stop_reason == rhema_core::StopReason::ToolUse => {

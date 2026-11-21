@@ -5906,15 +5906,11 @@ fn the_status_tracker_follows_the_turn_lifecycle() {
         crate::status::Status::Idle
     ));
 
-    // A turn runs: the step drives progress against the 4-step cap.
+    // A turn runs: working, indeterminate, no progress fraction.
     h.app.turn.running = true;
-    tracker.observe(&UiEvent::Engine(OwnedEvent::StepStart { iteration: 2 }));
     match tracker.status_for(&h.app) {
-        crate::status::Status::Working {
-            msg: None,
-            progress: Some(progress),
-        } => assert_eq!(progress, 50),
-        _ => panic!("a running turn is working at its step fraction"),
+        crate::status::Status::Working { msg: None } => {}
+        _ => panic!("a running turn is working"),
     }
 
     // The latest tool call names the working state.
@@ -5923,10 +5919,7 @@ fn the_status_tracker_follows_the_turn_lifecycle() {
         name: "bash".into(),
     }));
     match tracker.status_for(&h.app) {
-        crate::status::Status::Working {
-            msg: Some(msg),
-            progress: Some(50),
-        } => assert_eq!(msg, "bash"),
+        crate::status::Status::Working { msg: Some(msg) } => assert_eq!(msg, "bash"),
         _ => panic!("the tool call is the working state's msg"),
     }
 
@@ -5966,7 +5959,6 @@ fn the_status_tracker_follows_the_turn_lifecycle() {
     // A later turn outranks the remembered failure and ends clean:
     // back to idle, not to the old error.
     h.app.turn.running = true;
-    tracker.observe(&UiEvent::Engine(OwnedEvent::StepStart { iteration: 0 }));
     assert!(matches!(
         tracker.status_for(&h.app),
         crate::status::Status::Working { .. }

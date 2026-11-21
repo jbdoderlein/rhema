@@ -33,14 +33,14 @@ use crate::events::{OwnedEvent, UiEvent};
 pub(crate) enum Status {
     /// At rest at the prompt, awaiting the user.
     Idle,
-    /// A turn is running. `progress` is the step fraction when the
-    /// turn's step cap gives it meaning; `msg` names the intent, the
-    /// prompt until the first tool call, the latest tool call after.
+    /// A turn is running. `msg` names the intent, the prompt until the
+    /// first tool call, the latest tool call after. No `progress`: the
+    /// step cap is a limit, not a plan, so the fraction of it consumed
+    /// is not a percentage of the work; the spec's absent `progress`
+    /// reads as indeterminate, which is the truth.
     Working {
         /// Human-readable line; base64 on the wire.
         msg: Option<String>,
-        /// 0-100, when the step cap is known.
-        progress: Option<u8>,
     },
     /// The turn is parked on the user.
     Blocked {
@@ -93,12 +93,7 @@ fn body(status: &Status) -> String {
     let mut parts: Vec<String> = Vec::new();
     match status {
         Status::Idle => parts.push("state=idle".to_owned()),
-        Status::Working { progress, .. } => {
-            parts.push("state=working".to_owned());
-            if let Some(progress) = progress {
-                parts.push(format!("progress={progress}"));
-            }
-        }
+        Status::Working { .. } => parts.push("state=working".to_owned()),
         Status::Blocked { kind, .. } => {
             parts.push("state=blocked".to_owned());
             parts.push(format!("kind={}", kind.as_str()));
@@ -163,19 +158,19 @@ fn capped(msg: &str) -> &str {
     &msg[..end]
 }
 
-/// Step `step` of `max_steps` as the 0-100 percentage the spec's
-/// `progress` takes. A turn may run more steps than the cap allows,
-/// the cap is a limit, not a promise, so the figure saturates at 100.
-pub(crate) fn progress(step: u32, max_steps: u32) -> u8 {
-    let max = max_steps.max(1);
-    (step.saturating_mul(100) / max).min(100) as u8
-}
-
 /// First line of a multi-line text, cut for a one-line display: the
-/// status `msg` and the headless stderr stream preview.
+/// status `msg` and the headless stderr stream preview. Control
+/// characters (tab, bare CR, DEL, C1) become spaces: `char::is_control`
+/// is exactly the set the spec forbids, and a terminal discards a whole
+/// report whose decoded `msg` carries one, so a pasted tab would
+/// otherwise silence the status entirely.
 pub(crate) fn first_line(content: &str) -> String {
     let line = content.lines().next().unwrap_or("");
-    let mut cut = line.chars().take(72).collect::<String>();
+    let mut cut = line
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .take(72)
+        .collect::<String>();
     if line.chars().count() > 72 {
         cut.push('…');
     }
@@ -221,8 +216,6 @@ pub(crate) struct Tracker {
     /// The intent of the running turn: the prompt's first line until a
     /// tool call replaces it.
     msg: Option<String>,
-    /// The running turn's last announced step, for `progress`.
-    step: Option<u32>,
     /// First line of the turn that failed last, until a turn ends
     /// otherwise.
     failed: Option<String>,
@@ -238,13 +231,11 @@ impl Tracker {
     /// Folds one UI event into the working-state detail.
     pub(crate) fn observe(&mut self, event: &UiEvent) {
         match event {
-            UiEvent::Engine(OwnedEvent::StepStart { iteration }) => self.step = Some(*iteration),
             UiEvent::Engine(OwnedEvent::ToolCallStart { name, .. }) => {
                 self.msg = Some(name.clone());
             }
             UiEvent::TurnFinished { result, .. } => {
                 self.msg = None;
-                self.step = None;
                 self.failed = match result {
                     Ok(_) => None,
                     Err(message) => Some(first_line(message)),
@@ -252,7 +243,6 @@ impl Tracker {
             }
             UiEvent::TurnCancelled { .. } => {
                 self.msg = None;
-                self.step = None;
                 self.failed = None;
             }
             _ => {}
@@ -278,9 +268,6 @@ impl Tracker {
         if app.turn.running {
             return Status::Working {
                 msg: self.msg.clone(),
-                progress: self
-                    .step
-                    .map(|step| progress(step, app.options.max_steps.get())),
             };
         }
         match &self.failed {
@@ -318,13 +305,15 @@ mod tests {
     }
 
     #[test]
-    fn working_carries_progress_and_a_base64_msg() {
+    fn working_carries_a_base64_msg_and_no_progress() {
+        // Absent `progress` reads as indeterminate: the terminal spins
+        // without a percentage, the honest state for a turn whose
+        // length nobody knows.
         assert_eq!(
             sequence(&Status::Working {
                 msg: Some("bash".to_owned()),
-                progress: Some(40),
             }),
-            "\x1b]7501;state=working:progress=40:app=rhema:msg=YmFzaA==\x1b\\"
+            "\x1b]7501;state=working:app=rhema:msg=YmFzaA==\x1b\\"
         );
     }
 
@@ -390,21 +379,15 @@ mod tests {
     }
 
     #[test]
-    fn progress_scales_the_step_fraction_and_saturates() {
-        assert_eq!(progress(0, 10), 0);
-        assert_eq!(progress(5, 10), 50);
-        assert_eq!(progress(9, 10), 90);
-        assert_eq!(progress(99, 10), 100);
-        // A zero cap divides by one instead.
-        assert_eq!(progress(0, 0), 0);
-    }
-
-    #[test]
     fn first_line_keeps_the_first_line_only() {
         assert_eq!(first_line("one\ntwo"), "one");
         let long = "x".repeat(80);
         let cut = first_line(&long);
         assert_eq!(cut.chars().count(), 73);
         assert!(cut.ends_with('…'));
+        // Control characters become spaces: a report carrying one is
+        // discarded whole by the terminal.
+        assert_eq!(first_line("a\tb\rc\u{7f}"), "a b c ");
+        assert_eq!(first_line("caf\u{e9}\u{85}x"), "caf\u{e9} x");
     }
 }
