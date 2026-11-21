@@ -754,16 +754,29 @@ without a backend that can tag gets no `job` function and no prompt
 section at all, rather than a command that fails at first use.
 
 **The notification.** The prompt promises the model it will hear
-when a job finishes or dies; the frontend's poller makes it true.
-The poller reads `rhema __jobs ls --json --session <id>` on a slow
-tick (fast while something runs, slow when nothing does) and splits
-each answer in two: running rows feed the status strip; a row that
-was running at the last poll and is not running now is a finish,
-minted once. The backend does have an event stream (`gob events`);
-the poll is deliberate, the shim's listing is the whole interface
-the frontend reads, and a subscription would tie the frontend to
-the backend's name and line format. Detection latency is one live
-tick; delivery, once detected, is instant.
+when a job finishes or dies; the frontend's subscription makes it
+true. The frontend holds one open subscription to the backend's
+event stream (`gob events --all`) and reads it line by line,
+filtering on the session tag the shim writes into every job's
+description: a `job_added` or `job_started` feeds the status strip;
+a `job_stopped` or `job_removed` for a job the subscription tracked
+running is a finish, minted once. No timer runs. The listing is
+read twice in a subscription's life, never on a tick: at the seed,
+to adopt what already runs (its later end still announces) and to
+leave what already ended to the past; and at every reconnect,
+because the stream ends when the daemon does and the listing is
+the only way to catch a finish that landed inside the gap. Between
+the two, a job that starts and ends in milliseconds cannot hide,
+because its two events arrive in order on one pipe. That is exactly the
+race the poll this replaced could not close: a fast job ended
+before the poller's first listing, the seed rule read that listing
+as the past, and the finish was never minted. Detection latency is
+the daemon's emit; delivery, once detected, is instant. The
+subscription is the one long-lived child the frontend owns, so it
+does not outlive the process that reads it: a watchdog shell
+watches both pids and kills the stream when either goes, because
+a crash would otherwise leave a `gob events` child subscribed to
+a daemon no one reads.
 
 Delivery is the subagent registry's two paths with one divergence,
 and a finish reaches the model exactly once: the driver steers
@@ -799,7 +812,7 @@ feed chain through `SteeringChain`, subagent finishes first, job
 finishes second, so the driver's single `config.steering`
 coalesces both into one message in a stable order, and the idle
 prompt joins them in the same order. Scoping is the session tag: a
-poller sees only its session's jobs, so a job another session
+subscription sees only its session's jobs, so a job another session
 started, or a hand-run `gob add`, never announces here. A subagent
 starting a job uses the shared shell, so the job carries the
 parent's tag and the parent hears the finish, the subagent's own
@@ -808,27 +821,34 @@ the subagent, the parent owns it. Headless gets the steering path
 only (the one-shot has no idle tick): a job outliving the run is
 the daemon's, visible to the next session only through `job ls`. A
 sandbox session wires no `job` function. Its shells run elsewhere,
-and it spawns no poller.
+and it spawns no subscription.
 
-**Self-stops.** A job the session ended through its own shim —
-`job stop`, `job rm`, `job shutdown` — is no finish at all: the
+**Self-stops.** A job the session ended through its own shim
+(`job stop`, `job rm`, `job shutdown`) is no finish at all: the
 model ordered the end, and the stop's own output is the
 confirmation, so a notice would spend a turn telling it what it
 just did. The ending verbs record the ids they stopped in a
 session-scoped file under the temp dir (append-only, one short
 write per record, removed when the session's handle drops); the
-poller reads the record before minting, so an ordered stop leaves
-the strip silently, and a job `shutdown` failed to stop still
-announces. The record is keyed by the session tag: a stop aimed at
+subscription reads the record before minting, so an ordered stop
+leaves the strip silently, and a job `shutdown` failed to stop
+still announces. Record and event race now that latency is the
+daemon's emit: `gob stop` returns before the shim's append lands,
+so an end of a tracked job re-reads the record once, a moment
+later, before minting. The record is keyed by the session tag: a stop aimed at
 another session's job silences nothing on that side, and a stop
-from anywhere else — the user's own terminal, another session, the
-kernel — records nothing and announces as before.
+from anywhere else (the user's own terminal, another session, the
+kernel) records nothing and announces as before.
 
-**Detection, exactly.** The poller keeps the jobs it saw running,
-first-seen order; a listing that fails to parse or a poll that
-fails to spawn is skipped, never read as empty, an empty read
-would mint a vanish-finish for every running job. A stopped row
-gives the exit code; a job gone from the listing between polls
-finishes with none and reads as "was stopped". A job already
-stopped when first seen mints nothing: the feed announces only
-transitions this process watched.
+**Detection, exactly.** The subscription tracks the jobs whose
+events it has seen, first-seen order; a stream line that fails to
+parse or a listing that fails to read is skipped, never treated as
+an end. A `job_stopped` gives the exit code; a `job_removed`
+without one, or a tracked job found ended by the reconnect's
+reconcile, finishes with none and reads as "was stopped". One
+end's event tail is one finish: the `job_removed` a later `job rm`
+fires finds the id already retired, and a restart's `job_started`
+clears the id, because a new run deserves a finish of its own. A
+job already ended when the subscription first looks (at the seed
+listing, or inside a gap it never tracked) mints nothing: the
+feed announces only ends this process watched or owns.

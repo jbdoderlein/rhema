@@ -43,6 +43,59 @@ fn a_started_job_announces_its_id() {
     assert_eq!(parse_added_id("something else\n"), None);
 }
 
+#[test]
+fn an_event_line_parses_into_its_row() {
+    let added = r#"{"type":"job_added","job_id":"K62","job":{"id":"K62","pid":1916773,"status":"running","command":["bash","-c","echo hi; sleep 1"],"workdir":"/tmp","description":"[probe] sleep demo","created_at":"2026-11-21T18:58:31+01:00","started_at":"2026-11-21T18:58:31+01:00"}}"#;
+    let event = parse_event_line(added).expect("an added line parses");
+    assert_eq!(event.kind, EventKind::Added);
+    assert_eq!(event.row.id, "K62");
+    assert_eq!(event.row.command, "echo hi; sleep 1");
+    assert_eq!(event.row.session.as_deref(), Some("probe"));
+    assert_eq!(event.row.exit_code, None, "nothing has ended yet");
+}
+
+#[test]
+fn a_stop_event_carries_the_exit_code() {
+    let stopped = r#"{"type":"job_stopped","job_id":"K62","job":{"id":"K62","pid":1916773,"status":"stopped","command":["bash","-c","echo hi"],"workdir":"/tmp","description":"[probe] sleep demo","exit_code":0,"started_at":"2026-11-21T18:58:31+01:00","stopped_at":"2026-11-21T18:58:32+01:00"}}"#;
+    let event = parse_event_line(stopped).expect("a stopped line parses");
+    assert_eq!(event.kind, EventKind::Stopped);
+    assert_eq!(event.row.exit_code, Some(0));
+}
+
+#[test]
+fn the_run_level_twins_and_unknown_lines_are_ignored() {
+    let run = r#"{"type":"run_started","job_id":"K62","run":{"id":"K62-1","status":"running"}}"#;
+    assert_eq!(parse_event_line(run), None, "the job-level line follows");
+    assert_eq!(parse_event_line("not json at all"), None);
+    assert_eq!(
+        parse_event_line(r#"{"type":"daemon_started"}"#),
+        None,
+        "an unknown type is skipped, not a fault"
+    );
+    assert_eq!(
+        parse_event_line(r#"{"type":"job_added"}"#),
+        None,
+        "an event with no job payload carries nothing this module reads"
+    );
+}
+
+#[test]
+fn every_job_level_event_kind_parses() {
+    for (kind, text) in [
+        (EventKind::Added, "job_added"),
+        (EventKind::Started, "job_started"),
+        (EventKind::Stopped, "job_stopped"),
+        (EventKind::Removed, "job_removed"),
+    ] {
+        let line = format!(
+            r#"{{"type":"{text}","job":{{"id":"abc","status":"running","command":["bash","-c","x"]}}}}"#
+        );
+        let event = parse_event_line(&line).expect("the kind parses");
+        assert_eq!(event.kind, kind);
+        assert_eq!(event.row.id, "abc");
+    }
+}
+
 /// A workspace with a fake backend: a shell script that logs every argv it
 /// gets and answers `list` from a state file. The paths are baked into the
 /// script, so no test mutates process-wide environment or cwd.

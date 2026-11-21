@@ -3,36 +3,43 @@
 //!
 //! The jobs themselves are the agent shell's: `job run` starts one
 //! through the backend, `job ls` lists this session's. The frontend
-//! polls `rhema __jobs ls --json --session <id>` on a slow tick and
-//! splits each answer in two. Running rows feed the status strip. A
-//! row that was running at the last poll and is not running now is a
+//! holds one subscription to the backend's event stream (`gob events
+//! --all`, filtered on the session tag the shim writes into every job's
+//! description) and splits what arrives in two. A `job_added` or
+//! `job_started` feeds the status strip. A `job_stopped` or
+//! `job_removed` for a job this subscription tracked running is a
 //! finish, minted once into a feed with two readers: the transcript's
 //! notice, and the driver's steering, the subagent registry's
-//! delivery shape over a listing instead of a registry, so a job the
-//! model started reaches it without a poll of its own.
+//! delivery shape over an event stream instead of a registry, so a
+//! job the model started reaches it without a poll of its own.
+//!
+//! Events are the primary truth, and no timer runs anywhere: the
+//! listing is read only twice in a subscription's life, never on a
+//! tick. Once at the seed, to adopt what already runs (its later end
+//! still announces) and to leave what already ended to the past: a
+//! job that started and ended before the subscription opened has no
+//! events to deliver. Once at every reconnect, because the stream
+//! ends when the daemon does, and the listing is the only way to
+//! catch a finish that landed inside the gap. Between the two, a job
+//! that starts and ends in milliseconds cannot hide: its two events
+//! arrive in order on one pipe.
 //!
 //! One end is no finish at all: a job the session stopped through its
 //! own shim (`job stop`, `job rm`, `job shutdown`) mints nothing. The
 //! model ordered that end, the stop's own output was the confirmation,
-//! and a notice would spend a turn telling it what it just did — the
-//! transcript's own account of this bug. The shim's ending verbs
-//! record the ids they stopped; the poller reads the session's record
-//! before minting, so an ordered stop leaves the strip silently while
-//! a stop from anywhere else — the user's terminal, another session,
-//! the kernel — still announces.
-//!
-//! A poll per tick, not a subscription: the backend does stream
-//! events (`gob events`), but the shim's listing is the whole
-//! interface the frontend reads, and a subscription would tie the
-//! frontend to the backend's name and line format. The poll keeps the
-//! backend swappable at one short process per tick, fast while
-//! something is running, slow when nothing is. Detection latency is
-//! one live tick; delivery, once detected, is the registry's and
-//! instant.
+//! and a notice would spend a turn telling the model what it just did.
+//! The shim's ending verbs
+//! record the ids they stopped; the subscription reads the session's
+//! record before minting, so an ordered stop leaves the strip silently
+//! while a stop from anywhere else (the user's terminal, another
+//! session, the kernel) still announces. The record and the event
+//! race now that latency is the daemon's emit: `gob stop` returns
+//! before the shim's append lands, so an end re-reads the record once,
+//! a moment later, before minting.
 //!
 //! The tag is the conversation's checkpoint id, not a per-process name:
 //! a resumed process lists the jobs its previous one started, and
-//! `/resume` restarts this poller under the loaded tag.
+//! `/resume` restarts this subscription under the loaded tag.
 //!
 //! One delivery per finish, like a subagent's: steering mid-turn or
 //! the idle prompt, never both. The registry earns that with its
@@ -44,20 +51,30 @@
 //! a job has none.
 
 use std::collections::{HashMap, HashSet};
+use std::io::BufRead;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use rhema_bash::jobs::{EXIT_NO_BACKEND, JobRow};
+use rhema_bash::jobs::{EventKind, JobEvent, JobRow, EXIT_NO_BACKEND};
 use rhema_host_agent::Steering;
 
-/// How often the listing is re-read while a job is live.
-const LIVE_TICK: Duration = Duration::from_millis(1200);
+/// How long the reconnect waits before reopening the stream, and how
+/// long a stop-record re-read gives the shim's append to land. Short:
+/// the first is a daemon restart, the second a file write that
+/// normally wins the race outright.
+const RECONNECT_BACKOFF: Duration = Duration::from_secs(2);
 
-/// How often it is re-read with no jobs at all: a new one can only
-/// appear when the model starts it, and that arrives with a turn of
-/// its own.
-const IDLE_TICK: Duration = Duration::from_secs(5);
+/// The granularity every wait is sliced to, so a dropped handle ends
+/// the wait promptly instead of after the whole slice.
+const SLICE: Duration = Duration::from_millis(100);
+
+/// The grace a stop-record re-read gives the shim's append. The
+/// append follows `gob stop`'s exit within milliseconds; the event
+/// can arrive first, because the daemon emits as it kills.
+const STOP_RECORD_GRACE: Duration = Duration::from_millis(300);
 
 /// One job as the strip draws it: the shim's row plus the age this
 /// process has watched it, which is the only clock available without
@@ -69,6 +86,11 @@ pub struct JobEntry {
     /// Time since this process first saw the job.
     pub age: Duration,
 }
+
+/// The subscription's shared snapshot: one (row, first-seen) pair per
+/// running job. Ages are computed at read time, so a quiet job's badge
+/// keeps counting between events instead of freezing at the last one.
+type Snapshot = Vec<(JobRow, Instant)>;
 
 /// One finished job, as the finish feed delivers it: the transcript
 /// notice a frontend pushes the moment a job ends, and, in `line`,
@@ -98,24 +120,24 @@ struct Pending {
     announced: bool,
 }
 
-/// The finish feed: minted transitions, oldest first. The poll thread
+/// The finish feed: minted transitions, oldest first. The subscription
 /// mints, the frontend takes, and the driver reads through
 /// [`JobsHandle::steering`].
 #[derive(Default)]
 struct Feed {
     pending: Vec<Pending>,
-    /// Running rows this poller saw first: the frontend writes them into
-    /// the ledger when it next owns the agent. Unbounded would be a
-    /// leak in a headless run that never drains; a missed start is
-    /// adopted at the next load.
+    /// Running rows this subscription saw first: the frontend writes
+    /// them into the ledger when it next owns the agent. Unbounded
+    /// would be a leak in a headless run that never drains; a missed
+    /// start is adopted at the next load.
     started: Vec<JobStarted>,
-    /// Ids whose finish the poller minted: the frontend settles the
-    /// ledger's record for each, without asking the daemon again.
+    /// Ids whose finish the subscription minted: the frontend settles
+    /// the ledger's record for each, without asking the daemon again.
     finished_ids: Vec<String>,
 }
 
-/// A job this poller saw start: the record's payload before a record
-/// exists.
+/// A job this subscription saw start: the record's payload before a
+/// record exists.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobStarted {
     /// The backend's short id.
@@ -137,9 +159,8 @@ impl Feed {
         }
     }
 
-    /// Mints one finish: the row as it was last seen running, plus the
-    /// exit code the listing reports now, `None` when it reports none
-    /// or the job vanished.
+    /// Mints one finish: the row as it was first seen, plus the exit
+    /// code the end reported, `None` when it reported none.
     fn mint(&mut self, seen: JobRow, exit_code: Option<i32>) {
         let line = announcement(&seen.id, &seen.command, exit_code);
         self.finished_ids.push(seen.id.clone());
@@ -179,51 +200,50 @@ pub(crate) fn announcement(id: &str, command: &str, exit_code: Option<i32>) -> S
     }
 }
 
-/// What the poller remembers between listings: the jobs it watched
-/// running, and every id the listing has carried, so a row that
-/// arrives already stopped can be told from history.
+/// What the subscription tracks between the seed, the events, and the
+/// reconnects. Deliberately less than the poll it replaced: the event
+/// stream is the primary truth, so there is no tick to bound, no id
+/// set to tell a fresh row from history, because the seed's rule
+/// covers that in one place, and nothing to decide per listing.
 #[derive(Default)]
 struct Watch {
-    /// Jobs last seen running, in first-seen order, with the row as it
-    /// was then: a finish announces the command it started with.
+    /// Jobs currently running, in first-seen order, with the row as it
+    /// was first seen: a finish announces the command it started with.
     running: Vec<(String, JobRow)>,
-    /// Every id this poller has listed. Bounded to the listing itself:
-    /// a row that is gone cannot come back twice, and a reused id is a
-    /// new job that deserves its own finish.
-    seen: HashSet<String>,
-    /// Whether the first listing has been read. The first one is the
-    /// past — jobs that ended before this poller existed — and `adopt`
-    /// owns it; only a later listing can be a finish of ours.
-    seeded: bool,
+    /// Ids whose end this subscription already minted. One end's
+    /// event tail (`job_stopped`, then the `job_removed` a later
+    /// `job rm` fires) stays one finish; a restart's `job_started`
+    /// clears the id, because a new run deserves its own finish.
+    finished: HashSet<String>,
 }
 
 impl Watch {
-    /// Whether this listing can mint anything: a tracked job may have
-    /// ended, or a row may have arrived already stopped. The self-stop
-    /// record is only read when it can matter.
-    fn may_mint(&self, rows: &[JobRow]) -> bool {
-        !self.running.is_empty()
-            || rows
-                .iter()
-                .any(|row| !row.status.starts_with("running") && !self.seen.contains(&row.id))
+    /// Whether `id` is tracked running.
+    fn is_tracked(&self, id: &str) -> bool {
+        self.running.iter().any(|(tracked, _)| tracked == id)
+    }
+
+    /// Drops `id` from the running set.
+    fn untrack(&mut self, id: &str) {
+        self.running.retain(|(tracked, _)| tracked != id);
     }
 }
 
-/// The transition pass, run once per listing: every job last seen
-/// running that the listing no longer reports as running has finished.
-/// A stopped row gives the exit code; a vanished row (removed under
-/// us) finishes with none. An id in `stopped` — the session's
-/// self-stop record — leaves the running set without minting: the
-/// end was the model's own order. The running set keeps the first-seen
-/// order, so finishes mint oldest first.
+/// The transition pass over one listing, run at the seed (nothing is
+/// tracked yet, so it only adopts) and at every reconnect (the
+/// listing is the only way to catch a finish that landed while the
+/// stream was down). Every tracked job the listing no longer reports
+/// as running has finished: a stopped row gives the exit code, a
+/// vanished row finishes with none. An id in `stopped`, the
+/// session's self-stop record, leaves the running set without
+/// minting: the end was the model's own order. The running set keeps
+/// the first-seen order, so finishes mint oldest first.
 ///
-/// A row this poller has never listed is new to it, and the listing
-/// may be the only sight of it: a job that started and ended between
-/// two ticks arrives already stopped, and becomes a finish (and the
-/// start its record needs) on that sight.
-fn observe(watch: &mut Watch, feed: &mut Feed, rows: &[JobRow], stopped: &HashSet<String>) {
-    let first = !watch.seeded;
-    watch.seeded = true;
+/// A running row this subscription never tracked is adopted, with the
+/// start its ledger record needs. A stopped row it never tracked is
+/// history (it ended before the seed, or inside a gap before this
+/// listing) and mints nothing.
+fn reconcile(watch: &mut Watch, feed: &mut Feed, rows: &[JobRow], stopped: &HashSet<String>) {
     let mut alive: Vec<(String, JobRow)> = Vec::new();
     for (id, last) in watch.running.drain(..) {
         match rows.iter().find(|row| row.id == id) {
@@ -233,34 +253,67 @@ fn observe(watch: &mut Watch, feed: &mut Feed, rows: &[JobRow], stopped: &HashSe
             None => feed.mint(last, None),
         }
     }
-    for row in rows {
-        if row.status.starts_with("running") {
-            if !alive.iter().any(|(id, _)| *id == row.id) {
-                if !watch.seen.contains(&row.id) {
-                    feed.note_start(row);
-                }
-                alive.push((row.id.clone(), row.clone()));
-            }
-            continue;
+    for row in rows.iter().filter(|row| row.status.starts_with("running")) {
+        if !alive.iter().any(|(id, _)| *id == row.id) {
+            feed.note_start(row);
+            alive.push((row.id.clone(), row.clone()));
         }
-        if first || stopped.contains(&row.id) || watch.seen.contains(&row.id) {
-            continue;
-        }
-        feed.note_start(row);
-        feed.mint(row.clone(), row.exit_code);
     }
-    let listed: HashSet<&str> = rows.iter().map(|row| row.id.as_str()).collect();
-    watch.seen.retain(|id| listed.contains(id.as_str()));
-    watch.seen.extend(rows.iter().map(|row| row.id.clone()));
     watch.running = alive;
 }
 
-/// The session's job view: a shared snapshot the poll thread replaces
+/// One daemon event's transition. Events are the primary truth: a job
+/// this subscription saw added or started is tracked (and its ledger
+/// start queued), and its end mints the finish the whole feed exists
+/// for. An end for a job never tracked is history, it began before
+/// the subscription opened, and mints nothing, which is what keeps
+/// the seed listing's already-ended rows from announcing twice.
+fn on_event(watch: &mut Watch, feed: &mut Feed, stopped: &HashSet<String>, event: &JobEvent) {
+    let id = event.row.id.as_str();
+    match event.kind {
+        EventKind::Added | EventKind::Started => {
+            watch.finished.remove(id);
+            if !watch.is_tracked(id) {
+                feed.note_start(&event.row);
+                watch.running.push((event.row.id.clone(), event.row.clone()));
+            }
+        }
+        EventKind::Stopped | EventKind::Removed => {
+            if !watch.is_tracked(id) {
+                return;
+            }
+            let last = watch
+                .running
+                .iter()
+                .find(|(tracked, _)| tracked == id)
+                .map(|(_, row)| row.clone());
+            watch.untrack(id);
+            watch.finished.insert(event.row.id.clone());
+            if stopped.contains(id) {
+                return;
+            }
+            // A removal without a stop reports no code, and neither
+            // does a stop the backend saw but did not measure.
+            let exit_code = match event.kind {
+                EventKind::Stopped => event.row.exit_code,
+                EventKind::Removed | EventKind::Added | EventKind::Started => None,
+            };
+            if let Some(last) = last {
+                feed.mint(last, exit_code);
+            }
+        }
+    }
+}
+
+/// The session's job view: a shared snapshot the subscription replaces
 /// and the renderer reads without touching the filesystem or a
 /// process, plus the finish feed the delivery paths read.
 pub struct JobsHandle {
-    entries: Arc<Mutex<Vec<JobEntry>>>,
+    entries: Arc<Mutex<Snapshot>>,
     feed: Arc<Mutex<Feed>>,
+    /// The stream's child process, so a dropped handle kills the
+    /// subscription instead of orphaning a pipe nothing reads.
+    child: Arc<Mutex<Option<Child>>>,
     stop: Arc<AtomicBool>,
     /// This session's tag: the self-stop record's name, removed when
     /// the handle drops, the session's suppressions history with it.
@@ -270,49 +323,70 @@ pub struct JobsHandle {
 impl Drop for JobsHandle {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+        // Killing the child EOFs the reader, and the thread exits at
+        // its next stop check; no lock is held across a read.
+        if let Ok(mut slot) = self.child.lock()
+            && let Some(mut child) = slot.take()
+        {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
         rhema_bash::jobs::forget_stopped(&self.session);
     }
 }
 
 impl JobsHandle {
-    /// Starts the poll thread over `session`'s tag, or `None` when
-    /// there is nothing to poll: no backend installed, or no binary to
-    /// run the shim from.
+    /// Starts the event subscription over `session`'s tag, or `None`
+    /// when there is nothing to subscribe to: no backend installed, or
+    /// no binary to run the shim from.
     pub fn spawn(session: String) -> Option<Self> {
         if !rhema_bash::jobs::available() {
             return None;
         }
         let bin = std::env::current_exe().ok()?;
-        // A copy for the handle: the thread's own goes with the
-        // closure, and the record's cleanup reads it after both.
-        let own = session.clone();
-        let entries = Arc::new(Mutex::new(Vec::new()));
+        // A copy for the thread: the handle keeps its own, and the
+        // record's cleanup reads the handle's after both.
+        let thread_session = session.clone();
+        let entries = Arc::new(Mutex::new(Snapshot::new()));
         let feed = Arc::new(Mutex::new(Feed::default()));
+        let child = Arc::new(Mutex::new(None));
         let stop = Arc::new(AtomicBool::new(false));
         let thread_entries = Arc::clone(&entries);
         let thread_feed = Arc::clone(&feed);
+        let thread_child = Arc::clone(&child);
         let thread_stop = Arc::clone(&stop);
         std::thread::Builder::new()
             .name("rhema-jobs".to_owned())
-            .spawn(move || poll(bin, session, thread_entries, thread_feed, thread_stop))
+            .spawn(move || {
+                subscribe(
+                    bin,
+                    thread_session,
+                    thread_entries,
+                    thread_feed,
+                    thread_child,
+                    thread_stop,
+                )
+            })
             .ok()?;
         Some(Self {
             entries,
             feed,
+            child,
             stop,
-            session: own,
+            session,
         })
     }
 
-    /// The tag this poller reads: the conversation's checkpoint id, so
-    /// a resumed process lists the same jobs it started.
+    /// The tag this subscription reads: the conversation's checkpoint
+    /// id, so a resumed process lists the same jobs it started.
     pub fn tag(&self) -> &str {
         &self.session
     }
 
-    /// Adds a finish the poller did not observe, the recovered-record
-    /// path: a job that ended while no process ran still reaches the
-    /// transcript and the model, once, in the live feed's own wording.
+    /// Adds a finish the subscription did not observe, the
+    /// recovered-record path: a job that ended while no process ran
+    /// still reaches the transcript and the model, once, in the live
+    /// feed's own wording.
     pub fn note_finished(&self, finished: JobFinished) {
         if let Ok(mut feed) = self.feed.lock() {
             feed.finished_ids.push(finished.id.clone());
@@ -324,7 +398,7 @@ impl JobsHandle {
         }
     }
 
-    /// Takes the backend ids whose finish the poller minted: the
+    /// Takes the backend ids whose finish the subscription minted: the
     /// frontend settles the ledger's record for each.
     pub fn take_finished_ids(&self) -> Vec<String> {
         self.feed
@@ -333,9 +407,9 @@ impl JobsHandle {
             .unwrap_or_default()
     }
 
-    /// Takes the starts the poller observed, oldest first: the frontend
-    /// writes a `job` record for each, unless the ledger already names
-    /// the row.
+    /// Takes the starts the subscription observed, oldest first: the
+    /// frontend writes a `job` record for each, unless the ledger
+    /// already names the row.
     pub fn take_started(&self) -> Vec<JobStarted> {
         self.feed
             .lock()
@@ -343,7 +417,8 @@ impl JobsHandle {
             .unwrap_or_default()
     }
 
-    /// Notes a start for the tests: no poll thread, just the queue.
+    /// Notes a start for the tests: no subscription thread, just the
+    /// queue.
     #[cfg(test)]
     pub fn note_started(&self, started: JobStarted) {
         if let Ok(mut feed) = self.feed.lock() {
@@ -351,11 +426,24 @@ impl JobsHandle {
         }
     }
 
-    /// The snapshot the last poll left, oldest first.
+    /// The snapshot the last event left, oldest first. Ages are
+    /// computed here, at read time, so the strip keeps counting
+    /// between events.
     pub fn entries(&self) -> Vec<JobEntry> {
+        let now = Instant::now();
         self.entries
             .lock()
-            .map(|entries| entries.clone())
+            .map(|snapshot| {
+                let mut entries: Vec<JobEntry> = snapshot
+                    .iter()
+                    .map(|(row, since)| JobEntry {
+                        row: row.clone(),
+                        age: now.saturating_duration_since(*since),
+                    })
+                    .collect();
+                entries.sort_by_key(|entry| entry.age);
+                entries
+            })
             .unwrap_or_default()
     }
 
@@ -468,21 +556,34 @@ pub fn fallback_tag() -> String {
 #[cfg(test)]
 impl JobsHandle {
     /// A handle over a fixed snapshot: the renderer's tests draw the
-    /// strip without a thread, a backend, or a clock.
+    /// strip without a thread, a backend, or a clock. The ages given
+    /// here are what `entries` reports, backdated to first-seen.
     pub(crate) fn stub(entries: Vec<JobEntry>) -> Self {
+        let now = Instant::now();
         Self {
-            entries: Arc::new(Mutex::new(entries)),
+            entries: Arc::new(Mutex::new(
+                entries
+                    .into_iter()
+                    .map(|entry| {
+                        (
+                            entry.row,
+                            now.checked_sub(entry.age).unwrap_or(now),
+                        )
+                    })
+                    .collect(),
+            )),
             feed: Arc::new(Mutex::new(Feed::default())),
+            child: Arc::new(Mutex::new(None)),
             stop: Arc::new(AtomicBool::new(false)),
             session: fallback_tag(),
         }
     }
 
     /// A handle over a pre-minted finish feed: the lifecycle's tests
-    /// deliver notifications without a thread, a backend, or a poll.
+    /// deliver notifications without a thread, a backend, or a stream.
     pub(crate) fn stub_with_finished(finished: Vec<JobFinished>) -> Self {
         Self {
-            entries: Arc::new(Mutex::new(Vec::new())),
+            entries: Arc::new(Mutex::new(Snapshot::new())),
             feed: Arc::new(Mutex::new(Feed {
                 pending: finished
                     .into_iter()
@@ -495,89 +596,244 @@ impl JobsHandle {
                 started: Vec::new(),
                 finished_ids: Vec::new(),
             })),
+            child: Arc::new(Mutex::new(None)),
             stop: Arc::new(AtomicBool::new(false)),
             session: fallback_tag(),
         }
     }
 }
 
-/// The poll loop: sleep, ask, split. Exits when the handle drops or
-/// the backend vanishes.
-fn poll(
-    bin: std::path::PathBuf,
+/// What one listing read answered.
+enum Listing {
+    /// The backend binary is gone: the subscription has nothing left
+    /// to watch, and the next read would fail the same way.
+    NoBackend,
+    /// This read failed. Keep the stream; a skipped reconcile is a
+    /// missed gap catch, never a false finish.
+    Failed,
+    /// The rows, already scoped to this session's tag.
+    Rows(Vec<JobRow>),
+}
+
+/// One listing, as the seed and each reconnect's reconcile ask for it:
+/// the shim's own listing, scoped by the tag.
+fn listing(bin: &Path, session: &str) -> Listing {
+    let output = std::process::Command::new(bin)
+        .arg(rhema_bash::jobs::MODE)
+        .arg("ls")
+        .arg("--json")
+        .arg("--session")
+        .arg(session)
+        .output();
+    let Ok(output) = output else {
+        return Listing::Failed;
+    };
+    if output.status.code() == Some(EXIT_NO_BACKEND) {
+        return Listing::NoBackend;
+    }
+    // A listing that fails to parse is not an empty one: reading it
+    // as empty would mint a vanish-finish for every tracked job.
+    serde_json::from_slice::<Vec<JobRow>>(&output.stdout)
+        .map(Listing::Rows)
+        .map_err(|_| ())
+        .unwrap_or(Listing::Failed)
+}
+
+/// Rebuilds the strip's snapshot from the tracked running set. The
+/// first-seen instants ride beside it, so ages are computed at read
+/// time and keep counting between events.
+fn publish(shared: &Mutex<Snapshot>, seen: &mut HashMap<String, Instant>, watch: &Watch) {
+    let now = Instant::now();
+    seen.retain(|id, _| watch.is_tracked(id));
+    let snapshot: Snapshot = watch
+        .running
+        .iter()
+        .map(|(id, row)| (row.clone(), *seen.entry(id.clone()).or_insert(now)))
+        .collect();
+    if let Ok(mut shared) = shared.lock() {
+        *shared = snapshot;
+    }
+}
+
+/// The backend the subscription opens its stream against: the one
+/// backend name, or the test seam's script when a test has set one.
+fn backend_path() -> PathBuf {
+    #[cfg(test)]
+    if let Some(path) = TEST_BACKEND.lock().expect("the test backend lock").clone() {
+        return path;
+    }
+    PathBuf::from(rhema_bash::jobs::BACKEND)
+}
+
+/// The test seam behind [`backend_path`]: the end-to-end test points
+/// it at a script that speaks the backend's two commands, the way
+/// [`rhema_bash::jobs::JobKind::at`] takes an explicit backend for the
+/// listing. Compiled out of production, where the name is the name.
+#[cfg(test)]
+static TEST_BACKEND: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// Sets or clears the test backend for this process.
+#[cfg(test)]
+fn set_test_backend(path: Option<PathBuf>) {
+    *TEST_BACKEND.lock().expect("the test backend lock") = path;
+}
+
+/// Sleeps `duration` in slices, so a dropped handle ends the wait
+/// promptly. `true` when the stop flag was seen.
+fn sleep_slices(stop: &AtomicBool, duration: Duration) -> bool {
+    let mut slept = Duration::ZERO;
+    while slept < duration {
+        if stop.load(Ordering::Relaxed) {
+            return true;
+        }
+        std::thread::sleep(SLICE);
+        slept += SLICE;
+    }
+    false
+}
+
+/// The subscription loop: open the stream, seed, read events line by
+/// line, and on an EOF (the daemon died or restarted) reconcile the
+/// gap and open again. Exits when the handle drops or the backend
+/// vanishes.
+fn subscribe(
+    bin: PathBuf,
     session: String,
-    shared: Arc<Mutex<Vec<JobEntry>>>,
+    shared: Arc<Mutex<Snapshot>>,
     feed: Arc<Mutex<Feed>>,
+    child_slot: Arc<Mutex<Option<Child>>>,
     stop: Arc<AtomicBool>,
 ) {
     let mut watch = Watch::default();
-    let mut first_seen: HashMap<String, Instant> = HashMap::new();
-    let mut tick = IDLE_TICK;
+    let mut seen: HashMap<String, Instant> = HashMap::new();
     loop {
-        // Sleep in slices so a drop stops the thread promptly rather
-        // than after a whole idle tick.
-        let mut slept = Duration::ZERO;
-        while slept < tick {
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
+        let mut child = match rhema_bash::jobs::events_command(&backend_path())
+            .stdout(Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                // The backend is gone: there is nothing left to
+                // subscribe to, and the next attempt would fail the
+                // same way.
+                return;
+            }
+            Err(_) => {
+                if sleep_slices(&stop, RECONNECT_BACKOFF) {
+                    return;
+                }
+                continue;
+            }
+        };
+        let stdout = match child.stdout.take() {
+            Some(stdout) => stdout,
+            None => {
+                let _ = child.wait();
+                if sleep_slices(&stop, RECONNECT_BACKOFF) {
+                    return;
+                }
+                continue;
+            }
+        };
+        // The subscription's child is the one long-lived process the
+        // frontend owns, and a process that exits without dropping
+        // its handles (a crash, a signal, a test run's end) leaves
+        // the stream orphaned: the events command reads no stdin and
+        // exits on nothing but its daemon. The watchdog closes that
+        // gap: while this process and the child both live it sleeps,
+        // and when either goes the child is killed. A clean drop
+        // kills the child directly and the watchdog exits at its
+        // next check; a killed process leaves the watchdog one sleep
+        // behind, then the child dies too.
+        #[cfg(unix)]
+        let _ = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(
+                r#"while kill -0 "$1" 2>/dev/null && kill -0 "$2" 2>/dev/null; do sleep 1; done
+kill "$2" 2>/dev/null"#,
+            )
+            .arg("rhema-jobs-watchdog")
+            .arg(std::process::id().to_string())
+            .arg(child.id().to_string())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        if let Ok(mut slot) = child_slot.lock() {
+            *slot = Some(child);
+        }
+        // The seed, and every reconnect's reconcile: adopt what runs,
+        // mint what this subscription tracked and the listing says
+        // ended inside the gap.
+        match listing(&bin, &session) {
+            Listing::NoBackend => return,
+            Listing::Rows(rows) => {
+                let stopped = rhema_bash::jobs::stopped_ids(&session);
+                if let Ok(mut feed) = feed.lock() {
+                    reconcile(&mut watch, &mut feed, &rows, &stopped);
+                }
+                publish(&shared, &mut seen, &watch);
+            }
+            Listing::Failed => {}
+        }
+        let mut reader = std::io::BufReader::new(stdout);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
+            }
             if stop.load(Ordering::Relaxed) {
                 return;
             }
-            std::thread::sleep(Duration::from_millis(100));
-            slept += Duration::from_millis(100);
-        }
-        let output = std::process::Command::new(&bin)
-            .arg(rhema_bash::jobs::MODE)
-            .arg("ls")
-            .arg("--json")
-            .arg("--session")
-            .arg(&session)
-            .output();
-        let Ok(output) = output else { continue };
-        if output.status.code() == Some(EXIT_NO_BACKEND) {
-            // The backend is gone: there is nothing left to observe,
-            // and the next poll would fail the same way.
-            return;
-        }
-        // A listing that fails to parse is not an empty one: reading
-        // it as empty would mint a vanish-finish for every running
-        // job. Skip the tick and let the next listing answer.
-        let Ok(rows) = serde_json::from_slice::<Vec<JobRow>>(&output.stdout) else {
-            continue;
-        };
-        // The record only matters when a mint is possible: a job this
-        // process watched running has to leave first, or a row has
-        // arrived already stopped. The read rides the tick that spawns
-        // the listing already, one small file behind a poll that just
-        // forked, and stays outside the feed lock: a slow disk must not
-        // stall a take.
-        let stopped = if watch.may_mint(&rows) {
-            rhema_bash::jobs::stopped_ids(&session)
-        } else {
-            HashSet::new()
-        };
-        if let Ok(mut feed) = feed.lock() {
-            observe(&mut watch, &mut feed, &rows, &stopped);
-        }
-        let now = Instant::now();
-        first_seen.retain(|id, _| rows.iter().any(|row| &row.id == id));
-        let mut entries: Vec<JobEntry> = rows
-            .iter()
-            .filter(|row| row.status.starts_with("running"))
-            .map(|row| {
-                let since = *first_seen.entry(row.id.clone()).or_insert(now);
-                JobEntry {
-                    row: row.clone(),
-                    age: now.saturating_duration_since(since),
+            let Some(event) = rhema_bash::jobs::parse_event_line(line.trim()) else {
+                continue;
+            };
+            // Scoping is the tag: a job another session started, or a
+            // hand-run `gob add`, never announces here.
+            if event.row.session.as_deref() != Some(session.as_str()) {
+                continue;
+            }
+            // The shim appends its stop record after `gob stop`
+            // returns, and the daemon emits as it kills, so at this
+            // latency the record can lose the race. An end of a
+            // tracked job re-reads the record once, a moment later,
+            // before minting; ends of untracked jobs mint nothing
+            // either way.
+            let ends = matches!(event.kind, EventKind::Stopped | EventKind::Removed);
+            let stopped = if ends && watch.is_tracked(&event.row.id) {
+                let mut stopped = rhema_bash::jobs::stopped_ids(&session);
+                if !stopped.contains(&event.row.id)
+                    && sleep_slices(&stop, STOP_RECORD_GRACE)
+                {
+                    return;
                 }
-            })
-            .collect();
-        entries.sort_by_key(|entry| entry.age);
-        tick = if entries.is_empty() {
-            IDLE_TICK
-        } else {
-            LIVE_TICK
-        };
-        if let Ok(mut guard) = shared.lock() {
-            *guard = entries;
+                if !stopped.contains(&event.row.id) {
+                    stopped = rhema_bash::jobs::stopped_ids(&session);
+                }
+                stopped
+            } else {
+                HashSet::new()
+            };
+            if let Ok(mut feed) = feed.lock() {
+                on_event(&mut watch, &mut feed, &stopped, &event);
+            }
+            publish(&shared, &mut seen, &watch);
+        }
+        // The stream ended: reap the child, wait out a daemon
+        // restart, and the next round's reconcile catches whatever
+        // finished inside the gap.
+        if let Ok(mut slot) = child_slot.lock()
+            && let Some(mut child) = slot.take()
+        {
+            let _ = child.wait();
+        }
+        if sleep_slices(&stop, RECONNECT_BACKOFF) {
+            return;
         }
     }
 }
@@ -598,7 +854,20 @@ mod tests {
         }
     }
 
-    /// A poller that has watched `rows` running since its last tick:
+    /// One daemon event about `id`, running when the kind begins a
+    /// run and stopped when it ends one.
+    fn event(kind: EventKind, id: &str, exit_code: Option<i32>) -> JobEvent {
+        let status = match kind {
+            EventKind::Added | EventKind::Started => "running",
+            EventKind::Stopped | EventKind::Removed => "stopped",
+        };
+        JobEvent {
+            kind,
+            row: row(id, status, exit_code),
+        }
+    }
+
+    /// A subscription that has watched `rows` running since its seed:
     /// the state a transition starts from.
     fn watching(rows: &[JobRow]) -> Watch {
         Watch {
@@ -606,41 +875,16 @@ mod tests {
                 .iter()
                 .map(|row| (row.id.clone(), row.clone()))
                 .collect(),
-            seen: rows.iter().map(|row| row.id.clone()).collect(),
-            seeded: true,
+            finished: HashSet::new(),
         }
     }
 
     #[test]
-    fn a_running_job_that_stops_mints_one_finish() {
-        let mut watch = watching(&[row("abc", "running", None)]);
-        let mut feed = Feed::default();
-        observe(
-            &mut watch,
-            &mut feed,
-            &[row("abc", "stopped", Some(1))],
-            &HashSet::new(),
-        );
-        assert!(watch.running.is_empty(), "the job left the running set");
-        assert_eq!(feed.pending.len(), 1);
-        let finished = &feed.pending[0].finished;
-        assert_eq!(finished.id, "abc");
-        assert_eq!(finished.exit_code, Some(1));
-        assert_eq!(
-            finished.line,
-            "Background job abc (\"npm run dev\") has finished with an error (exit 1)."
-        );
-    }
-
-    #[test]
-    fn the_first_listing_is_history_and_mints_nothing() {
-        // What the listing carried when this poller started is the
-        // past: `adopt` owns those records, and announcing them would
-        // say "has finished" for work that was already over.
+    fn the_seed_adopts_running_rows_and_leaves_ended_ones_to_history() {
         let mut watch = Watch::default();
         let mut feed = Feed::default();
         let none = HashSet::new();
-        observe(
+        reconcile(
             &mut watch,
             &mut feed,
             &[row("abc", "stopped", Some(0)), row("def", "running", None)],
@@ -654,55 +898,33 @@ mod tests {
     }
 
     #[test]
-    fn a_job_that_starts_and_ends_between_two_ticks_still_announces() {
-        let mut watch = Watch::default();
-        let mut feed = Feed::default();
-        let none = HashSet::new();
-        observe(
-            &mut watch,
-            &mut feed,
-            &[row("old", "stopped", Some(0))],
-            &none,
-        );
-        // The next listing holds a job this poller never saw running:
-        // it started and ended inside one tick, and that sight is all
-        // the process gets of it.
-        observe(
-            &mut watch,
-            &mut feed,
-            &[
-                row("old", "stopped", Some(0)),
-                row("abc", "stopped", Some(3)),
-            ],
-            &none,
-        );
-        assert_eq!(feed.pending.len(), 1, "one finish, for the new job");
-        let finished = &feed.pending[0].finished;
-        assert_eq!(finished.id, "abc");
-        assert_eq!(finished.exit_code, Some(3));
-        // And the start its ledger record needs, in the same drain.
-        let started: Vec<&str> = feed.started.iter().map(|s| s.id.as_str()).collect();
-        assert_eq!(started, vec!["abc"], "history stays history, {started:?}");
-    }
-
-    #[test]
-    fn a_stopped_row_is_announced_once() {
-        let mut watch = Watch::default();
-        let mut feed = Feed::default();
-        let none = HashSet::new();
-        observe(&mut watch, &mut feed, &[], &none);
-        let rows = [row("abc", "stopped", Some(0))];
-        observe(&mut watch, &mut feed, &rows, &none);
-        observe(&mut watch, &mut feed, &rows, &none);
-        assert_eq!(feed.pending.len(), 1, "the same row, one finish");
-        assert_eq!(feed.started.len(), 1);
-    }
-
-    #[test]
-    fn a_job_that_vanishes_from_the_listing_finishes_stopped() {
+    fn a_tracked_job_the_reconcile_says_ended_mints_once() {
         let mut watch = watching(&[row("abc", "running", None)]);
         let mut feed = Feed::default();
-        observe(&mut watch, &mut feed, &[], &HashSet::new());
+        let none = HashSet::new();
+        reconcile(
+            &mut watch,
+            &mut feed,
+            &[row("abc", "stopped", Some(1))],
+            &none,
+        );
+        assert!(watch.running.is_empty(), "the job left the running set");
+        assert_eq!(feed.pending.len(), 1);
+        let finished = &feed.pending[0].finished;
+        assert_eq!(finished.id, "abc");
+        assert_eq!(finished.exit_code, Some(1));
+        assert_eq!(
+            finished.line,
+            "Background job abc (\"npm run dev\") has finished with an error (exit 1)."
+        );
+    }
+
+    #[test]
+    fn a_tracked_job_that_vanishes_in_a_gap_finishes_stopped() {
+        let mut watch = watching(&[row("abc", "running", None)]);
+        let mut feed = Feed::default();
+        let none = HashSet::new();
+        reconcile(&mut watch, &mut feed, &[], &none);
         assert_eq!(feed.pending.len(), 1);
         assert_eq!(feed.pending[0].finished.exit_code, None);
         assert_eq!(
@@ -712,17 +934,169 @@ mod tests {
     }
 
     #[test]
-    fn finishes_mint_oldest_first() {
+    fn an_event_stream_mints_a_fast_job_end_to_end() {
+        // The race the poll could never close: a job that starts and
+        // ends in milliseconds. Its two events arrive in order, and
+        // both are processed.
+        let mut watch = Watch::default();
+        let mut feed = Feed::default();
+        let none = HashSet::new();
+        on_event(&mut watch, &mut feed, &none, &event(EventKind::Added, "abc", None));
+        assert_eq!(watch.running.len(), 1, "the add tracks the job");
+        assert_eq!(feed.started.len(), 1, "the start its record needs");
+        on_event(
+            &mut watch,
+            &mut feed,
+            &none,
+            &event(EventKind::Stopped, "abc", Some(0)),
+        );
+        assert_eq!(feed.pending.len(), 1);
+        assert_eq!(feed.pending[0].finished.exit_code, Some(0));
+        assert_eq!(
+            feed.pending[0].finished.line,
+            "Background job abc (\"npm run dev\") has finished (exit 0)."
+        );
+    }
+
+    #[test]
+    fn a_stop_and_its_remove_are_one_finish() {
+        let mut watch = Watch::default();
+        let mut feed = Feed::default();
+        let none = HashSet::new();
+        on_event(&mut watch, &mut feed, &none, &event(EventKind::Added, "abc", None));
+        on_event(
+            &mut watch,
+            &mut feed,
+            &none,
+            &event(EventKind::Stopped, "abc", Some(1)),
+        );
+        on_event(
+            &mut watch,
+            &mut feed,
+            &none,
+            &event(EventKind::Removed, "abc", None),
+        );
+        assert_eq!(feed.pending.len(), 1, "the same end, one finish");
+    }
+
+    #[test]
+    fn a_restart_mints_its_own_finish() {
+        let mut watch = Watch::default();
+        let mut feed = Feed::default();
+        let none = HashSet::new();
+        on_event(&mut watch, &mut feed, &none, &event(EventKind::Added, "abc", None));
+        on_event(
+            &mut watch,
+            &mut feed,
+            &none,
+            &event(EventKind::Stopped, "abc", Some(0)),
+        );
+        on_event(
+            &mut watch,
+            &mut feed,
+            &none,
+            &event(EventKind::Started, "abc", None),
+        );
+        assert_eq!(watch.running.len(), 1, "the restart tracks again");
+        on_event(
+            &mut watch,
+            &mut feed,
+            &none,
+            &event(EventKind::Stopped, "abc", Some(2)),
+        );
+        assert_eq!(feed.pending.len(), 2, "a new run, a new finish");
+        assert_eq!(feed.pending[1].finished.exit_code, Some(2));
+    }
+
+    #[test]
+    fn an_end_the_session_ordered_is_silent() {
+        let mut watch = Watch::default();
+        let mut feed = Feed::default();
+        on_event(&mut watch, &mut feed, &HashSet::new(), &event(EventKind::Added, "abc", None));
+        let stopped: HashSet<String> = ["abc".to_owned()].into();
+        on_event(
+            &mut watch,
+            &mut feed,
+            &stopped,
+            &event(EventKind::Stopped, "abc", Some(1)),
+        );
+        assert!(
+            watch.running.is_empty(),
+            "the job still left the running set"
+        );
+        assert!(feed.pending.is_empty(), "no notice for an ordered stop");
+        // The `job rm` tail stays silent with it.
+        on_event(
+            &mut watch,
+            &mut feed,
+            &stopped,
+            &event(EventKind::Removed, "abc", None),
+        );
+        assert!(feed.pending.is_empty());
+        // One the session did not stop still announces.
+        let mut watch = Watch::default();
+        on_event(&mut watch, &mut feed, &HashSet::new(), &event(EventKind::Added, "def", None));
+        on_event(
+            &mut watch,
+            &mut feed,
+            &stopped,
+            &event(EventKind::Stopped, "def", Some(0)),
+        );
+        assert_eq!(feed.pending.len(), 1);
+    }
+
+    #[test]
+    fn an_end_for_a_job_never_tracked_mints_nothing() {
+        // The seed listing's already-ended rows, and any end whose
+        // begin predates the subscription: history, not news.
+        let mut watch = Watch::default();
+        let mut feed = Feed::default();
+        let none = HashSet::new();
+        on_event(
+            &mut watch,
+            &mut feed,
+            &none,
+            &event(EventKind::Stopped, "abc", Some(0)),
+        );
+        on_event(
+            &mut watch,
+            &mut feed,
+            &none,
+            &event(EventKind::Removed, "abc", None),
+        );
+        assert!(feed.pending.is_empty());
+    }
+
+    #[test]
+    fn a_job_the_session_stopped_in_a_gap_stays_silent_too() {
+        // The stop happened while the stream was down; the reconnect's
+        // reconcile consults the record the same way an event does.
+        let mut watch = watching(&[row("abc", "running", None)]);
+        let mut feed = Feed::default();
+        let stopped: HashSet<String> = ["abc".to_owned()].into();
+        reconcile(
+            &mut watch,
+            &mut feed,
+            &[row("abc", "stopped", Some(1))],
+            &stopped,
+        );
+        assert!(watch.running.is_empty());
+        assert!(feed.pending.is_empty(), "the model ordered this end");
+    }
+
+    #[test]
+    fn finishes_mint_in_event_order() {
         let mut watch = watching(&[row("aaa", "running", None), row("bbb", "running", None)]);
         let mut feed = Feed::default();
-        observe(
+        let none = HashSet::new();
+        reconcile(
             &mut watch,
             &mut feed,
             &[
                 row("aaa", "stopped", Some(0)),
                 row("bbb", "stopped", Some(2)),
             ],
-            &HashSet::new(),
+            &none,
         );
         let ids: Vec<&str> = feed
             .pending
@@ -730,89 +1104,6 @@ mod tests {
             .map(|pending| pending.finished.id.as_str())
             .collect();
         assert_eq!(ids, vec!["aaa", "bbb"]);
-    }
-
-    #[test]
-    fn a_job_the_session_stopped_itself_mints_nothing() {
-        let mut watch = watching(&[row("abc", "running", None)]);
-        let mut feed = Feed::default();
-        let stopped: HashSet<String> = ["abc".to_owned()].into();
-        observe(
-            &mut watch,
-            &mut feed,
-            &[row("abc", "stopped", Some(1))],
-            &stopped,
-        );
-        assert!(
-            watch.running.is_empty(),
-            "the job still left the running set"
-        );
-        assert!(feed.pending.is_empty(), "no notice for an ordered stop");
-        // One the session did not stop still announces.
-        let mut watch = watching(&[row("def", "running", None)]);
-        observe(
-            &mut watch,
-            &mut feed,
-            &[row("def", "stopped", Some(0))],
-            &stopped,
-        );
-        assert_eq!(feed.pending.len(), 1);
-    }
-
-    #[test]
-    fn a_self_stop_between_two_ticks_is_silent_too() {
-        // The stop record is consulted for a row that arrives already
-        // stopped, not only for one this poller watched running.
-        let mut watch = Watch::default();
-        let mut feed = Feed::default();
-        observe(&mut watch, &mut feed, &[], &HashSet::new());
-        let stopped: HashSet<String> = ["abc".to_owned()].into();
-        observe(
-            &mut watch,
-            &mut feed,
-            &[row("abc", "stopped", Some(0))],
-            &stopped,
-        );
-        assert!(feed.pending.is_empty(), "the model ordered this end");
-        assert!(feed.started.is_empty());
-    }
-
-    #[test]
-    fn a_reused_id_announces_again_after_its_row_is_gone() {
-        // Ids come from the backend, which reuses them. A row that left
-        // the listing is forgotten, so the id's next job is a new job.
-        let mut watch = Watch::default();
-        let mut feed = Feed::default();
-        let none = HashSet::new();
-        observe(&mut watch, &mut feed, &[], &none);
-        observe(
-            &mut watch,
-            &mut feed,
-            &[row("abc", "stopped", Some(0))],
-            &none,
-        );
-        observe(&mut watch, &mut feed, &[], &none);
-        observe(
-            &mut watch,
-            &mut feed,
-            &[row("abc", "stopped", Some(0))],
-            &none,
-        );
-        assert_eq!(feed.pending.len(), 2);
-    }
-
-    #[test]
-    fn a_self_stopped_job_that_vanishes_mints_nothing() {
-        // A stop and a `job rm` inside one tick window leave no row to
-        // carry the fact: the record is consulted on the vanish too.
-        let mut watch = watching(&[row("abc", "running", None)]);
-        let mut feed = Feed::default();
-        let stopped: HashSet<String> = ["abc".to_owned()].into();
-        observe(&mut watch, &mut feed, &[], &stopped);
-        assert!(
-            feed.pending.is_empty(),
-            "a removed job was ordered gone too"
-        );
     }
 
     #[test]
@@ -845,5 +1136,79 @@ mod tests {
         assert_eq!(handle.steering().drain(), vec![line.clone()]);
         assert!(handle.steering().drain().is_empty());
         assert!(handle.take_notifications().is_empty());
+    }
+
+    /// The thread glue, end to end: a fake backend that answers the
+    /// gate's probe and streams a real event pair, the subscription
+    /// opened against it, and the finish delivered through the public
+    /// takes. No daemon, no network, one script.
+    #[test]
+    #[cfg(unix)]
+    fn a_subscription_delivers_a_real_stream_end_to_end() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let backend = dir.path().join("fake-gob");
+        std::fs::write(
+            &backend,
+            r#"#!/bin/sh
+case "$1 $2" in
+  "help add") echo "  --description DESC   tag the job"; exit 0;;
+  "events --all")
+    echo '{"type":"job_added","job_id":"e2j","job":{"id":"e2j","status":"running","command":["bash","-c","cargo build"],"description":"[e2s] cargo build"}}'
+    echo '{"type":"job_stopped","job_id":"e2j","job":{"id":"e2j","status":"stopped","command":["bash","-c","cargo build"],"description":"[e2s] cargo build","exit_code":3}}'
+    sleep 5;;
+  *) exit 0;;
+esac
+"#,
+        )
+        .expect("the fake backend is written");
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&backend).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&backend, perms).unwrap();
+        }
+        // The seam is process-wide: this test is its only user, and
+        // no other test in this binary spawns a subscription.
+        set_test_backend(Some(backend.clone()));
+        let handle = JobsHandle::spawn("e2s".to_owned()).expect("the gate passes on the fake");
+        // A take consumes what it returns, so the wait keeps the
+        // result instead of re-taking an already-noticed finish.
+        let mut finished = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while finished.is_empty() && Instant::now() < deadline {
+            finished = handle.take_finished();
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(finished.len(), 1, "one finish minted: {finished:?}");
+        assert_eq!(finished[0].id, "e2j");
+        assert_eq!(finished[0].exit_code, Some(3));
+        assert_eq!(
+            finished[0].line,
+            "Background job e2j (\"cargo build\") has finished with an error (exit 3)."
+        );
+        // The ledger start rode in on the added event.
+        let mut started = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while started.is_empty() && Instant::now() < deadline {
+            started = handle.take_started();
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        set_test_backend(None);
+        assert_eq!(started.len(), 1);
+        assert_eq!(started[0].id, "e2j");
+    }
+
+    #[test]
+    fn entries_ages_are_computed_at_read_time() {
+        let handle = JobsHandle::stub(vec![JobEntry {
+            row: row("abc", "running", None),
+            age: Duration::from_secs(0),
+        }]);
+        // The stub froze first-seen at construction; a read a moment
+        // later reports a nonzero age without any new event.
+        std::thread::sleep(Duration::from_millis(20));
+        let entries = handle.entries();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].age >= Duration::from_millis(15), "{:?}", entries[0].age);
     }
 }

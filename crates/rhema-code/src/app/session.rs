@@ -115,7 +115,7 @@ impl App {
             self.session_file = self.next_session_file();
             // A cleared conversation's file is a new one, so its jobs
             // and its subagent children are a new set: the shells, the
-            // poller, and the children's store move with it.
+            // subscription, and the children's store move with it.
             if let Some(path) = self.session_file.clone() {
                 self.adopt_conversation(&path);
             }
@@ -124,7 +124,7 @@ impl App {
     }
 
     /// Attaches the conversation-scoped plumbing to `path`: the tag the
-    /// shells write, the poller's listing, and the parent the subagent
+    /// shells write, the subscription's listing, and the parent the subagent
     /// children are filed under all name the same session. Stays put
     /// when the path names no session id, because a tag the next resume
     /// cannot reproduce would only orphan the work it started.
@@ -147,7 +147,7 @@ impl App {
             self.transcript
                 .push_notice(&format!("the job tag was not updated: {err}"));
         }
-        // The poller restarts before the agent builds, so the rebuilt
+        // The subscription restarts before the agent builds, so the rebuilt
         // steering chain reads the new feed.
         if self.sandboxed.is_none() {
             self.jobs = crate::jobs::JobsHandle::spawn(tag.clone());
@@ -355,7 +355,7 @@ impl App {
 
     /// The kinds this build links for one loaded session: the turn
     /// kind always, the subagent kind when a store is reachable, the
-    /// job kind when a poller is running.
+    /// job kind when a subscription is running.
     pub(crate) fn kinds_for(
         sessions_base: Option<&Path>,
         workspace: &Path,
@@ -510,8 +510,8 @@ impl App {
     }
 
     /// Writes the starts the ledger has not recorded, and settles the
-    /// jobs the poller saw end. A tool cannot write the session it runs
-    /// inside, so the subagent registry and the jobs poller hand over
+    /// jobs the subscription saw end. A tool cannot write the session it runs
+    /// inside, so the subagent registry and the jobs subscription hand over
     /// what they saw, and the frontend writes it at the next point it
     /// owns the agent. The load-time `adopt` covers this window when the
     /// process dies before one.
@@ -607,7 +607,7 @@ impl App {
                 }
             }
         }
-        // The jobs poller saw its own starts; the same write applies,
+        // The jobs subscription saw its own starts; the same write applies,
         // and a row the ledger already names is skipped: the load's
         // adopt wrote it, and a second record would be a second job.
         if let Some(jobs) = self.jobs.as_ref() {
@@ -647,7 +647,7 @@ impl App {
                     changed = true;
                 }
             }
-            // A record settles when the poller mints its finish,
+            // A record settles when the subscription mints its finish,
             // without waiting for a load. The ids come from the feed,
             // so no extra listing is asked.
             let finished = jobs.take_finished_ids();
@@ -934,7 +934,7 @@ impl App {
             .and_then(|entry| entry.model.pricing)
     }
 
-    /// The background shells this session started, as the last poll saw
+    /// The background shells this session started, as the last event left
     /// them: running ones only, oldest first.
     pub(crate) fn job_entries(&self) -> Vec<crate::jobs::JobEntry> {
         self.jobs

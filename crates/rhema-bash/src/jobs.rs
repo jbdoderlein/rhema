@@ -28,7 +28,7 @@
 //!   machine's.
 //! - **The self-stop record.** The verbs that end a job (`stop`, `rm`,
 //!   `shutdown`) append the ids they stopped to a session-scoped file
-//!   under the temp dir, and the frontend's poller reads it
+//!   under the temp dir, and the frontend's subscription reads it
 //!   ([`stopped_ids`]) before minting a finish: a job the model ordered
 //!   stopped must not come back as a notice telling it what it just
 //!   did. The record is keyed by the session tag, so a stop aimed at
@@ -40,8 +40,8 @@
 //!
 //! The prompt promises the model a notification when a job finishes or
 //! dies. The shim itself stays forwarding-only: the notification is a
-//! session-side delivery, made true by the frontend's poller over this
-//! same listing, never a backend feature and never a shim verb.
+//! session-side delivery, made true by the frontend's subscription to the
+//! backend's own event stream, never a backend feature and never a shim verb.
 //!
 //! Everything else is a forwarding shim, and stays one so the backend can
 //! be replaced without the prompt, the shim name, or the frontend moving.
@@ -98,8 +98,9 @@ const MAX_ID_CHARS: usize = 32;
 /// tag to write and no owner to check.
 pub const EXIT_NOT_WIRED: i32 = 4;
 
-/// Exit code when the backend binary is missing from the machine. The
-/// frontend's poller reads it as "no jobs here, stop asking".
+/// Exit code when the backend binary is missing from the machine: the
+/// listing answers with it, and the subscription reads it as "no jobs
+/// here, give up".
 pub const EXIT_NO_BACKEND: i32 = 5;
 
 /// The system-prompt section a wired frontend renders: the macro's whole
@@ -387,7 +388,7 @@ fn tagged(session: &str, command: &str) -> String {
 
 /// The record of the jobs a session stopped through this shim: one id
 /// per line, in the temp dir, keyed by the session tag. The ending
-/// verbs append; the frontend's poller reads before minting. The file
+/// verbs append; the frontend's subscription reads before minting. The file
 /// is append-only and never pruned: a record without its stop
 /// suppresses a mint for an id that never mints anyway, and a session's
 /// ids are short, so the file stays a list of a few tokens for the
@@ -443,7 +444,7 @@ pub fn record_stopped(session: Option<&str>, ids: &[String]) {
 }
 
 /// The ids this session stopped through the shim: what the frontend's
-/// poller consults before minting a finish.
+/// subscription consults before minting a finish.
 pub fn stopped_ids(session: &str) -> HashSet<String> {
     stopped_ids_in(&stopped_record_path(session))
 }
@@ -632,7 +633,8 @@ fn find_by_description(backend: &Path, cwd: &Path, description: &str) -> Option<
 
 /// `job ls`: this session's jobs by default; `--dir` is every job started
 /// in this directory, `--all` everything on the machine. `--json` prints
-/// the rows for whichever scope, which is what the frontend polls.
+/// the rows for whichever scope, which is what the seed and the
+/// reconnect's reconcile read.
 fn ls_command(args: &[OsString], backend: &Path, cwd: &Path, session: Option<&str>) -> i32 {
     let mut scope = Scope::Session;
     let mut json = false;
@@ -746,6 +748,71 @@ pub fn rows_for(backend: &Path, cwd: &Path, tag: &str) -> Result<Vec<JobRow>, Li
             ListingError::Failed(format!("the listing exited with {code}"))
         }
     })
+}
+
+/// One daemon event's kind, from the `events` stream's `type` field.
+/// The stream also carries run-level twins of these (`run_started`,
+/// `run_stopped`) whenever a job restarts; this module reads only the
+/// job-level events, so a restart is one `Started`, not three lines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventKind {
+    /// A new job was created.
+    Added,
+    /// A stopped job was started again.
+    Started,
+    /// A running job's process ended.
+    Stopped,
+    /// A job was removed from the listing.
+    Removed,
+}
+
+/// One daemon event from the `events` stream: the kind, and the job's
+/// row exactly as the listing would carry it, so the same tag filter,
+/// command unwrap, and exit-code vocabulary apply to both.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobEvent {
+    /// What happened.
+    pub kind: EventKind,
+    /// The job as the listing names it at the moment of the event.
+    pub row: JobRow,
+}
+
+/// The event line's envelope: the fields this module reads, with the
+/// rest ignored, so a backend that adds fields keeps working.
+#[derive(Debug, Deserialize)]
+struct EventLine {
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(default)]
+    job: Option<BackendJob>,
+}
+
+/// One line of the daemon's event stream, parsed. `None` for anything
+/// that carries no job-level event: the run-level twins, a banner, a
+/// torn write. The `job` payload is the listing's own shape, defaulted
+/// the same way, so an `Added` event simply carries no exit code yet.
+pub fn parse_event_line(line: &str) -> Option<JobEvent> {
+    let parsed: EventLine = serde_json::from_str(line).ok()?;
+    let kind = match parsed.kind.as_str() {
+        "job_added" => EventKind::Added,
+        "job_started" => EventKind::Started,
+        "job_stopped" => EventKind::Stopped,
+        "job_removed" => EventKind::Removed,
+        _ => return None,
+    };
+    let row = parsed.job?.row();
+    Some(JobEvent { kind, row })
+}
+
+/// The daemon's event stream as a child command: one subscription,
+/// one JSON line per event on stdout, open until the daemon goes away
+/// or the reader kills it. `--all`, like the listing, because the
+/// session tag is the real filter and a job started in a
+/// subdirectory must still reach its session.
+pub fn events_command(backend: &Path) -> Command {
+    let mut command = Command::new(backend);
+    command.arg("events").arg("--all");
+    command
 }
 
 /// `job shutdown`: stop every job this session started. Other sessions'

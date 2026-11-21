@@ -102,7 +102,7 @@ pub struct App {
     /// The agent; `None` while a turn runs (the turn task owns it).
     pub agent: Option<HostAgent>,
     /// The session's background shells, as the strip draws them: a
-    /// snapshot the poll thread replaces, read fresh on every redraw.
+    /// snapshot the subscription replaces, read fresh on every redraw.
     /// `None` on a machine without the backend, and in a sandbox session,
     /// whose jobs run where this process cannot see them.
     pub jobs: Option<crate::jobs::JobsHandle>,
@@ -470,7 +470,7 @@ impl App {
         // run elsewhere, so there is nothing here to watch (the wiring
         // in `session_agent_config` is gated the same way). Spawned
         // before the screen builds, so the first session's config
-        // chains the poller's steering with the subagent registry's.
+        // chains the subscription's steering with the subagent registry's.
         //
         // The tag is the conversation's: the file its turns checkpoint
         // to, which is `--save` when given and the allocated session

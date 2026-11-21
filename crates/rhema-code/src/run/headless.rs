@@ -218,7 +218,7 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
         agent_config.shell_env.extend(wiring.shell_env.clone());
         agent_config.jobs = Some(wiring.section.to_owned());
     }
-    // The poller is the notification feed: the one turn's driver
+    // The subscription is the notification feed: the one turn's driver
     // steers from it, so a job that dies mid-run is announced at the
     // next step boundary instead of waiting for a `job ls` that never
     // comes. The one-shot has no idle path: a job outliving the run is

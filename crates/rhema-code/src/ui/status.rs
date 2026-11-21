@@ -174,9 +174,9 @@ pub(crate) fn subagent_lines(app: &App, theme: &Theme) -> Vec<Line<'static>> {
 /// transcript, and the rest are one `job ls` away.
 const MAX_PINNED_JOBS: usize = 4;
 
-/// The background shells the session started, oldest first, read off the
-/// jobs handle's last poll. Empty in a session that started none, on a
-/// machine without the backend, and in a sandbox session.
+/// The background shells the session started, oldest first, read off
+/// the jobs handle's last event. Empty in a session that started none,
+/// on a machine without the backend, and in a sandbox session.
 pub(crate) fn job_lines(app: &App, theme: &Theme) -> Vec<Line<'static>> {
     app.job_entries()
         .iter()
