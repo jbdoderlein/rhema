@@ -144,10 +144,11 @@ fn seeded_discovery_rewrites_the_paths_and_carries_the_bodies() {
     );
 }
 
-/// One skill in the cross-agent tree, for the discovery tests: the
-/// folder no posture mounts.
-fn agents_with_skill(home: &Path) {
-    let skill = home.join(".agents").join("skills").join("borrowed");
+/// One skill in a cross-agent `.agents` tree, the home's or the
+/// workspace's, for the discovery tests: the home tree no posture
+/// mounts.
+fn agents_with_skill(root: &Path) {
+    let skill = root.join(".agents").join("skills").join("borrowed");
     std::fs::create_dir_all(&skill).expect("the skill directory");
     std::fs::write(
         skill.join("SKILL.md"),
@@ -203,6 +204,50 @@ fn an_agents_skill_rides_the_seed_when_the_posture_mounts_nothing() {
         .iter()
         .find(|skill| skill.name == "borrowed")
         .expect("the .agents skill is discovered");
+    assert_eq!(
+        skill.path,
+        PathBuf::from("/workspace/.rhema/skills/borrowed/SKILL.md"),
+        "a mountless posture cannot read the host tree: the seed delivers it"
+    );
+    assert!(
+        bodies
+            .iter()
+            .any(|(name, body)| name == "borrowed" && body.contains("# borrowed")),
+        "the body rides the seed: {bodies:?}"
+    );
+}
+
+#[test]
+fn a_mounted_workspace_agents_skill_stands_at_its_own_path_and_seeds_nothing() {
+    let dir = workspace_with_skill();
+    let ws = dir.path().to_path_buf();
+    agents_with_skill(&ws);
+    let (skills, bodies) = discovered_skills(None, None, &ws, true, &ws.to_string_lossy());
+    let skill = skills
+        .iter()
+        .find(|skill| skill.name == "borrowed")
+        .expect("the workspace .agents skill is discovered");
+    assert_eq!(
+        skill.path,
+        ws.join(".agents")
+            .join("skills")
+            .join("borrowed")
+            .join("SKILL.md"),
+        "the workspace mount puts the tree at its own path"
+    );
+    assert!(bodies.is_empty(), "the mounts are the delivery: {bodies:?}");
+}
+
+#[test]
+fn a_workspace_agents_skill_rides_the_seed_when_the_posture_mounts_nothing() {
+    let dir = workspace_with_skill();
+    let ws = dir.path().to_path_buf();
+    agents_with_skill(&ws);
+    let (skills, bodies) = discovered_skills(None, None, &ws, false, "/workspace");
+    let skill = skills
+        .iter()
+        .find(|skill| skill.name == "borrowed")
+        .expect("the workspace .agents skill is discovered");
     assert_eq!(
         skill.path,
         PathBuf::from("/workspace/.rhema/skills/borrowed/SKILL.md"),
