@@ -1,0 +1,21 @@
+[package]
+name = "rhema-skills"
+description = "Skill discovery: the markdown folders the cross-agent .agents convention and rhema's own tiers hold"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+rhema-core = { path = "../rhema-core", version = "0.4.1" }
+# Skill frontmatter is YAML
+serde_yaml = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

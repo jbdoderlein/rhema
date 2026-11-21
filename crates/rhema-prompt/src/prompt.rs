@@ -18,7 +18,7 @@ use std::path::Path;
 use minijinja::{Environment, Value};
 use rhema_core::ToolSpec;
 
-use crate::skills::Skill;
+use rhema_skills::Skill;
 
 /// The template engine's error, re-exported under a crate-local name:
 /// [`render_system`] and [`render_template`] return it, and a caller

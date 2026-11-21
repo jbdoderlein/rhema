@@ -50,7 +50,9 @@ Corollary from RSD §10: these are not two mechanisms. The interactive loop *is*
 
 The workspace members are the crates under `crates/`, each with its
 own README. `crates/rhema-core/` is the step engine the rest builds
-on. The workspace manifest is the list. The claw product (the daemon,
+on. `crates/rhema-skills/` is skill discovery, the markdown folders
+the cross-agent `.agents` convention and rhema's own tiers hold. The
+workspace manifest is the list. The claw product (the daemon,
 the forge and calendar integrations, the client tools, the web UI and
 the Android client) lives in the `rhema-claw` repository and pulls
 these crates from crates.io; the cloud product (the Durable Object

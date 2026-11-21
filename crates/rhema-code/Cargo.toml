@@ -37,6 +37,8 @@ rhema-config = { path = "../rhema-config", version = "0.4.1" }
 rhema-bash = { path = "../rhema-bash", version = "0.4.1" }
 rhema-prompt = { path = "../rhema-prompt", version = "0.4.1" }
 rhema-host-agent = { path = "../rhema-host-agent", version = "0.4.1" }
+# Skill discovery: the tiers, the frontmatter, the shadowing
+rhema-skills = { path = "../rhema-skills", version = "0.4.1" }
 # The subagent extension: discovered definitions wired in as one tool
 rhema-subagents = { path = "../rhema-subagents", version = "0.4.1" }
 # The submission ledger a resumed session reconciles before any turn

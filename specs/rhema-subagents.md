@@ -84,8 +84,8 @@ crates/rhema-subagents/
 ```
 
 Dependencies point outward to the existing stack: `rhema-core`,
-`rhema-bash`, `rhema-prompt`, `rhema-host-agent` and `rhema-config` (both only
-for `wire`), never the reverse. The two seams this feature consumes from
+`rhema-bash`, `rhema-prompt`, `rhema-skills`, `rhema-host-agent` and
+`rhema-config` (both only for `wire`), never the reverse. The two seams this feature consumes from
 `rhema-bash`, `rhema-prompt` and `rhema-host-agent` are default-inert additions
 (§5); they exist for composition, not for subagents specifically.
 

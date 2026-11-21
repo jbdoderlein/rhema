@@ -98,7 +98,7 @@ pub(crate) fn discovered_skills(
 ) -> (Vec<Skill>, Vec<(String, String)>) {
     let mut skills = Vec::new();
     let mut bodies = Vec::new();
-    let discovered = rhema_prompt::skills::discover(agents, global, workspace);
+    let discovered = rhema_skills::discover(agents, global, workspace);
     for skill in discovered {
         // A mounted tree's skill needs no delivery; anything outside
         // the three trees travels as a body into the workspace seed.
@@ -114,7 +114,7 @@ pub(crate) fn discovered_skills(
             name: skill.name.clone(),
             description: skill.description,
             license: skill.license,
-            path: rhema_core::workspace::skills_dir(Path::new(&sandbox_workspace))
+            path: rhema_skills::skills_dir(Path::new(&sandbox_workspace))
                 .join(&skill.name)
                 .join("SKILL.md"),
             body: skill.body,

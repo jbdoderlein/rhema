@@ -918,7 +918,7 @@ pub(crate) fn skill_rows(
     disabled: &std::collections::BTreeSet<String>,
 ) -> Vec<SkillRow> {
     let workspace_dir = workspace.join(".rhema").join("skills");
-    rhema_prompt::skills::discover(agents, global, workspace)
+    rhema_skills::discover(agents, global, workspace)
         .into_iter()
         .map(|skill| {
             let source = if skill.path.starts_with(&workspace_dir) {

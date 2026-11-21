@@ -3365,6 +3365,7 @@ dependencies = [
  "rhema-sandbox-ssh",
  "rhema-session-store",
  "rhema-session-store-file",
+ "rhema-skills",
  "rhema-subagents",
  "rhema-submissions",
  "rhema-transcript",
@@ -3415,6 +3416,7 @@ dependencies = [
  "rhema-prompt",
  "rhema-session-store",
  "rhema-session-store-file",
+ "rhema-skills",
  "rhema-transcript",
  "serde",
  "serde_json",
@@ -3484,10 +3486,8 @@ version = "0.4.1"
 dependencies = [
  "minijinja",
  "rhema-core",
- "serde",
+ "rhema-skills",
  "serde_json",
- "serde_yaml",
- "tempfile",
 ]
 
 [[package]]
@@ -3697,6 +3697,7 @@ dependencies = [
  "rhema-bash",
  "rhema-core",
  "rhema-sandbox",
+ "rhema-skills",
  "serde",
  "serde_json",
  "tempfile",
@@ -3806,6 +3807,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rhema-skills"
+version = "0.4.1"
+dependencies = [
+ "rhema-core",
+ "serde",
+ "serde_yaml",
+ "tempfile",
+]
+
+[[package]]
 name = "rhema-subagents"
 version = "0.4.1"
 dependencies = [
@@ -3818,6 +3829,7 @@ dependencies = [
  "rhema-provider",
  "rhema-session-store",
  "rhema-session-store-file",
+ "rhema-skills",
  "rhema-submissions",
  "rhema-transcript",
  "serde",

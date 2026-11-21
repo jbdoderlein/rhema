@@ -26,7 +26,7 @@ pub async fn seed_workspace(
     }
     let workspace = std::path::Path::new(workspace);
     for (name, body) in skills {
-        let path = rhema_core::workspace::skills_dir(workspace)
+        let path = rhema_skills::skills_dir(workspace)
             .join(name)
             .join("SKILL.md");
         let path = path.display().to_string();

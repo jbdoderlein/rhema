@@ -26,6 +26,7 @@ rhema-provider = { path = "../rhema-provider", version = "0.4.1" }
 # needs it.
 rhema-bash = { path = "../rhema-bash", version = "0.4.1", default-features = false }
 rhema-prompt = { path = "../rhema-prompt", version = "0.4.1" }
+rhema-skills = { path = "../rhema-skills", version = "0.4.1" }
 # `wire` attaches the tool to a host-agent config
 rhema-host-agent = { path = "../rhema-host-agent", version = "0.4.1", default-features = false }
 # The global definitions directory resolves off the config dir

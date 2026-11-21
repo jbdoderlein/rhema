@@ -104,7 +104,7 @@ pub fn stamped_system(
     let home = rhema_config::Home::discover().ok();
     let agents = home.as_ref().map(|h| h.agents_skills());
     let global = home.as_ref().map(|h| h.skills());
-    let skills = rhema_prompt::skills::discover(agents.as_deref(), global.as_deref(), workspace);
+    let skills = rhema_skills::discover(agents.as_deref(), global.as_deref(), workspace);
     stamped_system_with_sections(base, workspace, extra, &skills, &[])
 }
 
@@ -258,11 +258,7 @@ impl HostAgent {
                     .or_else(|| rhema_config::Home::discover().ok());
                 let agents = home.as_ref().map(|h| h.agents_skills());
                 let global = home.as_ref().map(|h| h.skills());
-                rhema_prompt::skills::discover(
-                    agents.as_deref(),
-                    global.as_deref(),
-                    tools.workspace(),
-                )
+                rhema_skills::discover(agents.as_deref(), global.as_deref(), tools.workspace())
             }
         };
         skills.retain(|skill| !config.disabled_skills.contains(&skill.name));

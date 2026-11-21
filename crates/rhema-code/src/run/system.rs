@@ -233,8 +233,7 @@ pub(crate) fn system_show_at_with_mcp(
         .ok()
         .map(|c| c.settings.skills_disabled.clone())
         .unwrap_or_default();
-    let mut skills =
-        rhema_prompt::skills::discover(agents.as_deref(), global.as_deref(), &workspace);
+    let mut skills = rhema_skills::discover(agents.as_deref(), global.as_deref(), &workspace);
     // The preview shows what turns send: a disabled skill is not in the
     // prompt, so it is not in the preview either.
     skills.retain(|skill| !disabled.contains(&skill.name));

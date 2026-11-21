@@ -1,15 +1,19 @@
-//! Skills: markdown instruction files the model loads on demand.
+//! rhema-skills: discovery of markdown skills, the folders of
+//! instruction files an agent loads on demand.
 //!
 //! A skill is a folder holding a `SKILL.md` whose YAML frontmatter
 //! carries a `description`, the trigger. Only name, trigger, and file
-//! reach the system prompt, as the [`crate::prompt`] template's
-//! `skills` list; the model reads a skill's body itself with the
-//! bash tool (`cat`) when a trigger applies, so skills need no tool of
-//! their own, no approval, and no machinery beyond discovery. Skills
-//! shadow by folder name across three tiers. The workspace's
+//! enter a system prompt; the model reads a skill's body itself with
+//! the bash tool (`cat`) when a trigger applies, so skills need no
+//! tool of their own, no approval, and no machinery beyond discovery.
+//! Skills shadow by folder name across three tiers. The workspace's
 //! `.rhema/skills` wins over rhema's global directory, which wins over
 //! the cross-agent `~/.agents/skills`. A rhema skill of the same name
 //! hides the `.agents` one, never the reverse.
+//!
+//! rhema-prompt renders the discovered list into its template; the
+//! sandbox seeders, the subagent specs, and the settings UI read the
+//! same discovery.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -48,6 +52,12 @@ struct Frontmatter {
     license: Option<String>,
 }
 
+/// The workspace's skill tier (`<workspace>/.rhema/skills`), the top
+/// of the shadowing order, over the global directories.
+pub fn skills_dir(workspace: &Path) -> PathBuf {
+    rhema_core::workspace::rhema_dir(workspace).join("skills")
+}
+
 /// Discovers skills from the lowest shadowing tier up: the cross-agent
 /// `agents` directory, rhema's own `global` directory, then the
 /// workspace's `.rhema/skills`. A name found twice appears once, the
@@ -64,7 +74,7 @@ pub fn discover(agents: Option<&Path>, global: Option<&Path>, workspace: &Path) 
     if let Some(global) = global {
         collect_into(global, &mut by_name);
     }
-    collect_into(&rhema_core::workspace::skills_dir(workspace), &mut by_name);
+    collect_into(&skills_dir(workspace), &mut by_name);
     by_name.into_values().collect()
 }
 

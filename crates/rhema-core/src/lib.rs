@@ -61,4 +61,4 @@ pub use tool::{
     OutputOnly, ReplaySafety, ToolCall, ToolContext, ToolProgress, ToolResolver, ToolResult,
     ToolStatus,
 };
-pub use workspace::{rhema_dir, runs_dir, skills_dir, subagents_dir};
+pub use workspace::{rhema_dir, runs_dir, subagents_dir};
