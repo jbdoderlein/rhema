@@ -352,20 +352,33 @@ Requested work has a durable record too. `rhema-submissions` keeps one ledger un
   dispatch bounds the tokens and the notification noise to zero.
 
 - ~~**Where a tool's static data lives**~~, **decided:** a `TOOL.yaml`
-  manifest per tool folder, parsed by `rhema-autonomous-agent`'s
-  `manifest` module: name, description, argument schema, replay
+  manifest per tool folder: name, description, argument schema, replay
   classification, and a `run` binding. The first binding is
   `run: { builtin: <id> }`, the operation stays compiled Rust that the
-  consumer registers under that id, and a `ManifestTool` marries the
-  manifest's spec to it, so a tool's spec stops living in Rust string
-  literals and one folder names one tool, the same shape the skill and
-  subagent folders already use. A manifest that does not parse, or
-  names no known builtin, is skipped (reported, not fatal), like an
-  undescribed skill folder; a shipped set pins itself with a drift
-  test. The format takes further `run` kinds without a migration,
-  `exec` (spawn a command, args on stdin, stdout is the result) is the
-  noted next one, which is what lets non-Rust authors add tools. The
-  claw's task tools are the first consumers.
+  consumer registers under that id, so a tool's spec stops living in
+  Rust string literals and one folder names one tool, the same shape
+  the skill and subagent folders already use. A manifest that does not
+  parse, or names no known builtin, is skipped (reported, not fatal),
+  like an undescribed skill folder; a shipped set pins itself with a
+  drift test. The format takes further `run` kinds without a
+  migration, but the noted `exec` kind (spawn a command, args on
+  stdin, stdout is the result) will not be built: user-written script
+  tools are an MCP server's job, `rhema-mcp` already wires those, and
+  a second process protocol would be a small reinvention of it. Home:
+  the consumer, not the framework. The 0.5.0 review cut the whole
+  resident tool seam (`Allowlist`, the `Tool` trait, the registry and
+  its filtered resolver, `ResolverChain`, the manifest loader) from
+  `rhema-autonomous-agent`: the 0.4.0 consumer audit showed the loop
+  half imports none of it, every allowlist in the wild is permissive,
+  every tool arrives as manifest plus operation, and the registry is
+  built, filled, and flattened into a resolver in the same breath at
+  every call site, packaging for one consumer, not framework API. The
+  claw owns its tooling from here, claw-local per family: a
+  `TOOL.yaml` loader over its embedded manifests beside the registered
+  builtins, or inline specs next to the operation, whichever the
+  family prefers. Custom native tools are one `rhema_core`
+  `ToolResolver` impl, no framework machinery; the resident tier keeps
+  only the `Source`/`Driver` loop.
 
 ---
 

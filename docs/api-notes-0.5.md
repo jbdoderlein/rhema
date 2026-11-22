@@ -36,6 +36,12 @@ Fix at 0.5.0: hoist both to rhema-core (or a shared rhema-process crate) and re-
 
 The `progress` HRTBs item 2 complained about are gone. The retry ladder's callbacks have the same shape; applying `ToolProgress`-style naming there is the remaining piece.
 
+## 7. The resident tool seam deleted (landed)
+
+`rhema-autonomous-agent` shipped `Allowlist`, the `Tool` trait, `ToolRegistry` with its allowlist-filtered resolver, `ResolverChain`, and the `TOOL.yaml` manifest loader, all under the "resident-agent core tier" label. The 0.4.0 consumer review (rhema-claw, the crate's only consumer, all 73 references audited) showed the loop half (`Source`, `Driver`, `SessionContext`) imports none of it; the registry is constructed, filled, and flattened into a resolver in the same breath at every call site; every allowlist in the wild is `permissive()`; and every claw tool arrives as manifest plus `ToolOp`, the `Tool` trait having no direct impls outside the crate's own `ManifestTool`. Packaging for one consumer, not framework API.
+
+Landed as: the four modules deleted. The crate is the loop only (`Source`/`SourceError`, `Driver`/`Handler`/`SessionContext`, the `async_trait` re-export); `serde`/`serde_yaml` leave its dependency list and `serde_json` moves to dev-deps. Tool injection was never this crate's to provide: it is `rhema_core::ToolResolver`, untouched. The claw ports its native families (consents, attachments, phone) to claw-local resolvers, the manifest loader moving with them if the folder convention survives; its CRUD families become `clawctl` verbs over the daemon's HTTP surface, which already serves every verb. Spec §8's TOOL.yaml entry records the new home and the decision not to build `run: { exec }` (user-written tools are MCP's job). No `Chain` lands in rhema-core: the host composes through `Overlay`, and the claw's one chain site folds `Overlay`s or keeps a local struct.
+
 ## Verified clean in this batch (no action needed)
 
 The five crate-level READMEs with code (rhema-code, rhema-session-store, -file, -sqlite, rhema-submissions) verified against source: 0 broken commands, 0 non-compiling examples, 0 phantom features. The only doc edits made are the two in rhema-code's README (the `background: native` default and the fluff sentence). The install-block URL is network-form and was not reachable from this host; it matches `DIST_BASE`/update.rs and the release pipeline owns it.

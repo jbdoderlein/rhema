@@ -113,9 +113,8 @@ Rules:
     contract, the ICS, CalDAV, and Google feed adapters, the
     normalized occurrence vocabulary, and the default reminder source
     (`rhema-claw` repository, `integrations/rhema-calendar-integration/`)
-  - `autonomous-agent`: the resident-agent core tier: sources, the
-    lease-driven driver, and the tool registry
-    (`crates/rhema-autonomous-agent/`)
+  - `autonomous-agent`: the resident-agent core tier: sources and the
+    lease-driven driver (`crates/rhema-autonomous-agent/`)
   - `claw`: the resident agent daemon: the first autonomous-agent
     consumer (`rhema-claw` repository)
   - `acp`: the Agent Client Protocol adapter and the `rhema acp`

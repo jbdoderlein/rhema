@@ -1,6 +1,6 @@
 [package]
 name = "rhema-autonomous-agent"
-description = "The resident-agent core tier: source-driven sessions, a tool registry with allowlists, and the lease-driven handler loop over rhema-rsd"
+description = "The resident-agent core tier: source-driven detection and the lease-driven handler loop over rhema-rsd"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,17 +14,15 @@ authors.workspace = true
 [dependencies]
 # The dispatch seam: sources ingest, the driver runs admitted keys
 rhema-rsd = { path = "../rhema-rsd", version = "0.4.1" }
-# The step engine and its seams: tools resolve through a ToolResolver
+# The step engine: the commit hook a driver installs on its handler engine
 rhema-core = { path = "../rhema-core", version = "0.4.1" }
-serde = { workspace = true }
-serde_json = { workspace = true }
-serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 # The driver runs admitted keys concurrently
 tokio = { workspace = true }
 
 [dev-dependencies]
+serde_json = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 
 [lints]
