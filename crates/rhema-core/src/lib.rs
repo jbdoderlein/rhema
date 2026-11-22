@@ -9,8 +9,6 @@
 //!
 //! Layout:
 //! - [`message`]: `Role`, `Content`, `Message`, the `Image` block
-//! - [`paste`]: paste spans in message text: the chip record, and the
-//!   legacy embedded-form migration
 //! - [`session`]: the caller-owned, serializable `Session`
 //! - [`workspace`]: the checkout's directory conventions: `.rhema`
 //!   and the tiers under it
