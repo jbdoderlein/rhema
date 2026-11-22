@@ -211,7 +211,7 @@ backend.
 | LXD / Incus | `rhema-sandbox-lxd`: one driver, two instance types. A container takes the docker bind-mount posture (`lxc exec` prefix, a `disk` device mapping the host root in) or the fs-disjoint one via `lxc file`; a `--vm` instance is the same driver with a launch flag, and the first true isolation tier in the offer | medium |
 | VM / microVM, hosted | an image running `rhema-sandboxd`, packaging, not code | ~zero |
 | microVM, local | `rhema-sandbox-ecrou`: one boot per command through the `ecrou` CLI, the workspace a 1:1 `-v`, output a `--capture` file pair tailed into the live-line pump | medium |
-| SSH | daemonless: exec = `ssh host -- bash -c` (live lines through the existing pump), files via `ssh cat`/`tee`, seed via `ssh git clone`; or `sandboxd` on the remote behind `ssh -L`, then it *is* `HttpSandbox` | medium / zero |
+| SSH | daemonless, and the client is built in (`russh`, no `ssh` binary assumed on the host): exec = `timeout --kill-after=5 N bash -c` over a session channel, live lines through the pump's semantics, files via remote `cat`/`tee`, seed via `git clone` or the tarball streamed raw to `tar -xzf -`; credential = key text from the caller, else agent, else config `IdentityFile`s; host keys `accept-new`; or `sandboxd` on the remote behind `ssh -L`, then it *is* `HttpSandbox` | medium / zero |
 | cloud sandboxes | `SandboxDo` (transport unchanged, types from `protocol.rs`); `VercelSandbox` (the vendor adapter, kept) | done |
 
 Kill semantics: backends without a per-command kill API (docker exec
@@ -271,8 +271,9 @@ whole assembly, and the timeout prefix is the kill (§9). ecrou
 landed with zero trait change, that is the test the abstraction has
 to pass (§2), now answered once. bubblewrap/nsjail land the same way.
 SSH ships daemonless first: zero setup on the far
-end is the mode's reason to exist; tunnel-plus-`sandboxd` is the
-documented fast path. The instance is prepared, not assumed: the
+end is the mode's reason to exist, and the client is built in
+(`russh`), so the mode holds on a host with no `ssh` binary either;
+tunnel-plus-`sandboxd` is the documented fast path. The instance is prepared, not assumed: the
 ensure step provisions a standard tool set, git, ripgrep, fd-find,
 jq, sd, curl, python3, build-essential, once per instance,
 marker-gated and idempotent, so a stock image arrives ready for the
@@ -374,11 +375,13 @@ infrastructure); phase 9 is the one users see.
   UX's decision, not this spec's.
 - **Cross-cloud resume:** a session checkpointed in DO storage resuming
   against Vercel's Postgres is Store portability, not sandboxing.
-- **The copy-in story for ssh:** what carries the working tree to the
-  remote, and when, a git-remote sync, an rsync/tar push at startup
-  and on demand, or `sandboxd` behind `ssh -L` (then the protocol's
-  `put`/`get` IS the story). Until one lands, ssh stays daemonless
-  exec with seeded files, honest about not mirroring the working tree.
+- **The sync story for ssh:** the seed now carries the working tree
+  (the tarball streams raw to a remote `tar -xzf -`, binary-safe, no
+  base64 hop), what is still open is the *sync*: a git-remote sync,
+  an rsync/tar push at startup and on demand, or `sandboxd` behind
+  `ssh -L` (then the protocol's `put`/`get` IS the story). Until one
+  lands, ssh stays daemonless exec with seeded files, honest about
+  not mirroring the working tree.
 
 ## 9. Decisions
 
@@ -406,6 +409,18 @@ infrastructure); phase 9 is the one users see.
 - **SSH ships daemonless first**, zero remote setup is the mode's
   reason to exist; tunnel-plus-`sandboxd` is documented as the fast
   path, not required plumbing.
+- **The ssh client is built in, not shelled out**, a host that
+  cannot exec `ssh` (a daemon on a minimal cloud image) still
+  reaches a box; the destination still resolves through the user's
+  own ssh config and the credential hunt still reads OpenSSH's
+  order (explicit key, agent, key files), so nothing about "zero
+  setup" changes. The credential can ride the caller's store as key
+  text (`with_private_key`, the claw's settings table is that
+  store), no file to stage. Host keys run `accept-new`, the
+  daemon-friendly reading of OpenSSH's default, a daemon cannot
+  hold the "are you sure" prompt; a key that disagrees with a
+  stored entry refuses, and the refusal names the `known_hosts`
+  line.
 - **The `timeout` prefix, not kill APIs**, uniform `ExecRequest::
   timeout` semantics across backends that lack a per-command kill; the
   shim has run the pattern in production shape.

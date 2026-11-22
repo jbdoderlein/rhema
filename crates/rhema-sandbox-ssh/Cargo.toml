@@ -1,6 +1,6 @@
 [package]
 name = "rhema-sandbox-ssh"
-description = "SSH sandbox backend for the rhema `Sandbox` seam: commands on a remote box over `ssh`, no daemon on the far end"
+description = "SSH sandbox backend for the rhema `Sandbox` seam: commands on a remote box over a built-in ssh client, no daemon and no `ssh` binary needed"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,7 +11,16 @@ authors.workspace = true
 [dependencies]
 # The seam and the process family's shared machinery (`spawn`): the
 # stream pump, the textual path guard, the shell quoting
-rhema-sandbox = { path = "../rhema-sandbox", version = "0.4.1", features = ["spawn"] }
+rhema-sandbox = { path = "../rhema-sandbox", version = "0.4.2", features = ["spawn"] }
+# The built-in ssh client: the sandbox speaks the protocol in-process,
+# no `ssh` binary assumed on the machine that runs it. The RustCrypto
+# backend stays (default-features off drops aws-lc-rs, which builds C),
+# `rsa` keeps the ssh-rsa key type; `ring` is the crypto backend, the one
+# that builds without cmake.
+russh = { version = "0.65", default-features = false, features = ["ring", "rsa"] }
+# The local config resolver: the destination stays "any alias or
+# user@host the user's own ssh config resolves".
+russh-config = "0.65"
 async-trait = { workspace = true }
 # The tarball seed is staged base64-side only: the bytes stream raw to
 # the remote `tar`, base64 rides for the file routes
@@ -19,11 +28,24 @@ base64 = "0.22"
 # The `ssh` child, buffered reads, the cancel tick's timer
 tokio = { workspace = true, features = ["process", "io-util", "time"] }
 
+[features]
+# The tests' seams (`with_known_hosts_path`, `with_strict_host_keys`,
+# `with_ssh_config_path`): a test must not learn host keys into the
+# runner's real `known_hosts`, nor read the runner's real ssh
+# config. The dev-dependency below turns the feature on for test
+# builds only; consumers never see the seams.
+test-util = []
+
 [dev-dependencies]
 # The tests run on the test runtime
 tokio = { workspace = true }
 # The tests stage remote trees in throwaway directories
 tempfile = "3"
+# The tests drive the real client stack against an in-process ssh
+# server (russh's server module): no sshd assumed on the box. This
+# self edge turns the `test-util` feature on for test builds only
+# (dev-dependencies do not propagate to consumers).
+rhema-sandbox-ssh = { path = ".", features = ["test-util"] }
 
 [lints]
 workspace = true
