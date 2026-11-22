@@ -25,6 +25,8 @@ default = []
 mock = []
 
 [dev-dependencies]
+# Generated vendor hits for the renderer's line structure.
+hegeltest = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]

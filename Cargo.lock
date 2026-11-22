@@ -4022,6 +4022,7 @@ name = "rhema-core"
 version = "0.4.2"
 dependencies = [
  "async-trait",
+ "hegeltest",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -4134,6 +4135,7 @@ version = "0.4.2"
 dependencies = [
  "async-trait",
  "futures-util",
+ "hegeltest",
  "reqwest",
  "rhema-core",
  "rhema-provider",
@@ -4238,6 +4240,7 @@ version = "0.4.2"
 dependencies = [
  "async-trait",
  "futures-util",
+ "hegeltest",
  "reqwest",
  "rhema-core",
  "rhema-provider",
@@ -4496,6 +4499,7 @@ name = "rhema-websearch"
 version = "0.4.2"
 dependencies = [
  "async-trait",
+ "hegeltest",
  "thiserror 2.0.21",
  "tokio",
 ]

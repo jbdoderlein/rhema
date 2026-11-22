@@ -69,9 +69,16 @@ fn escape_brackets(title: &str) -> String {
 /// the markdown link: parentheses and spaces end a `(...)` target
 /// early. Angle brackets are percent-encoded first: a raw `>` closes
 /// the `<...>` form just as early, and neither character is legal in
-/// a url.
+/// a url. Control characters are percent-encoded too: vendors have
+/// shipped urls with trailing newlines, and a raw one ends the link
+/// line early, the rest of the target spilling out as a stray line.
 fn wrap_url(url: &str) -> String {
-    let url = url.replace('<', "%3C").replace('>', "%3E");
+    let url = url
+        .replace('<', "%3C")
+        .replace('>', "%3E")
+        .replace('\n', "%0A")
+        .replace('\r', "%0D")
+        .replace('\t', "%09");
     if url.contains(['(', ')', ' ']) {
         format!("<{url}>")
     } else {
@@ -189,6 +196,21 @@ mod tests {
             "s",
         )]));
         assert!(out.contains("](<https://x/a(b)>)\n"), "{out}");
+    }
+
+    #[test]
+    fn a_control_character_in_the_url_stays_inside_the_link() {
+        // Vendors have shipped urls with trailing newlines; a raw one
+        // ends the link line early and the rest of the target spills
+        // out as a stray line. They percent-encode like the angle
+        // brackets, so the block keeps its two lines.
+        let out = render(&outcome(vec![SearchResult::new(
+            "T",
+            "https://x/a\nb",
+            "s",
+        )]));
+        assert!(out.contains("](https://x/a%0Ab)\n"), "{out}");
+        assert_eq!(out.lines().count(), 4, "{out}");
     }
 
     #[test]
