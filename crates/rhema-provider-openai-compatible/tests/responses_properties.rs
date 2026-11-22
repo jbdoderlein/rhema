@@ -333,11 +333,10 @@ fn events(script: &Script) -> Vec<WireStreamEvent> {
                     ..WireResponseBody::default()
                 };
                 if !terminal.completed {
-                    response.incomplete_details = terminal.reason.clone().map(|reason| {
-                        WireIncompleteDetails {
+                    response.incomplete_details =
+                        terminal.reason.clone().map(|reason| WireIncompleteDetails {
                             reason: Some(reason),
-                        }
-                    });
+                        });
                 }
                 if let Some(usage) = &terminal.usage {
                     response.usage = Some(WireResponsesUsage {
