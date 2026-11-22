@@ -21,6 +21,8 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 [dev-dependencies]
+# Generated OpenAI-shaped chunk streams for the assembler's invariants.
+hegeltest = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 # In-process HTTP mock for offline SSE tests
 wiremock = "0.6"

@@ -545,6 +545,10 @@ struct PartialCall {
     name: String,
     arguments: String,
     started: bool,
+    /// Whether the call's `done` item has been folded: a server that
+    /// spells no ids cannot have its items matched back by id, and the
+    /// pairing has to stay positional instead.
+    done: bool,
     /// The reasoning streamed since the previous call: claimed by this
     /// call so the replay puts it back ahead of it.
     reasoning: String,
@@ -765,6 +769,12 @@ impl ResponsesAssembler {
             .filter(|id| !id.is_empty());
         let index = self
             .find_index(call_id, item_id)
+            // An id-less server's items cannot match by id: its
+            // added/done pairs arrive in order, so the done falls to
+            // the oldest call that has not taken one yet. Without
+            // this, a done for an already-added call registers the
+            // call a second time and the message carries it twice.
+            .or_else(|| self.calls.iter().position(|call| !call.done))
             .unwrap_or(self.calls.len());
         if index == self.calls.len() {
             self.item_added(item, sink);
@@ -778,6 +788,7 @@ impl ResponsesAssembler {
             }
         }
         let partial = &mut self.calls[index];
+        partial.done = true;
         if !partial.started {
             partial.started = true;
             partial.name = item.name.clone().unwrap_or_default();
@@ -1256,6 +1267,52 @@ mod tests {
         );
         assert_eq!(out.message.content.len(), 2);
         assert_eq!(out.stop_reason, StopReason::ToolUse);
+    }
+
+    #[test]
+    fn an_idless_calls_done_pairs_with_its_added_not_a_second_registration() {
+        // A server may spell no ids at all: the done item then cannot
+        // match its call by id, and it must fall to the call the added
+        // item registered, positionally, instead of registering the
+        // call a second time and announcing it twice.
+        let mut assembler = ResponsesAssembler::new();
+        let mut sink = Collector::new();
+        for fixture in [
+            r#"{"type":"response.output_item.added","output_index":1,"item":{
+                "type":"function_call","name":"bash"}}"#,
+            r#"{"type":"response.function_call_arguments.delta","delta":"{\"cmd\":"}"#,
+            r#"{"type":"response.function_call_arguments.delta","delta":"\"ls\"}"}"#,
+            r#"{"type":"response.output_item.done","output_index":1,"item":{
+                "type":"function_call","name":"bash",
+                "arguments":"{\"cmd\":\"ls\"}","status":"completed"}}"#,
+            r#"{"type":"response.completed","response":{"status":"completed"}}"#,
+        ] {
+            assembler
+                .push(event(fixture), &mut sink)
+                .expect("event is not an error");
+        }
+        let out = assembler.finish();
+
+        // One announcement, one call, the pieces and the done item's
+        // whole text agreeing on the arguments.
+        assert_eq!(
+            sink.0,
+            vec![
+                "ToolCallStart { id: \"call_0\", name: \"bash\" }",
+                "ToolCallArgsDelta { id: \"call_0\", delta: \"{\\\"cmd\\\":\" }",
+                "ToolCallArgsDelta { id: \"call_0\", delta: \"\\\"ls\\\"}\" }",
+            ]
+        );
+        assert_eq!(out.message.content.len(), 1, "one call, not two");
+        assert_eq!(
+            out.message.content[0],
+            Content::ToolCall(ToolCall {
+                id: "call_0".into(),
+                name: "bash".into(),
+                args: serde_json::json!({"cmd": "ls"}),
+                provider_data: Value::Null,
+            })
+        );
     }
 
     #[test]
