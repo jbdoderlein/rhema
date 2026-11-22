@@ -249,12 +249,20 @@ fn view_shape(
         theme,
         width,
     ));
+    // The band's whole images; zero shows nothing, the line stays
+    // about bytes then.
+    let images = if stats.view_images > 0 {
+        format!(" · {} images", stats.view_images)
+    } else {
+        String::new()
+    };
     lines.extend(settings_field(
         "Band",
         Span::raw(format!(
-            "~{} carried whole · ~{} this turn",
+            "~{} carried whole · ~{} this turn{}",
             usage_k(stats.band_tokens),
             usage_k(stats.tail_tokens),
+            images,
         ))
         .fg(theme.text),
         theme,

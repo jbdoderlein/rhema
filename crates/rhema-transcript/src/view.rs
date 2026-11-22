@@ -55,6 +55,14 @@ pub struct TranscriptSettings {
     /// block, a full cache break, so it fires only past this cap,
     /// and merges down to half of it before stopping.
     pub max_block_bytes: usize,
+    /// The most whole images one request's band may carry. Providers
+    /// reject a request past a hard per-request image count, and an
+    /// image's flat budget charge never bounds the count, so the cap
+    /// is its own bound: a flush fires on whichever of bytes or
+    /// images binds first, sectioning the oldest image-bearing
+    /// messages. The tail keeps its exception: one turn may carry
+    /// more than this.
+    pub max_view_images: usize,
 }
 
 impl Default for TranscriptSettings {
@@ -68,6 +76,9 @@ impl Default for TranscriptSettings {
             step_bytes: 24_000,
             max_section_messages: 128,
             max_block_bytes: 32_000,
+            // Generous against the strictest vision adapters, tight
+            // against the per-request rejection thresholds.
+            max_view_images: 10,
         }
     }
 }
@@ -192,6 +203,11 @@ pub struct TranscriptStats {
     /// end, at the last request.
     #[serde(default)]
     pub band_tokens: u64,
+    /// Whole images the band carried at the last request. The image
+    /// cap's gauge: past [`TranscriptSettings::max_view_images`] the
+    /// overflow is one oversized turn the tail rule kept whole.
+    #[serde(default)]
+    pub view_images: usize,
     /// The current turn's bytes at the last request.
     pub tail_bytes: usize,
     /// The current turn's estimated tokens at the last request.
@@ -266,6 +282,7 @@ impl TranscriptStats {
             self.block_tokens = saved.block_tokens;
             self.band_bytes = saved.band_bytes;
             self.band_tokens = saved.band_tokens;
+            self.view_images = saved.view_images;
             self.tail_bytes = saved.tail_bytes;
             self.tail_tokens = saved.tail_tokens;
             self.log_bytes = saved.log_bytes;
@@ -307,6 +324,9 @@ pub struct Transcript {
     total_bytes: usize,
     /// [`Vec`]`tokens` summed once, maintained beside `total_bytes`.
     total_tokens: u64,
+    /// Per-message image counts, parallel to `log`: the image cap's
+    /// unit, maintained beside `sizes`.
+    images: Vec<usize>,
     /// The log's estimated tokens by category, maintained by `observe`
     /// the same way; `render` snapshots it into `stats.log_content`.
     content: LogContent,
@@ -449,6 +469,7 @@ impl Transcript {
             log: Vec::new(),
             sizes: Vec::new(),
             tokens: Vec::new(),
+            images: Vec::new(),
             total_bytes: 0,
             total_tokens: 0,
             content: LogContent::default(),
@@ -476,8 +497,10 @@ impl Transcript {
             for message in &messages[first..] {
                 let bytes = summary::message_bytes(message);
                 let tokens = summary::message_tokens(message);
+                let images = summary::message_images(message);
                 self.sizes.push(bytes);
                 self.tokens.push(tokens);
+                self.images.push(images);
                 self.total_bytes += bytes;
                 self.total_tokens += tokens;
                 add_message_content(&mut self.content, message);
@@ -488,14 +511,17 @@ impl Transcript {
             self.log = messages.to_vec();
             self.sizes = Vec::with_capacity(self.log.len());
             self.tokens = Vec::with_capacity(self.log.len());
+            self.images = Vec::with_capacity(self.log.len());
             self.total_bytes = 0;
             self.total_tokens = 0;
             self.content = LogContent::default();
             for index in 0..self.log.len() {
                 let bytes = summary::message_bytes(&self.log[index]);
                 let tokens = summary::message_tokens(&self.log[index]);
+                let images = summary::message_images(&self.log[index]);
                 self.sizes.push(bytes);
                 self.tokens.push(tokens);
+                self.images.push(images);
                 self.total_bytes += bytes;
                 self.total_tokens += tokens;
                 add_message_content(&mut self.content, &self.log[index]);
@@ -577,6 +603,13 @@ impl Transcript {
     /// The compaction's benchmark snapshot.
     pub fn stats(&self) -> TranscriptStats {
         self.stats
+    }
+
+    /// The image cap: how many whole images one zoom result may
+    /// carry, the same bound the band obeys. One number, so one zoom
+    /// cannot smuggle past what a view itself may send.
+    pub fn max_view_images(&self) -> usize {
+        self.settings.max_view_images
     }
 
     /// Folds a saved session's benchmark counters in: a resumed
@@ -840,55 +873,70 @@ impl Transcript {
     pub fn plan_flush(&mut self) -> Vec<PendingSummary> {
         self.sync_sizes();
         let len = self.log.len();
-        if self.total_bytes <= self.settings.max_view_bytes {
-            return Vec::new();
-        }
         let tail_start = self.tail_index();
-        let tail_bytes = self.bytes(tail_start, len);
-        let allowance = self.settings.max_view_bytes.saturating_sub(tail_bytes);
 
-        // The minimum band: walk back from the tail over whole
-        // messages while they fit. The walk stops at the cut, the
-        // block never un-commits.
-        let mut c_min = tail_start;
-        let mut budget = allowance;
-        while c_min > self.cut {
-            let cost = self.sizes[c_min - 1];
-            if cost > budget {
-                break;
+        // The byte budget's say: where the budget breaches, the cut
+        // overshoots to half the allowance, so flushes, the only
+        // prefix breaks, stay far apart. Below the budget it says
+        // nothing. The walk stops at the cut, the block never
+        // un-commits.
+        let mut byte_target = self.cut;
+        if self.total_bytes > self.settings.max_view_bytes {
+            let tail_bytes = self.bytes(tail_start, len);
+            let allowance = self.settings.max_view_bytes.saturating_sub(tail_bytes);
+            let mut c_min = tail_start;
+            let mut budget = allowance;
+            while c_min > self.cut {
+                let cost = self.sizes[c_min - 1];
+                if cost > budget {
+                    break;
+                }
+                budget -= cost;
+                c_min -= 1;
             }
-            budget -= cost;
-            c_min -= 1;
+            if c_min > self.cut {
+                let half = allowance / 2;
+                let mut c_new = c_min;
+                let mut band = self.bytes(c_new, tail_start);
+                // The smallest position whose remaining band fits half:
+                // walk forward while the band still exceeds it. The break
+                // on `next > half` was the inverse and left the band at
+                // the full allowance, flushes every request.
+                while c_new < tail_start && band > half {
+                    band -= self.sizes[c_new];
+                    c_new += 1;
+                }
+                byte_target = byte_target.max(c_new);
+            }
         }
+
+        // The image cap's say: the band keeps at most
+        // `max_view_images` whole images, oldest out, whatever the
+        // byte budget says. The flat charge prices an image at one
+        // small message, so bytes alone never bound the count, and a
+        // provider rejects the request past its own. Both targets
+        // stop at the tail: it is never cut.
+        let mut image_target = self.cut;
+        let mut band_images: usize = self.images[self.cut..len].iter().sum();
+        while image_target < tail_start && band_images > self.settings.max_view_images {
+            band_images -= self.images[image_target];
+            image_target += 1;
+        }
+
+        // Whichever bound binds first moves the cut; the band must
+        // not open on a tool result either way: its call would stay
+        // behind in the last section. Trailing results come along
+        // into the block.
+        let mut c_new = byte_target.max(image_target);
         let mut pending = Vec::new();
-        if c_min > self.cut {
-            // Breach. Overshoot to half the allowance: the band after
-            // the flush leaves a whole hysteresis of growth before the
-            // next one, so flushes, the only prefix breaks, stay
-            // far apart.
-            let half = allowance / 2;
-            let mut c_new = c_min;
-            let mut band = self.bytes(c_new, tail_start);
-            // The smallest position whose remaining band fits half:
-            // walk forward while the band still exceeds it. The break
-            // on `next > half` was the inverse and left the band at
-            // the full allowance, flushes every request.
-            while c_new < tail_start && band > half {
-                band -= self.sizes[c_new];
-                c_new += 1;
-            }
-            // The band must not open on a tool result: its call would
-            // stay behind in the last section. Trailing results come
-            // along into the block.
+        if c_new > self.cut {
             while c_new < tail_start && self.log[c_new].role == Role::Tool {
                 c_new += 1;
             }
-            if c_new > self.cut {
-                pending = self.extend_sections(self.cut, c_new);
-                self.cut = c_new;
-                self.stats.flushes += 1;
-                pending.extend(self.consolidate());
-            }
+            pending = self.extend_sections(self.cut, c_new);
+            self.cut = c_new;
+            self.stats.flushes += 1;
+            pending.extend(self.consolidate());
         }
         pending
     }
@@ -914,6 +962,7 @@ impl Transcript {
         self.stats.requests += 1;
         self.stats.log_bytes = self.total_bytes;
         self.stats.log_content = self.content;
+        self.stats.view_images = self.images[self.cut..].iter().sum();
         if self.cut == 0 {
             self.stats.pass_through += 1;
             return None;
@@ -987,11 +1036,13 @@ impl Transcript {
     fn sync_sizes(&mut self) {
         self.sizes.truncate(self.log.len());
         self.tokens.truncate(self.log.len());
+        self.images.truncate(self.log.len());
         let mut patched = false;
         while self.sizes.len() < self.log.len() {
             let id = self.sizes.len();
             self.sizes.push(summary::message_bytes(&self.log[id]));
             self.tokens.push(summary::message_tokens(&self.log[id]));
+            self.images.push(summary::message_images(&self.log[id]));
             patched = true;
         }
         if patched {
@@ -2208,6 +2259,7 @@ mod tests {
             block_tokens: 225,
             band_bytes: 3_000,
             band_tokens: 820,
+            view_images: 2,
             tail_bytes: 1_200,
             tail_tokens: 340,
             log_bytes: 5_400,
@@ -2262,6 +2314,83 @@ mod tests {
         later.carry(&saved);
         assert_eq!(later.requests, 13);
         assert_eq!(later.input_tokens, 98_000);
+    }
+
+    /// One user message per turn, each carrying one bare image: the
+    /// image-cap fixtures. Bytes stay tiny, so the byte budget never
+    /// binds and the cap alone drives any flush.
+    fn image_history(n: usize) -> Vec<Message> {
+        (0..n)
+            .map(|i| Message {
+                annotations: Default::default(),
+                role: Role::User,
+                content: vec![
+                    Content::Text(format!("look {i}")),
+                    Content::Image(rhema_core::Image::new(
+                        rhema_core::ImageMediaType::Png,
+                        "AAAA",
+                    )),
+                ],
+            })
+            .collect()
+    }
+
+    /// The cap flushes below the byte budget: five one-image turns at
+    /// a cap of two section the oldest three, the band keeps its two
+    /// newest images, and the digest covers the prefix.
+    #[test]
+    fn the_image_cap_flushes_below_the_byte_budget() {
+        let mut transcript = Transcript::new(TranscriptSettings {
+            max_view_images: 2,
+            ..settings(128_000)
+        });
+        let messages = image_history(5);
+        transcript.observe(&messages);
+        let pending = transcript.plan_flush();
+        assert!(
+            !pending.is_empty(),
+            "the cap flushes what bytes never would"
+        );
+        assert_eq!(transcript.cut, 3);
+        assert_eq!(transcript.stats.flushes, 1);
+        // The sections tile exactly the prefix the cut moved over.
+        let mut at = 0;
+        for section in &transcript.sections {
+            assert_eq!(section.range.id, at);
+            at += section.range.n;
+        }
+        assert_eq!(at, 3);
+        // The digest names the images it covers: zoom has a reason.
+        let digest = &transcript.sections.last().unwrap().text;
+        assert!(digest.contains("3 images"), "{digest}");
+        transcript.render();
+        assert_eq!(transcript.stats().view_images, 2);
+    }
+
+    /// The tail exception: one turn carrying more images than the cap
+    /// sends whole, and the stat shows the overflow instead of a cut
+    /// into the turn the model is working from.
+    #[test]
+    fn one_turn_past_the_image_cap_sends_whole_and_counts() {
+        let mut transcript = Transcript::new(TranscriptSettings {
+            max_view_images: 2,
+            ..settings(128_000)
+        });
+        let messages = vec![Message {
+            annotations: Default::default(),
+            role: Role::User,
+            content: vec![
+                Content::Text("three shots".into()),
+                Content::Image(rhema_core::Image::new(rhema_core::ImageMediaType::Png, "A")),
+                Content::Image(rhema_core::Image::new(rhema_core::ImageMediaType::Png, "B")),
+                Content::Image(rhema_core::Image::new(rhema_core::ImageMediaType::Png, "C")),
+            ],
+        }];
+        transcript.observe(&messages);
+        assert!(transcript.plan_flush().is_empty());
+        assert_eq!(transcript.cut, 0);
+        transcript.render();
+        assert_eq!(transcript.stats().view_images, 3);
     }
 
     /// The log-size snapshot: what the conversation holds, each

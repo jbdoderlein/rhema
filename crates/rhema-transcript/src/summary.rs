@@ -80,6 +80,21 @@ pub fn message_tokens(message: &Message) -> u64 {
         .sum()
 }
 
+/// The images one message holds: tool-result images and bare image
+/// parts. The count the view's image cap spends, and nothing else:
+/// an image's bytes and tokens are the flat charges above.
+pub fn message_images(message: &Message) -> usize {
+    message
+        .content
+        .iter()
+        .map(|content| match content {
+            Content::ToolResult(result) => result.images.len(),
+            Content::Image(_) => 1,
+            _ => 0,
+        })
+        .sum()
+}
+
 /// `text` on one line, at most `cap` bytes, cut on a char boundary
 /// with an ellipsis when longer.
 pub fn head(text: &str, cap: usize) -> String {
@@ -144,6 +159,7 @@ pub(crate) fn summarize_range(messages: &[Message], range: Range) -> ((usize, us
     let mut calls: Vec<(String, usize)> = Vec::new();
     let mut results = 0usize;
     let mut failures = 0usize;
+    let mut images = 0usize;
 
     // Assistant heads stay a two-line preview: the range's shape is
     // what a future reader needs. The user's words come whole below.
@@ -172,9 +188,12 @@ pub(crate) fn summarize_range(messages: &[Message], range: Range) -> ((usize, us
                 Content::ToolResult(result) => {
                     results += 1;
                     failures += usize::from(result.is_error);
+                    images += result.images.len();
                 }
-                // A head quotes text; an image has none.
-                Content::Image(_) => {}
+                // A head quotes text; an image has none. It still
+                // counts: a digest that skips the images it covers
+                // hides what zoom is there to reopen.
+                Content::Image(_) => images += 1,
             }
         }
     }
@@ -222,6 +241,12 @@ pub(crate) fn summarize_range(messages: &[Message], range: Range) -> ((usize, us
     }
     if failures > 0 {
         parts.push(format!("{failures} failed"));
+    }
+    if images > 0 {
+        parts.push(format!(
+            "{images} {}",
+            if images == 1 { "image" } else { "images" }
+        ));
     }
     parts.extend(assistant_heads.iter().map(|h| format!("assistant: {h}")));
     ((range.id, range.n), parts.join("; "))
@@ -312,6 +337,40 @@ mod tests {
         // Eight bytes of text is two tokens; the two images are a
         // flat price each, whatever their base64 length.
         assert_eq!(message_tokens(&message), 2 + 2 * IMAGE_TOKENS);
+    }
+
+    /// The cap's unit: tool-result images and bare image parts count,
+    /// text does not. The digest names the same figure, so a range's
+    /// line says what zoom would bring back.
+    #[test]
+    fn the_image_count_is_its_own_figure() {
+        let user = Message {
+            annotations: Default::default(),
+            role: Role::User,
+            content: vec![
+                Content::Text("look".into()),
+                Content::Image(rhema_core::Image::new(
+                    rhema_core::ImageMediaType::Png,
+                    "cG5n",
+                )),
+            ],
+        };
+        let result = Message {
+            annotations: Default::default(),
+            role: Role::Tool,
+            content: vec![Content::ToolResult(
+                ToolResult::success("c1", "out").with_images(vec![
+                    rhema_core::Image::new(rhema_core::ImageMediaType::Png, "YQ"),
+                    rhema_core::Image::new(rhema_core::ImageMediaType::Png, "Yg"),
+                ]),
+            )],
+        };
+        assert_eq!(message_images(&user), 1);
+        assert_eq!(message_images(&result), 2);
+        let messages = vec![user, result];
+        let ((id, n), text) = summarize_range(&messages, Range { id: 0, n: 2 });
+        assert_eq!((id, n), (0, 2));
+        assert!(text.contains("3 images"), "{text}");
     }
 
     #[test]

@@ -84,6 +84,9 @@ fn settings() -> TranscriptSettings {
         step_bytes: 120,
         max_section_messages: 4,
         max_block_bytes: 100,
+        // A tight image cap too: the property suites exercise the
+        // image bound's arithmetic alongside the byte bound's.
+        max_view_images: 2,
     }
 }
 

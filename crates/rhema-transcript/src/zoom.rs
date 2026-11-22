@@ -9,7 +9,7 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
-use rhema_core::{ReplaySafety, ToolCall, ToolContext, ToolResult, ToolSpec};
+use rhema_core::{Content, Image, ReplaySafety, ToolCall, ToolContext, ToolResult, ToolSpec};
 
 use crate::summary;
 use crate::tree::Range;
@@ -51,8 +51,10 @@ impl Zoom {
              `id+n|text` lines; zoom opens them. zoom(id, n) returns the \
              n messages from id whole, a wide range with each message \
              headed by its id+1| address. Long output is cut: pass at (a \
-             byte offset) to page on. Before you guess, ask, or re-run a \
-             command: if a summary line omits what you need, the \
+             byte offset) to page on. Images the range holds ride the \
+             result as image blocks: zoom is the way back to pixels \
+             too. Before you guess, ask, or re-run a command: if a \
+             summary line omits what you need, the \
              original is here.",
             serde_json::json!({
                 "type": "object",
@@ -178,9 +180,38 @@ impl Zoom {
             }
             return ToolResult::failure(&call.id, msg);
         }
+        // The pixels the rendered messages hold ride the result: the
+        // `[image: ...]` lines in the text only name them, and zoom
+        // is the way back. Newest first past the cap, the same bound
+        // the band obeys, so one zoom cannot smuggle more images
+        // than a view itself may send; the note names the rest.
+        let mut images: Vec<Image> = Vec::new();
+        let shown = Range {
+            id: range.id,
+            n: covered - range.id,
+        };
+        for message in transcript.range(shown).unwrap_or(&[]) {
+            for part in &message.content {
+                match part {
+                    Content::ToolResult(result) => images.extend(result.images.iter().cloned()),
+                    Content::Image(image) => images.push(image.clone()),
+                    _ => {}
+                }
+            }
+        }
+        let mut image_note = String::new();
+        let cap = transcript.max_view_images();
+        if images.len() > cap {
+            let omitted = images.len() - cap;
+            let noun = if omitted == 1 { "image" } else { "images" };
+            image_note = format!("\n\n[{omitted} older {noun} omitted]");
+            images = images.split_off(omitted);
+        }
+
         let start = snapped_back(&text, at);
         if text.len() <= ZOOM_MAX_BYTES {
-            return ToolResult::success(&call.id, &text[start..]);
+            return ToolResult::success(&call.id, format!("{}{}", &text[start..], image_note))
+                .with_images(images);
         }
         let mut end = start.saturating_add(ZOOM_MAX_BYTES).min(text.len());
         while end < text.len() && !text.is_char_boundary(end) {
@@ -202,7 +233,11 @@ impl Zoom {
         } else {
             String::new()
         };
-        ToolResult::success(&call.id, format!("{}{}", &text[start..end], note))
+        ToolResult::success(
+            &call.id,
+            format!("{}{}{}", &text[start..end], note, image_note),
+        )
+        .with_images(images)
     }
 }
 
@@ -269,6 +304,68 @@ mod tests {
         let out = zoom.zoom(&call(serde_json::json!({ "id": 1 })));
         assert!(!out.is_error);
         assert_eq!(out.content, "checking auth.rs");
+    }
+
+    /// One tool result holding images, at index 4 of a
+    /// user-assistant-user-user-result log.
+    fn image_history(count: usize) -> Vec<Message> {
+        let mut messages = history();
+        messages.push(Message::text(Role::User, "the screenshot"));
+        messages.push(Message {
+            annotations: Default::default(),
+            role: Role::Tool,
+            content: vec![rhema_core::Content::ToolResult(
+                rhema_core::ToolResult::success("c1", "shot").with_images(
+                    (0..count)
+                        .map(|i| {
+                            rhema_core::Image::new(rhema_core::ImageMediaType::Png, format!("Z{i}"))
+                        })
+                        .collect(),
+                ),
+            )],
+        });
+        messages
+    }
+
+    /// The pixels ride the result: the text still names them, and
+    /// zoom is the way back past the view's stand-ins.
+    #[test]
+    fn zoom_returns_the_range_s_images() {
+        let zoom = Zoom::new(transcript_with(image_history(2)));
+        let out = zoom.zoom(&call(serde_json::json!({ "id": 4, "n": 1 })));
+        assert!(!out.is_error);
+        assert_eq!(out.images.len(), 2);
+        assert!(
+            out.content.contains("[image: image/png]"),
+            "{}",
+            out.content
+        );
+        assert!(
+            out.images
+                .iter()
+                .all(|image| image.data == "Z0" || image.data == "Z1")
+        );
+    }
+
+    /// Past the cap the newest ride and the note names the rest; the
+    /// omitted images are one narrower range away.
+    #[test]
+    fn zoom_caps_its_images_to_the_newest() {
+        let mut transcript = Transcript::new(crate::view::TranscriptSettings {
+            max_view_images: 2,
+            ..Default::default()
+        });
+        transcript.observe(&image_history(3));
+        let zoom = Zoom::new(Arc::new(Mutex::new(transcript)));
+        let out = zoom.zoom(&call(serde_json::json!({ "id": 4, "n": 1 })));
+        assert!(!out.is_error);
+        assert_eq!(out.images.len(), 2);
+        assert!(
+            out.content.contains("1 older image omitted"),
+            "{}",
+            out.content
+        );
+        assert!(out.images.iter().all(|image| image.data != "Z0"));
     }
 
     #[test]

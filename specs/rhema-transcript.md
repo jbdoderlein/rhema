@@ -118,6 +118,20 @@ by head, and the tool traffic by count and names, `line_head` caps each
 quoted head, `RANGE_HEAD` caps the digest. The model fill (§3a) rewrites
 the same ranges as dense markdown.
 
+**The image cap.** A second bound caps the band at `max_view_images`
+whole images (default 10). Providers reject a request past a hard
+per-request image count, and an image's flat budget charge prices one
+at a small message (§8), so the byte budget alone never bounds the
+count. When the band holds more, the next flush moves the cut past the
+oldest image-bearing messages, whatever the byte budget says: the
+flush fires on whichever bound binds first, the cut still moves only
+at flushes, and the same rounding keeps the band off an orphaned tool
+result. The tail keeps its exception: one turn holding more images
+than the cap sends them whole, and the `view_images` stat shows the
+overflow on the Usage page. Sectioned images do not vanish: the
+digest counts them (`3 images`), and `zoom` brings the pixels back
+(§4).
+
 **Engagement.** Below `B` total request bytes the view is the log,
 byte-identical: the decorator is a pass-through and small sessions
 cannot tell the feature exists. `zoom` is advertised whenever the
@@ -264,6 +278,12 @@ the model could zoom is one it has already been shown; within a step
 the mirror may lag the session by the messages that step appended, none
 of which the model has seen an id for yet.
 
+Images the range holds ride the result as image blocks, not as their
+`[image: image/png]` stand-ins: the log keeps the pixels, zoom is the
+way back. Past the view's image limit only the newest ones ride, and a
+note names how many stayed behind; a narrower range is the way to the
+rest, the same algebra as paging.
+
 ## 5. The seam
 
 The view rides the provider seam: a decorator over `ModelProvider` that
@@ -321,6 +341,9 @@ preview that omitted it would not be what turns send.
 5. **Every tool result in a view has its call in the same view.**
 6. **`zoom` never fails silently**: a bad id is an in-band error naming
    the log's length.
+7. **The band carries at most `max_view_images` whole images**, one
+   oversized turn excepted; a sectioned image stays addressable by
+   `zoom`.
 
 ## 8. Decisions
 
@@ -364,6 +387,17 @@ preview that omitted it would not be what turns send.
   session saved under the old default views fine, because the view
   derives from the log per request.
 
+- **Images priced flat, capped by count.** `message_bytes` charges one
+  image `IMAGE_BYTES` (1 KiB), never its encoded length: providers
+  tokenize by pixels, a screenshot's base64 runs far past its token
+  cost, and a budget priced in encoded length would flush the block
+  over bytes compaction can never remove. The flat price leaves the
+  image *count* unbounded, so a second setting, `max_view_images`,
+  caps the band: providers reject a request past a hard per-request
+  image count, and no byte budget can express that. Default 10:
+  generous against the strictest vision adapters, tight against the
+  rejection thresholds.
+
 ## 9. Follow-ups (not v1)
 
 - **Landed, 2026-10-24:** the stepped compaction (§3a), the
@@ -403,6 +437,12 @@ preview that omitted it would not be what turns send.
   read pins the body whole in its own unsummarized section, re-reads
   become pointers, and the body survives consolidation and the model
   fill.
+- **Landed, 2026-11-22:** the image cap (§3) and zoom's image blocks
+  (§4): `TranscriptSettings::max_view_images` bounds the band's whole
+  images, the flush fires on bytes or images whichever binds first,
+  `view_images` shows the band's count on the Usage page, and a `zoom`
+  over image-bearing messages returns the pixels as image blocks,
+  newest first, past the limit with a named remainder.
 - **ACP and claw opt-ins** for the summarizer, and a `rhema-config`
   profile key naming the worker model.
 - **Subagent runs pin nothing yet**: `rhema-subagents` attaches each
