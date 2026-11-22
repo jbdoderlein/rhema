@@ -23,7 +23,7 @@ hyper-util = { version = "0.1", features = ["client", "client-legacy", "http1", 
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "tls12", "ring", "webpki-tokio"] }
 http-body-util = "0.1"
 bytes = "1"
-rhema-config = { version = "0.4.1", path = "../rhema-config" }
+rhema-config = { version = "0.4.2", path = "../rhema-config" }
 axum.workspace = true
 async-stream = "0.3.6"
 futures-util = "0.3.34"
@@ -34,8 +34,8 @@ clap = "4.6.7"
 mcp-to-cli = "0.1.0"
 # The system prompt lines the MCP servers render into; the init-file
 # provisioner both sides share
-rhema-prompt = { version = "0.4.1", path = "../rhema-prompt" }
-rhema-bash = { version = "0.4.1", path = "../rhema-bash", default-features = false }
+rhema-prompt = { version = "0.4.2", path = "../rhema-prompt" }
+rhema-bash = { version = "0.4.2", path = "../rhema-bash", default-features = false }
 
 [dev-dependencies]
 tempfile = "3"
@@ -43,8 +43,8 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 # The wire-turn end-to-end drives a HostAgent over a scripted
 # provider. Dev-only: the production graph stays disconnected (the
 # frontends bring the driver, the crate never does).
-rhema-host-agent = { version = "0.4.1", path = "../rhema-host-agent" }
-rhema-core = { version = "0.4.1", path = "../rhema-core" }
+rhema-host-agent = { version = "0.4.2", path = "../rhema-host-agent" }
+rhema-core = { version = "0.4.2", path = "../rhema-core" }
 async-trait.workspace = true
 
 [[test]]
