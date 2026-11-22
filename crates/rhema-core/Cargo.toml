@@ -23,6 +23,8 @@ async-trait = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+# Generated tool sets for the overlay combiner's invariants.
+hegeltest = { workspace = true }
 
 [[example]]
 name = "step_demo"
