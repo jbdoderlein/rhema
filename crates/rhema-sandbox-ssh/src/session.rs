@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use russh::client::{self, Handle};
+#[cfg(unix)]
 use russh::keys::agent::client::AgentClient;
 use russh::keys::known_hosts::{
     known_host_keys, known_host_keys_path, learn_known_hosts, learn_known_hosts_path,
@@ -526,24 +527,12 @@ async fn authenticate(
             target.user
         )));
     }
+    // The agent client rides a unix socket; windows hunts the
+    // stored and default keys only.
+    #[cfg(unix)]
+    let mut authed = agent_identities(connection, target, hash).await;
+    #[cfg(not(unix))]
     let mut authed = false;
-    if let Ok(mut agent) = AgentClient::connect_env().await {
-        let identities = agent.request_identities().await.unwrap_or_default();
-        for identity in identities {
-            let answer = connection
-                .authenticate_publickey_with(
-                    target.user.clone(),
-                    identity.public_key().into_owned(),
-                    hash,
-                    &mut agent,
-                )
-                .await;
-            if matches!(answer, Ok(result) if result.success()) {
-                authed = true;
-                break;
-            }
-        }
-    }
     if !authed {
         for path in key_file_candidates(&target.identity_files) {
             // A missing file or one that needs a passphrase is
@@ -571,6 +560,36 @@ async fn authenticate(
         )));
     }
     Ok(())
+}
+
+/// The agent identities, when `SSH_AUTH_SOCK` names a listening
+/// agent: each identity gets one public-key attempt, the first the
+/// far end accepts wins. A dead agent or a rejected identity is
+/// skipped, the key-file hunt follows.
+#[cfg(unix)]
+async fn agent_identities(
+    connection: &mut Handle<HostKey>,
+    target: &Target,
+    hash: Option<russh::keys::HashAlg>,
+) -> bool {
+    let Ok(mut agent) = AgentClient::connect_env().await else {
+        return false;
+    };
+    let identities = agent.request_identities().await.unwrap_or_default();
+    for identity in identities {
+        let answer = connection
+            .authenticate_publickey_with(
+                target.user.clone(),
+                identity.public_key().into_owned(),
+                hash,
+                &mut agent,
+            )
+            .await;
+        if matches!(answer, Ok(result) if result.success()) {
+            return true;
+        }
+    }
+    false
 }
 
 /// The key files the hunt tries when no agent identity answers: the
