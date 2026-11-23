@@ -247,6 +247,21 @@ pub(crate) async fn run_prompt(args: RunArgs, prompt: String) -> anyhow::Result<
     let bash_env = search_wiring
         .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
         .or(bash_env);
+    // Decision: the TUI's fourth link, the same two gates.
+    let decision_wiring = crate::decision_wire::wire_for_session(
+        &profile,
+        &effective,
+        Some(&secrets),
+        sandboxed.as_ref(),
+        bash_env.clone(),
+    );
+    if let Some(wiring) = &decision_wiring {
+        agent_config.shell_env.extend(wiring.shell_env.clone());
+        agent_config.decision = Some(wiring.section.to_owned());
+    }
+    let bash_env = decision_wiring
+        .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
+        .or(bash_env);
     // MCP: the same local-only gate the TUI applies, a sandboxed
     // executor cannot reach the socket, so it advertises nothing.
     if let Some(entry) = crate::mcp_wire::wire_for_session(

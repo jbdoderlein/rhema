@@ -225,6 +225,14 @@ pub struct HostAgentConfig {
     /// executor, no providers configured) advertises nothing, the
     /// same rule [`vision`](Self::vision) follows.
     pub websearch: Option<String>,
+    /// The prompt section documenting the wired
+    /// [`decision`](rhema_bash::decision) macro, the `decide` bash
+    /// function's documentation, produced by the frontend's
+    /// provisioning and passed verbatim. `None` renders no section: a
+    /// frontend that wired nothing (a sandbox session, no decision
+    /// providers configured) advertises nothing, the same rule
+    /// [`vision`](Self::vision) follows.
+    pub decision: Option<String>,
     /// Prompt sections this crate does not name: one template variable
     /// per entry, values as JSON. The renderer places each exactly as it
     /// places the named sections above, and an entry that reuses one of
@@ -318,6 +326,7 @@ impl HostAgentConfig {
             vision: None,
             jobs: None,
             websearch: None,
+            decision: None,
             sections: std::collections::BTreeMap::new(),
             home: None,
         }

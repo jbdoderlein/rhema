@@ -60,6 +60,7 @@ pub mod args;
 pub mod bundled;
 pub mod commands;
 pub mod cursor;
+pub(crate) mod decision_wire;
 pub mod events;
 pub mod icons;
 pub mod jobs;

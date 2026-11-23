@@ -160,6 +160,44 @@ When the agent delegates, the subagent runs its own conversation with the same w
 
 While a subagent works, the status strip pins a live line under the spinner, the robot badge, the subagent's name, its phase (`thinking`, `running`, `writing output`), the context its current model call carries against its model's window, the cost of everything its calls have spent so far, and its age. Its transcript row reads as delegation too: the robot badge, then the subagent and the task's first line. With the Nerd Font icon flavor the badge is the robot glyph; the plain flavor marks it with `@`.
 
+### Decision models
+
+The agent's shell has a `decide` function for the judgments a turn needs before it acts: is this message urgent, which team handles it, how severe is the bug. A decision model (TypeSafe's Jev, Cloudflare's Clef, or any of the forty-odd System One models OpenRouter routes to) answers such typed questions with calibrated probabilities in one pass and generates no text, so a question costs one short command instead of a reasoning turn. Three kinds: `noul` (the probability a yes/no statement is true), `choice` (one of the options you name, with a probability per option), `score` (a position on an ordered rubric):
+
+```
+decide noul "my order never arrived, I want a refund now" "Does the customer ask for a person?"
+decide choice "my order never arrived" "Which team handles this" billing="Payments and refunds" logistics="Shipping"
+decide score "checkout has failed for every customer for an hour" "Customer impact" None One-order Many-orders
+decide < request.json          # several questions over one state, or a structured state
+```
+
+Each answer comes back as one line: the pick, the distribution in brackets, the confidence where the model reports one. `--json` (before the verb) prints the raw response. The function appears only when the profile has a provider; the prompt's `Decision models` section documents it then.
+
+A profile holds any number of named decision instances under `decision:` and names the one `decide` asks (`instance`; unset, the first). There is no fallback from one vendor to another, and no flag picks another per call. Keys follow the same tiers as every other key (environment, keychain, stored literal):
+
+```yaml
+profiles:
+  personal:
+    decision:
+      instance: jev                 # the default among instances
+      instances:
+        jev:
+          provider: jev
+          api_key: ...                # or secret_ref from the keychain
+          model: jev-latest           # or jev-preview, a pinned version
+        clef:
+          provider: clef
+          api_key: ...                # a Workers AI API token
+          account_id: ...             # the account the model runs on
+          model: clef-flash           # clef (27B, default) or clef-flash (9B)
+        router:
+          provider: openrouter         # the aggregator: one key to Jev, Clef and 40-odd others
+          api_key: ...
+          model: typesafe/jev-1.14     # any slug its catalog lists under output_modalities=decisions
+```
+
+A `base_url` on a Jev instance points the call at any server that speaks the same `/v1/systemone` wire (Ollaya, vLLM, SGLang, llama.cpp serving Clef or another open decision model). Without a `decision` section the environment serves: `TYPESAFE_API_KEY`, `CLOUDFLARE_AUTH_TOKEN` plus `CLOUDFLARE_ACCOUNT_ID`, or `OPENROUTER_API_KEY`, the first that resolves. Sandboxed sessions wire nothing, since their shell cannot reach this host's keys. `specs/rhema-decision.md` is the design.
+
 ### Where bash runs
 
 The `bash` tool can run somewhere other than your host. The profile's `sandbox.kind` in `config.yaml` picks where, and `RHEMA_SANDBOX` overrides the stored kind the same way `RHEMA_PROVIDER` does. Six kinds:

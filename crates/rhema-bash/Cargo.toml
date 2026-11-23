@@ -1,6 +1,6 @@
 [package]
 name = "rhema-bash"
-description = "The bash tool and the macros that ride it: the approval-gated shell, its executor seam, skills via cat, and the see, job, and search shell functions"
+description = "The bash tool and the macros that ride it: the approval-gated shell, its executor seam, and the see, job, search, and decide shell functions"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

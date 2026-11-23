@@ -266,6 +266,16 @@ pub enum Command {
         #[arg(allow_hyphen_values = true, trailing_var_arg = true)]
         args: Vec<std::ffi::OsString>,
     },
+    /// The pass-through that makes the agent shell's `decide` macro
+    /// work: `rhema __decision …` execs this binary in the decision
+    /// CLI, which asks the session profile's decision provider and
+    /// prints the answers. Outside a wired shell it exits 4.
+    #[command(name = "__decision")]
+    Decision {
+        /// The CLI's own argv, passed through untouched.
+        #[arg(allow_hyphen_values = true, trailing_var_arg = true)]
+        args: Vec<std::ffi::OsString>,
+    },
     /// The catch-all the init file's stubs land in: `rhema __server
     /// <name> …` execs this binary with `__server` as the first
     /// token, and any other unrecognized subcommand follows the same

@@ -16,8 +16,10 @@
 //!   and reads on a later turn
 //! - [`websearch`]: the `search` macro: ranked web results as shell
 //!   output, providers per profile tried in order
-//! - [`init`]: the one `BASH_ENV` init-file provisioner the three
-//!   macros and the MCP bridge share
+//! - [`decision`]: the `decide` macro: a decision model's typed
+//!   answers as shell output, one provider and model per profile
+//! - [`init`]: the one `BASH_ENV` init-file provisioner the macros
+//!   and the MCP bridge share
 //!
 //! # Consumers
 //!
@@ -29,6 +31,7 @@
 #![forbid(unsafe_code)]
 
 pub mod approval;
+pub mod decision;
 pub mod exec;
 pub mod init;
 pub mod jobs;

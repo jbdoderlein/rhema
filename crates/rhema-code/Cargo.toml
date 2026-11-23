@@ -108,6 +108,10 @@ openssl = { version = "0.10", features = ["vendored"], optional = true }
 # registry, and the profile assembly the __search mode runs
 rhema-websearch = { path = "../rhema-websearch", version = "0.4.2", default-features = false }
 rhema-websearch-registry = { path = "../rhema-websearch-registry", version = "0.4.2" }
+# The decide macro's fleet: the seam and the profile-to-chain assembly
+# the __decision mode runs (the adapters ride behind the registry)
+rhema-decision = { path = "../rhema-decision", version = "0.4.2", default-features = false }
+rhema-decision-registry = { path = "../rhema-decision-registry", version = "0.4.2" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 rhema-mcp = { version = "0.4.2", path = "../rhema-mcp" }
 serde_yaml.workspace = true
@@ -119,6 +123,8 @@ tempfile = "3"
 [dev-dependencies]
 # The __search mode tests drive a scripted chain
 rhema-websearch = { path = "../rhema-websearch", version = "0.4.2", features = ["mock"] }
+# The __decision mode tests drive a scripted chain
+rhema-decision = { path = "../rhema-decision", version = "0.4.2", features = ["mock"] }
 # The sandbox tests drive the scripted sandbox
 rhema-sandbox = { path = "../rhema-sandbox", features = ["mock"] }
 tempfile = "3"

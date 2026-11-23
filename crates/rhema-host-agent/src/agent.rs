@@ -129,7 +129,7 @@ pub fn stamped_system_with_skills(
 /// Sections travel as pairs (`("environment", json!("- OS: linux"))`),
 /// not as parameters, so the set is the caller's: the standard ones a
 /// frontend renders (`environment`, `user`, `vision`, `jobs`,
-/// `websearch`, `mcp`) and any a frontend of its own adds (`hear`, say)
+/// `websearch`, `decision`, `mcp`) and any a frontend of its own adds (`hear`, say)
 /// take the same path. The template decides whether and where each
 /// appears, and a section that is absent renders as an undefined
 /// variable, which is to say nothing.
@@ -148,7 +148,7 @@ pub fn stamped_system_with_sections(
         .map_err(HostAgentError::from)
 }
 
-/// The prompt sections a config carries, in one list: the five the
+/// The prompt sections a config carries, in one list: the six the
 /// config names, then the MCP rows the wire step produced, then
 /// [`HostAgentConfig::sections`], the caller's own.
 ///
@@ -167,6 +167,7 @@ fn config_sections<'a>(
         ("vision", config.vision.as_deref()),
         ("jobs", config.jobs.as_deref()),
         ("websearch", config.websearch.as_deref()),
+        ("decision", config.decision.as_deref()),
     ] {
         if let Some(text) = text {
             sections.push((name, serde_json::json!(text)));
@@ -1148,6 +1149,7 @@ mod extra_tools_tests {
             vision: Some("see".to_owned()),
             jobs: Some("job".to_owned()),
             websearch: Some("search".to_owned()),
+            decision: Some("decide".to_owned()),
             sections: std::collections::BTreeMap::from([(
                 "hear".to_owned(),
                 serde_json::json!("hear"),
@@ -1176,6 +1178,7 @@ mod extra_tools_tests {
                 "vision",
                 "jobs",
                 "websearch",
+                "decision",
                 "mcp",
                 "hear"
             ]
@@ -1186,6 +1189,7 @@ mod extra_tools_tests {
         let prompt =
             stamped_system_with_sections(None, &std::env::temp_dir(), &[], &[], &sections).unwrap();
         assert!(prompt.contains("## Web search"), "{prompt}");
+        assert!(prompt.contains("## Decision models"), "{prompt}");
     }
 }
 

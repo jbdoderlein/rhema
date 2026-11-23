@@ -147,6 +147,82 @@ pub struct ProviderInstance {
     pub api: Option<ProviderApi>,
 }
 
+/// The two fields the literal-to-keychain migration touches, so the
+/// three instance kinds (provider, web search, decision) share one
+/// loop body instead of three copies.
+trait KeyedInstance {
+    /// The literal `api_key`, when the file holds one.
+    fn literal_key(&self) -> Option<String>;
+    /// The keychain entry's id, when one is referenced.
+    fn secret_ref(&self) -> Option<String>;
+    /// Records a successful move: the id is the key's new home, the
+    /// literal is gone.
+    fn set_moved(&mut self, id: String);
+}
+
+impl KeyedInstance for ProviderInstance {
+    fn literal_key(&self) -> Option<String> {
+        self.api_key.clone()
+    }
+    fn secret_ref(&self) -> Option<String> {
+        self.secret_ref.clone()
+    }
+    fn set_moved(&mut self, id: String) {
+        self.secret_ref = Some(id);
+        self.api_key = None;
+    }
+}
+
+impl KeyedInstance for WebSearchInstance {
+    fn literal_key(&self) -> Option<String> {
+        self.api_key.clone()
+    }
+    fn secret_ref(&self) -> Option<String> {
+        self.secret_ref.clone()
+    }
+    fn set_moved(&mut self, id: String) {
+        self.secret_ref = Some(id);
+        self.api_key = None;
+    }
+}
+
+impl KeyedInstance for DecisionInstance {
+    fn literal_key(&self) -> Option<String> {
+        self.api_key.clone()
+    }
+    fn secret_ref(&self) -> Option<String> {
+        self.secret_ref.clone()
+    }
+    fn set_moved(&mut self, id: String) {
+        self.secret_ref = Some(id);
+        self.api_key = None;
+    }
+}
+
+/// One literal-to-keychain move, the body every `migrate_secrets`
+/// loop shares: a blank key moves nothing, a keychain that refuses
+/// leaves the literal in place, a keychain that accepts leaves the
+/// `secret_ref`. Returns 1 when a key moved.
+fn migrate_instance_key(instance: &mut impl KeyedInstance, secrets: &dyn SecretStore) -> usize {
+    let Some(key) = instance
+        .literal_key()
+        .map(|key| key.trim().to_owned())
+        .filter(|key| !key.is_empty())
+    else {
+        return 0;
+    };
+    let id = instance
+        .secret_ref()
+        .clone()
+        .unwrap_or_else(crate::secrets::fresh_id);
+    if secrets.set(&id, &key).is_ok() {
+        instance.set_moved(id);
+        1
+    } else {
+        0
+    }
+}
+
 impl fmt::Debug for ProviderInstance {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ProviderInstance")
@@ -229,6 +305,161 @@ fn stored_websearch_key(
         .clone()
         .map(|key| key.trim().to_owned())
         .filter(|key| !key.is_empty())
+}
+
+/// The environment variable naming the Cloudflare account a Clef
+/// instance runs on. The account id is not a secret, but it rides the
+/// same tiers as the key so a CI machine sets one pair of variables
+/// and nothing else (`specs/rhema-decision.md` §3).
+pub const CLOUDFLARE_ACCOUNT_ENV: &str = "CLOUDFLARE_ACCOUNT_ID";
+
+/// One decision model instance: which vendor, which of its models,
+/// and the key, the [`ProviderInstance`] twin with the two fields the
+/// decision vendors need (a model, an account id). A profile's
+/// [`DecisionSettings`] holds any number, a Jev key and a work and a
+/// personal Clef account, a vendor and a self-hosted System One
+/// server, an OpenRouter key beside the vendor's own, and `decide`
+/// asks the one the section's `instance` names, with no fallback from
+/// one vendor to another.
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "snake_case", deny_unknown_fields)]
+pub struct DecisionInstance {
+    /// Which adapter serves this instance: `jev` (TypeSafe),
+    /// `clef` (Cloudflare Workers AI) or `openrouter` (the
+    /// aggregator's Decisions route, which serves both and forty-odd
+    /// other System One models under one key). Stored as given,
+    /// unknown spellings are the consumer's to resolve or reject (the
+    /// registry does, at use time, not load time).
+    pub provider: String,
+    /// The API key (Jev, OpenRouter) or Workers AI API token (Clef),
+    /// when the keychain does not hold it. Environment variables
+    /// still win at use time.
+    pub api_key: Option<String>,
+    /// The keychain entry holding the key, when it is not in this
+    /// file: an opaque id under the frontend's keychain service,
+    /// resolved through the [`secrets`] seam. Written by
+    /// [`Profile::place_decision_key`] and
+    /// [`Settings::migrate_secrets`]; a literal `api_key` and a live
+    /// `secret_ref` never hold the same key at rest. Two instances
+    /// may share one `secret_ref`: one Jev key, `jev-latest` and
+    /// `jev-preview` as two instances to compare.
+    pub secret_ref: Option<String>,
+    /// Which of the vendor's models to ask. `jev-latest` (the moving
+    /// alias) when unset for Jev; `jev-preview` or a pinned version to
+    /// compare runs. `clef` (the 27B model, the default) or
+    /// `clef-flash` (the 9B one) for Clef, where the model is also the
+    /// route. A slug for OpenRouter, `typesafe/jev-1.14` when unset;
+    /// any model its catalog lists under `output_modalities=decisions`
+    /// (`cloudflare/clef-flash`, `~typesafe/jev-latest`, a `:free`
+    /// one) goes.
+    pub model: Option<String>,
+    /// The Cloudflare account id, read by Clef only: the account the
+    /// model runs on. [`CLOUDFLARE_ACCOUNT_ENV`] wins at use time.
+    pub account_id: Option<String>,
+    /// The API root to call instead of the vendor's: a self-hosted
+    /// System One server for Jev (Ollaya, vLLM, SGLang, llama.cpp all
+    /// serve `/v1/systemone`), the Workers AI root for Clef, the
+    /// OpenRouter root for an OpenRouter instance. Unset means the
+    /// vendor's own.
+    pub base_url: Option<String>,
+}
+
+impl fmt::Debug for DecisionInstance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DecisionInstance")
+            .field("provider", &self.provider)
+            .field("api_key", &redacted(&self.api_key))
+            .field("secret_ref", &self.secret_ref)
+            .field("model", &self.model)
+            .field("account_id", &self.account_id)
+            .field("base_url", &self.base_url)
+            .finish()
+    }
+}
+
+impl DecisionInstance {
+    /// The key this instance serves: the vendor kind's environment
+    /// variables first, then the stored key, keychain, then literal.
+    /// Whitespace-only values count as unset at every tier, the
+    /// provider-instance rule.
+    pub fn api_key(&self, secrets: Option<&dyn SecretStore>) -> Option<String> {
+        resolve_key(
+            |name| std::env::var(name).ok(),
+            decision_env_names(&self.provider),
+            stored_decision_key(self, secrets),
+        )
+    }
+
+    /// The account this instance runs on, Clef only:
+    /// [`CLOUDFLARE_ACCOUNT_ENV`] when set, else the stored id.
+    /// Whitespace-only values count as unset.
+    pub fn account_id(&self) -> Option<String> {
+        resolve_key(
+            |name| std::env::var(name).ok(),
+            &[CLOUDFLARE_ACCOUNT_ENV],
+            self.account_id.clone(),
+        )
+    }
+}
+
+/// The stored key of one decision instance without the environment
+/// tier: the keychain entry `secret_ref` names, then the literal. A
+/// store that cannot be reached reads as "not in the store", the
+/// next tier serves, never a lost credential.
+fn stored_decision_key(
+    instance: &DecisionInstance,
+    secrets: Option<&dyn SecretStore>,
+) -> Option<String> {
+    if let (Some(store), Some(id)) = (secrets, instance.secret_ref.as_deref())
+        && let Ok(Some(key)) = store.get(id)
+    {
+        let trimmed = key.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_owned());
+        }
+    }
+    instance
+        .api_key
+        .clone()
+        .map(|key| key.trim().to_owned())
+        .filter(|key| !key.is_empty())
+}
+
+/// The profile's decision models, the `decision` section: the named
+/// instances and the one `decide` asks by default, the turn
+/// providers' shape (`instances` plus `instance`) under one heading.
+/// [`Profile::active_decision_instance`] is the rule, the
+/// [`Profile::active_instance`] twin with the kind riding the
+/// instance. Keys are secrets at rest and redact in [`Debug`].
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "snake_case", deny_unknown_fields)]
+pub struct DecisionSettings {
+    /// The name of the default instance in [`DecisionSettings::instances`],
+    /// the one `decide` asks. Must name an instance to count; unset
+    /// or dangling, the first instance by name is the default, the
+    /// [`Profile::instance`] rule. Absent from the file while unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instance: Option<String>,
+    /// The instances, keyed by a user-chosen name: the
+    /// [`ProviderInstance`] twin with a model and, for Clef, an
+    /// account id. Two may share a `secret_ref` (one key, two models
+    /// to compare). Absent from the file while empty; a profile
+    /// holding none is served by the environment tier.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub instances: BTreeMap<String, DecisionInstance>,
+}
+
+impl DecisionSettings {
+    /// The instance asked by default: the one [`Self::instance`]
+    /// names when it exists, else the first by name. `None` when the
+    /// section holds no instance.
+    pub fn active_instance(&self) -> Option<(&str, &DecisionInstance)> {
+        let name = match self.instance.as_deref() {
+            Some(name) if self.instances.contains_key(name) => name,
+            _ => self.instances.keys().next()?,
+        };
+        Some((name, &self.instances[name]))
+    }
 }
 
 /// One named place `bash` can run: a user-chosen name over a kind and
@@ -390,6 +621,17 @@ pub struct Profile {
     /// inert. Absent from the file while empty.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub websearch_order: Vec<String>,
+    /// The decision models this profile's agents may ask through
+    /// `decide`: the named instances and the default, the
+    /// [`DecisionSettings`] section. Per profile by design, work and
+    /// personal carry different vendors and keys. Absent from the
+    /// file while unset, and then the environment tier serves
+    /// (`TYPESAFE_API_KEY`, `CLOUDFLARE_AUTH_TOKEN` plus
+    /// `CLOUDFLARE_ACCOUNT_ID`, or `OPENROUTER_API_KEY`, the first
+    /// that resolves); a present section holding no instance is served
+    /// the same way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision: Option<DecisionSettings>,
 }
 
 impl fmt::Debug for Profile {
@@ -406,6 +648,7 @@ impl fmt::Debug for Profile {
             .field("mcp_servers", &self.mcp_servers.keys().collect::<Vec<_>>())
             .field("websearch", &self.websearch)
             .field("websearch_order", &self.websearch_order)
+            .field("decision", &self.decision)
             .finish()
     }
 }
@@ -765,6 +1008,64 @@ impl Profile {
         }
     }
 
+    /// The decision instance `decide` asks by default:
+    /// [`DecisionSettings::active_instance`] on the profile's
+    /// section, the [`Profile::active_instance`] rule with the kind
+    /// riding the instance instead of standing beside it. `None`
+    /// when the profile holds no instance, and then the environment
+    /// tier serves.
+    pub fn active_decision_instance(&self) -> Option<(&str, &DecisionInstance)> {
+        self.decision.as_ref()?.active_instance()
+    }
+
+    /// Places a just-entered key on the named decision instance:
+    /// the keychain, when the store accepts it, the instance then
+    /// carries only its `secret_ref`, else the literal,
+    /// [`Profile::place_key`]'s rule. `None` when no instance bears
+    /// `name`.
+    pub fn place_decision_key(
+        &mut self,
+        name: &str,
+        key: &str,
+        secrets: Option<&dyn SecretStore>,
+    ) -> Option<KeyLocation> {
+        let instance = self.decision.as_mut()?.instances.get_mut(name)?;
+        let trimmed = key.trim();
+        if trimmed.is_empty() {
+            if let (Some(store), Some(id)) = (secrets, instance.secret_ref.take()) {
+                let _ = store.delete(&id);
+            }
+            instance.api_key = None;
+            return Some(KeyLocation::File);
+        }
+        if secrets.is_none() {
+            instance.secret_ref = None;
+            instance.api_key = Some(trimmed.to_owned());
+            return Some(KeyLocation::File);
+        }
+        let store = secrets.expect("checked above");
+        let id = instance
+            .secret_ref
+            .clone()
+            .unwrap_or_else(crate::secrets::fresh_id);
+        match store.set(&id, trimmed) {
+            Ok(()) => {
+                instance.secret_ref = Some(id);
+                instance.api_key = None;
+                Some(KeyLocation::Keychain)
+            }
+            // The keychain refused: the file keeps the key, the
+            // behavior it has always had. Nothing is lost.
+            Err(_) => {
+                if let Some(old) = instance.secret_ref.take() {
+                    let _ = store.delete(&old);
+                }
+                instance.api_key = Some(trimmed.to_owned());
+                Some(KeyLocation::File)
+            }
+        }
+    }
+
     /// The base URL an instance serves: `LLAMA_CPP_URL` over the stored
     /// URL for llama.cpp; the stored base for OpenAI-compatible, Z.ai,
     /// and OpenCode instances (the caller defaults each kind, so its own
@@ -1082,6 +1383,19 @@ pub fn websearch_env_names(kind: &str) -> &'static [&'static str] {
     }
 }
 
+/// The environment variable names a decision kind's key rides: the
+/// vendors' own spellings, the documented name first, the common one
+/// second (`specs/rhema-decision.md` §3). Clef's account id rides
+/// [`CLOUDFLARE_ACCOUNT_ENV`] beside them.
+pub fn decision_env_names(kind: &str) -> &'static [&'static str] {
+    match kind {
+        "jev" => &["TYPESAFE_API_KEY"],
+        "clef" => &["CLOUDFLARE_AUTH_TOKEN", "CLOUDFLARE_API_TOKEN"],
+        "openrouter" => &["OPENROUTER_API_KEY"],
+        _ => &[],
+    }
+}
+
 /// The framework's own section of the settings: what any frontend
 /// built on rhema must be able to store and read, whatever document
 /// it co-locates them in. Everything beyond this, themes, palettes,
@@ -1203,22 +1517,11 @@ impl Settings {
                 }
             }
             for instance in profile.websearch.values_mut() {
-                let Some(key) = instance
-                    .api_key
-                    .clone()
-                    .map(|key| key.trim().to_owned())
-                    .filter(|key| !key.is_empty())
-                else {
-                    continue;
-                };
-                let id = instance
-                    .secret_ref
-                    .clone()
-                    .unwrap_or_else(crate::secrets::fresh_id);
-                if secrets.set(&id, &key).is_ok() {
-                    instance.secret_ref = Some(id);
-                    instance.api_key = None;
-                    moved += 1;
+                moved += migrate_instance_key(instance, secrets);
+            }
+            if let Some(decision) = profile.decision.as_mut() {
+                for instance in decision.instances.values_mut() {
+                    moved += migrate_instance_key(instance, secrets);
                 }
             }
         }
@@ -1902,6 +2205,7 @@ profiles:
             mcp_servers: BTreeMap::new(),
             websearch: BTreeMap::new(),
             websearch_order: Vec::new(),
+            decision: None,
             model: Some("gpt-5".into()),
             color: None,
             thinking: None,
@@ -1942,6 +2246,7 @@ profiles:
                     mcp_servers: BTreeMap::new(),
                     websearch: BTreeMap::new(),
                     websearch_order: Vec::new(),
+                    decision: None,
                     provider: Some("llama-cpp".into()),
                     instance: Some("home server".into()),
                     instances: BTreeMap::from([
@@ -3221,5 +3526,225 @@ mod settings_document_tests {
         assert_eq!(instance.provider, "brave");
         let err = serde_yaml::from_str::<WebSearchInstance>("provider: brave\napi: nope\n");
         assert!(err.is_err(), "unknown keys are loud");
+    }
+
+    // ---- decision model instances ------------------------------
+
+    fn decision_instance(provider: &str) -> DecisionInstance {
+        DecisionInstance {
+            provider: provider.into(),
+            api_key: None,
+            secret_ref: None,
+            model: None,
+            account_id: None,
+            base_url: None,
+        }
+    }
+
+    /// A `decision` section holding `entries`, keyed by name.
+    fn decision_settings(entries: &[(&str, &str)]) -> DecisionSettings {
+        DecisionSettings {
+            instance: None,
+            instances: entries
+                .iter()
+                .map(|(name, kind)| ((*name).to_owned(), decision_instance(kind)))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn the_default_instance_is_the_named_one_else_the_first() {
+        let mut profile = Profile::default();
+        assert!(profile.active_decision_instance().is_none(), "none stored");
+        let entries = [("clef-work", "clef"), ("jev-main", "jev")];
+        profile.decision = Some(decision_settings(&entries));
+        // Unset: the first instance, by name.
+        let (name, _) = profile.active_decision_instance().unwrap();
+        assert_eq!(name, "clef-work");
+        // Named: that one, whichever the order says.
+        profile.decision.as_mut().unwrap().instance = Some("jev-main".into());
+        let (name, _) = profile.active_decision_instance().unwrap();
+        assert_eq!(name, "jev-main");
+        // Dangling: does not count, the first again.
+        profile.decision.as_mut().unwrap().instance = Some("ghost".into());
+        let (name, _) = profile.active_decision_instance().unwrap();
+        assert_eq!(name, "clef-work");
+        // An empty section is no instance: the environment tier.
+        profile.decision = Some(DecisionSettings::default());
+        assert!(profile.active_decision_instance().is_none());
+    }
+
+    #[test]
+    fn the_profile_file_carries_the_section_only_when_filled() {
+        let mut profile = Profile::default();
+        let bare = serde_yaml::to_string(&profile).unwrap();
+        assert!(!bare.contains("decision"), "{bare}");
+        profile.decision = Some(decision_settings(&[("jev-main", "jev")]));
+        let text = serde_yaml::to_string(&profile).unwrap();
+        assert!(text.contains("decision:\n"), "{text}");
+        assert!(text.contains("  instances:\n"), "{text}");
+        assert!(text.contains("    jev-main:\n"), "{text}");
+        assert!(!text.contains("\n  instance:"), "unset: {text}");
+        profile.decision.as_mut().unwrap().instance = Some("jev-main".into());
+        let text = serde_yaml::to_string(&profile).unwrap();
+        assert!(text.contains("  instance: jev-main\n"), "{text}");
+        let back: Profile = serde_yaml::from_str(&text).unwrap();
+        assert_eq!(back.decision, profile.decision);
+        // A nulled section is an absent one.
+        let nulled: Profile = serde_yaml::from_str("decision: null\n").unwrap();
+        assert!(nulled.decision.is_none());
+        // The section is strict: an entry's key spelled at the
+        // section level, or a section key inside an entry, is loud.
+        let err = serde_yaml::from_str::<Profile>("decision:\n  api_key: k\n").unwrap_err();
+        assert!(format!("{err}").contains("unknown field"), "{err}");
+        let err = serde_yaml::from_str::<Profile>(
+            "decision:\n  instances:\n    jev:\n      instance: x\n",
+        )
+        .unwrap_err();
+        assert!(format!("{err}").contains("unknown field"), "{err}");
+    }
+
+    #[test]
+    fn the_decision_key_tiers_env_then_keychain_then_literal() {
+        let env = |name: &str| (name == "TYPESAFE_API_KEY").then(|| " env-key ".to_owned());
+        assert_eq!(
+            resolve_key(env, decision_env_names("jev"), Some(" file-key ".into())).as_deref(),
+            Some("env-key")
+        );
+        let mut instance = decision_instance("jev");
+        instance.api_key = Some(" file-key ".into());
+        let store = VolatileSecretStore::new();
+        store.set("id-1", " chain-key ").unwrap();
+        instance.secret_ref = Some("id-1".into());
+        assert_eq!(instance.api_key(Some(&store)).as_deref(), Some("chain-key"));
+        instance.secret_ref = Some("id-missing".into());
+        assert_eq!(instance.api_key(Some(&store)).as_deref(), Some("file-key"));
+        instance.api_key = Some("   ".into());
+        assert_eq!(instance.api_key(None), None, "blank is unset");
+    }
+
+    #[test]
+    fn the_clef_account_reads_the_environment_then_the_file() {
+        let mut instance = decision_instance("clef");
+        instance.account_id = Some(" acc-file ".into());
+        // The environment tier, via the pure resolver the method uses.
+        let env = |name: &str| (name == CLOUDFLARE_ACCOUNT_ENV).then(|| "acc-env".to_owned());
+        assert_eq!(
+            resolve_key(env, &[CLOUDFLARE_ACCOUNT_ENV], instance.account_id.clone()).as_deref(),
+            Some("acc-env")
+        );
+        // With no variable set, the file's id, trimmed.
+        let resolved = instance.account_id();
+        assert!(
+            resolved.as_deref() == Some("acc-file") || resolved.is_none(),
+            "the process environment decides between the two"
+        );
+        assert!(decision_instance("jev").account_id().is_none());
+    }
+
+    #[test]
+    fn place_decision_key_prefers_the_keychain_and_falls_back_to_the_file() {
+        let mut profile = Profile::default();
+        assert_eq!(
+            profile.place_decision_key("jev", "k", None),
+            None,
+            "no section"
+        );
+        profile.decision = Some(decision_settings(&[("jev", "jev")]));
+        assert_eq!(profile.place_decision_key("ghost", "k", None), None);
+        let store = VolatileSecretStore::new();
+        assert_eq!(
+            profile.place_decision_key("jev", " sk-new ", Some(&store)),
+            Some(KeyLocation::Keychain)
+        );
+        let instance = &profile.decision.as_ref().unwrap().instances["jev"];
+        assert_eq!(instance.api_key, None);
+        let id = instance.secret_ref.clone().unwrap();
+        assert_eq!(store.get(&id).unwrap().as_deref(), Some("sk-new"));
+        assert_eq!(
+            profile.place_decision_key("jev", " sk-file ", None),
+            Some(KeyLocation::File)
+        );
+        assert_eq!(
+            profile.decision.as_ref().unwrap().instances["jev"]
+                .api_key
+                .as_deref(),
+            Some("sk-file")
+        );
+    }
+
+    #[test]
+    fn migrate_secrets_moves_the_decision_literals_into_the_keychain() {
+        let mut settings = Settings::default();
+        let mut profile = Profile::default();
+        let mut decision = decision_settings(&[("clef-work", "clef"), ("jev", "jev")]);
+        let clef = decision.instances.get_mut("clef-work").unwrap();
+        clef.api_key = Some("plain".into());
+        clef.account_id = Some("acc".into());
+        // A second literal moves too, and a keyless one costs nothing.
+        decision.instances.get_mut("jev").unwrap().api_key = Some(" ".into());
+        profile.decision = Some(decision);
+        settings.profiles.insert("personal".into(), profile);
+        let store = VolatileSecretStore::new();
+        assert_eq!(settings.migrate_secrets(&store), 1);
+        let instance = &settings.profiles["personal"]
+            .decision
+            .as_ref()
+            .unwrap()
+            .instances["clef-work"];
+        assert_eq!(instance.api_key, None);
+        assert_eq!(
+            instance.account_id.as_deref(),
+            Some("acc"),
+            "not a secret, kept"
+        );
+        let id = instance.secret_ref.clone().unwrap();
+        assert_eq!(store.get(&id).unwrap().as_deref(), Some("plain"));
+        assert_eq!(settings.migrate_secrets(&store), 0, "idempotent");
+    }
+
+    #[test]
+    fn decision_env_names_follow_the_vendors() {
+        assert_eq!(decision_env_names("jev"), &["TYPESAFE_API_KEY"]);
+        assert_eq!(
+            decision_env_names("clef"),
+            &["CLOUDFLARE_AUTH_TOKEN", "CLOUDFLARE_API_TOKEN"]
+        );
+        // The turn providers' OpenRouter spelling, the same key.
+        assert_eq!(decision_env_names("openrouter"), &["OPENROUTER_API_KEY"]);
+        let empty: &[&str] = &[];
+        assert_eq!(decision_env_names("kagi"), empty);
+        assert_eq!(CLOUDFLARE_ACCOUNT_ENV, "CLOUDFLARE_ACCOUNT_ID");
+    }
+
+    #[test]
+    fn the_decision_instance_debug_redacts_the_key_only() {
+        let mut instance = decision_instance("clef");
+        instance.api_key = Some("cf-secret".into());
+        instance.account_id = Some("acc-1".into());
+        let text = format!("{instance:?}");
+        assert!(!text.contains("cf-secret"), "{text}");
+        assert!(text.contains("acc-1"), "the account id is not a secret");
+        assert!(text.contains("[\u{2026}]"), "{text}");
+    }
+
+    #[test]
+    fn a_decision_entry_round_trips_and_rejects_unknown_fields() {
+        let text = "provider: clef\nmodel: clef-flash\naccount_id: acc\n";
+        let instance: DecisionInstance = serde_yaml::from_str(text).unwrap();
+        assert_eq!(instance.provider, "clef");
+        assert_eq!(instance.model.as_deref(), Some("clef-flash"));
+        assert_eq!(instance.account_id.as_deref(), Some("acc"));
+        let err = serde_yaml::from_str::<DecisionInstance>("provider: jev\napi: nope\n");
+        assert!(err.is_err(), "unknown keys are loud");
+        // An instance without the new fields, every config written
+        // before the section existed, reads as unset.
+        let bare: DecisionInstance = serde_yaml::from_str("provider: jev\n").unwrap();
+        assert_eq!(bare.model, None);
+        assert_eq!(bare.account_id, None);
+        assert_eq!(bare.base_url, None);
+        let routed: DecisionInstance =
+            serde_yaml::from_str("provider: jev\nbase_url: http://localhost:30000\n").unwrap();
+        assert_eq!(routed.base_url.as_deref(), Some("http://localhost:30000"));
     }
 }

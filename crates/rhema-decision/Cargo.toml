@@ -1,0 +1,34 @@
+[package]
+name = "rhema-decision"
+description = "Decision models for rhema agents: the DecisionProvider seam, the System One request and answer vocabulary, the fallback chain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# The request and the answers ride JSON: the System One wire shape is
+# the vocabulary's own serialization, and the state is any JSON value
+serde = { workspace = true }
+serde_json = { workspace = true }
+# dyn DecisionProvider: the chain holds boxed adapters
+async-trait = { workspace = true }
+# Typed decision errors
+thiserror = { workspace = true }
+# The per-attempt and whole-chain budgets are tokio sleeps and timeouts
+tokio = { workspace = true, features = ["time"] }
+
+[features]
+default = []
+# The scripted provider the chain tests and a frontend's offline tests
+# drive. A feature, not a dev-dependency, because downstream consumers
+# (the frontend's mode tests) need it in their dependency graphs too.
+mock = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints]
+workspace = true

@@ -68,6 +68,12 @@ Before you answer, check the skills list below in this priority order.
 
 {{ websearch }}
 {% endif %}
+{% if decision %}
+
+## Decision models
+
+{{ decision }}
+{% endif %}
 {% if mcp %}
 
 ## MCP servers

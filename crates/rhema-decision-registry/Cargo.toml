@@ -1,0 +1,33 @@
+[package]
+name = "rhema-decision-registry"
+description = "The decision fleet's name-to-adapter wiring and the profile-to-provider resolution"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# The Profile the chain assembles from and the SecretStore its keys
+# resolve through
+rhema-config = { path = "../rhema-config", version = "0.4.2" }
+rhema-decision = { path = "../rhema-decision", version = "0.4.2", default-features = false }
+rhema-decision-jev = { path = "../rhema-decision-jev", version = "0.4.2" }
+rhema-decision-clef = { path = "../rhema-decision-clef", version = "0.4.2" }
+rhema-decision-openrouter = { path = "../rhema-decision-openrouter", version = "0.4.2" }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+# In-process HTTP mock for the base-url routing test
+wiremock = "0.6"
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# The test seam: the base crate's scripted provider behind build_mock.
+mock = ["rhema-decision/mock"]

@@ -82,6 +82,19 @@ Rules:
     (`crates/rhema-websearch-tavily/`)
   - `websearch-registry`: the fleet's name-to-adapter wiring and the
     profile-to-chain assembly (`crates/rhema-websearch-registry/`)
+  - `decision`: the decision-model seam: the `DecisionProvider`
+    trait, the System One request and answer vocabulary, the one
+    validated call, and the text renderer (`crates/rhema-decision/`)
+  - `decision-jev`: the TypeSafe Jev adapter
+    (`crates/rhema-decision-jev/`)
+  - `decision-clef`: the Cloudflare Clef adapter
+    (`crates/rhema-decision-clef/`)
+  - `decision-openrouter`: the OpenRouter Decisions adapter (the
+    aggregator's route to Jev, Clef and forty-odd other System One
+    models) (`crates/rhema-decision-openrouter/`)
+  - `decision-registry`: the decision fleet's name-to-adapter wiring
+    and the profile-to-provider resolution
+    (`crates/rhema-decision-registry/`)
   - `mcp`: the MCP client extension: the protocol subset, the manager,
     the bridge, and the provisioned shell functions
     (`crates/rhema-mcp/`)
@@ -124,8 +137,8 @@ Rules:
     conventions (`Home`), and the `Store` seam a frontend implements
     (`crates/rhema-config/`)
   - `bash`: the bash tool and the macros that ride it: the
-    approval-gated shell, its executor seam, the `see`, `job`, and
-    `search` functions (`crates/rhema-bash/`)
+    approval-gated shell, its executor seam, the `see`, `job`,
+    `search`, and `decide` functions (`crates/rhema-bash/`)
   - `skills`: skill discovery: the markdown folders the cross-agent
     `.agents` convention and rhema's own tiers hold
     (`crates/rhema-skills/`)

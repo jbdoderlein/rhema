@@ -131,6 +131,15 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
             argv.extend(rest);
             std::process::exit(crate::search_wire::cli_run(&argv));
         }
+        // The decide macro's road: `decide …` in the agent shell execs
+        // `rhema __decision …`, whose exit code owns the process and
+        // whose stderr is the model's error text.
+        Some(crate::args::Command::Decision { args: rest }) => {
+            let mut argv = Vec::with_capacity(rest.len() + 1);
+            argv.push(std::ffi::OsString::from(rhema_bash::decision::MODE));
+            argv.extend(rest);
+            std::process::exit(crate::decision_wire::cli_run(&argv));
+        }
         // The stubs' road: `rhema __server …` and every unrecognized
         // subcommand go to the MCP CLI, whose exit code owns the
         // process. An unknown mode is its exit-2 usage error.

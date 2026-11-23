@@ -1073,7 +1073,8 @@ pub(crate) fn session_agent_config(
     let missing_tools = apply_prompt_sections(&mut config, options, sandboxed);
     // Jobs and vision: the same local-only gate, chained into one
     // `BASH_ENV` lineage. Jobs lands first, so the chain reads
-    // jobs -> vision -> MCP: each init file sources its predecessor by
+    // jobs -> vision -> search -> decision -> MCP: each init file
+    // sources its predecessor by
     // literal path and guards the failure, and every generated function
     // ends up defined whichever file the variable names.
     let jobs_wiring = (sandboxed.is_none())
@@ -1112,6 +1113,24 @@ pub(crate) fn session_agent_config(
         config.websearch = Some(wiring.section.to_owned());
     }
     let bash_env = search_wiring
+        .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
+        .or(bash_env);
+    // Decision: the lineage's fourth link, the same two gates as
+    // search (the sandbox, and a profile naming a provider at all).
+    // The provider the mode asks is resolved fresh per invocation;
+    // this wiring only decides the function and the section exist.
+    let decision_wiring = crate::decision_wire::wire_for_session(
+        session_key,
+        profile,
+        secrets.map(|secrets| secrets.as_ref()),
+        sandboxed,
+        bash_env.clone(),
+    );
+    if let Some(wiring) = &decision_wiring {
+        config.shell_env.extend(wiring.shell_env.clone());
+        config.decision = Some(wiring.section.to_owned());
+    }
+    let bash_env = decision_wiring
         .map(|wiring| std::ffi::OsString::from(wiring.init_path.display().to_string()))
         .or(bash_env);
     // MCP: the local-only wire, gated on the sandbox, a session

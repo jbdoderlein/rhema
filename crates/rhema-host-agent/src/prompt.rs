@@ -102,6 +102,10 @@ mod tests {
         let template = DEFAULT_SYSTEM_MD;
         assert!(template.contains("{% if websearch %}"), "{template}");
         assert!(template.contains("{{ websearch }}"), "{template}");
+        // The decision section rides the same conditional.
+        assert!(!bare.contains("Decision models"), "{bare}");
+        assert!(template.contains("{% if decision %}"), "{template}");
+        assert!(template.contains("{{ decision }}"), "{template}");
     }
 
     #[test]
