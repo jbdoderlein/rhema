@@ -64,6 +64,11 @@ CRATES=(
   rhema-websearch-tavily
   rhema-websearch-exa
   rhema-websearch-registry
+  rhema-decision
+  rhema-decision-jev
+  rhema-decision-clef
+  rhema-decision-openrouter
+  rhema-decision-registry
   rhema-subagents
 )
 
