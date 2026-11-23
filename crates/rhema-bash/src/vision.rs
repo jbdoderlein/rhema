@@ -4,7 +4,7 @@
 //! There is no native tool for this, images are shell data like any
 //! other, so the surface is a bash function the model pipes into:
 //!
-//! ```ignore
+//! ```sh
 //! curl -sL https://example.com/photo.png | see
 //! see screenshots/capture.png
 //! ```

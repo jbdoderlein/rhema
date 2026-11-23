@@ -6,7 +6,7 @@
 //! model's context. So the surface is a bash function, the same shape as
 //! [`crate::vision`]:
 //!
-//! ```ignore
+//! ```sh
 //! job run "npm run dev"
 //! job logs abc
 //! job stop abc

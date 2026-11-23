@@ -7,7 +7,7 @@
 //! other command's output, and the surface is a bash function the
 //! model calls directly:
 //!
-//! ```ignore
+//! ```sh
 //! decide noul "the order never arrived" "Does the customer want a person?"
 //! decide choice "the order never arrived" "Which team" billing=Payments shipping=Delivery
 //! decide <<'JSON'

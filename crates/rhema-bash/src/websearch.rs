@@ -5,7 +5,7 @@
 //! other shell output, so the surface is a bash function the model
 //! calls directly:
 //!
-//! ```ignore
+//! ```sh
 //! search "rust async book"
 //! search -n 5 --news "rust 1.90 release"
 //! ```
