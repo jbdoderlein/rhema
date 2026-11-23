@@ -41,7 +41,8 @@ pub enum DecisionError {
 
 impl DecisionError {
     /// Maps a vendor status to its class, the one mapping every
-    /// adapter repeats: 400 and 422 are [`Invalid`] with the body's
+    /// adapter repeats: 400 and 422 are
+    /// [`DecisionError::Invalid`] with the body's
     /// detail extracted ([`error_detail`]), 401 and 403 `Auth`, 429
     /// `RateLimited`, anything else `Http` with the same detail (a
     /// one-line body head when the body is not the vendor's JSON).

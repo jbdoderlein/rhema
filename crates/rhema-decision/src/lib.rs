@@ -41,7 +41,7 @@
 //! - [`error`]: the failure classes
 //! - [`provider`]: the adapter seam
 //! - [`call`]: the validated, budgeted call
-//! - [`render`]: the text a `decide` command prints
+//! - [`mod@render`]: the text a `decide` command prints
 //! - [`mock`]: the scripted provider (feature `mock`)
 
 #![forbid(unsafe_code)]
