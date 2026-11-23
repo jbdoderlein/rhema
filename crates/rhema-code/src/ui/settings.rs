@@ -2,8 +2,9 @@
 //! usage table and its k/M abbreviations.
 
 use super::dialogs::{
-    render_add_dialog, render_add_mcp_dialog, render_add_profile_dialog, render_add_sandbox_dialog,
-    render_add_websearch_dialog, render_instance_confirm, render_mcp_confirm,
+    render_add_decision_dialog, render_add_dialog, render_add_mcp_dialog,
+    render_add_profile_dialog, render_add_sandbox_dialog, render_add_websearch_dialog,
+    render_instance_confirm, render_mcp_confirm,
 };
 use super::*;
 
@@ -27,8 +28,10 @@ pub(crate) fn render_settings(
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    // The sidebar holds its longest label, "Decision models", with
+    // the marker and the padding.
     let [sidebar_area, page_area] =
-        Layout::horizontal([Constraint::Length(16), Constraint::Min(24)]).areas(inner);
+        Layout::horizontal([Constraint::Length(19), Constraint::Min(24)]).areas(inner);
     let [content_area, footer_area] =
         Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(page_area);
     // The content pane wraps at its true text width: two cells of
@@ -104,6 +107,7 @@ pub(crate) fn render_settings(
         || settings.mcp_dialog.is_some()
         || settings.mcp_confirm.is_some()
         || settings.websearch_confirm.is_some()
+        || settings.decision_confirm.is_some()
         || settings.instance_confirm.is_some();
     if modal {
         super::chrome::dim_backdrop(frame.buffer_mut(), theme);
@@ -120,6 +124,9 @@ pub(crate) fn render_settings(
     if let Some(dialog) = &settings.websearch_dialog {
         render_add_websearch_dialog(frame, dialog, theme);
     }
+    if let Some(dialog) = &settings.decision_dialog {
+        render_add_decision_dialog(frame, dialog, theme);
+    }
     if let Some(dialog) = &settings.mcp_dialog {
         render_add_mcp_dialog(frame, dialog, theme);
     }
@@ -127,6 +134,9 @@ pub(crate) fn render_settings(
         render_mcp_confirm(frame, name, theme);
     }
     if let Some(name) = &settings.websearch_confirm {
+        render_instance_confirm(frame, name, theme);
+    }
+    if let Some(name) = &settings.decision_confirm {
         render_instance_confirm(frame, name, theme);
     }
     if let Some(name) = &settings.instance_confirm {
@@ -713,7 +723,9 @@ pub(crate) fn settings_page(
             )
         }
         SettingsSection::WebSearch => {
-            if settings.websearch.is_empty() {
+            // The rows always carry their add row; empty means no
+            // provider above it.
+            if settings.websearch.iter().all(|row| row.add) {
                 lines.extend(settings_hint("no providers in this profile", theme, width));
                 lines.extend(settings_hint(
                     "the add row below installs one, or export a BRAVE_SEARCH_API_KEY / \
@@ -767,6 +779,68 @@ pub(crate) fn settings_page(
             (
                 lines,
                 footer("k up \u{b7} j down \u{b7} d removes \u{b7} the add row installs one"),
+                row_hits,
+            )
+        }
+        SettingsSection::Decision => {
+            if settings.decision.iter().all(|row| row.add) {
+                lines.extend(settings_hint(
+                    "no decision models in this profile",
+                    theme,
+                    width,
+                ));
+            }
+            let mut row_hits = Vec::new();
+            for (index, row) in settings.decision.iter().enumerate() {
+                // The add row is the sentinel closing the vec; the
+                // hand-built line below renders it, the loop draws
+                // instances only.
+                if row.add {
+                    continue;
+                }
+                let selected = index == settings.row;
+                row_hits.push((lines.len(), SettingsHit::PageRow(index)));
+                // The kind shows as stored, the file's spelling, the
+                // web search rows' rule.
+                let mut detail = format!("{} · {}", row.kind, row.model);
+                if let Some(url) = &row.base_url {
+                    detail.push_str(&format!(" · {url}"));
+                }
+                if !row.keyed {
+                    detail.push_str(" · no key");
+                }
+                if row.default {
+                    detail.push_str(" · default");
+                }
+                let line = Line::from(vec![
+                    super::chrome::marker(selected, theme),
+                    Span::raw(row.name.clone()).fg(theme.text),
+                    Span::raw(format!(" · {detail}")).fg(theme.text3),
+                ]);
+                // An endpoint makes a row longer than a narrow pane:
+                // it wraps, and the first line carries the click.
+                lines.extend(
+                    wrap_line(&line, width)
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, line)| settings_row(line, selected && index == 0, theme)),
+                );
+            }
+            let add = settings.decision.len().saturating_sub(1);
+            let selected = settings.row == add;
+            row_hits.push((lines.len(), SettingsHit::PageRow(add)));
+            lines.push(settings_row(
+                Line::from(vec![
+                    super::chrome::marker(selected, theme),
+                    Span::raw("+ Add a decision model...").fg(theme.text2),
+                ]),
+                selected,
+                theme,
+            ));
+            lines.push(Line::default());
+            (
+                lines,
+                footer("enter sets the default · d removes"),
                 row_hits,
             )
         }

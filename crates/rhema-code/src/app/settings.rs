@@ -44,6 +44,10 @@ impl App {
             &settings.stored.websearch,
             &settings.stored.websearch_order,
         );
+        settings.decision = crate::screens::decision_rows(
+            settings.stored.decision.as_ref(),
+            self.secrets.as_deref(),
+        );
         self.screen = Screen::Settings(Box::new(settings));
     }
 
@@ -469,6 +473,189 @@ impl App {
         self.refresh_websearch_page();
         self.transcript
             .push_notice(&format!("moved {name} in the search chain, saved"));
+    }
+
+    /// Rebuilds the Decision models page's snapshot from the config,
+    /// keeping the selection inside the shrunken list. A no-op when
+    /// the settings screen is not open.
+    pub(crate) fn refresh_decision_page(&mut self) {
+        let secrets = self.secrets.clone();
+        let Screen::Settings(settings) = &mut self.screen else {
+            return;
+        };
+        settings.decision_dialog = None;
+        settings.stored = self.config.effective(self.session_profile.as_deref());
+        settings.decision =
+            crate::screens::decision_rows(settings.stored.decision.as_ref(), secrets.as_deref());
+        let rows = settings.decision.len();
+        if settings.row >= rows {
+            settings.row = rows.saturating_sub(1);
+        }
+    }
+
+    /// Enter on the Decision models page's add row: the dialog opens,
+    /// refusing the profile's current instance names.
+    pub(crate) fn open_decision_dialog(&mut self) {
+        let Screen::Settings(settings) = &mut self.screen else {
+            return;
+        };
+        let taken = settings
+            .stored
+            .decision
+            .as_ref()
+            .map(|section| section.instances.keys().cloned().collect())
+            .unwrap_or_default();
+        settings.decision_dialog = Some(crate::screens::AddDecisionDialog::new(taken));
+    }
+
+    /// The add-instance dialog's accepted instance: it lands in the
+    /// profile's `decision` section, the key goes through
+    /// [`rhema_config::Profile::place_decision_key`] (keychain first,
+    /// the literal when no store accepts it), and the config
+    /// persists. The running agent rebuilds, because a first instance
+    /// flips the wiring gate: the function and the section exist from
+    /// the next turn.
+    pub(crate) fn submit_decision_provider(&mut self) -> Vec<Effect> {
+        let built = match &self.screen {
+            Screen::Settings(settings) => settings
+                .decision_dialog
+                .as_ref()
+                .and_then(|dialog| dialog.build().ok()),
+            _ => None,
+        };
+        let Some(built) = built else {
+            return Vec::new();
+        };
+        // The dialog dedupes against its opening snapshot; this is
+        // the belt for a path that should not exist.
+        if self
+            .effective()
+            .decision
+            .as_ref()
+            .is_some_and(|section| section.instances.contains_key(&built.name))
+        {
+            self.transcript
+                .push_notice(&format!("an instance named {} already exists", built.name));
+            return Vec::new();
+        }
+        let secrets = self.secrets.clone();
+        let mut location = None;
+        self.config
+            .set_for_profile(self.session_profile.as_deref(), |profile| {
+                let section = profile.decision.get_or_insert_with(Default::default);
+                section.instances.insert(
+                    built.name.clone(),
+                    rhema_config::DecisionInstance {
+                        provider: built.kind.to_owned(),
+                        api_key: None,
+                        secret_ref: None,
+                        model: None,
+                        account_id: built.account_id.clone(),
+                        base_url: built.base_url.clone(),
+                    },
+                );
+                location = profile.place_decision_key(&built.name, &built.key, secrets.as_deref());
+            });
+        if !self.save_config() {
+            return Vec::new();
+        }
+        self.refresh_decision_page();
+        let where_note = match location {
+            Some(rhema_config::KeyLocation::Keychain) => "the key went to the keychain",
+            _ => "the key stayed in the config file",
+        };
+        let _ = self.rebuild_live_agent(false);
+        self.transcript.push_notice(&format!(
+            "added {} ({}) to this profile, {where_note}, the agent rebuilt with it",
+            built.name, built.kind
+        ));
+        Vec::new()
+    }
+
+    /// `y` on the removal confirm: the instance leaves the profile's
+    /// section, the default goes with it when it was the one (the
+    /// first by name serves, [`rhema_config::DecisionSettings::active_instance`]'s
+    /// rule), an emptied section leaves the file, and the config
+    /// persists. The running agent rebuilds when the last instance
+    /// went: the wiring gate may close, the function and the section
+    /// go away.
+    pub(crate) fn remove_decision_provider(&mut self) -> Vec<Effect> {
+        let Some(name) = (match &self.screen {
+            Screen::Settings(settings) => settings.selected_decision().map(str::to_owned),
+            _ => None,
+        }) else {
+            return Vec::new();
+        };
+        let mut removed = None;
+        self.config
+            .set_for_profile(self.session_profile.as_deref(), |profile| {
+                let Some(section) = profile.decision.as_mut() else {
+                    return;
+                };
+                removed = section.instances.remove(&name);
+                if section.instance.as_deref() == Some(name.as_str()) {
+                    section.instance = None;
+                }
+                if section.instances.is_empty() {
+                    profile.decision = None;
+                }
+            });
+        let Some(removed) = removed else {
+            return Vec::new();
+        };
+        // The keychain entry goes with the instance, the same rule the
+        // provider logins follow: a removed key must not stay in the
+        // chain. Best effort; a store that refuses leaves the entry,
+        // and that must not pass silently.
+        if let Some(id) = removed.secret_ref
+            && let Some(store) = self.secret_store()
+            && let Err(err) = store.delete(&id)
+        {
+            self.error = Some(format!(
+                "the instance is removed, but its keychain entry could not be deleted: {err}"
+            ));
+        }
+        if !self.save_config() {
+            return Vec::new();
+        }
+        self.refresh_decision_page();
+        let empty_now = self
+            .effective()
+            .decision
+            .as_ref()
+            .is_none_or(|section| section.instances.is_empty());
+        if !empty_now || !self.turn.running {
+            let _ = self.rebuild_live_agent(false);
+        }
+        self.transcript
+            .push_notice(&format!("removed the {name} decision model"));
+        Vec::new()
+    }
+
+    /// Enter on an instance row: `decide` asks it by default. The
+    /// mode reads the profile fresh per call, so the next call
+    /// already sees it and no rebuild follows; the config persists.
+    pub(crate) fn set_default_decision(&mut self) {
+        let Some(name) = (match &self.screen {
+            Screen::Settings(settings) => settings.selected_decision().map(str::to_owned),
+            _ => None,
+        }) else {
+            return;
+        };
+        self.config
+            .set_for_profile(self.session_profile.as_deref(), |profile| {
+                if let Some(section) = profile.decision.as_mut()
+                    && section.instances.contains_key(&name)
+                {
+                    section.instance = Some(name.clone());
+                }
+            });
+        if !self.save_config() {
+            return;
+        }
+        self.refresh_decision_page();
+        self.transcript
+            .push_notice(&format!("decide asks {name} by default, saved"));
     }
 
     /// Opens the selected subagent definition in `$EDITOR`. The built-in

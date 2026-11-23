@@ -54,6 +54,9 @@ impl App {
                 if let Some(dialog) = &mut settings.websearch_dialog {
                     dialog.paste(text);
                 }
+                if let Some(dialog) = &mut settings.decision_dialog {
+                    dialog.paste(text);
+                }
             }
             Screen::Onboarding(wizard) => {
                 if let Some(dialog) = &mut wizard.dialog {
@@ -444,6 +447,17 @@ impl App {
             }
             SettingsAction::MoveWebSearchDown => {
                 self.move_websearch_provider(false);
+                Vec::new()
+            }
+            SettingsAction::OpenDecisionDialog => {
+                self.open_decision_dialog();
+                Vec::new()
+            }
+            SettingsAction::SubmitDecisionDialog => self.submit_decision_provider(),
+            SettingsAction::CloseDecisionDialog => Vec::new(),
+            SettingsAction::RemoveDecisionProvider => self.remove_decision_provider(),
+            SettingsAction::SetDefaultDecision => {
+                self.set_default_decision();
                 Vec::new()
             }
             SettingsAction::SelectSandboxInstance => {

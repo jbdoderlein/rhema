@@ -289,7 +289,7 @@ impl AddWebSearchDialog {
                 // collide, "Exa" and "work exa" alike. The map key is
                 // the name, nothing agent-facing reads it.
                 if self.taken.contains(&text) {
-                    self.error = Some(format!("a provider named {text} already exists"));
+                    self.error = Some(format!("A provider named {text} already exists"));
                     return WebSearchDialogAction::None;
                 }
                 self.name = text;
@@ -300,7 +300,7 @@ impl AddWebSearchDialog {
             WebSearchDialogStage::Key => {
                 if text.is_empty() {
                     self.error = Some(
-                        "a key is required (the environment can serve it, leave \
+                        "A key is required (the environment can serve it, leave \
                                        the dialog and edit config.yaml to go env-only)"
                             .to_owned(),
                     );
@@ -320,10 +320,10 @@ impl AddWebSearchDialog {
     /// calls this on the Submit action.
     pub fn build(&self) -> Result<(String, &'static str, String), String> {
         if self.name.is_empty() {
-            return Err("a name is required".to_owned());
+            return Err("A name is required".to_owned());
         }
         if self.taken.contains(&self.name) {
-            return Err(format!("a provider named {} already exists", self.name));
+            return Err(format!("A provider named {} already exists", self.name));
         }
         Ok((self.name.clone(), self.kind, self.key.clone()))
     }

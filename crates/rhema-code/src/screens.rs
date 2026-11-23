@@ -11,6 +11,7 @@ use rhema_provider::ModelCard;
 
 mod chat;
 pub(crate) mod clipboard;
+mod decision;
 mod dialogs;
 mod mcp;
 mod palette;
@@ -23,6 +24,10 @@ mod tests;
 mod websearch;
 
 pub use chat::{ChatAction, ChatState, Chip};
+pub use decision::{
+    AddDecisionDialog, DECISION_KINDS, DecisionBuilt, DecisionDialogAction, DecisionDialogStage,
+    DecisionKind, DecisionRow, decision_rows,
+};
 pub use dialogs::{
     API_CHOICES, AddInstanceDialog, AddProfileDialog, AddSandboxDialog, DialogAction, DialogStage,
     DialogStatus, PendingInstance, ProfileDialogAction, SANDBOX_ADD_KINDS, SandboxDialogAction,

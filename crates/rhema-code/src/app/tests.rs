@@ -8074,3 +8074,218 @@ async fn a_delivered_subagent_finish_settles_before_the_save() {
         "no finish is re-announced: {final_events:?}"
     );
 }
+
+#[test]
+fn adding_a_decision_model_places_its_key_and_persists() {
+    let mut h = harness_with_secrets(None, None, Session::default());
+    let secrets = Arc::clone(h.secrets.as_ref().unwrap());
+    h.app
+        .open_settings_at(crate::screens::SettingsSection::Decision);
+    // The add row is selected on the empty page; enter opens the
+    // dialog, the first kind is Jev.
+    h.app.on_key(key(KeyCode::Enter));
+    {
+        let crate::Screen::Settings(settings) = &mut h.app.screen else {
+            panic!("settings open");
+        };
+        let dialog = settings.decision_dialog.as_mut().unwrap();
+        dialog.handle_key(key(KeyCode::Enter)); // Jev, suggested "Jev"
+        for _ in 0.."Jev".len() {
+            dialog.handle_key(key(KeyCode::Backspace));
+        }
+        for c in "jev-main".chars() {
+            dialog.handle_key(key(KeyCode::Char(c)));
+        }
+        dialog.handle_key(key(KeyCode::Enter));
+        assert_eq!(dialog.stage, crate::screens::DecisionDialogStage::Key);
+        for c in "sk-1".chars() {
+            dialog.handle_key(key(KeyCode::Char(c)));
+        }
+    }
+    // Enter routes the dialog's Submit through the app: the config
+    // write, the keychain placement, the persist.
+    assert_eq!(h.app.on_key(key(KeyCode::Enter)), vec![]);
+    let stored = h.store.load().unwrap().effective(Some("personal"));
+    let section = stored.decision.as_ref().expect("the section exists");
+    let instance = &section.instances["jev-main"];
+    assert_eq!(instance.provider, "jev");
+    assert_eq!(instance.api_key, None, "the file holds no key");
+    let id = instance.secret_ref.as_deref().expect("the keychain ref");
+    assert_eq!(secrets.get(id).unwrap().as_deref(), Some("sk-1"));
+    assert_eq!(
+        section.instance, None,
+        "a first instance needs no default: the first by name serves"
+    );
+    // The page shows it, default and keyed.
+    let crate::Screen::Settings(settings) = &h.app.screen else {
+        panic!("settings open");
+    };
+    assert_eq!(settings.decision.len(), 2, "one instance, then the add row");
+    assert!(settings.decision[0].default && settings.decision[0].keyed);
+    assert!(
+        settings.decision_dialog.is_none(),
+        "the submit closed the dialog"
+    );
+}
+
+#[test]
+fn a_clef_decision_model_carries_its_account_and_a_local_one_its_endpoint() {
+    let mut h = harness_with_secrets(None, None, Session::default());
+    h.app
+        .open_settings_at(crate::screens::SettingsSection::Decision);
+    h.app.on_key(key(KeyCode::Enter));
+    {
+        let crate::Screen::Settings(settings) = &mut h.app.screen else {
+            panic!("settings open");
+        };
+        let dialog = settings.decision_dialog.as_mut().unwrap();
+        dialog.handle_key(key(KeyCode::Down)); // Clef
+        dialog.handle_key(key(KeyCode::Enter)); // "Clef"
+        dialog.handle_key(key(KeyCode::Enter));
+        for c in "acct-123".chars() {
+            dialog.handle_key(key(KeyCode::Char(c)));
+        }
+        dialog.handle_key(key(KeyCode::Enter));
+        for c in "cf-token".chars() {
+            dialog.handle_key(key(KeyCode::Char(c)));
+        }
+    }
+    h.app.on_key(key(KeyCode::Enter));
+    // Second pass: down to the add row, the custom endpoint.
+    h.app.on_key(key(KeyCode::Down));
+    h.app.on_key(key(KeyCode::Enter));
+    {
+        let crate::Screen::Settings(settings) = &mut h.app.screen else {
+            panic!("settings open");
+        };
+        let dialog = settings.decision_dialog.as_mut().unwrap();
+        for _ in 0..3 {
+            dialog.handle_key(key(KeyCode::Down));
+        }
+        dialog.handle_key(key(KeyCode::Enter)); // "Local Jev"
+        dialog.handle_key(key(KeyCode::Enter));
+        for c in "http://localhost:30000".chars() {
+            dialog.handle_key(key(KeyCode::Char(c)));
+        }
+        dialog.handle_key(key(KeyCode::Enter));
+        assert_eq!(
+            dialog.input, "local",
+            "the key line opens on the local default"
+        );
+    }
+    h.app.on_key(key(KeyCode::Enter));
+    let stored = h.store.load().unwrap().effective(Some("personal"));
+    let section = stored.decision.as_ref().unwrap();
+    let clef = &section.instances["Clef"];
+    assert_eq!(clef.provider, "clef");
+    assert_eq!(clef.account_id.as_deref(), Some("acct-123"));
+    assert_eq!(clef.base_url, None);
+    let local = &section.instances["Local Jev"];
+    assert_eq!(local.provider, "jev", "a custom endpoint is the jev kind");
+    assert_eq!(local.base_url.as_deref(), Some("http://localhost:30000"));
+    assert_eq!(local.account_id, None, "only Clef carries an account");
+}
+
+#[test]
+fn enter_on_a_decision_row_sets_the_default_without_a_rebuild() {
+    let mut h = harness(None, None, Session::default());
+    h.app.config.set_for_profile(Some("personal"), |p| {
+        let section = p.decision.get_or_insert_with(Default::default);
+        for name in ["Clef", "Jev"] {
+            section.instances.insert(
+                name.into(),
+                rhema_config::DecisionInstance {
+                    provider: name.to_lowercase(),
+                    api_key: Some("k".into()),
+                    secret_ref: None,
+                    model: None,
+                    account_id: Some("acct".into()),
+                    base_url: None,
+                },
+            );
+        }
+    });
+    let _ = h.store.save(&h.app.config.clone());
+    h.app
+        .open_settings_at(crate::screens::SettingsSection::Decision);
+    // Row 0 is Clef (the first by name, the default); Jev sits below.
+    h.app.on_key(key(KeyCode::Down));
+    assert_eq!(h.app.on_key(key(KeyCode::Enter)), vec![]);
+    let stored = h.store.load().unwrap().effective(Some("personal"));
+    assert_eq!(
+        stored.decision.as_ref().unwrap().instance.as_deref(),
+        Some("Jev"),
+        "the enter persisted the default"
+    );
+    let crate::Screen::Settings(settings) = &h.app.screen else {
+        panic!("settings open");
+    };
+    assert!(settings.decision[1].default && !settings.decision[0].default);
+}
+
+#[test]
+fn removing_the_default_decision_model_clears_it_and_its_keychain_entry() {
+    let mut h = harness_with_secrets(None, None, Session::default());
+    let secrets = Arc::clone(h.secrets.as_ref().unwrap());
+    h.app.config.set_for_profile(Some("personal"), |p| {
+        let section = p.decision.get_or_insert_with(Default::default);
+        section.instance = Some("Jev".into());
+        section.instances.insert(
+            "Jev".into(),
+            rhema_config::DecisionInstance {
+                provider: "jev".into(),
+                api_key: None,
+                secret_ref: Some("ref-1".into()),
+                model: None,
+                account_id: None,
+                base_url: None,
+            },
+        );
+        section.instances.insert(
+            "Local Jev".into(),
+            rhema_config::DecisionInstance {
+                provider: "jev".into(),
+                api_key: Some("local".into()),
+                secret_ref: None,
+                model: None,
+                account_id: None,
+                base_url: Some("http://localhost:30000".into()),
+            },
+        );
+    });
+    secrets.set("ref-1", "sk-1").unwrap();
+    let _ = h.store.save(&h.app.config.clone());
+    h.app
+        .open_settings_at(crate::screens::SettingsSection::Decision);
+    // Row 0 is Jev, the default: d arms the confirm, y removes it.
+    assert_eq!(h.app.on_key(key(KeyCode::Char('d'))), vec![]);
+    assert_eq!(h.app.on_key(key(KeyCode::Char('y'))), vec![]);
+    let stored = h.store.load().unwrap().effective(Some("personal"));
+    let section = stored.decision.as_ref().expect("one instance stays");
+    assert!(!section.instances.contains_key("Jev"));
+    assert_eq!(
+        section.instance, None,
+        "the default went with its instance; the next by name serves"
+    );
+    assert_eq!(
+        secrets.get("ref-1").unwrap(),
+        None,
+        "the keychain entry went too"
+    );
+    let crate::Screen::Settings(settings) = &h.app.screen else {
+        panic!("settings open");
+    };
+    assert!(settings.decision[0].default, "Local Jev is the default now");
+    // The last one: the section leaves the file.
+    assert_eq!(h.app.on_key(key(KeyCode::Char('d'))), vec![]);
+    assert_eq!(h.app.on_key(key(KeyCode::Char('y'))), vec![]);
+    let stored = h.store.load().unwrap().effective(Some("personal"));
+    assert!(
+        stored.decision.is_none(),
+        "an emptied section leaves the profile"
+    );
+    let crate::Screen::Settings(settings) = &h.app.screen else {
+        panic!("settings open");
+    };
+    assert_eq!(settings.decision.len(), 1, "the add row alone");
+}

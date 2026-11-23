@@ -6,11 +6,13 @@ use super::settings::usage_k;
 use super::*;
 use crate::palette::DARK;
 use crate::screens::{CatalogModel, PickerScreen};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
 use ratatui::{Terminal, backend::TestBackend};
 use rhema_provider::ModelCard;
+use std::collections::{BTreeMap, BTreeSet};
 
 fn model(id: &str) -> ModelCard {
     ModelCard {
@@ -498,8 +500,10 @@ fn the_usage_page_shows_the_views_shape() {
         text.contains("1397 of 1859 messages · 101 digests"),
         "{text}"
     );
+    // The Band row wraps before its last word at 80 columns, the
+    // sidebar taking its nineteen; the figure stays on the first line.
     assert!(
-        text.contains("~632.5k carried whole · ~1.6k this turn"),
+        text.contains("~632.5k carried whole · ~1.6k this"),
         "{text}"
     );
     // The counters spell the block in tokens too; the row wraps
@@ -516,8 +520,11 @@ fn the_usage_page_shows_the_views_shape() {
     let text = draw(&settings);
     // The row wraps at the pane's width, so the note is matched in
     // halves.
-    assert!(text.contains("under budget"), "{text}");
-    assert!(text.contains("5 requests rode the log"), "{text}");
+    assert!(
+        text.contains("under budget · 5 requests rode the"),
+        "{text}"
+    );
+    assert!(text.contains("log whole"), "{text}");
 
     settings.transcript = Some(rhema_transcript::TranscriptStats::default());
     let text = draw(&settings);
@@ -4002,4 +4009,243 @@ fn the_websearch_page_renders_no_ghost_add_row() {
         .filter(|(_, hit)| matches!(hit, SettingsHit::PageRow(2)))
         .count();
     assert_eq!(add_hits, 1, "one click target on the add row\n{text}");
+}
+
+/// The Decision models page: one row per instance with its kind, its
+/// model (the kind's default for a blank), its endpoint when it has
+/// one, the default mark, and the add row once, closing the list.
+#[test]
+fn the_decision_page_renders_its_rows_and_one_add_row() {
+    let mut settings = crate::screens::SettingsScreen::new();
+    settings.section = SettingsSection::Decision;
+    let mut section = rhema_config::DecisionSettings {
+        instance: Some("Local Jev".into()),
+        ..Default::default()
+    };
+    section.instances.insert(
+        "Jev".into(),
+        rhema_config::DecisionInstance {
+            provider: "jev".into(),
+            api_key: Some("k".into()),
+            secret_ref: None,
+            model: Some("jev-preview".into()),
+            account_id: None,
+            base_url: None,
+        },
+    );
+    section.instances.insert(
+        "Local Jev".into(),
+        rhema_config::DecisionInstance {
+            provider: "jev".into(),
+            api_key: None,
+            secret_ref: None,
+            model: None,
+            account_id: None,
+            base_url: Some("http://localhost:30000".into()),
+        },
+    );
+    settings.decision = crate::screens::decision_rows(Some(&section), None);
+    let mut hits = Vec::new();
+    let mut terminal = Terminal::new(TestBackend::new(100, 40)).unwrap();
+    terminal
+        .draw(|frame| render_settings(frame, &settings, &DARK, &crate::icons::UNICODE, &mut hits))
+        .unwrap();
+    let text: String = (0..40)
+        .map(|y| {
+            (0..100)
+                .map(|x| terminal.backend().buffer()[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        text.contains("Decision models"),
+        "the sidebar and the title: {text}"
+    );
+    assert!(
+        text.contains("Jev · jev · jev-preview"),
+        "the instance's own model: {text}"
+    );
+    assert!(
+        // The kind reads as stored, the file's spelling.
+        text.contains("Local Jev · jev · jev-latest · http://localhost:30000 · no key · default"),
+        "the default, the blank model's default, the endpoint, the missing key: {text}"
+    );
+    assert_eq!(
+        text.matches("Add a decision model").count(),
+        1,
+        "one add row: {text}"
+    );
+    assert!(
+        text.contains("enter sets the default"),
+        "the footer hints: {text}"
+    );
+    // Two instance rows plus the add row register their click
+    // targets.
+    let page_rows = hits
+        .iter()
+        .filter(|(_, hit)| matches!(hit, SettingsHit::PageRow(_)))
+        .count();
+    assert_eq!(page_rows, 3, "{hits:?}");
+}
+
+/// The empty page names the fact; the add row below it is the way
+/// in, stated by the row itself, not by a second hint line.
+#[test]
+fn the_decision_page_without_instances_states_the_fact() {
+    let mut settings = crate::screens::SettingsScreen::new();
+    settings.section = SettingsSection::Decision;
+    settings.decision = crate::screens::decision_rows(None, None);
+    let mut hits = Vec::new();
+    let mut terminal = Terminal::new(TestBackend::new(100, 20)).unwrap();
+    terminal
+        .draw(|frame| render_settings(frame, &settings, &DARK, &crate::icons::UNICODE, &mut hits))
+        .unwrap();
+    let text: String = (0..20)
+        .map(|y| {
+            (0..100)
+                .map(|x| terminal.backend().buffer()[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect();
+    assert!(
+        text.contains("no decision models in this profile"),
+        "{text}"
+    );
+    assert!(!text.contains("TYPESAFE"), "{text}");
+}
+
+/// The removal confirm over the Decision models page names the
+/// instance and its answer.
+#[test]
+fn the_decision_confirm_names_the_instance_and_its_answer() {
+    let mut settings = crate::screens::SettingsScreen::new();
+    settings.section = SettingsSection::Decision;
+    settings.decision_confirm = Some("Jev".to_owned());
+    let mut hits = Vec::new();
+    let mut terminal = Terminal::new(TestBackend::new(80, 40)).unwrap();
+    terminal
+        .draw(|frame| render_settings(frame, &settings, &DARK, &crate::icons::UNICODE, &mut hits))
+        .unwrap();
+    let text: String = (0..40)
+        .map(|y| {
+            (0..80)
+                .map(|x| terminal.backend().buffer()[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect();
+    assert!(text.contains(" Confirmation "), "{text}");
+    assert!(
+        text.contains("Are you sure you want to delete provider Jev?"),
+        "{text}"
+    );
+    assert!(text.contains("y/n"), "{text}");
+}
+
+/// The add dialog: the four kinds on the kind stage, the input line
+/// on the others, a key masked to its length, the hint or the error on
+/// the status line.
+#[test]
+fn the_add_decision_dialog_renders_its_kinds_its_stages_and_the_masked_key() {
+    let mut settings = crate::screens::SettingsScreen::new();
+    settings.section = SettingsSection::Decision;
+    settings.decision_dialog = Some(crate::screens::AddDecisionDialog::new(BTreeSet::new()));
+    let draw = |settings: &crate::screens::SettingsScreen| {
+        let mut hits = Vec::new();
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        terminal
+            .draw(|frame| {
+                render_settings(frame, settings, &DARK, &crate::icons::UNICODE, &mut hits)
+            })
+            .unwrap();
+        (0..30)
+            .map(|y| {
+                (0..100)
+                    .map(|x| terminal.backend().buffer()[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let text = draw(&settings);
+    assert!(text.contains("Add a decision model"), "{text}");
+    for display in ["Jev", "Clef", "OpenRouter", "Custom Jev endpoint"] {
+        assert!(text.contains(display), "{display} on the kind list: {text}");
+    }
+    assert!(text.contains("❯ Jev"), "the first row highlighted: {text}");
+    let press = |settings: &mut crate::screens::SettingsScreen, code: KeyCode| {
+        settings
+            .decision_dialog
+            .as_mut()
+            .unwrap()
+            .handle_key(KeyEvent::new(code, KeyModifiers::NONE));
+    };
+    // Down to Clef, enter: the name line carries the suggestion and
+    // its label; enter again reaches the account line.
+    press(&mut settings, KeyCode::Down);
+    press(&mut settings, KeyCode::Enter);
+    let text = draw(&settings);
+    assert!(text.contains("name: Clef"), "{text}");
+    assert!(text.contains("name this instance"), "{text}");
+    press(&mut settings, KeyCode::Enter);
+    let text = draw(&settings);
+    assert!(text.contains("account id: "), "{text}");
+    assert!(text.contains("Cloudflare account id"), "{text}");
+    // A blank enter leaves the error on the status line, in the warn
+    // color.
+    press(&mut settings, KeyCode::Enter);
+    let text = draw(&settings);
+    assert!(text.contains("An account id is required"), "{text}");
+    // To the key line: the text shows its length, never its bytes.
+    for c in "acct".chars() {
+        press(&mut settings, KeyCode::Char(c));
+    }
+    press(&mut settings, KeyCode::Enter);
+    for c in "sk-secret-1".chars() {
+        press(&mut settings, KeyCode::Char(c));
+    }
+    let text = draw(&settings);
+    assert!(text.contains("api key: "), "{text}");
+    assert!(text.contains("(11 chars)"), "{text}");
+    assert!(
+        !text.contains("sk-secret-1"),
+        "the key never renders: {text}"
+    );
+}
+
+/// A page with no providers says so above its add row, on both pages
+/// built from the web search template: the rows always carry the add
+/// row, so "empty" is no instance above it.
+#[test]
+fn the_websearch_and_decision_pages_say_so_when_empty() {
+    let draw = |section: SettingsSection| {
+        let mut settings = crate::screens::SettingsScreen::new();
+        settings.section = section;
+        settings.websearch = crate::screens::websearch_rows(&BTreeMap::new(), &[]);
+        settings.decision = crate::screens::decision_rows(None, None);
+        let mut hits = Vec::new();
+        let mut terminal = Terminal::new(TestBackend::new(100, 12)).unwrap();
+        terminal
+            .draw(|frame| {
+                render_settings(frame, &settings, &DARK, &crate::icons::UNICODE, &mut hits)
+            })
+            .unwrap();
+        (0..12)
+            .map(|y| {
+                (0..100)
+                    .map(|x| terminal.backend().buffer()[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let web = draw(SettingsSection::WebSearch);
+    assert!(web.contains("no providers in this profile"), "{web}");
+    assert!(web.contains("+ Add a provider..."), "{web}");
+    let decision = draw(SettingsSection::Decision);
+    assert!(
+        decision.contains("no decision models in this profile"),
+        "{decision}"
+    );
+    assert!(decision.contains("+ Add a decision model..."), "{decision}");
 }

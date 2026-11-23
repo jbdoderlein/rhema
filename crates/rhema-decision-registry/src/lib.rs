@@ -139,6 +139,19 @@ pub fn build(
     }
 }
 
+/// The model an instance of `kind` asks when its `model` is unset or
+/// blank: the spelling [`build`] defaults to, so a settings page can
+/// show what a blank means without a copy of the adapters' constants.
+/// `None` for a kind nothing answers to.
+pub fn default_model(kind: &str) -> Option<&'static str> {
+    match kind {
+        "jev" => Some(rhema_decision_jev::DEFAULT_MODEL),
+        "openrouter" => Some(rhema_decision_openrouter::DEFAULT_MODEL),
+        "clef" => Some(ClefModel::default().as_str()),
+        _ => None,
+    }
+}
+
 /// Builds the test provider the registry's own consumers' offline
 /// tests drive: the base crate's `MockDecisionProvider` behind the
 /// same trait object `build` returns, under any kind spelling.
@@ -502,6 +515,57 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[tokio::test]
+    async fn a_default_model_is_what_build_asks_for_a_blank() {
+        // Each kind against one wiremock: the request on the wire
+        // carries the default the page would show, Clef's on its
+        // route as well as in its body.
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        let body = serde_json::json!({
+            "model": "echo", "answers": {"q": {"type": "noul", "noul": 0.5}},
+            "usage": {"input_tokens": 1, "output_tokens": 0}
+        });
+        let clef_body = serde_json::json!({
+            "result": body, "success": true, "errors": [], "messages": []
+        });
+        Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path_regex(".*/clef$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(clef_body))
+            .mount(&server)
+            .await;
+        Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .mount(&server)
+            .await;
+        for kind in KINDS {
+            let mut blank = instance(kind, Some("k"));
+            blank.model = Some("  ".into());
+            blank.base_url = Some(server.uri());
+            let provider = build(&blank, "k".into()).unwrap();
+            let request = rhema_decision::DecisionRequest::new("s")
+                .with_question("q", rhema_decision::Question::noul("x?"));
+            provider.decide(&request).await.unwrap();
+            let received = server.received_requests().await.unwrap();
+            let last = received.last().expect("the call landed");
+            let sent: serde_json::Value = serde_json::from_slice(&last.body).unwrap();
+            let default = default_model(kind).unwrap();
+            assert_eq!(
+                sent["model"].as_str(),
+                Some(default),
+                "{kind}: the blank model went out as the default"
+            );
+            if kind == "clef" {
+                assert!(
+                    last.url.path().ends_with(default),
+                    "the Clef route carries its model: {}",
+                    last.url.path()
+                );
+            }
+        }
+        assert_eq!(default_model("nope"), None, "an unknown kind has none");
     }
 
     #[test]

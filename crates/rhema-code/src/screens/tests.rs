@@ -3,7 +3,9 @@
 
 use super::palette::{model_description, path_token};
 use super::*;
-use crate::screens::{WebSearchDialogAction, WebSearchDialogStage};
+use crate::screens::{
+    DecisionDialogAction, DecisionDialogStage, WebSearchDialogAction, WebSearchDialogStage,
+};
 
 use crate::args::SandboxChoice;
 use crate::sandbox::SandboxAvailability;
@@ -3343,4 +3345,319 @@ fn the_add_websearch_dialog_walks_kind_name_key_and_back() {
     dialog.handle_key(key(KeyCode::Esc));
     assert_eq!(dialog.stage, WebSearchDialogStage::Name);
     assert_eq!(dialog.input, "Work Exa", "a retreat restores the line");
+}
+
+// ---- Decision models page ----
+
+fn decision_screen(settings: rhema_config::DecisionSettings) -> SettingsScreen {
+    let mut screen = SettingsScreen::new();
+    screen.section = SettingsSection::Decision;
+    screen.decision = crate::screens::decision_rows(Some(&settings), None);
+    screen
+}
+
+#[test]
+fn the_decision_rows_show_the_default_the_kinds_model_and_the_add_row_last() {
+    // The default is active_instance's rule: `instance` names it
+    // when it exists, else the first by name.
+    let mut section = rhema_config::DecisionSettings::default();
+    section.instances.insert(
+        "clef-work".into(),
+        rhema_config::DecisionInstance {
+            provider: "clef".into(),
+            api_key: Some("k".into()),
+            secret_ref: None,
+            model: None,
+            account_id: Some("acct".into()),
+            base_url: None,
+        },
+    );
+    section.instances.insert(
+        "local".into(),
+        rhema_config::DecisionInstance {
+            provider: "jev".into(),
+            api_key: None,
+            secret_ref: None,
+            model: Some(" ".into()),
+            account_id: None,
+            base_url: Some("http://localhost:30000".into()),
+        },
+    );
+    let rows = crate::screens::decision_rows(Some(&section), None);
+    assert_eq!(rows.len(), 3, "two instances, then the add row");
+    assert_eq!(rows[0].name, "clef-work", "name order");
+    assert_eq!(rows[0].kind, "clef");
+    assert_eq!(rows[0].model, "clef", "the kind's default for a blank");
+    assert!(rows[0].keyed, "a literal key resolves");
+    assert!(
+        rows[0].default,
+        "the first by name is the default while unset"
+    );
+    assert_eq!(rows[1].name, "local");
+    assert_eq!(
+        rows[1].model, "jev-latest",
+        "a blank model shows the default"
+    );
+    assert_eq!(
+        rows[1].base_url.as_deref(),
+        Some("http://localhost:30000"),
+        "the custom endpoint shows"
+    );
+    assert!(!rows[1].keyed, "nothing resolves a key for it");
+    assert!(!rows[1].default);
+    assert!(rows[2].add, "the add row closes the list");
+    // Naming one moves the mark.
+    section.instance = Some("local".into());
+    let rows = crate::screens::decision_rows(Some(&section), None);
+    assert!(rows[1].default && !rows[0].default);
+    // A dangling name falls back to the first, the rule says.
+    section.instance = Some("gone".into());
+    assert!(crate::screens::decision_rows(Some(&section), None)[0].default);
+    // No section, no keychain: an empty page is the add row alone.
+    assert!(crate::screens::decision_rows(None, None)[0].add);
+}
+
+#[test]
+fn the_decision_page_enters_the_default_and_removes_after_the_confirm() {
+    let mut section = rhema_config::DecisionSettings::default();
+    for name in ["Jev", "Jev 2"] {
+        section.instances.insert(
+            name.into(),
+            rhema_config::DecisionInstance {
+                provider: "jev".into(),
+                api_key: Some("k".into()),
+                secret_ref: None,
+                model: None,
+                account_id: None,
+                base_url: None,
+            },
+        );
+    }
+    let mut screen = decision_screen(section);
+    assert_eq!(screen.selected_decision(), Some("Jev"));
+    assert_eq!(
+        screen.handle_key(key(KeyCode::Enter)),
+        SettingsAction::SetDefaultDecision,
+        "enter on an instance makes it the default"
+    );
+    screen.handle_key(key(KeyCode::Down));
+    assert_eq!(screen.selected_decision(), Some("Jev 2"));
+    screen.handle_key(key(KeyCode::Down));
+    assert_eq!(screen.selected_decision(), None, "the add row");
+    assert_eq!(
+        screen.handle_key(key(KeyCode::Enter)),
+        SettingsAction::OpenDecisionDialog
+    );
+    // The dialog blocks the page's keys; esc leaves it.
+    screen.decision_dialog = Some(crate::screens::AddDecisionDialog::new(BTreeSet::new()));
+    assert_eq!(screen.selected_decision(), None);
+    assert_eq!(
+        screen.handle_key(key(KeyCode::Esc)),
+        SettingsAction::CloseDecisionDialog
+    );
+    assert!(screen.decision_dialog.is_none());
+    // Down again wraps to the top; d arms the confirm, n leaves the
+    // row, y carries the removal out.
+    screen.handle_key(key(KeyCode::Down));
+    assert_eq!(screen.selected_decision(), Some("Jev"));
+    assert_eq!(
+        screen.handle_key(key(KeyCode::Char('d'))),
+        SettingsAction::None
+    );
+    assert_eq!(screen.decision_confirm.as_deref(), Some("Jev"));
+    assert_eq!(screen.selected_decision(), None, "the confirm blocks");
+    screen.handle_key(key(KeyCode::Char('n')));
+    assert_eq!(screen.decision_confirm, None);
+    screen.handle_key(key(KeyCode::Char('d')));
+    screen.handle_key(key(KeyCode::Esc));
+    assert_eq!(screen.decision_confirm, None, "esc leaves the row alone");
+    screen.handle_key(key(KeyCode::Char('d')));
+    assert_eq!(
+        screen.handle_key(key(KeyCode::Char('y'))),
+        SettingsAction::RemoveDecisionProvider
+    );
+    // The add row never removes.
+    screen.handle_key(key(KeyCode::Down));
+    screen.handle_key(key(KeyCode::Down));
+    assert_eq!(
+        screen.handle_key(key(KeyCode::Char('d'))),
+        SettingsAction::None,
+        "the add row has nothing to remove"
+    );
+    assert!(screen.decision_confirm.is_none());
+    // The other pages are untouched.
+    screen.row = 0;
+    screen.section = SettingsSection::Providers;
+    assert_eq!(screen.selected_decision(), None);
+}
+
+fn type_chars(dialog: &mut crate::screens::AddDecisionDialog, text: &str) {
+    for c in text.chars() {
+        dialog.handle_key(key(KeyCode::Char(c)));
+    }
+}
+
+#[test]
+fn the_add_decision_dialog_walks_jev_name_key_and_back() {
+    let mut dialog = crate::screens::AddDecisionDialog::new(BTreeSet::new());
+    assert_eq!(dialog.stage, DecisionDialogStage::Kind);
+    assert_eq!(
+        dialog.handle_key(key(KeyCode::Enter)),
+        DecisionDialogAction::None
+    );
+    assert_eq!(dialog.choice.map(|k| k.kind), Some("jev"));
+    assert_eq!(dialog.stage, DecisionDialogStage::Name);
+    assert_eq!(dialog.input, "Jev", "the suggestion seeds the line");
+    assert_eq!(dialog.input_label(), "name: ");
+    // An empty name does not advance; a taken one says so.
+    for _ in 0.."Jev".len() {
+        dialog.handle_key(key(KeyCode::Backspace));
+    }
+    dialog.handle_key(key(KeyCode::Enter));
+    assert_eq!(dialog.stage, DecisionDialogStage::Name);
+    for c in "Jev".chars() {
+        dialog.handle_key(key(KeyCode::Char(c)));
+    }
+    dialog.handle_key(key(KeyCode::Enter));
+    assert_eq!(
+        dialog.stage,
+        DecisionDialogStage::Key,
+        "Jev has no stage between"
+    );
+    assert_eq!(dialog.input, "", "the key line opens empty");
+    dialog.handle_key(key(KeyCode::Enter));
+    assert!(dialog.error.is_some(), "a blank key does not submit");
+    type_chars(&mut dialog, "sk-1");
+    assert_eq!(
+        dialog.handle_key(key(KeyCode::Enter)),
+        DecisionDialogAction::Submit
+    );
+    let built = dialog.build().unwrap();
+    assert_eq!(
+        built,
+        crate::screens::DecisionBuilt {
+            name: "Jev".into(),
+            kind: "jev",
+            key: "sk-1".into(),
+            base_url: None,
+            account_id: None,
+        }
+    );
+    // Esc from the key line retreats to the name, restored; esc from
+    // the name returns to the kind list, the choice dropped.
+    let mut dialog = crate::screens::AddDecisionDialog::new(BTreeSet::new());
+    dialog.handle_key(key(KeyCode::Enter));
+    type_chars(&mut dialog, " work");
+    dialog.handle_key(key(KeyCode::Enter));
+    type_chars(&mut dialog, "k");
+    dialog.handle_key(key(KeyCode::Esc));
+    assert_eq!(dialog.stage, DecisionDialogStage::Name);
+    assert_eq!(dialog.input, "Jev work", "a retreat restores the line");
+    dialog.handle_key(key(KeyCode::Esc));
+    assert_eq!(dialog.stage, DecisionDialogStage::Kind);
+    assert_eq!(dialog.choice, None);
+    assert_eq!(dialog.input, "");
+    assert_eq!(
+        dialog.handle_key(key(KeyCode::Esc)),
+        DecisionDialogAction::Close,
+        "esc on the kind list closes"
+    );
+}
+
+#[test]
+fn the_decision_dialog_asks_clef_for_its_account_and_the_custom_endpoint_for_its_url() {
+    // Clef: name, account, key. The account is required.
+    let mut dialog = crate::screens::AddDecisionDialog::new(BTreeSet::new());
+    dialog.handle_key(key(KeyCode::Down));
+    dialog.handle_key(key(KeyCode::Enter));
+    assert_eq!(dialog.choice.map(|k| k.kind), Some("clef"));
+    assert_eq!(dialog.input, "Clef");
+    dialog.handle_key(key(KeyCode::Enter));
+    assert_eq!(dialog.stage, DecisionDialogStage::Account);
+    assert_eq!(dialog.input_label(), "account id: ");
+    dialog.handle_key(key(KeyCode::Enter));
+    assert!(
+        dialog
+            .error
+            .as_deref()
+            .is_some_and(|e| e.contains("account id"))
+    );
+    type_chars(&mut dialog, "0123456789abcdef0123456789abcdef");
+    dialog.handle_key(key(KeyCode::Enter));
+    assert_eq!(dialog.stage, DecisionDialogStage::Key);
+    type_chars(&mut dialog, "cf-token");
+    assert_eq!(
+        dialog.handle_key(key(KeyCode::Enter)),
+        DecisionDialogAction::Submit
+    );
+    assert_eq!(
+        dialog.build().unwrap().account_id.as_deref(),
+        Some("0123456789abcdef0123456789abcdef")
+    );
+    // The custom endpoint: name, endpoint, key; the endpoint must be
+    // a URL, and the key line opens on `local`, a server without
+    // auth takes any text.
+    let mut dialog = crate::screens::AddDecisionDialog::new(BTreeSet::from(["Local Jev".into()]));
+    for _ in 0..3 {
+        dialog.handle_key(key(KeyCode::Down));
+    }
+    dialog.handle_key(key(KeyCode::Enter));
+    assert_eq!(dialog.choice.map(|k| k.custom()), Some(true));
+    assert_eq!(
+        dialog.input, "Local Jev 2",
+        "the suggestion numbers past the taken"
+    );
+    dialog.handle_key(key(KeyCode::Enter));
+    assert_eq!(dialog.stage, DecisionDialogStage::Endpoint);
+    type_chars(&mut dialog, "localhost:30000");
+    dialog.handle_key(key(KeyCode::Enter));
+    assert_eq!(
+        dialog.stage,
+        DecisionDialogStage::Endpoint,
+        "not a URL, no advance"
+    );
+    assert!(
+        dialog
+            .error
+            .as_deref()
+            .is_some_and(|e| e.contains("http://"))
+    );
+    // The refused text stays on the line to be fixed: backspace
+    // through it, then the URL.
+    for _ in 0.."localhost:30000".len() {
+        dialog.handle_key(key(KeyCode::Backspace));
+    }
+    type_chars(&mut dialog, "http://localhost:30000");
+    dialog.handle_key(key(KeyCode::Enter));
+    assert_eq!(dialog.stage, DecisionDialogStage::Key);
+    assert_eq!(dialog.input, "local", "the local default sits on the line");
+    assert_eq!(
+        dialog.handle_key(key(KeyCode::Enter)),
+        DecisionDialogAction::Submit
+    );
+    let built = dialog.build().unwrap();
+    assert_eq!(built.kind, "jev", "a custom endpoint is the jev kind");
+    assert_eq!(built.base_url.as_deref(), Some("http://localhost:30000"));
+    assert_eq!(built.key, "local");
+    // Esc from the key line retreats to the endpoint, restored.
+    dialog.handle_key(key(KeyCode::Enter));
+    dialog.handle_key(key(KeyCode::Enter));
+    dialog.handle_key(key(KeyCode::Enter));
+    type_chars(&mut dialog, "x");
+    dialog.handle_key(key(KeyCode::Esc));
+    assert_eq!(dialog.stage, DecisionDialogStage::Endpoint);
+    assert_eq!(dialog.input, "http://localhost:30000");
+}
+
+#[test]
+fn a_paste_lands_in_the_decision_dialogs_input_not_its_kind_list() {
+    let mut dialog = crate::screens::AddDecisionDialog::new(BTreeSet::new());
+    dialog.paste("ignored");
+    assert_eq!(dialog.input, "", "the kind list takes no text");
+    dialog.handle_key(key(KeyCode::Enter));
+    dialog.paste("Named\n");
+    assert_eq!(
+        dialog.input, "JevNamed",
+        "the suggestion plus the paste, no newline"
+    );
 }

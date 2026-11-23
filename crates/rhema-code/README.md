@@ -198,6 +198,8 @@ profiles:
 
 A `base_url` on a Jev instance points the call at any server that speaks the same `/v1/systemone` wire (Ollaya, vLLM, SGLang, llama.cpp serving Clef or another open decision model). Without a `decision` section the environment serves: `TYPESAFE_API_KEY`, `CLOUDFLARE_AUTH_TOKEN` plus `CLOUDFLARE_ACCOUNT_ID`, or `OPENROUTER_API_KEY`, the first that resolves. Sandboxed sessions wire nothing, since their shell cannot reach this host's keys. `specs/rhema-decision.md` is the design.
 
+The **Decision models** page of `/settings` edits this section: the add row's dialog picks the kind (Jev, Clef, OpenRouter, or a custom Jev endpoint, which asks for the server's URL too), names the instance, and takes the key, which goes to the keychain as the Providers page's do; Clef also asks for its account id. Enter on a row makes it the default, `d` removes it with its keychain entry. The model stays a file matter: each row shows what a blank asks, the kind's default.
+
 ### Where bash runs
 
 The `bash` tool can run somewhere other than your host. The profile's `sandbox.kind` in `config.yaml` picks where, and `RHEMA_SANDBOX` overrides the stored kind the same way `RHEMA_PROVIDER` does. Six kinds:

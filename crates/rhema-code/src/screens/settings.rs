@@ -24,6 +24,9 @@ pub enum SettingsSection {
     /// The active profile's web search providers: list, add, remove,
     /// and the fallback order between them.
     WebSearch,
+    /// The active profile's decision instances: list, add, remove,
+    /// and the one `decide` asks by default.
+    Decision,
     /// The allowance, the session's cost, the last turn's tokens.
     Usage,
     /// This build beside the channel's latest release, and the
@@ -44,6 +47,7 @@ impl SettingsSection {
         SettingsSection::Subagents,
         SettingsSection::Mcp,
         SettingsSection::WebSearch,
+        SettingsSection::Decision,
         SettingsSection::Usage,
         SettingsSection::Update,
         SettingsSection::About,
@@ -60,6 +64,7 @@ impl SettingsSection {
             SettingsSection::Subagents => "Subagents",
             SettingsSection::Mcp => "MCP",
             SettingsSection::WebSearch => "Web search",
+            SettingsSection::Decision => "Decision models",
             SettingsSection::Usage => "Usage",
             SettingsSection::Update => "Update",
             SettingsSection::About => "About",
@@ -169,6 +174,20 @@ pub enum SettingsAction {
     /// `]` on a provider row: one step down the chain, never out of
     /// it.
     MoveWebSearchDown,
+    /// Enter on the Decision models page's add row: the
+    /// add-instance dialog opens.
+    OpenDecisionDialog,
+    /// The add-instance dialog accepted its stages: store the
+    /// instance, place the key, persist.
+    SubmitDecisionDialog,
+    /// Esc left the add-instance dialog.
+    CloseDecisionDialog,
+    /// `y` on the remove-instance confirm: the instance leaves the
+    /// profile's map, and the default with it when it was the one.
+    RemoveDecisionProvider,
+    /// Enter on an instance row: `decide` asks it by default from the
+    /// next call on.
+    SetDefaultDecision,
     /// Enter on the Update page's check row: the manifest fetch starts.
     CheckForUpdates,
     /// Enter on the Update page's install row: the install script
@@ -401,6 +420,15 @@ pub struct SettingsScreen {
     /// The provider name awaiting its removal confirmation, the `d`
     /// key arms it, `y` confirms, `n` and esc leave the row alone.
     pub websearch_confirm: Option<String>,
+    // The Decision models page's snapshot.
+    /// The active profile's decision instances in name order, synced
+    /// from the config whenever the app mutates it.
+    pub decision: Vec<DecisionRow>,
+    /// The add-instance dialog, when it is up.
+    pub decision_dialog: Option<AddDecisionDialog>,
+    /// The instance name awaiting its removal confirmation, the `d`
+    /// key arms it, `y` confirms, `n` and esc leave the row alone.
+    pub decision_confirm: Option<String>,
 
     // The Providers page's removal confirm.
     /// The instance name awaiting its removal confirmation, the `d`
@@ -485,6 +513,9 @@ impl SettingsScreen {
             websearch: Vec::new(),
             websearch_dialog: None,
             websearch_confirm: None,
+            decision: Vec::new(),
+            decision_dialog: None,
+            decision_confirm: None,
             instance_confirm: None,
             profiles: Vec::new(),
             add_profile: None,
@@ -698,6 +729,21 @@ impl SettingsScreen {
             .and_then(|row| (!row.add).then_some(row.name.as_str()))
     }
 
+    /// The highlighted decision row's name; `None` on the add row,
+    /// with the dialog or the removal confirm up, or anywhere but the
+    /// Decision models page.
+    pub fn selected_decision(&self) -> Option<&str> {
+        if self.section != SettingsSection::Decision
+            || self.decision_dialog.is_some()
+            || self.decision_confirm.is_some()
+        {
+            return None;
+        }
+        self.decision
+            .get(self.row)
+            .and_then(|row| (!row.add).then_some(row.name.as_str()))
+    }
+
     /// How many interactive rows the page holds; zero means the arrows
     /// have nothing to move through.
     fn row_count(&self) -> usize {
@@ -709,9 +755,10 @@ impl SettingsScreen {
             SettingsSection::Skills => self.skills.len(),
             SettingsSection::Subagents => self.subagents.len(),
             SettingsSection::Mcp => self.mcp.len() + 1,
-            // The web search rows already carry their add row; the MCP
-            // rows do not, hence its `+ 1`.
+            // The web search and decision rows already carry their add
+            // row; the MCP rows do not, hence its `+ 1`.
             SettingsSection::WebSearch => self.websearch.len(),
+            SettingsSection::Decision => self.decision.len(),
             SettingsSection::Update => 2,
             _ => 0,
         }
@@ -772,6 +819,10 @@ impl SettingsScreen {
             SettingsSection::WebSearch => match self.selected_websearch() {
                 Some(_) => SettingsAction::None,
                 None => SettingsAction::OpenWebSearchDialog,
+            },
+            SettingsSection::Decision => match self.selected_decision() {
+                Some(_) => SettingsAction::SetDefaultDecision,
+                None => SettingsAction::OpenDecisionDialog,
             },
             SettingsSection::Update => match self.row {
                 0 => SettingsAction::CheckForUpdates,
@@ -850,6 +901,20 @@ impl SettingsScreen {
             };
         }
         if let Some(action) = self
+            .decision_dialog
+            .as_mut()
+            .map(|dialog| dialog.handle_key(key))
+        {
+            if action == DecisionDialogAction::Close {
+                self.decision_dialog = None;
+            }
+            return match action {
+                DecisionDialogAction::None => SettingsAction::None,
+                DecisionDialogAction::Submit => SettingsAction::SubmitDecisionDialog,
+                DecisionDialogAction::Close => SettingsAction::CloseDecisionDialog,
+            };
+        }
+        if let Some(action) = self
             .mcp_dialog
             .as_mut()
             .map(|dialog| dialog.handle_key(key))
@@ -888,6 +953,21 @@ impl SettingsScreen {
                 }
                 KeyCode::Char('n' | 'N') | KeyCode::Esc => {
                     self.websearch_confirm = None;
+                    SettingsAction::None
+                }
+                _ => SettingsAction::None,
+            };
+        }
+        if self.decision_confirm.is_some() {
+            // The removal confirm takes every key while it is up: esc
+            // must stay here, not back out of the screen behind it.
+            return match key.code {
+                KeyCode::Char('y' | 'Y') => {
+                    self.decision_confirm = None;
+                    SettingsAction::RemoveDecisionProvider
+                }
+                KeyCode::Char('n' | 'N') | KeyCode::Esc => {
+                    self.decision_confirm = None;
                     SettingsAction::None
                 }
                 _ => SettingsAction::None,
@@ -972,6 +1052,14 @@ impl SettingsScreen {
                 // use; the y that answers it carries the removal out.
                 if let Some(name) = self.selected_websearch() {
                     self.websearch_confirm = Some(name.to_owned());
+                }
+                SettingsAction::None
+            }
+            KeyCode::Char('d') if self.selected_decision().is_some() => {
+                // Removal asks first, the same modal the other pages
+                // use; the y that answers it carries the removal out.
+                if let Some(name) = self.selected_decision() {
+                    self.decision_confirm = Some(name.to_owned());
                 }
                 SettingsAction::None
             }

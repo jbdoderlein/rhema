@@ -54,7 +54,8 @@ in `rhema-core`, the boundary would be wrong; it does not.
   One models, three of them free.
 - `rhema-decision-registry`: the kind-to-adapter spelling and the
   profile-to-provider resolution, the `rhema-websearch-registry`
-  precedent.
+  precedent; `default_model`, what a blank `model` asks, so the
+  settings page shows the same default `build` sends.
 - `rhema-config`: `DecisionInstance` (kind, key, model, account id,
   base url), `DecisionSettings` (the instances and the default), and
   the `Profile` field `decision`, keys on the same three tiers as
@@ -62,15 +63,12 @@ in `rhema-core`, the boundary would be wrong; it does not.
 - `rhema-bash::decision`: the `decide` function's init file, the
   wiring, the prompt section.
 - `rhema-host-agent`: one prompt-section field, `decision`.
-- `rhema-code`: the hidden `__decision` mode, the session wiring.
+- `rhema-code`: the hidden `__decision` mode, the session wiring,
+  and the settings page: **Decision models** in the sidebar, its
+  rows, the add dialog over the four kinds, the default, removal.
 
 **OUT of v1** (each deliberately out, with the reason):
 
-- ❌ **The settings menu.** Web search has a `/settings` page for its
-  providers; decision providers are configured by the file or the
-  environment for now. The page is a copy of the web search one with
-  two more fields (account id, model) and lands when a session shows
-  the need.
 - ❌ **Images and `box` questions.** Jev and Clef both read images;
   the `see` macro already stages images into the model's context, and
   a decision over an image is a different feature with its own
@@ -396,7 +394,8 @@ frontend edits.
   profile holding no instance, walks the fixed order (a vendor's key
   before the aggregator's) and needs Clef's account; a held instance
   wires even keyless; a `base_url` routes a call to a localhost
-  server, for the jev and the openrouter kinds.
+  server, for the jev and the openrouter kinds; a blank model goes
+  out on the wire as `default_model`'s spelling, per kind.
 - `rhema-bash` (via `init`): init file text, env map contents,
   section verbatim.
 - `rhema-config`: the section round-trips and is strict at both
@@ -411,7 +410,20 @@ frontend edits.
   lines, the json, and the exit codes (a malformed shorthand and a
   malformed JSON request both exit 3 and never reach the vendor), the
   wiring gate closing with nothing held and nothing served, a run
-  inside a tokio runtime.
+  inside a tokio runtime. The settings page: the rows show the kind
+  as stored, the model (the kind's default for a blank), the
+  endpoint, a missing key, and the default as `active_instance`
+  rules it; the add row is the last row; the dialog walks each
+  kind's stages and back (Jev and OpenRouter: name, key; Clef adds
+  the account; the custom endpoint adds the URL, refused without
+  `http://`, and opens the key line on `local`); a paste lands in
+  the input and never on the kind list; through `on_key`, an add
+  places its key on the keychain and persists, Clef's account and the
+  endpoint land in the file, enter on a row persists the default,
+  removal takes the default and the keychain entry with it and an
+  emptied section leaves the profile; the frames at 80 columns: one
+  add row, the hints inside the dialog's width, the key masked to its
+  length, the empty page's hint.
 
 No live-network test lands in CI. By hand, the mode was run against a
 local server speaking the wire, through the real binary, a temp
@@ -442,6 +454,29 @@ rather than the function vanishing), or the environment serves a
 kind. The
 gate needs the same resolution the mode runs, so it lives in one
 place, `decision_wire.rs`, called by both.
+
+**`rhema-code`, the settings page.** `SettingsSection::Decision`,
+  "Decision models" in the sidebar after Web search, built from the
+  web search page: `screens/decision.rs` holds the rows
+  (`decision_rows`, the profile's instances in name order, the
+  default marked as [`DecisionSettings::active_instance`] rules it,
+  then the add row) and the add dialog (`AddDecisionDialog`: the
+  kind list, then the kind's own stages, the key always last). The
+  kinds are the registry's three plus a fourth row, "Custom Jev
+  endpoint", which is the `jev` kind with a `base_url` (decision 5)
+  and opens the key line on `local`, since a server without auth
+  takes any text and `build` refuses a blank. The app's handlers sit
+  beside the web search ones in `app/settings.rs`: a submit places
+  the key through `Profile::place_decision_key`, persists, and
+  rebuilds the agent (the first instance flips the wiring gate);
+  enter on a row writes `decision.instance` and persists with no
+  rebuild, the mode reads the profile per call; a removal drops the
+  instance, clears the default when it was the one, deletes the
+  keychain entry, drops an emptied section, and rebuilds when the
+  last one went. The dialog's rendering is the web search dialog's,
+  lifted into `render_staged_dialog` over the kind list and the one
+  input line. No slash command of its own: `/settings` is the way
+  in, as for Web search.
 
 **Later consumers.** The claw pulls the adapter crates and holds a
 provider behind the trait, resolved by its own profile policy. The cloud harness wires
@@ -474,9 +509,15 @@ nothing (`rhema-cloud-agent/src/assembly.rs` sets `decision: None`).
    (Ollaya, vLLM, SGLang, llama.cpp) are how most open decision
    models get served; a Jev kind against a `base_url` reaches all of
    them with no new kind.
-6. **No settings page in v1.** The web search page is the template
-   when a session shows the need; until then the file and the two
-   environment pairs are enough to use the feature.
+6. **The settings page is the web search one, plus the kinds' own
+   stages.** The first draft left the page out; it landed with the
+   feature. The rows, the add row, the removal confirm, the key
+   placement, and the rebuild rules are copied unchanged; what the
+   page adds is a dialog whose stages depend on the kind (Clef asks
+   for an account, the custom endpoint for a URL) and a default set
+   with enter, since one instance answers and the model never picks
+   (decision 8). The model is left to the file: a slug is not a thing
+   to type into a dialog, and the page shows what a blank asks.
 7. **Named instances and one default, the turn providers' shape.** A
    profile holds any number of decision instances and names the one
    `decide` asks, as it holds `instances` and names `instance`. The
