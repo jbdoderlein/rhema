@@ -509,7 +509,7 @@ pub struct SandboxSettings {
     /// where no keychain answers, never the first choice.
     pub token: Option<String>,
     /// The keychain entry holding the `http` token, resolved through
-    /// the [`secrets`] seam, [`ProviderInstance::secret_ref`]'s
+    /// the [`secrets`] seam, [`ProviderInstance`]'s `secret_ref`
     /// pattern. A literal `token` and a live `token_ref` never hold
     /// the same secret at rest.
     pub token_ref: Option<String>,
