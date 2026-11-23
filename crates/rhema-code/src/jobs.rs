@@ -342,7 +342,7 @@ impl JobsHandle {
     /// when there is nothing to subscribe to: no backend installed, or
     /// no binary to run the shim from.
     pub fn spawn(session: String) -> Option<Self> {
-        if !rhema_bash::jobs::available() {
+        if !backend_ready() {
             return None;
         }
         let bin = std::env::current_exe().ok()?;
@@ -660,6 +660,22 @@ fn backend_path() -> PathBuf {
         return path;
     }
     PathBuf::from(rhema_bash::jobs::BACKEND)
+}
+
+/// Whether a backend answers at all: the test seam's script when a
+/// test has set one, otherwise the production gate on the real
+/// binary's `help add`. Reads the same seam [`backend_path`] streams
+/// against, so a test's spawn and its subscription see one backend.
+fn backend_ready() -> bool {
+    #[cfg(test)]
+    if TEST_BACKEND
+        .lock()
+        .expect("the test backend lock")
+        .is_some()
+    {
+        return true;
+    }
+    rhema_bash::jobs::available()
 }
 
 /// The test seam behind [`backend_path`]: the end-to-end test points
